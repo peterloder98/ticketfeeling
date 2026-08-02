@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { normalizeCoverImageUrl } from "@/lib/commerce/event-cover";
 
 type Props = {
   src?: string | null;
@@ -13,6 +14,51 @@ type Props = {
   priority?: boolean;
 };
 
+function Fallback({
+  fallback,
+  initials,
+  alt,
+  className,
+}: {
+  fallback: NonNullable<Props["fallback"]>;
+  initials?: string;
+  alt: string;
+  className: string;
+}) {
+  if (fallback === "person") {
+    const letters = (initials || "?")
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0] ?? "")
+      .join("")
+      .toUpperCase() || "?";
+    return (
+      <span
+        className={`inline-flex items-center justify-center bg-[rgba(20,184,166,0.12)] text-sm font-semibold text-[var(--tf-teal-hover)] ${className}`}
+        aria-hidden={alt ? undefined : true}
+        role={alt ? "img" : undefined}
+        aria-label={alt || undefined}
+      >
+        {letters}
+      </span>
+    );
+  }
+  if (fallback === "none") {
+    return <span className={`bg-[var(--tf-overlay)] ${className}`} aria-hidden />;
+  }
+  return (
+    <span
+      className={`flex items-center justify-center bg-[linear-gradient(145deg,#0f2747_0%,#143556_55%,#0d9488_140%)] text-center text-xs font-semibold tracking-[0.14em] text-white/80 ${className}`}
+      aria-hidden={alt ? undefined : true}
+      role={alt ? "img" : undefined}
+      aria-label={alt || undefined}
+    >
+      TICKETFEELING
+    </span>
+  );
+}
+
 export function ResponsiveImage({
   src,
   alt = "",
@@ -22,47 +68,48 @@ export function ResponsiveImage({
   initials,
   priority = false,
 }: Props) {
+  const resolved = normalizeCoverImageUrl(src);
   const [failed, setFailed] = useState(false);
-  const showImage = Boolean(src) && !failed;
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+    setLoaded(false);
+  }, [resolved]);
+
+  const showImage = Boolean(resolved) && !failed;
 
   if (!showImage) {
-    if (fallback === "person") {
-      return (
-        <span
-          className={`inline-flex items-center justify-center bg-[rgba(20,184,166,0.12)] text-sm font-semibold text-[var(--tf-teal-hover)] ${className}`}
-          aria-hidden={alt ? undefined : true}
-          role={alt ? "img" : undefined}
-          aria-label={alt || undefined}
-        >
-          {(initials || "?").slice(0, 2).toUpperCase()}
-        </span>
-      );
-    }
-    if (fallback === "none") {
-      return <span className={`bg-[var(--tf-overlay)] ${className}`} aria-hidden />;
-    }
     return (
-      <span
-        className={`flex items-center justify-center bg-[linear-gradient(145deg,#0f2747_0%,#143556_55%,#0d9488_140%)] text-center text-xs font-semibold tracking-[0.14em] text-white/80 ${className}`}
-        aria-hidden={alt ? undefined : true}
-        role={alt ? "img" : undefined}
-        aria-label={alt || undefined}
-      >
-        TICKETFEELING
-      </span>
+      <Fallback fallback={fallback} initials={initials} alt={alt} className={className} />
     );
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src!}
-      alt={alt}
-      className={`${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
-      onError={() => setFailed(true)}
-      loading={priority ? "eager" : "lazy"}
-      fetchPriority={priority ? "high" : "auto"}
-      decoding="async"
-    />
+    <span className={`relative block overflow-hidden ${className}`}>
+      {/* Keep brand fallback under the img so Safari never flashes a lone "?" */}
+      {!loaded ? (
+        <Fallback
+          fallback={fallback}
+          initials={initials}
+          alt=""
+          className="absolute inset-0 h-full w-full"
+        />
+      ) : null}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={resolved!}
+        alt={alt}
+        className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"} ${
+          loaded ? "opacity-100" : "opacity-0"
+        }`}
+        onLoad={() => setLoaded(true)}
+        onError={() => setFailed(true)}
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+        decoding="async"
+        referrerPolicy="no-referrer"
+      />
+    </span>
   );
 }

@@ -457,13 +457,25 @@ async function main() {
       shortDescription: "Open Air in Bruckberg — Sommer, Hits und Live-Feeling ab 16:00 Uhr.",
       description:
         "SCHLAGERfeeling Open Air am Landgasthof Hutzenthaler in Bruckberg. Mit dabei u. a. Anni Perka, Joelina Drews, Tammy und Mitch Keller. Weitere Acts folgen. Beginn 16:00 Uhr.",
-      coverImageUrl: "https://images.unsplash.com/photo-1459749411175-047513050fa9?w=1600&q=80",
+      coverImageUrl: "/covers/schlagerfeeling-open-air-2027.jpg",
       visibleFrom: new Date(),
       presaleStartsAt: new Date(),
       trackingReviewedAt: new Date(),
       trackingUseOrgDefaults: true,
     },
   });
+
+  // Prefer bundled demo cover over empty / broken remote placeholders.
+  if (
+    !openAir.coverImageUrl ||
+    openAir.coverImageUrl.startsWith("https://images.unsplash.com/") ||
+    openAir.coverImageUrl.startsWith("/events/")
+  ) {
+    await prisma.event.update({
+      where: { id: openAir.id },
+      data: { coverImageUrl: "/covers/schlagerfeeling-open-air-2027.jpg" },
+    });
+  }
 
   await ensureCategories(openAir.id, tax7.id, [
     { name: "Kategorie 3", priceGrossCents: 5900, capacity: 500, sortOrder: 4, description: "Open Air Kat. 3" },

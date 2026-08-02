@@ -9,6 +9,7 @@ import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { createTourAction } from "@/app/admin/tours/actions";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
+import { ResponsiveImage } from "@/components/responsive-image";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Touren" };
@@ -132,11 +133,11 @@ export default async function AdminToursPage() {
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex gap-3">
                 {tour.coverImageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <ResponsiveImage
                     src={tour.coverImageUrl}
                     alt=""
-                    className="h-16 w-16 rounded-xl object-cover"
+                    className="h-16 w-16 rounded-xl"
+                    fallback="event"
                   />
                 ) : (
                   <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-[var(--tf-navy)] text-[10px] font-semibold tracking-wide text-white/70">

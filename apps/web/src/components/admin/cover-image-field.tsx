@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, ZoomIn, Check } from "lucide-react";
+import { normalizeCoverImageUrl } from "@/lib/commerce/event-cover";
+import { ResponsiveImage } from "@/components/responsive-image";
 
 const SIZE = 444;
 /** Downscale source before crop UI so large phone photos don't freeze the tab. */
@@ -241,22 +243,23 @@ export function CoverImageField({
     onCleared?.();
   }
 
-  const inherit = inheritUrl?.trim() || "";
-  const inherited = Boolean(inherit && (!url.trim() || url === inherit));
-  const showingOwn = Boolean(url.trim() && url !== inherit);
+  const inherit = normalizeCoverImageUrl(inheritUrl) ?? "";
+  const ownUrl = normalizeCoverImageUrl(url) ?? "";
+  const inherited = Boolean(inherit && (!ownUrl || ownUrl === inherit));
+  const showingOwn = Boolean(ownUrl && ownUrl !== inherit);
 
   return (
     <div className="space-y-3 md:col-span-2">
-      <input type="hidden" name={name} value={inherited ? "" : url} />
+      <input type="hidden" name={name} value={inherited ? "" : ownUrl} />
       <p className="text-sm font-medium text-[var(--tf-navy)]">Cover-Bild</p>
 
       {showingOwn && !source ? (
         <div className="flex items-center gap-3 rounded-2xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={url}
+          <ResponsiveImage
+            src={ownUrl}
             alt=""
-            className="h-16 w-16 rounded-xl object-cover"
+            className="h-16 w-16 rounded-xl"
+            fallback="event"
           />
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--tf-navy)]">
@@ -296,11 +299,11 @@ export function CoverImageField({
 
       {inherited && !source ? (
         <div className="flex items-center gap-3 rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <ResponsiveImage
             src={inherit}
             alt=""
-            className="h-16 w-16 rounded-xl object-cover"
+            className="h-16 w-16 rounded-xl"
+            fallback="event"
           />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[var(--tf-navy)]">{inheritLabel}</p>
