@@ -1,12 +1,11 @@
 /**
- * Run `prisma migrate deploy` on Vercel with a hard timeout.
- * If migrate hangs/fails, apply critical SEPA/payment columns best-effort so
- * Next.js SSG (layout → OrgTracking → organization.settings) does not crash.
+ * Best-effort schema patch on Vercel build.
+ * Avoid hanging `prisma migrate deploy` (Neon pooler / lock waits can stall the whole deploy).
+ * Critical columns are applied with short-timeout DDL instead.
  */
-const { spawn } = require("node:child_process");
 const { PrismaClient } = require("@prisma/client");
 
-const MIGRATE_TIMEOUT_MS = 90_000;
+const DDL_TIMEOUT_MS = 20_000;
 
 const FALLBACK_STATEMENTS = [
   `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "payment_ui_config" JSONB NOT NULL DEFAULT '{}'`,
@@ -31,64 +30,86 @@ const FALLBACK_STATEMENTS = [
   `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
 ];
 
-function runMigrateDeploy() {
+function withTimeout(promise, ms, label) {
   return new Promise((resolve) => {
-    const child = spawn("prisma", ["migrate", "deploy"], {
-      stdio: "inherit",
-      env: process.env,
-      // npm run build puts node_modules/.bin on PATH
-      shell: false,
-    });
-
     const timer = setTimeout(() => {
-      console.warn(
-        `[migrate-deploy] timed out after ${MIGRATE_TIMEOUT_MS}ms — killing and continuing`,
-      );
-      child.kill("SIGTERM");
-      setTimeout(() => child.kill("SIGKILL"), 5_000).unref?.();
-      resolve({ ok: false, reason: "timeout" });
-    }, MIGRATE_TIMEOUT_MS);
-
-    child.on("exit", (code, signal) => {
-      clearTimeout(timer);
-      if (code === 0) resolve({ ok: true });
-      else resolve({ ok: false, reason: signal ? `signal:${signal}` : `exit:${code}` });
-    });
-
-    child.on("error", (error) => {
-      clearTimeout(timer);
-      console.warn("[migrate-deploy] spawn failed:", error.message);
-      resolve({ ok: false, reason: "spawn" });
-    });
+      console.warn(`[migrate-deploy] ${label} timed out after ${ms}ms`);
+      resolve({ ok: false, timedOut: true });
+    }, ms);
+    promise
+      .then((value) => {
+        clearTimeout(timer);
+        resolve({ ok: true, value });
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        resolve({ ok: false, error });
+      });
   });
 }
 
 async function applyFallbackSchema() {
-  const prisma = new PrismaClient();
+  const url =
+    process.env.DIRECT_URL ||
+    process.env.DATABASE_URL_UNPOOLED ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL;
+
+  if (!url) {
+    console.warn("[migrate-deploy] no DATABASE_URL — skipping schema patch");
+    return;
+  }
+
+  const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
     for (const sql of FALLBACK_STATEMENTS) {
-      try {
-        await prisma.$executeRawUnsafe(sql);
-      } catch (error) {
-        console.warn(
-          "[migrate-deploy] fallback statement skipped:",
-          error instanceof Error ? error.message : error,
-        );
+      const result = await withTimeout(
+        prisma.$executeRawUnsafe(sql),
+        DDL_TIMEOUT_MS,
+        sql.slice(0, 60),
+      );
+      if (!result.ok) {
+        if (result.error) {
+          console.warn(
+            "[migrate-deploy] statement skipped:",
+            result.error instanceof Error ? result.error.message : result.error,
+          );
+        }
       }
     }
-    console.log("[migrate-deploy] fallback schema patch applied");
+    console.log("[migrate-deploy] fallback schema patch finished");
   } finally {
     await prisma.$disconnect().catch(() => undefined);
   }
 }
 
 async function main() {
-  const result = await runMigrateDeploy();
-  if (result.ok) {
-    console.log("[migrate-deploy] prisma migrate deploy ok");
-    return;
+  // Full migrate deploy is optional and often hangs on serverless/Neon builds.
+  // Prefer fast, idempotent DDL so `next build` always proceeds.
+  if (process.env.PRISMA_MIGRATE_DEPLOY === "1") {
+    const { spawn } = require("node:child_process");
+    await new Promise((resolve) => {
+      const child = spawn("npx", ["prisma", "migrate", "deploy"], {
+        stdio: "inherit",
+        env: process.env,
+        shell: true,
+      });
+      const timer = setTimeout(() => {
+        console.warn("[migrate-deploy] prisma migrate deploy timed out — continuing");
+        child.kill("SIGTERM");
+        resolve();
+      }, 45_000);
+      child.on("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+      child.on("error", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
-  console.warn(`[migrate-deploy] migrate deploy failed (${result.reason}); applying fallback DDL`);
+
   await applyFallbackSchema();
 }
 

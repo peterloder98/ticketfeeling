@@ -5,7 +5,6 @@ import { PUBLIC_SLUG_TO_TYPE } from "@/lib/legal/document-types";
 import {
   findPublishedLegalVersion,
   getSeedLegalVersion,
-  syncLegalCatalog,
 } from "@/lib/legal/sync-catalog";
 
 export const dynamic = "force-dynamic";
@@ -19,21 +18,16 @@ type VersionView = {
   publishedAt: Date | null;
 };
 
+function isPlaceholder(content: string) {
+  return content.includes("ENTWURF —") || content.trim().length < 400;
+}
+
 export async function generateMetadata({ params }: Props) {
   try {
     const { type } = await params;
     const docType = PUBLIC_SLUG_TO_TYPE[type];
     if (!docType) return { title: "Rechtliches" };
     const seed = getSeedLegalVersion(docType);
-    try {
-      const org = await getDefaultOrganization();
-      if (org) {
-        const version = await findPublishedLegalVersion(org.id, docType);
-        return { title: version?.title ?? seed?.title ?? type };
-      }
-    } catch {
-      /* fall through */
-    }
     return { title: seed?.title ?? type };
   } catch {
     return { title: "Rechtliches" };
@@ -76,8 +70,11 @@ export default async function LegalPage({ params }: Props) {
   const docType = PUBLIC_SLUG_TO_TYPE[type];
   if (!docType) notFound();
 
+  const seed = getSeedLegalVersion(docType);
+  if (!seed) notFound();
+
   let sellerName = "Peter Loder – Ticketfeeling";
-  let version: VersionView | null = null;
+  let version: VersionView = seed;
 
   try {
     const org = await getDefaultOrganization();
@@ -85,20 +82,13 @@ export default async function LegalPage({ params }: Props) {
       const seller = buildSellerIdentity(org, org.settings);
       sellerName = seller.displayName;
 
-      version = await findPublishedLegalVersion(org.id, docType);
-
-      // Bootstrap catalog once if production DB still has empty/placeholder docs.
-      if (!version || version.content.includes("ENTWURF —")) {
-        try {
-          await syncLegalCatalog(org.id);
-          version = await findPublishedLegalVersion(org.id, docType);
-        } catch (error) {
-          console.error("[legal] syncLegalCatalog failed", error);
-        }
+      const fromDb = await findPublishedLegalVersion(org.id, docType);
+      if (fromDb && !isPlaceholder(fromDb.content)) {
+        version = fromDb;
       }
 
-      // Impressum: DB text preferred; fall back to stammdaten if missing.
-      if (docType === "impressum" && !version) {
+      // Impressum: prefer structured stammdaten only when neither DB nor seed is useful.
+      if (docType === "impressum" && isPlaceholder(version.content)) {
         return (
           <div className="tf-container max-w-3xl py-12">
             <h1 className="text-4xl font-semibold tracking-tight text-[var(--tf-navy)]">
@@ -118,12 +108,6 @@ export default async function LegalPage({ params }: Props) {
   } catch (error) {
     console.error("[legal] page load failed, using seed fallback", error);
   }
-
-  if (!version) {
-    version = getSeedLegalVersion(docType);
-  }
-
-  if (!version) notFound();
 
   return <LegalDocumentView version={version} sellerName={sellerName} />;
 }
