@@ -226,7 +226,8 @@ export function CoverImageField({
         const res = await fetch("/api/v1/admin/uploads/cover", { method: "POST", body });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error?.code ?? "CLEAR_FAILED");
-        setUrl("");
+        // Event clear restores tour poster URL; tour clear returns null.
+        setUrl(typeof data?.url === "string" ? data.url : "");
         onCleared?.();
         if (refreshOnUpload) router.refresh();
       } catch (e) {
@@ -240,14 +241,16 @@ export function CoverImageField({
     onCleared?.();
   }
 
-  const inherited = Boolean(!url && inheritUrl);
+  const inherit = inheritUrl?.trim() || "";
+  const inherited = Boolean(inherit && (!url.trim() || url === inherit));
+  const showingOwn = Boolean(url.trim() && url !== inherit);
 
   return (
     <div className="space-y-3 md:col-span-2">
-      <input type="hidden" name={name} value={url} />
+      <input type="hidden" name={name} value={inherited ? "" : url} />
       <p className="text-sm font-medium text-[var(--tf-navy)]">Cover-Bild</p>
 
-      {url && !source ? (
+      {showingOwn && !source ? (
         <div className="flex items-center gap-3 rounded-2xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -267,7 +270,7 @@ export function CoverImageField({
               >
                 Anderes Bild wählen
               </button>
-              {inheritUrl ? (
+              {inherit ? (
                 <button
                   type="button"
                   className="text-xs font-medium text-[var(--tf-text-secondary)] underline"
@@ -295,14 +298,14 @@ export function CoverImageField({
         <div className="flex items-center gap-3 rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={inheritUrl!}
+            src={inherit}
             alt=""
             className="h-16 w-16 rounded-xl object-cover"
           />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-[var(--tf-navy)]">{inheritLabel}</p>
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              Wird verwendet, solange kein eigenes Cover gesetzt ist.
+              Standard für diesen Termin. Optional unten ein abweichendes Cover hochladen.
             </p>
             <button
               type="button"
@@ -384,7 +387,7 @@ export function CoverImageField({
             </button>
           </div>
         </div>
-      ) : !url && !inherited ? (
+      ) : !showingOwn && !inherited ? (
         <div className="space-y-2">
           <div
             role="button"

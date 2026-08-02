@@ -20,6 +20,7 @@ import { buildEventEmbedSnippet, getPublicAppUrl } from "@/lib/embed/public-url"
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
 
 export const dynamic = "force-dynamic";
 
@@ -103,7 +104,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   ]);
 
   const displayCover = resolveEventCoverUrl(event);
-  const ownCover = Boolean(event.coverImageUrl?.trim());
+  const usesTourCover = eventUsesTourCover({
+    coverImageUrl: event.coverImageUrl,
+    tourCoverUrl: event.tour?.coverImageUrl,
+  });
+  const ownCover = Boolean(event.coverImageUrl?.trim()) && !usesTourCover;
 
   const planOptions = venuePlans.map((p) => ({
     id: p.id,
@@ -197,15 +202,15 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             {event.tour
               ? ownCover
-                ? "Dieses Termin hat ein eigenes Cover (Override)."
-                : "Kein Termin-Cover — es gilt das Tour-Plakat."
+                ? "Eigenes Termin-Cover (Tour-Plakat überschrieben)."
+                : "Tour-Plakat aktiv — gilt für diesen Termin, bis du ein eigenes hochlädst."
               : "Links das aktuelle Cover — rechts kannst du ein neues Bild hochladen."}
           </p>
         </div>
         <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,240px)_1fr] lg:items-start">
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-              Aktuell {ownCover ? "(Termin)" : event.tour?.coverImageUrl ? "(Tour)" : ""}
+              Aktuell {ownCover ? "(Termin)" : event.tour?.coverImageUrl ? "(Tour-Plakat)" : ""}
             </p>
             <div className="relative aspect-square w-full max-w-[240px] overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.04)]">
               {displayCover ? (
@@ -229,7 +234,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               </p>
               <CoverImageField
                 name="coverImageUrl"
-                initialUrl={event.coverImageUrl}
+                initialUrl={ownCover ? event.coverImageUrl : null}
                 eventId={event.id}
                 inheritUrl={event.tour?.coverImageUrl}
                 inheritLabel="Tour-Plakat"

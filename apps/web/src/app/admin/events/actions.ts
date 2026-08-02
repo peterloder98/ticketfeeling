@@ -12,6 +12,7 @@ import {
   EVENT_STATUSES,
   slugify,
 } from "@/lib/admin/event-form";
+import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
 
 async function requireEventWrite() {
   const session = await getServerSession(authOptions);
@@ -127,6 +128,11 @@ export async function createEventAction(formData: FormData) {
     });
     if (!tour) throw new Error("TOUR_NOT_FOUND");
   }
+
+  const persistedCoverUrl = await resolveCoverForTourEvent({
+    tourId,
+    coverImageUrl,
+  });
 
   const taxRate =
     (await prisma.taxRate.findFirst({
@@ -245,7 +251,7 @@ export async function createEventAction(formData: FormData) {
         presaleStartsAt,
         shortDescription,
         description,
-        coverImageUrl,
+        coverImageUrl: persistedCoverUrl,
         ticketTaxRateBasisPoints,
         administrationFeeTaxMode,
         administrationFeeCustomTaxRateBasisPoints,
@@ -332,8 +338,14 @@ export async function createEventAction(formData: FormData) {
   revalidatePath("/admin/catalog");
   revalidatePath("/events");
   revalidatePath(`/event/${event.slug}`);
+  revalidatePath("/");
   revalidatePath("/kasse");
   revalidatePath("/scanner");
+  if (tourId) {
+    revalidatePath(`/admin/tours/${tourId}`);
+    revalidatePath("/admin/tours");
+    redirect(`/admin/tours/${tourId}?termin=1`);
+  }
   redirect(`/admin/events/${event.id}?saved=1`);
 }
 
@@ -393,7 +405,6 @@ export async function updateEventAction(formData: FormData) {
   const subtitle = String(formData.get("subtitle") ?? "").trim() || null;
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
-  const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
   const tourIdRaw = String(formData.get("tourId") ?? "").trim();
   const tourId: string | null = tourIdRaw || null;
   const ticketTaxPercent = Number(
@@ -430,6 +441,27 @@ export async function updateEventAction(formData: FormData) {
     if (!tour) throw new Error("TOUR_NOT_FOUND");
   }
 
+  // Cover is owned by CoverImageField (upload API). Only sync when tour link changes.
+  let nextCoverUrl = event.coverImageUrl;
+  if ((event.tourId ?? null) !== tourId) {
+    if (tourId) {
+      const previousTourCover = event.tourId
+        ? (
+            await prisma.tour.findUnique({
+              where: { id: event.tourId },
+              select: { coverImageUrl: true },
+            })
+          )?.coverImageUrl
+        : null;
+      const wasInheriting =
+        !event.coverImageUrl?.trim() ||
+        event.coverImageUrl === previousTourCover;
+      nextCoverUrl = wasInheriting
+        ? await resolveCoverForTourEvent({ tourId, coverImageUrl: null })
+        : event.coverImageUrl;
+    }
+  }
+
   await prisma.event.update({
     where: { id: event.id },
     data: {
@@ -443,7 +475,7 @@ export async function updateEventAction(formData: FormData) {
       subtitle,
       shortDescription,
       description,
-      coverImageUrl,
+      coverImageUrl: nextCoverUrl,
       eventStartsAt,
       eventEndsAt,
       doorsOpenAt,
@@ -495,7 +527,12 @@ export async function updateEventAction(formData: FormData) {
   revalidatePath("/events");
   revalidatePath(`/event/${event.slug}`);
   if (event.slug !== slug) revalidatePath(`/event/${slug}`);
+  revalidatePath("/");
   revalidatePath("/kasse");
   revalidatePath("/scanner");
+  if (tourId) {
+    revalidatePath(`/admin/tours/${tourId}`);
+    revalidatePath("/admin/tours");
+  }
   redirect(`/admin/events/${event.id}?saved=1`);
 }

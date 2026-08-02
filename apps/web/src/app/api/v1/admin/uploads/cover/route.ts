@@ -6,10 +6,17 @@ import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { storeCoverAsset } from "@/lib/uploads/store-cover";
+import { syncTourCoverToEvents } from "@/lib/commerce/tour-cover-sync";
 
 export const runtime = "nodejs";
 
 const SIZE = 444;
+
+function revalidatePublic() {
+  revalidatePath("/");
+  revalidatePath("/events");
+  revalidatePath("/admin/tours");
+}
 
 export async function POST(request: Request) {
   try {
@@ -44,7 +51,7 @@ export async function POST(request: Request) {
     if (eventId) {
       const event = await prisma.event.findFirst({
         where: { id: eventId, organizationId: membership.organizationId },
-        select: { id: true },
+        select: { id: true, tourId: true },
       });
       if (!event) {
         return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
@@ -53,7 +60,7 @@ export async function POST(request: Request) {
     if (tourId) {
       const tour = await prisma.tour.findFirst({
         where: { id: tourId, organizationId: membership.organizationId },
-        select: { id: true },
+        select: { id: true, coverImageUrl: true, slug: true },
       });
       if (!tour) {
         return NextResponse.json({ error: { code: "TOUR_NOT_FOUND" } }, { status: 404 });
@@ -64,19 +71,54 @@ export async function POST(request: Request) {
       if (!eventId && !tourId) {
         return NextResponse.json({ error: { code: "TARGET_REQUIRED" } }, { status: 400 });
       }
+
+      // Event: revert to tour poster (not empty), unless tour has none
+      let clearedEventUrl: string | null = null;
       if (eventId) {
+        const event = await prisma.event.findUnique({
+          where: { id: eventId },
+          select: { tourId: true },
+        });
+        let nextCover: string | null = null;
+        if (event?.tourId) {
+          const tour = await prisma.tour.findUnique({
+            where: { id: event.tourId },
+            select: { coverImageUrl: true },
+          });
+          nextCover = tour?.coverImageUrl?.trim() || null;
+        }
         await prisma.event.update({
           where: { id: eventId },
-          data: { coverImageUrl: null },
+          data: { coverImageUrl: nextCover },
         });
+        clearedEventUrl = nextCover;
+        revalidatePath(`/admin/events/${eventId}`);
       }
+
+      // Tour: clear poster and sync inheriting dates
       if (tourId) {
+        const existing = await prisma.tour.findUnique({
+          where: { id: tourId },
+          select: { coverImageUrl: true, slug: true },
+        });
         await prisma.tour.update({
           where: { id: tourId },
           data: { coverImageUrl: null },
         });
+        await syncTourCoverToEvents({
+          tourId,
+          previousCoverUrl: existing?.coverImageUrl ?? null,
+          nextCoverUrl: null,
+        });
+        revalidatePath(`/admin/tours/${tourId}`);
+        if (existing?.slug) revalidatePath(`/tour/${existing.slug}`);
       }
-      return NextResponse.json({ ok: true, url: null });
+
+      revalidatePublic();
+      return NextResponse.json({
+        ok: true,
+        url: eventId ? clearedEventUrl : null,
+      });
     }
 
     const file = form.get("file");
@@ -107,21 +149,26 @@ export async function POST(request: Request) {
       });
       revalidatePath(`/admin/events/${eventId}`);
     }
+
     if (tourId) {
+      const existing = await prisma.tour.findUnique({
+        where: { id: tourId },
+        select: { coverImageUrl: true, slug: true },
+      });
       await prisma.tour.update({
         where: { id: tourId },
         data: { coverImageUrl: stored.url },
       });
-      revalidatePath(`/admin/tours/${tourId}`);
-      const tour = await prisma.tour.findUnique({
-        where: { id: tourId },
-        select: { slug: true },
+      await syncTourCoverToEvents({
+        tourId,
+        previousCoverUrl: existing?.coverImageUrl ?? null,
+        nextCoverUrl: stored.url,
       });
-      if (tour?.slug) revalidatePath(`/tour/${tour.slug}`);
+      revalidatePath(`/admin/tours/${tourId}`);
+      if (existing?.slug) revalidatePath(`/tour/${existing.slug}`);
     }
-    revalidatePath("/");
-    revalidatePath("/events");
-    revalidatePath("/admin/tours");
+
+    revalidatePublic();
 
     return NextResponse.json({
       ok: true,

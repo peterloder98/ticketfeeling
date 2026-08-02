@@ -62,7 +62,6 @@ export function EventEditForm({
   return (
     <form action={updateEventAction} className="mt-5 grid gap-3 text-sm md:grid-cols-2">
       <input type="hidden" name="eventId" value={event.id} />
-      <input type="hidden" name="coverImageUrl" value={event.coverImageUrl ?? ""} />
 
       <label className="grid gap-1 md:col-span-2">
         <span className="font-medium">Name</span>

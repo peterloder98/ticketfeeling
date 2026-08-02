@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string; neu?: string }>;
+  searchParams: Promise<{ saved?: string; neu?: string; termin?: string }>;
 };
 
 export async function generateMetadata({ params }: Props) {
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function AdminTourDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { saved, neu } = await searchParams;
+  const { saved, neu, termin } = await searchParams;
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
@@ -85,7 +85,12 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
       ) : null}
       {saved ? (
         <p className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-          Tour gespeichert — Cover gilt für alle Termine ohne eigenes Bild.
+          Tour gespeichert — Tour-Plakat wurde auf alle Termine ohne eigenes Cover übernommen.
+        </p>
+      ) : null}
+      {termin ? (
+        <p className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Termin angelegt — Cover ist das Tour-Plakat (außer du setzt ein eigenes).
         </p>
       ) : null}
 
@@ -191,7 +196,9 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
             coverImageUrl: event.coverImageUrl,
             tour,
           });
-          const ownCover = Boolean(event.coverImageUrl?.trim());
+          const usesTour =
+            Boolean(tour.coverImageUrl?.trim()) &&
+            (!event.coverImageUrl?.trim() || event.coverImageUrl === tour.coverImageUrl);
           return (
             <Link
               key={event.id}
@@ -226,7 +233,7 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
                     : ""}
                 </p>
                 <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                  Cover: {ownCover ? "eigenes Termin-Cover" : "Tour-Plakat"}
+                  Cover: {usesTour ? "Tour-Plakat" : event.coverImageUrl ? "eigenes Termin-Cover" : "fehlt"}
                 </p>
               </div>
               <span className="text-xs text-[var(--tf-text-secondary)]">

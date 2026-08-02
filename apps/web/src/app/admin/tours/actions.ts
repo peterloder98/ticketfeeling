@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { slugify } from "@/lib/admin/event-form";
+import { syncTourCoverToEvents } from "@/lib/commerce/tour-cover-sync";
 
 async function requireTourWrite() {
   const session = await getServerSession(authOptions);
@@ -114,6 +115,12 @@ export async function updateTourAction(formData: FormData) {
       endsOn,
       visibility,
     },
+  });
+
+  await syncTourCoverToEvents({
+    tourId: existing.id,
+    previousCoverUrl: existing.coverImageUrl,
+    nextCoverUrl: coverImageUrl,
   });
 
   await writeAudit({
