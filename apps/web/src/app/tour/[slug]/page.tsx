@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Calendar, MapPin } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { ExpandableText } from "@/components/expandable-text";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
@@ -91,9 +92,11 @@ export default async function PublicTourPage({ params }: Props) {
           </p>
           <h1 className="mt-2 tf-display text-3xl md:text-5xl">{tour.name}</h1>
           {tour.description ? (
-            <p className="mt-3 max-w-[60ch] whitespace-pre-wrap text-base leading-relaxed text-[var(--tf-text-secondary)]">
-              {tour.description}
-            </p>
+            <ExpandableText
+              text={tour.description}
+              lines={4}
+              className="mt-3 max-w-[60ch] [&_p]:text-base"
+            />
           ) : null}
           {priced ? (
             <p className="mt-4 text-lg font-semibold text-[var(--tf-navy)]">
