@@ -18,7 +18,7 @@ export type CartSnapshot = {
 
 type CartContextValue = CartSnapshot & {
   loading: boolean;
-  refresh: () => Promise<void>;
+  refresh: (opts?: { full?: boolean }) => Promise<void>;
   bump: (summary?: {
     itemCount?: number;
     grossFormatted?: string | null;
@@ -38,9 +38,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<CartSnapshot>(EMPTY);
   const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { full?: boolean }) => {
     try {
-      const response = await fetch("/api/v1/cart", { credentials: "same-origin" });
+      const path = opts?.full ? "/api/v1/cart" : "/api/v1/cart?summary=1";
+      const response = await fetch(path, { credentials: "same-origin" });
       if (!response.ok) {
         setSnapshot(EMPTY);
         return;
@@ -56,16 +57,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
               )
             : 0;
       const expiresRaw = data?.expiresAt ?? null;
-      setSnapshot({
+      setSnapshot((prev) => ({
         itemCount,
-        grossFormatted: data?.summary?.grossFormatted ?? null,
+        // Summary poll skips pricing — keep last known total if still in cart
+        grossFormatted:
+          data?.summary?.grossFormatted ?? (itemCount > 0 ? prev.grossFormatted : null),
         expiresAt:
           typeof expiresRaw === "string"
             ? expiresRaw
             : expiresRaw
               ? new Date(expiresRaw).toISOString()
               : null,
-      });
+      }));
     } catch {
       setSnapshot(EMPTY);
     } finally {
@@ -105,14 +108,20 @@ export function CartProvider({ children }: { children: ReactNode }) {
           };
         });
       }
-      void refresh();
+      void refresh({ full: true });
     },
     [refresh],
   );
 
   useEffect(() => {
     void refresh();
-    const onFocus = () => void refresh();
+    let lastFocusRefresh = 0;
+    const onFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusRefresh < 30_000) return;
+      lastFocusRefresh = now;
+      void refresh();
+    };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [refresh]);

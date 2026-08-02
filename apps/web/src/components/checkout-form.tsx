@@ -14,6 +14,7 @@ type Mode = "guest" | "register";
 type FieldKey =
   | "email"
   | "password"
+  | "gender"
   | "firstName"
   | "lastName"
   | "street"
@@ -134,6 +135,10 @@ export function CheckoutForm({
       const password = String(fd.get("password") ?? "");
       if (password.length < 8) errors.password = true;
     }
+    const gender = String(fd.get("gender") ?? "");
+    if (gender !== "female" && gender !== "male" && gender !== "diverse") {
+      errors.gender = true;
+    }
     if (!String(fd.get("firstName") ?? "").trim()) errors.firstName = true;
     if (!String(fd.get("lastName") ?? "").trim()) errors.lastName = true;
     if (!String(fd.get("street") ?? "").trim()) errors.street = true;
@@ -185,7 +190,7 @@ export function CheckoutForm({
           ? password
           : undefined,
       salutation: String(fd.get("salutation") || "") || undefined,
-      gender: String(fd.get("gender") || "undisclosed"),
+      gender: String(fd.get("gender")),
       firstName: String(fd.get("firstName")),
       lastName: String(fd.get("lastName")),
       birthDate: String(fd.get("birthDate") || "") || undefined,
@@ -317,7 +322,7 @@ export function CheckoutForm({
         </div>
       ) : (
         <div className="mb-5">
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Deine Daten</h2>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Ihre Daten</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             Angemeldet als {loginEmail ?? "Konto"}
           </p>
@@ -353,29 +358,27 @@ export function CheckoutForm({
               minLength={8}
               className={inputClass(Boolean(fieldErrors.password))}
               autoComplete="new-password"
-              placeholder="Für dein Ticketfeeling-Konto"
+              placeholder="Für Ihr Ticketfeeling-Konto"
               onChange={() => clearFieldError("password")}
             />
           </div>
         ) : null}
 
         <div>
-          <label className="tf-label" htmlFor="salutation">
-            Anrede (optional)
-          </label>
-          <select id="salutation" name="salutation" className="tf-input" defaultValue="">
-            <option value="">—</option>
-            <option value="frau">Frau</option>
-            <option value="herr">Herr</option>
-            <option value="divers">Divers</option>
-          </select>
-        </div>
-        <div>
           <label className="tf-label" htmlFor="gender">
-            Geschlecht (optional)
+            Geschlecht
           </label>
-          <select id="gender" name="gender" className="tf-input" defaultValue="undisclosed">
-            <option value="undisclosed">keine Angabe</option>
+          <select
+            id="gender"
+            name="gender"
+            required
+            className={inputClass(Boolean(fieldErrors.gender))}
+            defaultValue=""
+            onChange={() => clearFieldError("gender")}
+          >
+            <option value="" disabled>
+              Bitte wählen
+            </option>
             <option value="female">weiblich</option>
             <option value="male">männlich</option>
             <option value="diverse">divers</option>

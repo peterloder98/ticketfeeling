@@ -34,13 +34,21 @@ export function isEventSaleOpen(
     status: string;
     presaleStartsAt?: Date | null;
     presaleEndsAt?: Date | null;
+    /** Resolved cover (event or tour). Sale requires a cover. */
+    coverImageUrl?: string | null;
+    tour?: { coverImageUrl?: string | null; visibility?: string | null } | null;
   },
   now: Date = new Date(),
 ): boolean {
   if (event.status === "sold_out" || event.status === "cancelled" || event.status === "completed") {
     return false;
   }
+  // Draft tour = not public / not sellable
+  if (event.tour?.visibility === "draft") return false;
   if (!isEventSalesReleased(event.status)) return false;
+  const cover =
+    event.coverImageUrl?.trim() || event.tour?.coverImageUrl?.trim() || "";
+  if (!cover) return false;
   if (event.presaleStartsAt && event.presaleStartsAt.getTime() > now.getTime()) return false;
   if (event.presaleEndsAt && event.presaleEndsAt.getTime() < now.getTime()) return false;
   return true;

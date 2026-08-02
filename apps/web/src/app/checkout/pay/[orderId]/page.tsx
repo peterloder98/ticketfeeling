@@ -13,6 +13,7 @@ import {
 } from "@/lib/commerce/payment-fees";
 import { getStripe, isStripeConfigured } from "@/lib/payments/stripe-client";
 import { ClearCartBadge } from "@/components/clear-cart-badge";
+import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zahlung" };
@@ -88,7 +89,7 @@ export default async function PayPage({ params }: Props) {
               Erledigt
             </p>
             <h1 className="mt-2 text-3xl font-bold text-[var(--tf-navy)]">Schon bezahlt</h1>
-            <p className="mt-3 text-[var(--tf-text-secondary)]">Deine Tickets liegen bereit.</p>
+            <p className="mt-3 text-[var(--tf-text-secondary)]">Ihre Tickets liegen bereit.</p>
             <Link
               href={`/konto/bestellung/${order.id}?paid=1`}
               className="tf-btn tf-btn-primary mt-6 inline-flex"
@@ -113,15 +114,15 @@ export default async function PayPage({ params }: Props) {
             Zahlung
           </h1>
           <p className="mt-2 text-base text-[var(--tf-text-secondary)]">
-            Hallo {order.customer.firstName} — bitte Zahlung für Bestellung {order.orderNumber}{" "}
-            bestätigen.
+            {formalGermanGreeting(order.customer)} — bitte bestätigen Sie die Zahlung für
+            Bestellung {order.orderNumber}.
           </p>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] lg:gap-10 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
           <div className="min-w-0 space-y-5">
             <section className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.06)] md:p-7">
-              <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Deine Bestellung</h2>
+              <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Ihre Bestellung</h2>
               <ul className="mt-5 space-y-5">
                 {order.items.map((item) => {
                   const when =

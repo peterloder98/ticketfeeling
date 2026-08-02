@@ -5,7 +5,6 @@ import { getOpenCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
-import { formatFeePercentageLabel } from "@/lib/commerce/public-price";
 import { CartRemoveButton } from "@/components/cart-remove-button";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 
@@ -83,11 +82,7 @@ export default async function CartPage() {
             <p>Tickets: {formatEuroFromCents(summary.ticketsGrossCents)}</p>
             {summary.feeGrossCents > 0 ? (
               <p className="text-[var(--muted)]">
-                {summary.feeLabel}
-                {summary.administrationFeePercentageBasisPoints
-                  ? ` (${formatFeePercentageLabel(summary.administrationFeePercentageBasisPoints)})`
-                  : ""}
-                : {formatEuroFromCents(summary.feeGrossCents)}
+                {summary.feeLabel}: {formatEuroFromCents(summary.feeGrossCents)}
               </p>
             ) : null}
             <p className="text-lg">

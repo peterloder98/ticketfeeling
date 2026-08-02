@@ -1,16 +1,14 @@
 import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import sharp from "sharp";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { storeCoverAsset } from "@/lib/uploads/store-cover";
 import { syncTourCoverToEvents } from "@/lib/commerce/tour-cover-sync";
+import { optimizeCoverImage } from "@/lib/uploads/optimize-cover";
 
 export const runtime = "nodejs";
-
-const SIZE = 444;
 
 function revalidatePublic() {
   revalidatePath("/");
@@ -130,16 +128,12 @@ export async function POST(request: Request) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const optimized = await sharp(buffer)
-      .rotate()
-      .resize(SIZE, SIZE, { fit: "cover", position: "centre" })
-      .webp({ quality: 80, effort: 2 })
-      .toBuffer();
+    const optimized = await optimizeCoverImage(buffer);
 
     const stored = await storeCoverAsset({
       organizationId: membership.organizationId,
-      buffer: optimized,
-      mimeType: "image/webp",
+      buffer: optimized.buffer,
+      mimeType: optimized.mimeType,
     });
 
     if (eventId) {
@@ -173,8 +167,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       ok: true,
       url: stored.url,
-      width: SIZE,
-      height: SIZE,
+      width: optimized.width,
+      height: optimized.height,
       bytes: stored.byteSize,
     });
   } catch (error) {

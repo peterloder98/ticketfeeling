@@ -150,9 +150,9 @@ export function isAdminSubnavActive(pathname: string, href: string) {
 
 export const EVENT_STATUS_LABELS: Record<string, string> = {
   draft: "Entwurf (kein Verkauf)",
-  announcement: "Ankündigung (kein Verkauf)",
-  presale_active: "Verkauf freigegeben",
-  published: "Veröffentlicht",
+  announcement: "Pausiert (kein Verkauf)",
+  presale_active: "Im Verkauf",
+  published: "Im Verkauf",
   sold_out: "Ausverkauft",
   cancelled: "Abgesagt",
   completed: "Beendet",

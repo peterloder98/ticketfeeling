@@ -16,7 +16,7 @@ import { CoverImageField } from "@/components/admin/cover-image-field";
 import { EventCategoriesPanel } from "@/components/admin/event-categories-panel";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
-import { buildEventEmbedSnippet, getPublicAppUrl } from "@/lib/embed/public-url";
+import { buildEventEmbedSnippetForRequest } from "@/lib/embed/public-url";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -50,11 +50,17 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   const allowed = await userHasPermission(session.user.id, membership.organizationId, "events:read");
   if (!allowed) return <p className="text-[var(--danger)]">Keine Berechtigung (events:read).</p>;
 
-  const canWrite = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "events:write",
-  );
+  const canWrite =
+    (await userHasPermission(
+      session.user.id,
+      membership.organizationId,
+      "events:write",
+    )) ||
+    (await userHasPermission(
+      session.user.id,
+      membership.organizationId,
+      "tours:write",
+    ));
 
   const event = await prisma.event.findFirst({
     where: { id, organizationId: membership.organizationId },
@@ -70,7 +76,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   });
   if (!event) notFound();
 
-  const [report, locations, venuePlans, templates, tours] = await Promise.all([
+  const [report, locations, venuePlans, templates, tours, embed] = await Promise.all([
     getEventSalesReport(event.id),
     prisma.location.findMany({
       where: { organizationId: membership.organizationId },
@@ -100,6 +106,10 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       where: { organizationId: membership.organizationId },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
+    }),
+    buildEventEmbedSnippetForRequest({
+      slug: event.slug,
+      title: event.name,
     }),
   ]);
 
@@ -371,19 +381,16 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       <section className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Website-Einbindung</h2>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          iframe-Code für dieses Event (z. B. schlagerfeeling.de) — nur bei Bedarf anzeigen.
+          Basis: <code className="text-[var(--tf-navy)]">{embed.appUrl}</code> — immer die Domain,
+          auf der du gerade im Admin bist (Vercel jetzt, eigene Domain später).
         </p>
         <div className="mt-4">
           <EmbedCodeModalButton
             buttonLabel="iframe codes des Events anzeigen"
             title="iframe-Code dieses Events"
             description="Nur Tickets für dieses Event. Code kopieren und auf der Event-Unterseite einbinden."
-            previewUrl={`${getPublicAppUrl()}/embed/event/${event.slug}`}
-            snippet={buildEventEmbedSnippet({
-              appUrl: getPublicAppUrl(),
-              slug: event.slug,
-              title: event.name,
-            })}
+            previewUrl={embed.previewUrl}
+            snippet={embed.snippet}
           />
         </div>
       </section>

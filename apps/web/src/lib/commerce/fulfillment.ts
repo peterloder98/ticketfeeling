@@ -139,7 +139,9 @@ function feeInvoiceLines(order: {
  * Safe against duplicate webhooks via fulfillmentLockedAt + payment status checks.
  */
 export async function fulfillPaidOrder(orderId: string) {
-  return prisma.$transaction(async (tx) => {
+  return prisma
+    .$transaction(
+      async (tx) => {
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: {
@@ -155,6 +157,17 @@ export async function fulfillPaidOrder(orderId: string) {
 
     const paidPayment = order.payments.find((p) => p.status === "paid");
     if (!paidPayment) throw new Error("PAYMENT_NOT_PAID");
+    // Never fulfill on SEPA "processing" / early-release — only after confirmed paid.
+    if (
+      order.paymentStatus !== "paid" &&
+      order.status !== "paid" &&
+      order.status !== "fulfilled"
+    ) {
+      throw new Error("PAYMENT_NOT_CONFIRMED");
+    }
+    if (String(paidPayment.rawStatus ?? "").includes("early_release")) {
+      throw new Error("PAYMENT_EARLY_RELEASE_FORBIDDEN");
+    }
 
     if (order.fulfillmentLockedAt && order.status === "fulfilled" && order.tickets.length > 0) {
       return { order, alreadyFulfilled: true as const };
@@ -277,13 +290,22 @@ export async function fulfillPaidOrder(orderId: string) {
       });
     }
 
-    // Tickets (once per order item quantity)
+    // Tickets (once per order item quantity) — batch inserts to stay under DB RTT limits
     if (order.tickets.length === 0) {
-      const existingCount = await tx.ticket.count({
-        where: { organizationId: order.organizationId },
+      const year = new Date().getFullYear();
+      const prefix = `TF-T-${year}-`;
+      const lastTicket = await tx.ticket.findFirst({
+        where: {
+          organizationId: order.organizationId,
+          ticketNumber: { startsWith: prefix },
+        },
+        orderBy: { ticketNumber: "desc" },
+        select: { ticketNumber: true },
       });
-      let seq = existingCount;
-      const plainTokens: { ticketId: string; token: string }[] = [];
+      const lastSeq = lastTicket
+        ? Number.parseInt(lastTicket.ticketNumber.slice(prefix.length), 10)
+        : 0;
+      let seq = Number.isFinite(lastSeq) ? lastSeq : 0;
 
       const cartItemsWithSeats = order.cartId
         ? await tx.cartItem.findMany({
@@ -310,62 +332,41 @@ export async function fulfillPaidOrder(orderId: string) {
       const fulfilledOrderId = order.id;
       const holderCustomerId = order.customerId;
       type OrderItemRow = (typeof order.items)[number];
+      type SeatRef = {
+        id: string;
+        blockLabel: string;
+        rowLabel: string;
+        seatNumber: string;
+      } | null;
 
-      async function issueTicket(opts: {
+      type PlannedTicket = {
         item: OrderItemRow;
-        seat: {
-          id: string;
-          blockLabel: string;
-          rowLabel: string;
-          seatNumber: string;
-        } | null;
+        seat: SeatRef;
+        categorySnapshot: string;
+        token: string;
+        ticketNumber: string;
+        seatLabel: string | null;
+      };
+
+      const planned: PlannedTicket[] = [];
+
+      function planTicket(opts: {
+        item: OrderItemRow;
+        seat: SeatRef;
         categorySnapshot: string;
       }) {
         seq += 1;
-        const year = new Date().getFullYear();
-        const ticketNumber = `TF-T-${year}-${String(seq).padStart(8, "0")}`;
         const token = createSecureToken(32);
-        const seatLabel = opts.seat
-          ? `${opts.seat.blockLabel} · Reihe ${opts.seat.rowLabel} · Platz ${opts.seat.seatNumber}`
-          : null;
-        const ticket = await tx.ticket.create({
-          data: {
-            organizationId,
-            orderId: fulfilledOrderId,
-            orderItemId: opts.item.id,
-            eventId: opts.item.eventId,
-            categoryId: opts.item.categoryId,
-            holderCustomerId,
-            ticketNumber,
-            status: "active",
-            presence: "not_arrived",
-            categorySnapshot: opts.categorySnapshot,
-            eventNameSnapshot: opts.item.eventNameSnapshot,
-            seatLabel,
-            seatRow: opts.seat?.rowLabel ?? null,
-            seatNumber: opts.seat?.seatNumber ?? null,
-            blockLabel: opts.seat?.blockLabel ?? null,
-            qrTokens: {
-              create: {
-                tokenHash: hashToken(token),
-                token,
-                status: "active",
-              },
-            },
-          },
+        planned.push({
+          item: opts.item,
+          seat: opts.seat,
+          categorySnapshot: opts.categorySnapshot,
+          token,
+          ticketNumber: `${prefix}${String(seq).padStart(8, "0")}`,
+          seatLabel: opts.seat
+            ? `${opts.seat.blockLabel} · Reihe ${opts.seat.rowLabel} · Platz ${opts.seat.seatNumber}`
+            : null,
         });
-        if (opts.seat) {
-          await tx.eventSeat.update({
-            where: { id: opts.seat.id },
-            data: {
-              status: "sold",
-              ticketId: ticket.id,
-              holdExpiresAt: null,
-              cartItemId: null,
-            },
-          });
-        }
-        plainTokens.push({ ticketId: ticket.id, token });
       }
 
       for (const item of order.items) {
@@ -385,12 +386,12 @@ export async function fulfillPaidOrder(orderId: string) {
           const pairs = pairAdjacentSeats(cartSeats, item.quantity);
           for (let i = 0; i < item.quantity; i += 1) {
             const pair = pairs[i] ?? { primary: null, companion: null };
-            await issueTicket({
+            planTicket({
               item,
               seat: pair.primary,
               categorySnapshot: item.categorySnapshot,
             });
-            await issueTicket({
+            planTicket({
               item,
               seat: pair.companion,
               categorySnapshot: `${item.categorySnapshot} – Begleitung (frei)`,
@@ -398,7 +399,7 @@ export async function fulfillPaidOrder(orderId: string) {
           }
         } else {
           for (let i = 0; i < item.quantity; i += 1) {
-            await issueTicket({
+            planTicket({
               item,
               seat: cartSeats[i] ?? null,
               categorySnapshot: item.categorySnapshot,
@@ -407,7 +408,64 @@ export async function fulfillPaidOrder(orderId: string) {
         }
       }
 
-      // Store tokens temporarily on audit only hashed — return plain for this request to show once
+      const createdTickets = await tx.ticket.createManyAndReturn({
+        data: planned.map((p) => ({
+          organizationId,
+          orderId: fulfilledOrderId,
+          orderItemId: p.item.id,
+          eventId: p.item.eventId,
+          categoryId: p.item.categoryId,
+          holderCustomerId,
+          ticketNumber: p.ticketNumber,
+          status: "active",
+          presence: "not_arrived",
+          categorySnapshot: p.categorySnapshot,
+          eventNameSnapshot: p.item.eventNameSnapshot,
+          seatLabel: p.seatLabel,
+          seatRow: p.seat?.rowLabel ?? null,
+          seatNumber: p.seat?.seatNumber ?? null,
+          blockLabel: p.seat?.blockLabel ?? null,
+        })),
+      });
+
+      const ticketByNumber = new Map(createdTickets.map((t) => [t.ticketNumber, t]));
+
+      if (planned.length > 0) {
+        await tx.ticketQrToken.createMany({
+          data: planned.map((p) => {
+            const ticket = ticketByNumber.get(p.ticketNumber);
+            if (!ticket) throw new Error("TICKET_CREATE_MISMATCH");
+            return {
+              ticketId: ticket.id,
+              tokenHash: hashToken(p.token),
+              token: p.token,
+              status: "active",
+            };
+          }),
+        });
+      }
+
+      for (const p of planned) {
+        if (!p.seat) continue;
+        const ticket = ticketByNumber.get(p.ticketNumber);
+        if (!ticket) throw new Error("TICKET_CREATE_MISMATCH");
+        await tx.eventSeat.update({
+          where: { id: p.seat.id },
+          data: {
+            status: "sold",
+            ticketId: ticket.id,
+            holdExpiresAt: null,
+            cartItemId: null,
+          },
+        });
+      }
+
+      const plainTokens = planned.map((p) => {
+        const ticket = ticketByNumber.get(p.ticketNumber);
+        if (!ticket) throw new Error("TICKET_CREATE_MISMATCH");
+        return { ticketId: ticket.id, token: p.token };
+      });
+
       await tx.order.update({
         where: { id: order.id },
         data: { status: "fulfilled" },
@@ -426,8 +484,20 @@ export async function fulfillPaidOrder(orderId: string) {
       data: { status: "fulfilled" },
     });
 
-    return { order, invoice, alreadyFulfilled: true as const, issuedTokens: [] as { ticketId: string; token: string }[] };
-  }).then(async (result) => {
+    return {
+      order,
+      invoice,
+      alreadyFulfilled: true as const,
+      issuedTokens: [] as { ticketId: string; token: string }[],
+    };
+  },
+      {
+        // Remote Postgres (Supabase) RTT makes per-ticket creates exceed the 5s default.
+        maxWait: 15_000,
+        timeout: 60_000,
+      },
+    )
+    .then(async (result) => {
     await writeAudit({
       organizationId: result.order.organizationId,
       action: "order.fulfilled",

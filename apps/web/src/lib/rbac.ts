@@ -1,6 +1,8 @@
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 
-export async function getUserPermissionKeys(userId: string, organizationId: string) {
+/** Deduped per request — SiteHeader + page often check several permissions. */
+export const getUserPermissionKeys = cache(async (userId: string, organizationId: string) => {
   const membership = await prisma.membership.findUnique({
     where: {
       organizationId_userId: { organizationId, userId },
@@ -29,7 +31,7 @@ export async function getUserPermissionKeys(userId: string, organizationId: stri
     }
   }
   return keys;
-}
+});
 
 export async function userHasPermission(
   userId: string,
@@ -51,10 +53,10 @@ export async function assertPermission(
   }
 }
 
-export async function getDefaultOrganizationForUser(userId: string) {
+export const getDefaultOrganizationForUser = cache(async (userId: string) => {
   return prisma.membership.findFirst({
     where: { userId, status: "active" },
     include: { organization: true },
     orderBy: { createdAt: "asc" },
   });
-}
+});

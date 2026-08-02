@@ -7,11 +7,22 @@ import { getEventListSales } from "@/lib/commerce/event-sales-report";
 import { formatEuroFromCents } from "@/lib/money";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import { TicketProgressBar } from "@/components/admin/category-sales-table";
+import {
+  DEFAULT_EVENT_LIST_FILTERS,
+  EVENT_LIST_FILTERS,
+  eventListFilterHref,
+  parseEventListFilters,
+  statusesForEventListFilters,
+  toggleEventListFilter,
+  type EventListFilterKey,
+} from "@/lib/admin/event-list-filters";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Events" };
 
-export default async function AdminEventsPage() {
+type Props = { searchParams: Promise<{ f?: string }> };
+
+export default async function AdminEventsPage({ searchParams }: Props) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
@@ -26,7 +37,14 @@ export default async function AdminEventsPage() {
     "events:write",
   );
 
-  const events = await getEventListSales(membership.organizationId);
+  const sp = await searchParams;
+  const activeFilters = parseEventListFilters(sp.f);
+  const statuses = statusesForEventListFilters(activeFilters);
+  const events = await getEventListSales(membership.organizationId, { statuses });
+
+  const isDefaultView =
+    activeFilters.length === DEFAULT_EVENT_LIST_FILTERS.length &&
+    DEFAULT_EVENT_LIST_FILTERS.every((k) => activeFilters.includes(k));
 
   return (
     <div>
@@ -52,6 +70,37 @@ export default async function AdminEventsPage() {
           </div>
         ) : null}
       </div>
+
+      <div className="mt-5 flex flex-wrap items-center gap-2">
+        {EVENT_LIST_FILTERS.map((filter) => {
+          const active = activeFilters.includes(filter.key);
+          const next = toggleEventListFilter(activeFilters, filter.key as EventListFilterKey);
+          return (
+            <Link
+              key={filter.key}
+              href={eventListFilterHref(next)}
+              className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+                active
+                  ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
+                  : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)] hover:border-[var(--tf-teal)] hover:text-[var(--tf-navy)]"
+              }`}
+            >
+              {filter.label}
+            </Link>
+          );
+        })}
+        {!isDefaultView ? (
+          <Link
+            href="/admin/events"
+            className="text-sm font-medium text-[var(--tf-teal)] hover:underline"
+          >
+            Standard zurücksetzen
+          </Link>
+        ) : null}
+      </div>
+      <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
+        Standard: Im Verkauf + Pausiert. Entwurf und Abgesagt nur über die Filter.
+      </p>
 
       <div className="mt-6 space-y-3">
         {events.map((event) => {
@@ -100,8 +149,10 @@ export default async function AdminEventsPage() {
 
         {events.length === 0 ? (
           <div className="tf-card py-12 text-center">
-            <p className="text-[var(--tf-text-secondary)]">Noch keine Events angelegt.</p>
-            {canWrite ? (
+            <p className="text-[var(--tf-text-secondary)]">
+              Keine Events für diese Filter.
+            </p>
+            {canWrite && isDefaultView ? (
               <Link href="/admin/events/neu" className="tf-btn tf-btn-primary mt-4 inline-flex">
                 Erstes Event anlegen
               </Link>

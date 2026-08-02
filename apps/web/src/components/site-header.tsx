@@ -1,13 +1,12 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
 import { BrandLogo } from "@/components/brand-logo";
 import { CartNavButton } from "@/components/cart-nav-button";
 import { Search, Ticket, HelpCircle, User } from "lucide-react";
+import { getSession } from "@/lib/auth/session";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 
 export async function SiteHeader() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   let canAdmin = false;
   if (session?.user?.id) {
     const membership = await getDefaultOrganizationForUser(session.user.id);

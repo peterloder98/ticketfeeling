@@ -7,7 +7,7 @@ import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { EmbedCodePanel } from "@/components/admin/embed-code-panel";
 import {
-  buildShopEmbedSnippet,
+  buildShopEmbedSnippetForRequest,
   getEmbedFrameAncestors,
   getPublicAppUrl,
 } from "@/lib/embed/public-url";
@@ -30,9 +30,10 @@ export default async function EmbedSettingsPage() {
     return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
   }
 
-  const appUrl = getPublicAppUrl();
-  const shopSnippet = buildShopEmbedSnippet({ appUrl });
+  const envUrl = getPublicAppUrl();
+  const { appUrl, previewUrl, snippet: shopSnippet } = await buildShopEmbedSnippetForRequest();
   const ancestors = getEmbedFrameAncestors();
+  const urlMismatch = envUrl !== appUrl;
 
   return (
     <div className="space-y-6">
@@ -50,10 +51,22 @@ export default async function EmbedSettingsPage() {
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />
 
+      <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-3 text-sm text-[var(--tf-text-secondary)]">
+        iframe-Basis (immer die Domain, auf der du gerade im Admin bist):{" "}
+        <code className="font-medium text-[var(--tf-navy)]">{appUrl}</code>
+        {urlMismatch ? (
+          <>
+            {" "}
+            — Env <code className="text-xs">{envUrl}</code> wird für Embeds ignoriert, bis du die
+            eigene Domain wirklich hier öffnest.
+          </>
+        ) : null}
+      </div>
+
       <EmbedCodePanel
         title="Gesamtshop – alle laufenden Events"
         description="Zeigt die aktuelle Eventliste. Nach Klick auf ein Event erscheint der Ticketverkauf für genau dieses Event."
-        previewUrl={`${appUrl}/embed/shop`}
+        previewUrl={previewUrl}
         snippet={shopSnippet}
       />
 

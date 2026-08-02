@@ -87,26 +87,26 @@ export default async function ZahlungenEinstellungenPage({
         {canWrite ? (
           <form action={updatePaymentFeeConfigAction} className="space-y-6">
             <div className="grid gap-3 rounded-2xl border border-[var(--tf-line)] p-4 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm">
-                <span>Tickets bei SEPA versenden</span>
-                <select
-                  name="sepaTicketReleaseMode"
-                  className="tf-input"
-                  defaultValue={settings?.sepaTicketReleaseMode ?? "after_confirmed"}
-                >
-                  <option value="after_confirmed">Erst nach Zahlungsbestätigung</option>
-                  <option value="after_submitted">Bereits nach Lastschrift-Einreichung</option>
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm">
+              <div className="grid gap-1 text-sm sm:col-span-2">
+                <span className="font-medium text-[var(--tf-navy)]">Tickets bei SEPA</span>
+                <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-[var(--tf-text-secondary)]">
+                  Immer erst nach Zahlungsbestätigung — nie bei nur eingereichter Lastschrift.
+                  So kann es keinen Fall geben „Ticket schon raus, Zahlung später fehlgeschlagen“.
+                </p>
+                <input type="hidden" name="sepaTicketReleaseMode" value="after_confirmed" />
+              </div>
+              <label className="grid gap-1 text-sm sm:col-span-2">
                 <span>SEPA ausblenden ab (Tage vor Event)</span>
                 <input
                   name="sepaMinDaysBeforeEvent"
                   type="number"
                   min="0"
-                  className="tf-input"
-                  defaultValue={settings?.sepaMinDaysBeforeEvent ?? 7}
+                  className="tf-input max-w-xs"
+                  defaultValue={settings?.sepaMinDaysBeforeEvent ?? 14}
                 />
+                <span className="text-xs text-[var(--tf-text-secondary)]">
+                  Standard 14 Tage — schützt vor Lastschrift-Rückgaben nach dem Event.
+                </span>
               </label>
             </div>
             {keys.map((key) => {

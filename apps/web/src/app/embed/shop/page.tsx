@@ -8,30 +8,44 @@ import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { Calendar, MapPin } from "lucide-react";
-import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import {
+  buildPublicListingCards,
+  remainingForCategories,
+  type ListingEvent,
+} from "@/lib/commerce/public-listings";
+import {
+  PUBLIC_LISTING_STATUSES,
+  publicListingInclude,
+} from "@/lib/commerce/listing-query";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 export const metadata = { title: "Events & Tickets" };
 
 export default async function EmbedShopPage() {
   const org = await getDefaultOrganization();
   const feeConfig = resolveActivePlatformFeeConfig(org?.settings?.platformFeeConfig);
 
-  const events = await prisma.event.findMany({
+  const events = (await prisma.event.findMany({
     where: {
-      status: { in: ["announcement", "published", "presale_active"] },
+      status: { in: [...PUBLIC_LISTING_STATUSES] },
     },
-    include: {
-      location: true,
-      tour: { select: { coverImageUrl: true } },
-      ticketCategories: {
-        where: { status: "active", onlineBookable: true },
-        orderBy: { priceGrossCents: "asc" },
-        take: 1,
-      },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      subtitle: true,
+      status: true,
+      eventStartsAt: true,
+      showRemainingAvailability: true,
+      coverImageUrl: true,
+      tourId: true,
+      ...publicListingInclude,
     },
     orderBy: { eventStartsAt: "asc" },
-  });
+    take: 48,
+  })) as ListingEvent[];
+
+  const listings = buildPublicListingCards(events, { linkMode: "embed" });
 
   return (
     <>
@@ -48,38 +62,35 @@ export default async function EmbedShopPage() {
         </div>
 
         <div className="space-y-3">
-          {events.map((event) => {
-            const cheapest = event.ticketCategories[0];
-            const priced = cheapest
-              ? formatCustomerPriceLabel({
-                  ticketGrossCents: cheapest.priceGrossCents,
-                  feeConfig,
-                  formatEuro: formatEuroFromCents,
-                  prefix: "ab",
-                })
-              : null;
-            const when = event.eventStartsAt
-              ? event.eventStartsAt.toLocaleString("de-DE", {
-                  timeZone: "Europe/Berlin",
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  year: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Termin folgt";
-            const place = [event.location?.name, event.location?.city].filter(Boolean).join(", ");
+          {listings.map((card) => {
+            const cheapest = Math.min(
+              ...card.ticketCategories.map((c) => c.priceGrossCents),
+              Number.POSITIVE_INFINITY,
+            );
+            const priced =
+              Number.isFinite(cheapest) && cheapest < Number.POSITIVE_INFINITY
+                ? formatCustomerPriceLabel({
+                    ticketGrossCents: cheapest,
+                    feeConfig,
+                    formatEuro: formatEuroFromCents,
+                    prefix: "ab",
+                  })
+                : null;
+            const place =
+              card.locationCity === "Mehrere Orte"
+                ? "Mehrere Orte"
+                : [card.locationName, card.locationCity].filter(Boolean).join(", ");
+            const { remaining } = remainingForCategories(card.ticketCategories);
 
             return (
               <Link
-                key={event.id}
-                href={`/embed/event/${event.slug}`}
+                key={card.key}
+                href={card.href}
                 className="flex gap-3 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white transition hover:border-[var(--tf-teal)] hover:shadow-[0_8px_24px_rgba(15,39,71,0.08)]"
               >
                 <div className="relative h-28 w-28 shrink-0 bg-[var(--tf-navy)] sm:h-32 sm:w-32">
                   <ResponsiveImage
-                    src={resolveEventCoverUrl(event)}
+                    src={card.coverImageUrl}
                     alt=""
                     className="h-full w-full object-cover"
                     fallback="event"
@@ -87,11 +98,11 @@ export default async function EmbedShopPage() {
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col justify-center py-3 pr-3">
                   <h2 className="line-clamp-2 text-base font-semibold leading-snug text-[var(--tf-navy)] sm:text-lg">
-                    {event.name}
+                    {card.name}
                   </h2>
                   <p className="mt-1 flex items-center gap-1.5 text-xs text-[var(--tf-text-secondary)] sm:text-sm">
                     <Calendar className="h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                    <span className="truncate">{when}</span>
+                    <span className="truncate">{card.whenLabel}</span>
                   </p>
                   {place ? (
                     <p className="mt-0.5 flex items-center gap-1.5 text-xs text-[var(--tf-text-secondary)] sm:text-sm">
@@ -109,9 +120,14 @@ export default async function EmbedShopPage() {
                           {priced.surchargeLabel}
                         </p>
                       ) : null}
+                      {card.showRemainingAvailability && remaining >= 0 ? (
+                        <p className="text-[11px] text-[var(--tf-text-secondary)]">
+                          Noch {remaining} Tickets
+                        </p>
+                      ) : null}
                     </div>
                     <span className="rounded-full bg-[var(--tf-navy)] px-3 py-1.5 text-xs font-semibold text-white">
-                      Tickets
+                      {card.dateCount > 1 ? "Termine" : "Tickets"}
                     </span>
                   </div>
                 </div>
@@ -120,7 +136,7 @@ export default async function EmbedShopPage() {
           })}
         </div>
 
-        {events.length === 0 ? (
+        {listings.length === 0 ? (
           <p className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-8 text-center text-sm text-[var(--tf-text-secondary)]">
             Aktuell sind keine Events im Vorverkauf.
           </p>

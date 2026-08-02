@@ -74,6 +74,16 @@ function sortByStart(a: ListingEvent, b: ListingEvent) {
   return at - bt;
 }
 
+export type ListingLinkMode = "public" | "embed";
+
+function eventHref(slug: string, mode: ListingLinkMode) {
+  return mode === "embed" ? `/embed/event/${slug}` : `/event/${slug}`;
+}
+
+function tourHref(slug: string, mode: ListingLinkMode) {
+  return mode === "embed" ? `/embed/tour/${slug}` : `/tour/${slug}`;
+}
+
 function cardFromDates(
   dates: ListingEvent[],
   opts: { key: string; href: string; name: string; coverHint?: string | null },
@@ -154,7 +164,11 @@ function cardFromSingle(event: ListingEvent): PublicListingCard {
  * 1) Group by tourId (skip draft tours)
  * 2) Fallback: same display name with 2+ dates (legacy / unlinked)
  */
-export function buildPublicListingCards(events: ListingEvent[]): PublicListingCard[] {
+export function buildPublicListingCards(
+  events: ListingEvent[],
+  opts?: { linkMode?: ListingLinkMode },
+): PublicListingCard[] {
+  const linkMode = opts?.linkMode ?? "public";
   const cards: PublicListingCard[] = [];
   const consumed = new Set<string>();
 
@@ -175,7 +189,9 @@ export function buildPublicListingCards(events: ListingEvent[]): PublicListingCa
     cards.push(
       cardFromDates(dates, {
         key: `tour-${event.tourId}`,
-        href: tour?.slug ? `/tour/${tour.slug}` : `/event/${dates[0]!.slug}`,
+        href: tour?.slug
+          ? tourHref(tour.slug, linkMode)
+          : eventHref(dates[0]!.slug, linkMode),
         name: tour?.name || event.name,
         coverHint: tour?.coverImageUrl,
       }),
@@ -199,7 +215,7 @@ export function buildPublicListingCards(events: ListingEvent[]): PublicListingCa
       cards.push(
         cardFromDates(ordered, {
           key: `name-${ordered[0]!.id}`,
-          href: `/event/${ordered[0]!.slug}`,
+          href: eventHref(ordered[0]!.slug, linkMode),
           name: ordered[0]!.name,
         }),
       );
@@ -210,7 +226,10 @@ export function buildPublicListingCards(events: ListingEvent[]): PublicListingCa
   for (const event of events) {
     if (consumed.has(event.id)) continue;
     consumed.add(event.id);
-    cards.push(cardFromSingle(event));
+    cards.push({
+      ...cardFromSingle(event),
+      href: eventHref(event.slug, linkMode),
+    });
   }
 
   return cards.sort((a, b) => {

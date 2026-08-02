@@ -6,18 +6,28 @@ import { Prisma } from "@prisma/client";
 
 const HOLD_MINUTES = 10;
 
+/** Avoid running expire on every cart badge poll (focus/nav). */
+let lastExpireMs = 0;
+const EXPIRE_THROTTLE_MS = 15_000;
+
 async function expireHolds(now = new Date()) {
   const { expireSeatHolds } = await import("@/lib/seating/materialize");
   await expireSeatHolds(now);
 
   const expired = await prisma.inventoryHold.findMany({
     where: { status: "held", expiresAt: { lt: now } },
+    select: { id: true, poolId: true, quantity: true, cartItemId: true },
   });
+  if (expired.length === 0) return;
 
-  for (const hold of expired) {
-    await prisma.$transaction(async (tx) => {
-      const current = await tx.inventoryHold.findUnique({ where: { id: hold.id } });
-      if (!current || current.status !== "held") return;
+  // One transaction instead of N — each remote RTT used to add ~100–300ms.
+  await prisma.$transaction(async (tx) => {
+    for (const hold of expired) {
+      const current = await tx.inventoryHold.findUnique({
+        where: { id: hold.id },
+        select: { id: true, status: true, cartItemId: true },
+      });
+      if (!current || current.status !== "held") continue;
       await tx.inventoryHold.update({
         where: { id: hold.id },
         data: { status: "expired" },
@@ -30,8 +40,15 @@ async function expireHolds(now = new Date()) {
         where: { cartItemId: current.cartItemId, status: "held" },
         data: { status: "available", holdExpiresAt: null, cartItemId: null },
       });
-    });
-  }
+    }
+  });
+}
+
+async function expireHoldsThrottled() {
+  const t = Date.now();
+  if (t - lastExpireMs < EXPIRE_THROTTLE_MS) return;
+  lastExpireMs = t;
+  await expireHolds();
 }
 
 const cartInclude = {
@@ -80,11 +97,48 @@ async function renewCartInPlace(
   });
 }
 
+/** Header badge: no cart create, no full pricing — just item count if a cart exists. */
+export async function peekCartItemCount(opts?: {
+  userId?: string | null;
+  sessionKey?: string | null;
+}): Promise<{ itemCount: number; expiresAt: Date | null; sessionKey: string | null }> {
+  await expireHoldsThrottled();
+  const org = await getDefaultOrganization();
+  if (!org) return { itemCount: 0, expiresAt: null, sessionKey: null };
+
+  const sessionKey = await resolveCartSessionKey(opts?.sessionKey);
+  const now = new Date();
+  const cart = await prisma.cart.findUnique({
+    where: {
+      organizationId_sessionKey: {
+        organizationId: org.id,
+        sessionKey,
+      },
+    },
+    select: {
+      status: true,
+      expiresAt: true,
+      sessionKey: true,
+      items: { select: { quantity: true } },
+    },
+  });
+
+  if (!cart || cart.status !== "open" || cart.expiresAt < now) {
+    return { itemCount: 0, expiresAt: null, sessionKey };
+  }
+
+  return {
+    itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+    expiresAt: cart.expiresAt,
+    sessionKey: cart.sessionKey,
+  };
+}
+
 export async function getOpenCart(opts?: {
   userId?: string | null;
   sessionKey?: string | null;
 }): Promise<OpenCart> {
-  await expireHolds();
+  await expireHoldsThrottled();
   const org = await getDefaultOrganization();
   if (!org) throw new Error("NO_ORGANIZATION");
   const sessionKey = await resolveCartSessionKey(opts?.sessionKey);
@@ -202,7 +256,15 @@ export async function addToCart(input: {
   const cart = await getOpenCart({ userId: input.userId, sessionKey: input.sessionKey });
   const category = await prisma.eventTicketCategory.findUnique({
     where: { id: input.categoryId },
-    include: { event: true, taxRate: true, pools: true },
+    include: {
+      event: {
+        include: {
+          tour: { select: { coverImageUrl: true, visibility: true } },
+        },
+      },
+      taxRate: true,
+      pools: true,
+    },
   });
   if (!category || category.status !== "active" || !category.onlineBookable) {
     throw new Error("CATEGORY_UNAVAILABLE");

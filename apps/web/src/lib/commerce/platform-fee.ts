@@ -111,6 +111,8 @@ export function computePlatformFeeGrossCents(
 }
 
 export function feePercentLabel(bps: number): string {
-  const pct = (bps / 100).toFixed(2).replace(".", ",");
-  return `${pct} %`;
+  const pct = bps / 100;
+  if (!Number.isFinite(pct)) return "0 %";
+  if (Number.isInteger(pct)) return `${pct} %`;
+  return `${pct.toFixed(2).replace(".", ",").replace(/0+$/, "").replace(/,$/, "")} %`;
 }

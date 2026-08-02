@@ -179,6 +179,8 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
             <h2 className="text-lg font-semibold text-[var(--tf-navy)]">2. Einzeltermine</h2>
             <p className="text-sm text-[var(--tf-text-secondary)]">
               Jeder Termin = Ort + Datum. Cover standardmäßig vom Tour-Plakat.
+              Sichtbarkeit und Verkauf steuerst du pro Termin über den Status (z. B. Entwurf
+              bleibt privat, auch wenn die Tour schon öffentlich ist).
             </p>
           </div>
           {canWrite ? (

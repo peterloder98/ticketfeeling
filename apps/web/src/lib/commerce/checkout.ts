@@ -22,7 +22,8 @@ export type CheckoutCustomerInput = {
   checkoutMode: "guest" | "register";
   password?: string;
   salutation?: string;
-  gender?: string;
+  /** Required for formal address (Herr/Frau). */
+  gender: string;
   firstName: string;
   lastName: string;
   birthDate?: string;
@@ -143,8 +144,16 @@ export async function createOrderFromCart(input: {
       ...(userId ? { userId } : {}),
       firstName: input.customer.firstName,
       lastName: input.customer.lastName,
-      salutation: input.customer.salutation,
-      gender: input.customer.gender ?? "undisclosed",
+      salutation:
+        input.customer.salutation ||
+        (input.customer.gender === "female"
+          ? "frau"
+          : input.customer.gender === "male"
+            ? "herr"
+            : input.customer.gender === "diverse"
+              ? "divers"
+              : null),
+      gender: input.customer.gender,
       birthDate: input.customer.birthDate ? new Date(input.customer.birthDate) : null,
       street: input.customer.street,
       houseNumber: input.customer.houseNumber,
@@ -160,8 +169,16 @@ export async function createOrderFromCart(input: {
       emailNormalized,
       firstName: input.customer.firstName,
       lastName: input.customer.lastName,
-      salutation: input.customer.salutation,
-      gender: input.customer.gender ?? "undisclosed",
+      salutation:
+        input.customer.salutation ||
+        (input.customer.gender === "female"
+          ? "frau"
+          : input.customer.gender === "male"
+            ? "herr"
+            : input.customer.gender === "diverse"
+              ? "divers"
+              : null),
+      gender: input.customer.gender,
       birthDate: input.customer.birthDate ? new Date(input.customer.birthDate) : null,
       street: input.customer.street,
       houseNumber: input.customer.houseNumber,

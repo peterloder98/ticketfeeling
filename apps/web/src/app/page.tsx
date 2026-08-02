@@ -14,10 +14,12 @@ import {
   buildPublicListingCards,
   remainingForCategories,
 } from "@/lib/commerce/public-listings";
+import {
+  PUBLIC_LISTING_STATUSES,
+  publicListingInclude,
+} from "@/lib/commerce/listing-query";
 
-export const dynamic = "force-dynamic";
-
-const PUBLIC_STATUSES = ["announcement", "published", "presale_active"] as const;
+export const revalidate = 60;
 
 export default async function HomePage() {
   const org = await getDefaultOrganization();
@@ -25,33 +27,22 @@ export default async function HomePage() {
 
   const events = await prisma.event.findMany({
     where: {
-      status: { in: [...PUBLIC_STATUSES] },
+      status: { in: [...PUBLIC_LISTING_STATUSES] },
     },
-    include: {
-      location: true,
-      tour: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          coverImageUrl: true,
-          description: true,
-          visibility: true,
-        },
-      },
-      ticketCategories: {
-        where: { status: "active", onlineBookable: true },
-        include: { pools: true },
-        orderBy: { priceGrossCents: "asc" },
-      },
-      artists: {
-        where: { announced: true, cancelled: false },
-        include: { artist: true },
-        orderBy: { sortOrder: "asc" },
-        take: 4,
-      },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      subtitle: true,
+      status: true,
+      eventStartsAt: true,
+      showRemainingAvailability: true,
+      coverImageUrl: true,
+      tourId: true,
+      ...publicListingInclude,
     },
     orderBy: { eventStartsAt: "asc" },
+    take: 48,
   });
 
   // Tours collapse to one card — hero + grid never list each tour date separately.

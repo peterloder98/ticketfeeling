@@ -47,9 +47,8 @@ export function getPrisma() {
       "Prisma Client fehlt OrganizationEmailAccount — bitte `npx prisma generate` und Dev-Server neu starten.",
     );
   }
-  if (process.env.NODE_ENV !== "production") {
-    globalForPrisma.prisma = client;
-  }
+  // Always pin — avoids opening a new pool per serverless isolate / HMR churn.
+  globalForPrisma.prisma = client;
   return client;
 }
 

@@ -32,9 +32,15 @@ function berlinDayKey(d: Date) {
   return d.toLocaleDateString("en-CA", { timeZone: "Europe/Berlin" });
 }
 
-export async function getEventListSales(organizationId: string) {
+export async function getEventListSales(
+  organizationId: string,
+  opts?: { statuses?: string[] },
+) {
   const events = await prisma.event.findMany({
-    where: { organizationId },
+    where: {
+      organizationId,
+      ...(opts?.statuses?.length ? { status: { in: opts.statuses } } : {}),
+    },
     select: {
       id: true,
       name: true,

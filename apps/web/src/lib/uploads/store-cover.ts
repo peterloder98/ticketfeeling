@@ -32,7 +32,6 @@ export async function storeCoverAsset(input: {
   mimeType?: string;
 }): Promise<{ url: string; assetId: string; byteSize: number }> {
   const mimeType = input.mimeType ?? "image/webp";
-  const bytes = new Uint8Array(input.buffer);
 
   try {
     await ensureUploadedAssetsTable();
@@ -43,7 +42,7 @@ export async function storeCoverAsset(input: {
         kind: "cover",
         mimeType,
         byteSize: input.buffer.length,
-        data: bytes,
+        data: new Uint8Array(input.buffer),
       },
       select: { id: true, byteSize: true },
     });
@@ -54,14 +53,9 @@ export async function storeCoverAsset(input: {
       url: `/api/assets/${asset.id}`,
     };
   } catch (error) {
-    // Last resort: no filesystem, no table — still return a usable image URL.
+    // Never embed multi‑KB images as data-URLs in HTML — kills page weight.
     const message = error instanceof Error ? error.message : "STORE_FAILED";
-    console.error("[storeCoverAsset] falling back to data URL:", message);
-    const url = `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`;
-    return {
-      assetId: "inline",
-      byteSize: input.buffer.length,
-      url,
-    };
+    console.error("[storeCoverAsset] failed:", message);
+    throw new Error("COVER_STORAGE_UNAVAILABLE");
   }
 }

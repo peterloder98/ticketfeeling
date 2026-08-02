@@ -9,8 +9,12 @@ import {
   buildPublicListingCards,
   remainingForCategories,
 } from "@/lib/commerce/public-listings";
+import {
+  PUBLIC_LISTING_STATUSES,
+  publicListingInclude,
+} from "@/lib/commerce/listing-query";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 export const metadata = { title: "Events" };
 
 type Props = { searchParams: Promise<{ q?: string }> };
@@ -24,7 +28,7 @@ export default async function EventsPage({ searchParams }: Props) {
 
   const events = await prisma.event.findMany({
     where: {
-      status: { in: ["announcement", "published", "presale_active", "planned"] },
+      status: { in: [...PUBLIC_LISTING_STATUSES] },
       ...(q
         ? {
             OR: [
@@ -42,31 +46,20 @@ export default async function EventsPage({ searchParams }: Props) {
           }
         : {}),
     },
-    include: {
-      location: true,
-      tour: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-          coverImageUrl: true,
-          description: true,
-          visibility: true,
-        },
-      },
-      ticketCategories: {
-        where: { status: "active", onlineBookable: true },
-        include: { pools: true },
-        orderBy: { priceGrossCents: "asc" },
-      },
-      artists: {
-        where: { announced: true, cancelled: false },
-        include: { artist: true },
-        orderBy: { sortOrder: "asc" },
-        take: 4,
-      },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      subtitle: true,
+      status: true,
+      eventStartsAt: true,
+      showRemainingAvailability: true,
+      coverImageUrl: true,
+      tourId: true,
+      ...publicListingInclude,
     },
     orderBy: { eventStartsAt: "asc" },
+    take: 80,
   });
 
   const listings = buildPublicListingCards(events);

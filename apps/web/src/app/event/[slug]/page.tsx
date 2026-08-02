@@ -56,7 +56,7 @@ export default async function EventPage({ params }: Props) {
     include: {
       location: true,
       room: true,
-      tour: { select: { coverImageUrl: true } },
+      tour: { select: { coverImageUrl: true, visibility: true } },
       organization: { select: { name: true, settings: true } },
       artists: { include: { artist: true }, orderBy: { sortOrder: "asc" } },
       ticketCategories: {
@@ -68,6 +68,14 @@ export default async function EventPage({ params }: Props) {
   });
 
   if (!event) notFound();
+  // Draft / cancelled events are not a public shop surface
+  if (
+    event.status === "draft" ||
+    event.status === "cancelled" ||
+    event.tour?.visibility === "draft"
+  ) {
+    notFound();
+  }
 
   const coverImageUrl = resolveEventCoverUrl(event);
 

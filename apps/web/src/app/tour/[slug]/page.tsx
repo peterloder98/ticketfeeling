@@ -29,7 +29,8 @@ export default async function PublicTourPage({ params }: Props) {
       organization: { select: { settings: true } },
       events: {
         where: {
-          status: { in: ["announcement", "published", "presale_active", "planned"] },
+          // Per-date visibility: draft/cancelled stay private even if tour is published
+          status: { in: ["announcement", "published", "presale_active", "sold_out"] },
         },
         include: {
           location: true,

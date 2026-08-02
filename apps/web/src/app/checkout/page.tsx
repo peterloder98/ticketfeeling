@@ -5,7 +5,6 @@ import { getOpenCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
-import { formatFeePercentageLabel } from "@/lib/commerce/public-price";
 import { CheckoutForm } from "@/components/checkout-form";
 import { PromoCodeForm } from "@/components/promo-code-form";
 import { getDefaultOrganization } from "@/lib/commerce/org";
@@ -34,7 +33,7 @@ export default async function CheckoutPage() {
     if (at == null) return min;
     return min == null ? at : Math.min(min, at);
   }, null as number | null);
-  const sepaMinDays = org?.settings?.sepaMinDaysBeforeEvent ?? 7;
+  const sepaMinDays = org?.settings?.sepaMinDaysBeforeEvent ?? 14;
   const sepaDisabled =
     soonestEventMs != null &&
     soonestEventMs - Date.now() < sepaMinDays * 24 * 60 * 60 * 1000;
@@ -190,12 +189,7 @@ export default async function CheckoutPage() {
               ) : null}
               {summary.feeGrossCents > 0 ? (
                 <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                  <span>
-                    {summary.feeLabel}
-                    {summary.administrationFeePercentageBasisPoints
-                      ? ` (${formatFeePercentageLabel(summary.administrationFeePercentageBasisPoints)})`
-                      : ""}
-                  </span>
+                  <span>{summary.feeLabel}</span>
                   <span className="tabular-nums">{formatEuroFromCents(summary.feeGrossCents)}</span>
                 </p>
               ) : null}

@@ -19,7 +19,7 @@ const schema = z
     email: z.string().email(),
     password: z.string().min(8).optional(),
     salutation: z.string().optional(),
-    gender: z.enum(["female", "male", "diverse", "undisclosed"]).optional(),
+    gender: z.enum(["female", "male", "diverse"]),
     firstName: z.string().min(1),
     lastName: z.string().min(1),
     birthDate: z.string().optional(),

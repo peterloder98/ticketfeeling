@@ -118,12 +118,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         const pi = event.data.object as Stripe.PaymentIntent;
         const orderId = pi.metadata?.orderId;
         if (!orderId) break;
-        const orderRow = await prisma.order.findUnique({
-          where: { id: orderId },
-          include: { organization: { include: { settings: true } } },
-        });
-        const release =
-          orderRow?.organization.settings?.sepaTicketReleaseMode ?? "after_confirmed";
+        // SEPA Mandate submitted — NOT paid yet. Never issue tickets here.
         await prisma.order.update({
           where: { id: orderId },
           data: { paymentStatus: "processing", status: "pending_payment" },
@@ -132,14 +127,6 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           where: { orderId, provider: "stripe" },
           data: { status: "processing", rawStatus: pi.status },
         });
-        // SEPA: optionally issue tickets after mandate submission (before funds clear)
-        if (release === "after_submitted") {
-          await prisma.payment.updateMany({
-            where: { orderId, provider: "stripe" },
-            data: { status: "paid", paidAt: new Date(), rawStatus: `${pi.status}:early_release` },
-          });
-          await fulfillPaidOrder(orderId);
-        }
         break;
       }
       case "payment_intent.payment_failed": {
@@ -157,7 +144,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           where: { orderId, provider: "stripe" },
           data: { status: "failed", rawStatus: pi.status },
         });
-        // Void tickets if SEPA early-release already issued them
+        // Safety net: there must never be active tickets without confirmed payment.
         await prisma.ticket.updateMany({
           where: { orderId, status: "active" },
           data: { status: "cancelled" },
@@ -165,6 +152,9 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         break;
       }
       case "charge.refunded": {
+        // Product policy: no customer online refunds. This only reacts if money was
+        // returned in Stripe (e.g. full event cancellation processed by support).
+        // Valid tickets must not remain after a full charge refund.
         const charge = event.data.object as Stripe.Charge;
         const piId =
           typeof charge.payment_intent === "string"
@@ -201,7 +191,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         }
         await writeAudit({
           organizationId: order.organizationId,
-          action: "payment.refunded",
+          action: "payment.stripe_charge_refunded",
           entityType: "order",
           entityId: order.id,
           after: {
@@ -209,6 +199,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             fullRefund: full,
             ticketsVoided: full,
             chargeId: charge.id,
+            note: "No customer self-serve refund; Stripe-side / event-cancel only",
           },
         });
         break;
@@ -238,6 +229,14 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           },
         });
         if (event.type === "charge.dispute.created") {
+          // Chargeback / SEPA-Rückgabe: Geld kann später weg sein — Tickets sofort ungültig.
+          await prisma.order.update({
+            where: { id: order.id },
+            data: {
+              paymentStatus: "disputed",
+              status: "disputed",
+            },
+          });
           await prisma.ticket.updateMany({
             where: { orderId: order.id, status: "active" },
             data: { status: "cancelled" },

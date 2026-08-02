@@ -12,20 +12,34 @@ import {
   EVENT_STATUSES,
   slugify,
 } from "@/lib/admin/event-form";
+import { allocateUniqueEventSlug } from "@/lib/admin/unique-event-slug";
 import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
+import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 
 async function requireEventWrite() {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) redirect("/login");
-  const allowed = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "events:write",
-  );
+  const allowed =
+    (await userHasPermission(
+      session.user.id,
+      membership.organizationId,
+      "events:write",
+    )) ||
+    (await userHasPermission(
+      session.user.id,
+      membership.organizationId,
+      "tours:write",
+    ));
   if (!allowed) throw new Error("FORBIDDEN");
   return { session, membership };
+}
+
+function assertCoverForSaleRelease(status: string, coverImageUrl: string | null) {
+  if (isEventSalesReleased(status) && !coverImageUrl?.trim()) {
+    throw new Error("COVER_REQUIRED_FOR_SALE");
+  }
 }
 
 function parseDt(formData: FormData, key: string) {
@@ -48,8 +62,7 @@ export async function createEventAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("NAME_REQUIRED");
 
-  let slug = String(formData.get("slug") ?? "").trim();
-  if (!slug) slug = slugify(name);
+  const preferredSlug = String(formData.get("slug") ?? "").trim() || null;
 
   const status = String(formData.get("status") ?? "draft");
   if (!CREATE_EVENT_STATUSES.includes(status as (typeof CREATE_EVENT_STATUSES)[number])) {
@@ -116,11 +129,6 @@ export async function createEventAction(formData: FormData) {
     throw new Error("TRACKING_REVIEW_REQUIRED");
   }
 
-  const existingSlug = await prisma.event.findFirst({
-    where: { organizationId: membership.organizationId, slug },
-  });
-  if (existingSlug) throw new Error("SLUG_TAKEN");
-
   if (tourId) {
     const tour = await prisma.tour.findFirst({
       where: { id: tourId, organizationId: membership.organizationId },
@@ -129,10 +137,35 @@ export async function createEventAction(formData: FormData) {
     if (!tour) throw new Error("TOUR_NOT_FOUND");
   }
 
+  let locationCity: string | null = null;
+  let locationName: string | null = null;
+  if (locationMode === "new") {
+    locationCity = String(formData.get("newLocationCity") ?? "").trim() || null;
+    locationName = String(formData.get("newLocationName") ?? "").trim() || null;
+  } else if (locationId) {
+    const loc = await prisma.location.findFirst({
+      where: { id: locationId, organizationId: membership.organizationId },
+      select: { city: true, name: true },
+    });
+    locationCity = loc?.city ?? null;
+    locationName = loc?.name ?? null;
+  }
+
+  const slug = await allocateUniqueEventSlug({
+    organizationId: membership.organizationId,
+    name,
+    preferredSlug,
+    tourId,
+    locationCity,
+    locationName,
+    eventStartsAt,
+  });
+
   const persistedCoverUrl = await resolveCoverForTourEvent({
     tourId,
     coverImageUrl,
   });
+  assertCoverForSaleRelease(status, persistedCoverUrl);
 
   const taxRate =
     (await prisma.taxRate.findFirst({
@@ -361,8 +394,7 @@ export async function updateEventAction(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim();
   if (!name) throw new Error("NAME_REQUIRED");
 
-  let slug = String(formData.get("slug") ?? "").trim();
-  if (!slug) slug = slugify(name);
+  const preferredSlug = String(formData.get("slug") ?? "").trim() || null;
 
   const status = String(formData.get("status") ?? event.status);
   if (!EVENT_STATUSES.includes(status as (typeof EVENT_STATUSES)[number])) {
@@ -371,11 +403,15 @@ export async function updateEventAction(formData: FormData) {
 
   const locationIdRaw = String(formData.get("locationId") ?? "").trim();
   const locationId = locationIdRaw || null;
+  let locationCity: string | null = null;
+  let locationName: string | null = null;
   if (locationId) {
     const location = await prisma.location.findFirst({
       where: { id: locationId, organizationId: membership.organizationId },
     });
     if (!location) throw new Error("LOCATION_NOT_FOUND");
+    locationCity = location.city;
+    locationName = location.name;
   }
 
   let venuePlanId = String(formData.get("venuePlanId") ?? "").trim() || null;
@@ -424,15 +460,6 @@ export async function updateEventAction(formData: FormData) {
       : null;
   const showRemainingAvailability = formData.get("showRemainingAvailability") === "on";
 
-  const slugTaken = await prisma.event.findFirst({
-    where: {
-      organizationId: membership.organizationId,
-      slug,
-      NOT: { id: event.id },
-    },
-  });
-  if (slugTaken) throw new Error("SLUG_TAKEN");
-
   if (tourId) {
     const tour = await prisma.tour.findFirst({
       where: { id: tourId, organizationId: membership.organizationId },
@@ -440,6 +467,17 @@ export async function updateEventAction(formData: FormData) {
     });
     if (!tour) throw new Error("TOUR_NOT_FOUND");
   }
+
+  const slug = await allocateUniqueEventSlug({
+    organizationId: membership.organizationId,
+    name,
+    preferredSlug,
+    tourId,
+    locationCity,
+    locationName,
+    eventStartsAt,
+    excludeEventId: event.id,
+  });
 
   // Cover is owned by CoverImageField (upload API). Only sync when tour link changes.
   let nextCoverUrl = event.coverImageUrl;
@@ -461,6 +499,7 @@ export async function updateEventAction(formData: FormData) {
         : event.coverImageUrl;
     }
   }
+  assertCoverForSaleRelease(status, nextCoverUrl);
 
   await prisma.event.update({
     where: { id: event.id },

@@ -58,13 +58,11 @@ export async function updatePaymentFeeConfigAction(formData: FormData) {
     config[key].customerSurchargeEnabled = false;
   }
 
-  const sepaTicketReleaseMode =
-    formData.get("sepaTicketReleaseMode") === "after_submitted"
-      ? "after_submitted"
-      : "after_confirmed";
+  // Product rule: tickets ONLY after payment is confirmed (never on SEPA submit).
+  const sepaTicketReleaseMode = "after_confirmed";
   const sepaMinDays = Math.max(
     0,
-    Math.round(Number(String(formData.get("sepaMinDaysBeforeEvent") ?? "7")) || 7),
+    Math.round(Number(String(formData.get("sepaMinDaysBeforeEvent") ?? "14")) || 14),
   );
 
   await prisma.organizationSettings.update({

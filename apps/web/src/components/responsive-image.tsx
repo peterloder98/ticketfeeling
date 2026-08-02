@@ -20,6 +20,7 @@ export function ResponsiveImage({
   fit = "cover",
   fallback = "event",
   initials,
+  priority = false,
 }: Props) {
   const [failed, setFailed] = useState(false);
   const showImage = Boolean(src) && !failed;
@@ -59,7 +60,8 @@ export function ResponsiveImage({
       alt={alt}
       className={`${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
       onError={() => setFailed(true)}
-      loading="lazy"
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
       decoding="async"
     />
   );

@@ -255,10 +255,10 @@ model OrganizationSettings {
 
   /// Internal Stripe cost estimates (not customer-facing)
   stripeFeeConfig Json @default("{}") @map("stripe_fee_config")
-  /// after_confirmed | after_submitted
+  /// Always after_confirmed — tickets never issue on SEPA submit alone.
   sepaTicketReleaseMode String @default("after_confirmed") @map("sepa_ticket_release_mode")
   /// Hide SEPA when event starts within this many days
-  sepaMinDaysBeforeEvent Int @default(7) @map("sepa_min_days_before_event")
+  sepaMinDaysBeforeEvent Int @default(14) @map("sepa_min_days_before_event")
 
   /// PSP fee rates + activation (server-side only; never customer surcharge by default)
   paymentFeeConfig Json @default("{}") @map("payment_fee_config")

@@ -19,12 +19,24 @@ export default async function NewEventPage({ searchParams }: Props) {
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
-  const canWrite = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "events:write",
-  );
-  if (!canWrite) return <p className="text-[var(--danger)]">Keine Berechtigung (events:write).</p>;
+  const canWrite =
+    (await userHasPermission(
+      session.user.id,
+      membership.organizationId,
+      "events:write",
+    )) ||
+    (await userHasPermission(
+      session.user.id,
+      membership.organizationId,
+      "tours:write",
+    ));
+  if (!canWrite) {
+    return (
+      <p className="text-[var(--danger)]">
+        Keine Berechtigung (events:write oder tours:write).
+      </p>
+    );
+  }
 
   const { tourId: tourIdParam } = await searchParams;
 

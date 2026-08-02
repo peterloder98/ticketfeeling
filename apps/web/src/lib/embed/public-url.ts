@@ -1,11 +1,56 @@
-/** Public base URL for embed snippets and absolute links. */
+function stripTrailingSlash(url: string) {
+  return url.replace(/\/$/, "");
+}
+
+function vercelDeploymentUrl(): string | null {
+  const host = process.env.VERCEL_URL?.trim();
+  if (!host) return null;
+  return stripTrailingSlash(`https://${host}`);
+}
+
+/**
+ * Canonical public site URL (emails, absolute links).
+ * Custom domain when ready via NEXT_PUBLIC_APP_URL; on Vercel without that → deployment URL.
+ */
 export function getPublicAppUrl() {
-  const raw =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.APP_URL ??
-    process.env.NEXTAUTH_URL ??
-    "http://localhost:3000";
-  return raw.replace(/\/$/, "");
+  const explicit =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.APP_URL?.trim() ||
+    process.env.NEXTAUTH_URL?.trim() ||
+    "";
+  if (explicit) return stripTrailingSlash(explicit);
+
+  const vercel = vercelDeploymentUrl();
+  if (vercel) return vercel;
+
+  return "http://localhost:3000";
+}
+
+/**
+ * URL for embed iframes — always the host this request is served from
+ * (Vercel preview / production / later eigene Domain). Never a stale Env-Domain.
+ */
+export async function getEmbedAppUrlFromRequest() {
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const host = (h.get("x-forwarded-host") ?? h.get("host") ?? "").split(",")[0]?.trim();
+    if (host) {
+      const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+      const proto =
+        (h.get("x-forwarded-proto") ?? (isLocal ? "http" : "https")).split(",")[0]?.trim() ||
+        (isLocal ? "http" : "https");
+      return stripTrailingSlash(`${proto}://${host}`);
+    }
+  } catch {
+    // non-request context (scripts / build)
+  }
+
+  // Same deploy, no request: Vercel URL beats a premature custom-domain env.
+  const vercel = vercelDeploymentUrl();
+  if (vercel) return vercel;
+
+  return getPublicAppUrl();
 }
 
 /**
@@ -90,4 +135,27 @@ export function buildShopEmbedSnippet(input: {
   window.addEventListener("message",onMsg);
 })();
 </script>`;
+}
+
+/** Snippet with live request host baked in (preferred for Admin UI). */
+export async function buildEventEmbedSnippetForRequest(input: {
+  slug: string;
+  title?: string;
+  minHeight?: number;
+}) {
+  const appUrl = await getEmbedAppUrlFromRequest();
+  return {
+    appUrl,
+    previewUrl: `${appUrl}/embed/event/${encodeURIComponent(input.slug)}`,
+    snippet: buildEventEmbedSnippet({ appUrl, ...input }),
+  };
+}
+
+export async function buildShopEmbedSnippetForRequest(input?: { minHeight?: number }) {
+  const appUrl = await getEmbedAppUrlFromRequest();
+  return {
+    appUrl,
+    previewUrl: `${appUrl}/embed/shop`,
+    snippet: buildShopEmbedSnippet({ appUrl, ...input }),
+  };
 }

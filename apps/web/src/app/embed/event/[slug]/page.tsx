@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { AddToCartPanel } from "@/components/add-to-cart";
 import { SeatBookingPanel } from "@/components/seat-booking-panel";
@@ -32,7 +31,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
     where: { slug },
     include: {
       location: true,
-      tour: { select: { coverImageUrl: true } },
+      tour: { select: { coverImageUrl: true, visibility: true } },
       organization: { select: { name: true, settings: true } },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
@@ -41,7 +40,32 @@ export default async function EmbedEventShopPage({ params }: Props) {
       },
     },
   });
-  if (!event) notFound();
+  if (!event) {
+    return (
+      <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-10 text-center">
+        <p className="font-semibold text-[var(--tf-navy)]">Event nicht gefunden</p>
+        <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+          Unter diesem Link gibt es online kein Event mit dem Slug{" "}
+          <code className="text-xs">{slug}</code>. Bitte im Admin prüfen, ob das Event auf dieser
+          Umgebung existiert und der iframe die richtige Domain nutzt.
+        </p>
+      </div>
+    );
+  }
+  if (
+    event.status === "draft" ||
+    event.status === "cancelled" ||
+    event.tour?.visibility === "draft"
+  ) {
+    return (
+      <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-10 text-center">
+        <p className="font-semibold text-[var(--tf-navy)]">Event nicht freigeschaltet</p>
+        <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+          Dieses Event ist online noch nicht öffentlich (Entwurf, Absage oder Tour noch als Entwurf).
+        </p>
+      </div>
+    );
+  }
 
   const coverImageUrl = resolveEventCoverUrl(event);
 
