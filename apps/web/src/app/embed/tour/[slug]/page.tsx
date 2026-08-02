@@ -119,23 +119,23 @@ export default async function EmbedTourPage({ params }: Props) {
                 <li key={event.id}>
                   <Link
                     href={`/embed/event/${event.slug}`}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--tf-line)] bg-white px-3 py-3 transition hover:border-[var(--tf-teal)]"
+                    className="flex items-start justify-between gap-3 rounded-2xl border border-[var(--tf-line)] bg-white px-3 py-3 transition hover:border-[var(--tf-teal)]"
                   >
-                    <div className="min-w-0 space-y-1">
-                      <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--tf-navy)]">
-                        <Calendar className="h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                        <span>{when}</span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="flex items-start gap-1.5 text-sm font-semibold text-[var(--tf-navy)]">
+                        <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                        <span className="min-w-0 break-words">{when}</span>
                       </p>
                       {place ? (
-                        <p className="flex items-center gap-1.5 text-xs text-[var(--tf-text-secondary)]">
-                          <MapPin className="h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                          <span className="truncate">{place}</span>
+                        <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
+                          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                          <span className="min-w-0 break-words">{place}</span>
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 flex-col items-end gap-1.5 pt-0.5">
                       {eventPrice ? (
-                        <span className="text-sm font-semibold text-[var(--tf-navy)]">
+                        <span className="text-sm font-semibold tabular-nums text-[var(--tf-navy)]">
                           {eventPrice.totalLabel}
                         </span>
                       ) : null}

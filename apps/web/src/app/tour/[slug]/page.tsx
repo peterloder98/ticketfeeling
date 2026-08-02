@@ -140,16 +140,16 @@ export default async function PublicTourPage({ params }: Props) {
                 <li key={event.id}>
                   <Link
                     href={`/event/${event.slug}`}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--tf-line)] bg-white px-4 py-4 transition hover:border-[var(--tf-teal)] hover:shadow-[0_8px_24px_rgba(15,39,71,0.08)]"
+                    className="flex items-start justify-between gap-3 rounded-2xl border border-[var(--tf-line)] bg-white px-4 py-4 transition hover:border-[var(--tf-teal)] hover:shadow-[0_8px_24px_rgba(15,39,71,0.08)]"
                   >
-                    <div className="min-w-0 space-y-1.5">
+                    <div className="min-w-0 flex-1 space-y-1.5">
                       <p className="flex items-start gap-2 text-base font-semibold text-[var(--tf-navy)]">
                         <Calendar
                           className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]"
                           strokeWidth={2}
                           aria-hidden
                         />
-                        <span>{when} Uhr</span>
+                        <span className="min-w-0 break-words">{when} Uhr</span>
                       </p>
                       {place ? (
                         <p className="flex items-start gap-2 text-sm text-[var(--tf-text-secondary)]">
@@ -158,13 +158,13 @@ export default async function PublicTourPage({ params }: Props) {
                             strokeWidth={2}
                             aria-hidden
                           />
-                          <span>{place}</span>
+                          <span className="min-w-0 break-words">{place}</span>
                         </p>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex shrink-0 flex-col items-end gap-2 pt-0.5 sm:flex-row sm:items-center">
                       {eventPrice ? (
-                        <span className="text-sm font-semibold text-[var(--tf-navy)]">
+                        <span className="text-sm font-semibold tabular-nums text-[var(--tf-navy)]">
                           {eventPrice.totalLabel}
                         </span>
                       ) : null}
