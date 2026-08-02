@@ -34,13 +34,22 @@ export default async function AdminEventsPage() {
         <div>
           <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Events</h1>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Übersicht aller Veranstaltungen — Klick für Details, Verkäufe und Bearbeitung.
+            Einzeltermine und Tour-Termine. Mehrere Orte/Daten? Zuerst unter{" "}
+            <Link href="/admin/tours" className="font-medium text-[var(--tf-navy)] underline">
+              Touren
+            </Link>{" "}
+            das Projekt anlegen.
           </p>
         </div>
         {canWrite ? (
-          <Link href="/admin/events/neu" className="tf-btn tf-btn-primary !min-h-10 text-sm">
-            Neues Event
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/admin/tours" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
+              Neue Tour
+            </Link>
+            <Link href="/admin/events/neu" className="tf-btn tf-btn-primary !min-h-10 text-sm">
+              Einzelnes Event
+            </Link>
+          </div>
         ) : null}
       </div>
 

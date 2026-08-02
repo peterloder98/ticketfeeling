@@ -8,7 +8,6 @@ import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { createTourAction } from "@/app/admin/tours/actions";
 import { CoverImageField } from "@/components/admin/cover-image-field";
-import { slugify } from "@/lib/admin/event-form";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Touren" };
@@ -46,18 +45,40 @@ export default async function AdminToursPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Touren</h1>
-        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          Zuerst die Tour anlegen (inkl. Tour-Plakat), danach einzelne Termine verknüpfen.
+        <p className="mt-1 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
+          Eine Tour ist das übergeordnete Projekt (Name, Tour-Plakat, Texte). Darunter legst du die
+          Einzeltermine an — die übernehmen automatisch das Tour-Cover, außer du setzt pro Termin
+          ein eigenes.
         </p>
       </div>
-      <AdminSubnav items={ADMIN_SUBNAV.katalog} />
+      <AdminSubnav items={ADMIN_SUBNAV.tours} />
+
+      <ol className="grid gap-3 sm:grid-cols-3">
+        {[
+          { n: "1", t: "Tour anlegen", d: "Name, Plakat, Beschreibung" },
+          { n: "2", t: "Termine hinzufügen", d: "Ort & Datum je Auftritt" },
+          { n: "3", t: "Optional überschreiben", d: "Eigenes Cover nur wenn nötig" },
+        ].map((s) => (
+          <li key={s.n} className="rounded-2xl border border-[var(--tf-line)] bg-white px-4 py-3">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--tf-teal)]">
+              Schritt {s.n}
+            </p>
+            <p className="mt-1 font-semibold text-[var(--tf-navy)]">{s.t}</p>
+            <p className="text-sm text-[var(--tf-text-secondary)]">{s.d}</p>
+          </li>
+        ))}
+      </ol>
 
       {canWrite ? (
         <form action={createTourAction} className="tf-card space-y-4">
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Neue Tour</h2>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Neue Tour anlegen</h2>
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Noch kein Einzeltermin — nach dem Speichern öffnet sich das Tour-Projekt, dort kommen die
+            Termine dazu.
+          </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm sm:col-span-2">
-              <span className="text-[var(--tf-text-secondary)]">Name</span>
+              <span className="text-[var(--tf-text-secondary)]">Tour-Name</span>
               <input
                 name="name"
                 required
@@ -66,19 +87,15 @@ export default async function AdminToursPage() {
               />
             </label>
             <label className="grid gap-1 text-sm">
-              <span className="text-[var(--tf-text-secondary)]">Link-Name (Slug)</span>
-              <input
-                name="slug"
-                className="tf-input"
-                placeholder={slugify("schlagerfeeling-weihnachtstraum")}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
               <span className="text-[var(--tf-text-secondary)]">Sichtbarkeit</span>
               <select name="visibility" className="tf-input" defaultValue="published">
                 <option value="draft">Entwurf</option>
                 <option value="published">Veröffentlicht</option>
               </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-[var(--tf-text-secondary)]">Link-Name (optional)</span>
+              <input name="slug" className="tf-input" placeholder="wird aus dem Namen erzeugt" />
             </label>
             <label className="grid gap-1 text-sm">
               <span className="text-[var(--tf-text-secondary)]">Tour-Start</span>
@@ -90,20 +107,27 @@ export default async function AdminToursPage() {
             </label>
             <label className="grid gap-1 text-sm sm:col-span-2">
               <span className="text-[var(--tf-text-secondary)]">Beschreibung</span>
-              <textarea name="description" rows={3} className="tf-input" />
+              <textarea
+                name="description"
+                rows={3}
+                className="tf-input"
+                placeholder="Gilt für die gesamte Tour (Startseite & Tour-Seite)."
+              />
             </label>
           </div>
           <CoverImageField name="coverImageUrl" refreshOnUpload={false} />
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Das Tour-Plakat gilt für alle Termine, sofern ein Termin kein eigenes Cover hat.
+            Tour-Plakat: erscheint auf der Startseite einmal für die ganze Tour und bei allen
+            Terminen ohne eigenes Cover.
           </p>
           <button type="submit" className="tf-btn tf-btn-primary !py-2 text-sm">
-            Tour anlegen
+            Tour anlegen & weiter zu Terminen
           </button>
         </form>
       ) : null}
 
-      <div className="space-y-3">
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Deine Tour-Projekte</h2>
         {tours.map((tour) => (
           <Link
             key={tour.id}
@@ -133,6 +157,7 @@ export default async function AdminToursPage() {
                           timeZone: "Europe/Berlin",
                         })}`
                       : ""}
+                    {tour.coverImageUrl ? "" : " · noch kein Tour-Plakat"}
                   </p>
                 </div>
               </div>
@@ -144,10 +169,10 @@ export default async function AdminToursPage() {
         ))}
         {tours.length === 0 ? (
           <p className="rounded-2xl border border-[var(--tf-line)] bg-white px-4 py-8 text-sm text-[var(--tf-text-secondary)]">
-            Noch keine Touren — zuerst eine Tour anlegen, dann Termine hinzufügen.
+            Noch keine Tour — oben anlegen, dann Termine im Tour-Projekt hinzufügen.
           </p>
         ) : null}
-      </div>
+      </section>
     </div>
   );
 }

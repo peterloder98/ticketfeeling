@@ -69,7 +69,9 @@ export async function createTourAction(formData: FormData) {
   });
 
   revalidatePath("/admin/tours");
-  redirect(`/admin/tours/${created.id}`);
+  revalidatePath("/");
+  revalidatePath("/events");
+  redirect(`/admin/tours/${created.id}?neu=1`);
 }
 
 export async function updateTourAction(formData: FormData) {
@@ -131,5 +133,9 @@ export async function updateTourAction(formData: FormData) {
 
   revalidatePath("/admin/tours");
   revalidatePath(`/admin/tours/${existing.id}`);
+  revalidatePath("/");
+  revalidatePath("/events");
+  if (existing.slug !== slug) revalidatePath(`/tour/${existing.slug}`);
+  revalidatePath(`/tour/${slug}`);
   redirect(`/admin/tours/${existing.id}?saved=1`);
 }

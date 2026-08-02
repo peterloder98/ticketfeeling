@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string }>;
+  searchParams: Promise<{ saved?: string; neu?: string }>;
 };
 
 export async function generateMetadata({ params }: Props) {
@@ -25,7 +25,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function AdminTourDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { saved } = await searchParams;
+  const { saved, neu } = await searchParams;
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
@@ -53,8 +53,8 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
   });
   if (!tour) notFound();
 
-  const dateValue = (d: Date | null) =>
-    d ? d.toISOString().slice(0, 10) : "";
+  const dateValue = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
+  const hasCover = Boolean(tour.coverImageUrl?.trim());
 
   return (
     <div className="space-y-6">
@@ -65,25 +65,40 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
         >
           ← Alle Touren
         </Link>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
+        <p className="mt-3 text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
+          Tour-Projekt
+        </p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
           {tour.name}
         </h1>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          Tour-Plakat für alle Termine — optional pro Termin überschreiben.
+          Zentrale Daten & Tour-Plakat — darunter die Einzeltermine.
         </p>
       </div>
-      <AdminSubnav items={ADMIN_SUBNAV.katalog} />
+      <AdminSubnav items={ADMIN_SUBNAV.tours} />
 
+      {neu ? (
+        <p className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Tour angelegt. Als Nächstes Tour-Plakat setzen (falls noch nicht), dann Termine
+          hinzufügen.
+        </p>
+      ) : null}
       {saved ? (
         <p className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-          Gespeichert.
+          Tour gespeichert — Cover gilt für alle Termine ohne eigenes Bild.
+        </p>
+      ) : null}
+
+      {!hasCover ? (
+        <p className="rounded-xl border border-[rgba(245,158,11,0.35)] bg-[rgba(245,158,11,0.1)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Noch kein Tour-Plakat — ohne Cover bleibt die Startseite leer / mit Platzhalter.
         </p>
       ) : null}
 
       {canWrite ? (
         <form action={updateTourAction} className="tf-card space-y-4">
           <input type="hidden" name="tourId" value={tour.id} />
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Tour bearbeiten</h2>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">1. Tour-Stammdaten & Plakat</h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm sm:col-span-2">
               <span className="text-[var(--tf-text-secondary)]">Name</span>
@@ -92,6 +107,9 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
             <label className="grid gap-1 text-sm">
               <span className="text-[var(--tf-text-secondary)]">Link-Name</span>
               <input name="slug" required className="tf-input" defaultValue={tour.slug} />
+              <span className="text-xs text-[var(--tf-text-secondary)]">
+                Öffentlich: /tour/{tour.slug}
+              </span>
             </label>
             <label className="grid gap-1 text-sm">
               <span className="text-[var(--tf-text-secondary)]">Sichtbarkeit</span>
@@ -128,23 +146,36 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
               />
             </label>
           </div>
-          <CoverImageField
-            name="coverImageUrl"
-            initialUrl={tour.coverImageUrl}
-            tourId={tour.id}
-          />
-          <p className="text-xs text-[var(--tf-text-secondary)]">
-            Termine ohne eigenes Cover zeigen dieses Tour-Plakat.
-          </p>
+
+          <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
+            <p className="text-sm font-semibold text-[var(--tf-navy)]">Tour-Plakat (zentral)</p>
+            <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+              Gilt für Startseite, Tour-Seite und alle Termine — solange ein Termin kein eigenes
+              Cover hat.
+            </p>
+            <div className="mt-3">
+              <CoverImageField
+                name="coverImageUrl"
+                initialUrl={tour.coverImageUrl}
+                tourId={tour.id}
+              />
+            </div>
+          </div>
+
           <button type="submit" className="tf-btn tf-btn-primary !py-2 text-sm">
-            Speichern
+            Tour speichern
           </button>
         </form>
       ) : null}
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Termine</h2>
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">2. Einzeltermine</h2>
+            <p className="text-sm text-[var(--tf-text-secondary)]">
+              Jeder Termin = Ort + Datum. Cover standardmäßig vom Tour-Plakat.
+            </p>
+          </div>
           {canWrite ? (
             <Link
               href={`/admin/events/neu?tourId=${tour.id}`}
@@ -171,7 +202,9 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={cover} alt="" className="h-14 w-14 rounded-xl object-cover" />
               ) : (
-                <div className="h-14 w-14 rounded-xl bg-[var(--tf-navy)]" />
+                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-[var(--tf-navy)] text-[9px] font-semibold text-white/70">
+                  ?
+                </div>
               )}
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-[var(--tf-navy)]">
@@ -203,8 +236,9 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
           );
         })}
         {tour.events.length === 0 ? (
-          <p className="rounded-2xl border border-[var(--tf-line)] bg-white px-4 py-8 text-sm text-[var(--tf-text-secondary)]">
-            Noch keine Termine — „Termin hinzufügen“ öffnet die Event-Anlage mit dieser Tour.
+          <p className="rounded-2xl border border-dashed border-[var(--tf-line)] bg-white px-4 py-8 text-sm text-[var(--tf-text-secondary)]">
+            Noch keine Termine. „Termin hinzufügen“ öffnet die Event-Anlage bereits verknüpft mit
+            dieser Tour.
           </p>
         ) : null}
       </section>

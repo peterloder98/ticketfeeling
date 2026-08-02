@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import sharp from "sharp";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -104,13 +105,23 @@ export async function POST(request: Request) {
         where: { id: eventId },
         data: { coverImageUrl: stored.url },
       });
+      revalidatePath(`/admin/events/${eventId}`);
     }
     if (tourId) {
       await prisma.tour.update({
         where: { id: tourId },
         data: { coverImageUrl: stored.url },
       });
+      revalidatePath(`/admin/tours/${tourId}`);
+      const tour = await prisma.tour.findUnique({
+        where: { id: tourId },
+        select: { slug: true },
+      });
+      if (tour?.slug) revalidatePath(`/tour/${tour.slug}`);
     }
+    revalidatePath("/");
+    revalidatePath("/events");
+    revalidatePath("/admin/tours");
 
     return NextResponse.json({
       ok: true,

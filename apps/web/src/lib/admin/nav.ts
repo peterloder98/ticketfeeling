@@ -8,6 +8,11 @@ export type AdminNavItem = {
 /** Flat sidebar — only top-level sections. */
 export const ADMIN_TOP_NAV: AdminNavItem[] = [
   { href: "/admin", label: "Dashboard", match: ["/admin"] },
+  {
+    href: "/admin/tours",
+    label: "Touren",
+    match: ["/admin/tours"],
+  },
   { href: "/admin/events", label: "Events", match: ["/admin/events"] },
   { href: "/admin/orders", label: "Bestellungen", match: ["/admin/orders"] },
   { href: "/admin/kunden", label: "Kunden", match: ["/admin/kunden"] },
@@ -24,7 +29,6 @@ export const ADMIN_TOP_NAV: AdminNavItem[] = [
       "/admin/catalog",
       "/admin/artists",
       "/admin/locations",
-      "/admin/tours",
     ],
   },
   {
@@ -63,10 +67,17 @@ export const ADMIN_SUBNAV = {
     },
     { href: "/admin/artists", label: "Künstler", description: "Line-up & Profile" },
     { href: "/admin/locations", label: "Locations", description: "Orte & Räume" },
+  ] satisfies AdminSubNavItem[],
+  tours: [
     {
       href: "/admin/tours",
-      label: "Touren",
-      description: "Tour anlegen, dann Termine",
+      label: "Alle Touren",
+      description: "Tour-Projekte mit mehreren Terminen",
+    },
+    {
+      href: "/admin/events",
+      label: "Einzeltermine / Events",
+      description: "Alle Termine inkl. Tour-Termine",
     },
   ] satisfies AdminSubNavItem[],
   einstellungen: [
