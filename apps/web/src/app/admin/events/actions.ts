@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
+import type { Prisma } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
@@ -246,8 +247,37 @@ export async function createEventAction(formData: FormData) {
         },
       });
       locationId = createdLoc.id;
-      venuePlanId = null;
-      seatingBookingMode = "none";
+
+      // Optional: saalplan already prepared in wizard (IDs set) OR create shell from form fields
+      const preparedPlanId = String(formData.get("venuePlanId") ?? "").trim();
+      if (preparedPlanId) {
+        venuePlanId = preparedPlanId;
+      } else if (formData.get("createVenuePlan") === "on") {
+        const { metersToCm } = await import("@/lib/saalplan/types");
+        const { createStage } = await import("@/lib/saalplan/snap");
+        const planName =
+          String(formData.get("newVenuePlanName") ?? "").trim() || `Saalplan ${locName}`;
+        const widthM = Number(String(formData.get("newVenuePlanWidthM") ?? "20").replace(",", "."));
+        const depthM = Number(String(formData.get("newVenuePlanDepthM") ?? "15").replace(",", "."));
+        const widthCm = metersToCm(Number.isFinite(widthM) && widthM >= 2 ? widthM : 20);
+        const depthCm = metersToCm(Number.isFinite(depthM) && depthM >= 2 ? depthM : 15);
+        const withStage = formData.get("newVenuePlanWithStage") === "on";
+        const plan = await tx.venuePlan.create({
+          data: {
+            organizationId: membership.organizationId,
+            locationId: createdLoc.id,
+            name: planName,
+            widthCm,
+            depthCm,
+            objects: (withStage ? [createStage(widthCm, depthCm)] : []) as Prisma.InputJsonValue,
+          },
+        });
+        venuePlanId = plan.id;
+        if (seatingBookingMode === "none") seatingBookingMode = "seat_map_and_best";
+      } else {
+        venuePlanId = null;
+        seatingBookingMode = "none";
+      }
     } else {
       const location = await tx.location.findFirst({
         where: { id: locationId!, organizationId: membership.organizationId },

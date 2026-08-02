@@ -3,6 +3,8 @@
 import { useTransition } from "react";
 import { updateCustomerAction } from "@/app/admin/kunden/actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
+import { CountrySelect } from "@/components/country-select";
+import { PhoneInput } from "@/components/phone-input";
 
 type CustomerEditFormProps = {
   customer: {
@@ -98,10 +100,9 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
         <span className="text-[var(--muted)]">Nachname</span>
         <input name="lastName" defaultValue={customer.lastName} required className="tf-input" />
       </label>
-      <label className="grid gap-1">
-        <span className="text-[var(--muted)]">Telefon</span>
-        <input name="phone" defaultValue={customer.phone ?? ""} className="tf-input" />
-      </label>
+      <div className="sm:col-span-2">
+        <PhoneInput name="phone" label="Telefon" defaultValue={customer.phone ?? ""} />
+      </div>
       <SmartDateInput
         name="birthDate"
         label="Geburtsdatum"
@@ -123,10 +124,9 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
         <span className="text-[var(--muted)]">Ort</span>
         <input name="city" defaultValue={customer.city ?? ""} className="tf-input" />
       </label>
-      <label className="grid gap-1 sm:col-span-2">
-        <span className="text-[var(--muted)]">Land</span>
-        <input name="country" defaultValue={customer.country || "DE"} className="tf-input" />
-      </label>
+      <div className="sm:col-span-2">
+        <CountrySelect name="country" label="Land" defaultValue={customer.country || "DE"} />
+      </div>
       <label className="grid gap-1 sm:col-span-2">
         <span className="text-[var(--muted)]">Interne Notizen</span>
         <textarea

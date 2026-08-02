@@ -102,7 +102,7 @@ export default async function NewEventPage({ searchParams }: Props) {
   const fromTour = Boolean(initialTourId);
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full max-w-none">
       <Link
         href={fromTour ? `/admin/tours/${initialTourId}` : "/admin/events"}
         className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
@@ -112,11 +112,6 @@ export default async function NewEventPage({ searchParams }: Props) {
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
         {fromTour ? "Neuen Termin anlegen" : "Neues Event"}
       </h1>
-      <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-        {fromTour
-          ? "Termin einer Tour: Ort & Datum festlegen — Cover übernimmt das Tour-Plakat, sofern du nichts Abweichendes setzt."
-          : "In vier Schritten: Inhalte, Ort (optional Saalplan), Tickets — und fertig. Für Mehrfachtermine zuerst unter Touren anlegen."}
-      </p>
 
       <CreateEventWizard
         locations={locations}

@@ -96,10 +96,6 @@ export function EventEditForm({
       <label className="grid gap-1">
         <span className="font-medium">Link-Name</span>
         <input name="slug" className="tf-input" required defaultValue={event.slug} />
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          Kurzname in der Web-Adresse, z. B.{" "}
-          <span className="font-medium text-[var(--tf-navy)]">/event/{event.slug}</span>
-        </span>
       </label>
 
       <label className="grid gap-1 md:col-span-2">
@@ -112,9 +108,6 @@ export function EventEditForm({
             </option>
           ))}
         </select>
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          Zugehörigkeit zur Gesamttour. Ohne eigenes Cover gilt das Tour-Plakat.
-        </span>
       </label>
 
       <label className="grid gap-1 md:col-span-2">
@@ -126,26 +119,16 @@ export function EventEditForm({
             </option>
           ))}
         </select>
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          Entwurf und Ankündigung verkaufen nie — auch wenn das Vorverkaufsdatum erreicht ist. Zum
-          Ticketverkauf aktiv „Verkauf freigegeben“ oder „Veröffentlicht“ wählen.
-        </span>
       </label>
 
-      <label className="flex items-start gap-2 md:col-span-2">
+      <label className="flex items-center gap-2 md:col-span-2">
         <input
           type="checkbox"
           name="showRemainingAvailability"
           className="mt-1"
           defaultChecked={event.showRemainingAvailability}
         />
-        <span>
-          <span className="font-medium">Restliche Verfügbarkeit öffentlich anzeigen</span>
-          <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-            Zeigt Stückzahlen und Knappheits-Hinweise auf der Eventseite und in Listen. Aus = nur
-            „Ausverkauft“, wenn nichts mehr da ist.
-          </span>
-        </span>
+        <span className="font-medium">Restliche Verfügbarkeit öffentlich anzeigen</span>
       </label>
 
       <EventVenuePlanFields
@@ -184,7 +167,6 @@ export function EventEditForm({
         <SmartDateTimeInput
           name="presaleStartsAt"
           label="Vorverkaufsstart"
-          hint="Gilt erst nach aktiver Verkaufsfreigabe."
           value={presaleStartsAt}
           onChange={setPresaleStartsAt}
         />
@@ -198,13 +180,9 @@ export function EventEditForm({
           defaultValue={String((event.ticketTaxRateBasisPoints ?? 700) / 100)}
         >
           <option value="0">0 %</option>
-          <option value="7">7 % (Standard Konzert)</option>
+          <option value="7">7 %</option>
           <option value="19">19 %</option>
         </select>
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          Für eigene Konzert-Eintrittskarten ist häufig 7 % anwendbar. Bitte Sonderfälle mit deiner
-          Steuerberatung prüfen.
-        </span>
       </label>
       <label className="grid gap-1">
         <span className="font-medium">USt Verwaltungsgebühr</span>

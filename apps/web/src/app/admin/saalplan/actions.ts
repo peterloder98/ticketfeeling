@@ -23,6 +23,33 @@ async function requireLocationsWrite() {
   return { session, membership };
 }
 
+async function createVenuePlanRecord(input: {
+  organizationId: string;
+  locationId: string;
+  name: string;
+  widthM: number;
+  depthM: number;
+  withStage: boolean;
+}) {
+  const widthCm = metersToCm(
+    Number.isFinite(input.widthM) && input.widthM >= 2 ? input.widthM : 20,
+  );
+  const depthCm = metersToCm(
+    Number.isFinite(input.depthM) && input.depthM >= 2 ? input.depthM : 15,
+  );
+  const objects = input.withStage ? [createStage(widthCm, depthCm)] : [];
+  return prisma.venuePlan.create({
+    data: {
+      organizationId: input.organizationId,
+      locationId: input.locationId,
+      name: input.name,
+      widthCm,
+      depthCm,
+      objects: objects as Prisma.InputJsonValue,
+    },
+  });
+}
+
 export async function createVenuePlanAction(formData: FormData) {
   const { membership } = await requireLocationsWrite();
   const locationId = String(formData.get("locationId") ?? "");
@@ -36,23 +63,113 @@ export async function createVenuePlanAction(formData: FormData) {
   });
   if (!location) throw new Error("LOCATION_NOT_FOUND");
 
-  const widthCm = metersToCm(Number.isFinite(widthM) && widthM >= 2 ? widthM : 20);
-  const depthCm = metersToCm(Number.isFinite(depthM) && depthM >= 2 ? depthM : 15);
-  const objects = withStage ? [createStage(widthCm, depthCm)] : [];
-
-  const plan = await prisma.venuePlan.create({
-    data: {
-      organizationId: membership.organizationId,
-      locationId: location.id,
-      name,
-      widthCm,
-      depthCm,
-      objects: objects as Prisma.InputJsonValue,
-    },
+  const plan = await createVenuePlanRecord({
+    organizationId: membership.organizationId,
+    locationId: location.id,
+    name,
+    widthM,
+    depthM,
+    withStage,
   });
 
   revalidatePath(`/admin/locations/${location.id}`);
   redirect(`/admin/saalplan/${plan.id}`);
+}
+
+export type WizardPlanPrepareResult = {
+  locationId: string;
+  locationName: string;
+  locationCity: string | null;
+  venuePlanId: string;
+  planName: string;
+  widthCm: number;
+  depthCm: number;
+  objects: ReturnType<typeof parseVenuePlanObjects>;
+  seatCapacity: number;
+  sizeLabel: string;
+};
+
+/** Create location (optional) + venue plan shell for the event wizard — no redirect. */
+export async function prepareWizardLocationPlanAction(
+  formData: FormData,
+): Promise<WizardPlanPrepareResult> {
+  const { membership } = await requireLocationsWrite();
+  const { slugify } = await import("@/lib/admin/event-form");
+  const { cmToMetersLabel, planSeatCapacity } = await import("@/lib/saalplan/types");
+
+  const mode = String(formData.get("locationMode") ?? "existing");
+  let locationId = String(formData.get("locationId") ?? "").trim();
+  const planName = String(formData.get("planName") ?? "").trim() || "Saalplan";
+  const widthM = Number(String(formData.get("widthM") ?? "20").replace(",", "."));
+  const depthM = Number(String(formData.get("depthM") ?? "15").replace(",", "."));
+  const withStage = formData.get("withStage") === "on" || formData.get("withStage") === "true";
+
+  let locationName = "";
+  let locationCity: string | null = null;
+
+  if (mode === "new" || !locationId) {
+    const locName = String(formData.get("newLocationName") ?? "").trim();
+    if (!locName) throw new Error("LOCATION_NAME_REQUIRED");
+    let locSlug = slugify(locName);
+    const slugTaken = await prisma.location.findFirst({
+      where: { organizationId: membership.organizationId, slug: locSlug },
+    });
+    if (slugTaken) locSlug = `${locSlug}-${Date.now().toString(36)}`;
+
+    const createdLoc = await prisma.location.create({
+      data: {
+        organizationId: membership.organizationId,
+        name: locName,
+        slug: locSlug,
+        street: String(formData.get("newLocationStreet") ?? "").trim() || null,
+        houseNumber: String(formData.get("newLocationHouseNumber") ?? "").trim() || null,
+        postalCode: String(formData.get("newLocationPostalCode") ?? "").trim() || null,
+        city: String(formData.get("newLocationCity") ?? "").trim() || null,
+        country: String(formData.get("newLocationCountry") ?? "DE").trim() || "DE",
+        phone: String(formData.get("newLocationPhone") ?? "").trim() || null,
+        homepage: String(formData.get("newLocationHomepage") ?? "").trim() || null,
+        maxCapacity: (() => {
+          const n = Number(formData.get("newLocationMaxCapacity") ?? "");
+          return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+        })(),
+      },
+    });
+    locationId = createdLoc.id;
+    locationName = createdLoc.name;
+    locationCity = createdLoc.city;
+  } else {
+    const location = await prisma.location.findFirst({
+      where: { id: locationId, organizationId: membership.organizationId },
+    });
+    if (!location) throw new Error("LOCATION_NOT_FOUND");
+    locationName = location.name;
+    locationCity = location.city;
+  }
+
+  const plan = await createVenuePlanRecord({
+    organizationId: membership.organizationId,
+    locationId,
+    name: planName,
+    widthM,
+    depthM,
+    withStage,
+  });
+
+  const objects = parseVenuePlanObjects(plan.objects);
+  revalidatePath(`/admin/locations/${locationId}`);
+
+  return {
+    locationId,
+    locationName,
+    locationCity,
+    venuePlanId: plan.id,
+    planName: plan.name,
+    widthCm: plan.widthCm,
+    depthCm: plan.depthCm,
+    objects,
+    seatCapacity: planSeatCapacity(objects),
+    sizeLabel: `${cmToMetersLabel(plan.widthCm)} × ${cmToMetersLabel(plan.depthCm)}`,
+  };
 }
 
 export async function saveVenuePlanAction(formData: FormData) {

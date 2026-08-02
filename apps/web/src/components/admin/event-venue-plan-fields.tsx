@@ -92,11 +92,6 @@ export function EventVenuePlanFields({
             </option>
           ))}
         </select>
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          {locationId && plansForLocation.length === 0
-            ? "Für diesen Ort gibt es noch keinen Saalplan — unter Locations anlegen."
-            : "Ohne Saalplan: Stehplätze oder freie Platzwahl über die Kategorien."}
-        </span>
       </label>
 
       <input type="hidden" name="seatingBookingMode" value={venuePlanId ? bookingMode : "none"} />
@@ -106,12 +101,9 @@ export function EventVenuePlanFields({
           <legend className="px-1 text-sm font-semibold text-[var(--tf-navy)]">
             Onlineshop-Verkauf mit Saalplan
           </legend>
-          <p className="text-xs text-[var(--tf-text-secondary)]">
-            Du steuerst, ob Kunden selbst Plätze wählen oder nur die Bestplatzbuchung nutzen.
-          </p>
           <div className="grid gap-2 sm:grid-cols-2">
             <label
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border bg-white px-3 py-3 text-sm ${
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-white px-3 py-3 text-sm ${
                 bookingMode === "seat_map_and_best"
                   ? "border-[var(--tf-teal)] ring-2 ring-[rgba(20,184,166,0.25)]"
                   : "border-[var(--tf-line)]"
@@ -119,22 +111,15 @@ export function EventVenuePlanFields({
             >
               <input
                 type="radio"
-                className="mt-1"
                 checked={bookingMode === "seat_map_and_best"}
                 onChange={() => setBookingMode("seat_map_and_best")}
               />
-              <span>
-                <span className="font-semibold text-[var(--tf-navy)]">
-                  Saalplan + Bestplatzbuchung
-                </span>
-                <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                  Kunde wählt Kategorie, Reihe und Sitz selbst — oder lässt sich den besten Platz
-                  vorschlagen.
-                </span>
+              <span className="font-semibold text-[var(--tf-navy)]">
+                Saalplan + Bestplatzbuchung
               </span>
             </label>
             <label
-              className={`flex cursor-pointer items-start gap-3 rounded-xl border bg-white px-3 py-3 text-sm ${
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border bg-white px-3 py-3 text-sm ${
                 bookingMode === "best_available"
                   ? "border-[var(--tf-teal)] ring-2 ring-[rgba(20,184,166,0.25)]"
                   : "border-[var(--tf-line)]"
@@ -142,17 +127,10 @@ export function EventVenuePlanFields({
             >
               <input
                 type="radio"
-                className="mt-1"
                 checked={bookingMode === "best_available"}
                 onChange={() => setBookingMode("best_available")}
               />
-              <span>
-                <span className="font-semibold text-[var(--tf-navy)]">Nur Bestplatzbuchung</span>
-                <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                  System vergibt die besten freien Plätze in der Kategorie — möglichst
-                  nebeneinander.
-                </span>
-              </span>
+              <span className="font-semibold text-[var(--tf-navy)]">Nur Bestplatzbuchung</span>
             </label>
           </div>
         </fieldset>
