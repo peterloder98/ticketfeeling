@@ -10,26 +10,14 @@ import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { getDefaultOrganization } from "@/lib/commerce/org";
+import {
+  buildPublicListingCards,
+  remainingForCategories,
+} from "@/lib/commerce/public-listings";
 
 export const dynamic = "force-dynamic";
 
-function remainingForEvent(
-  categories: {
-    capacity: number;
-    pools: { soldQuantity: number; heldQuantity: number; capacity: number }[];
-  }[],
-) {
-  let capacity = 0;
-  let remaining = 0;
-  for (const cat of categories) {
-    const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
-    const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
-    const cap = Math.max(cat.capacity, ...cat.pools.map((p) => p.capacity), 0);
-    capacity += cap;
-    remaining += Math.max(0, cap - sold - held);
-  }
-  return { capacity, remaining };
-}
+const PUBLIC_STATUSES = ["announcement", "published", "presale_active"] as const;
 
 export default async function HomePage() {
   const org = await getDefaultOrganization();
@@ -37,10 +25,20 @@ export default async function HomePage() {
 
   const events = await prisma.event.findMany({
     where: {
-      status: { in: ["announcement", "published", "presale_active"] },
+      status: { in: [...PUBLIC_STATUSES] },
     },
     include: {
       location: true,
+      tour: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          coverImageUrl: true,
+          description: true,
+          visibility: true,
+        },
+      },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
         include: { pools: true },
@@ -54,28 +52,23 @@ export default async function HomePage() {
       },
     },
     orderBy: { eventStartsAt: "asc" },
-    take: 6,
   });
 
-  const heroSlides = events.slice(0, 3).map((event) => ({
-    id: event.id,
-    slug: event.slug,
-    name: event.name,
-    whenLabel: event.eventStartsAt
-      ? event.eventStartsAt.toLocaleString("de-DE", {
-          timeZone: "Europe/Berlin",
-          weekday: "long",
-          day: "numeric",
-          month: "long",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : null,
-    locationLabel: event.location
-      ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
-      : null,
-    coverImageUrl: event.coverImageUrl,
+  const listings = buildPublicListingCards(events).slice(0, 6);
+
+  const heroSlides = listings.slice(0, 3).map((card) => ({
+    id: card.key,
+    slug: card.href.startsWith("/tour/")
+      ? card.href.replace("/tour/", "")
+      : card.href.replace("/event/", ""),
+    href: card.href,
+    name: card.name,
+    whenLabel: card.whenLabel,
+    locationLabel:
+      card.locationCity === "Mehrere Orte"
+        ? "Mehrere Orte"
+        : [card.locationName, card.locationCity].filter(Boolean).join(", ") || null,
+    coverImageUrl: card.coverImageUrl,
   }));
 
   return (
@@ -124,12 +117,15 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            {events.map((event) => {
-              const { remaining, capacity } = remainingForEvent(event.ticketCategories);
-              const cheapest = event.ticketCategories[0];
-              const priced = cheapest
+            {listings.map((card) => {
+              const { remaining, capacity } = remainingForCategories(card.ticketCategories);
+              const cheapest = card.ticketCategories.reduce(
+                (min, c) => Math.min(min, c.priceGrossCents),
+                Number.POSITIVE_INFINITY,
+              );
+              const priced = Number.isFinite(cheapest)
                 ? formatCustomerPriceLabel({
-                    ticketGrossCents: cheapest.priceGrossCents,
+                    ticketGrossCents: cheapest,
                     feeConfig,
                     formatEuro: formatEuroFromCents,
                     prefix: "ab",
@@ -137,32 +133,30 @@ export default async function HomePage() {
                 : null;
               return (
                 <EventCard
-                  key={event.id}
+                  key={card.key}
                   event={{
-                    id: event.id,
-                    slug: event.slug,
-                    name: event.name,
-                    subtitle: event.subtitle,
-                    status: event.status,
-                    eventStartsAt: event.eventStartsAt,
-                    locationName: event.location?.name,
-                    locationCity: event.location?.city,
-                    coverImageUrl: event.coverImageUrl,
+                    id: card.key,
+                    slug: card.key,
+                    name: card.name,
+                    status: card.status,
+                    whenLabel: card.whenLabel,
+                    locationName: card.locationName,
+                    locationCity: card.locationCity,
+                    coverImageUrl: card.coverImageUrl,
                     priceLabel: priced?.totalLabel ?? null,
                     priceNote: priced?.surchargeLabel || null,
                     remainingTickets: remaining,
                     capacity,
-                    showRemainingAvailability: event.showRemainingAvailability,
-                    artists: event.artists.map((a) => ({
-                      name: a.artist.name,
-                      imageUrl: a.artist.profileImageUrl,
-                    })),
+                    showRemainingAvailability: card.showRemainingAvailability,
+                    artists: card.artists,
+                    href: card.href,
+                    ctaLabel: card.ctaLabel,
                   }}
                 />
               );
             })}
           </div>
-          {events.length === 0 ? (
+          {listings.length === 0 ? (
             <p className="mt-8 text-base text-[var(--tf-text-secondary)]">
               Bald erscheinen hier die nächsten Events.
             </p>

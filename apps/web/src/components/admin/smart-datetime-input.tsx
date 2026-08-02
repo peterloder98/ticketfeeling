@@ -42,6 +42,8 @@ function isValidYmd(y: number, m: number, d: number) {
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
 const HOURS = Array.from({ length: 24 }, (_, i) => pad2(i));
 const MINUTES = Array.from({ length: 60 }, (_, i) => pad2(i));
+const DEFAULT_HOUR = "18";
+const DEFAULT_MINUTE = "00";
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -83,14 +85,23 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
   const dayRef = useRef<HTMLInputElement>(null);
   const monthRef = useRef<HTMLInputElement>(null);
   const yearRef = useRef<HTMLInputElement>(null);
+  const hourBtnRef = useRef<HTMLButtonElement>(null);
+  const minuteBtnRef = useRef<HTMLButtonElement>(null);
 
   const selected = useMemo(() => parseLocal(value), [value]);
+  const hasValue = Boolean(selected);
 
   const [day, setDay] = useState(() => (selected ? pad2(selected.getDate()) : ""));
   const [month, setMonth] = useState(() => (selected ? pad2(selected.getMonth() + 1) : ""));
   const [year, setYear] = useState(() => (selected ? String(selected.getFullYear()) : ""));
-  const [hour, setHour] = useState(() => (selected ? pad2(selected.getHours()) : "18"));
-  const [minute, setMinute] = useState(() => (selected ? pad2(selected.getMinutes()) : "00"));
+  const [hour, setHour] = useState(() =>
+    selected ? pad2(selected.getHours()) : DEFAULT_HOUR,
+  );
+  const [minute, setMinute] = useState(() =>
+    selected ? pad2(selected.getMinutes()) : DEFAULT_MINUTE,
+  );
+  /** True once the user picked a time (or an existing value was loaded). */
+  const [timeChosen, setTimeChosen] = useState(() => hasValue);
 
   const [dateOpen, setDateOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
@@ -102,6 +113,9 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
         setDay("");
         setMonth("");
         setYear("");
+        setHour(DEFAULT_HOUR);
+        setMinute(DEFAULT_MINUTE);
+        setTimeChosen(false);
       }
       return;
     }
@@ -110,6 +124,7 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     setYear(String(selected.getFullYear()));
     setHour(pad2(selected.getHours()));
     setMinute(pad2(selected.getMinutes()));
+    setTimeChosen(true);
     setViewMonth(startOfMonth(selected));
   }, [value, selected]);
 
@@ -135,18 +150,30 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     };
   }, [dateOpen, timeOpen]);
 
+  useEffect(() => {
+    if (!timeOpen) return;
+    const id = window.requestAnimationFrame(() => {
+      hourBtnRef.current?.scrollIntoView({ block: "center" });
+      minuteBtnRef.current?.scrollIntoView({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [timeOpen, hour, minute]);
+
   function tryCommit(next: {
     day?: string;
     month?: string;
     year?: string;
     hour?: string;
     minute?: string;
+    forceTime?: boolean;
   }) {
     const d = next.day ?? day;
     const m = next.month ?? month;
     const y = next.year ?? year;
     const h = next.hour ?? hour;
     const min = next.minute ?? minute;
+    const allowTime = next.forceTime || timeChosen || hasValue;
+    if (!allowTime) return;
     if (d.length !== 2 || m.length !== 2 || y.length !== 4 || h.length !== 2 || min.length !== 2) {
       return;
     }
@@ -201,6 +228,12 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     }
   }
 
+  function openDatePanel() {
+    setTimeOpen(false);
+    setDateOpen(true);
+    if (selected) setViewMonth(startOfMonth(selected));
+  }
+
   function pickCalendarDay(date: Date) {
     const d = pad2(date.getDate());
     const m = pad2(date.getMonth() + 1);
@@ -210,12 +243,16 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     setYear(y);
     tryCommit({ day: d, month: m, year: y });
     setDateOpen(false);
+    if (!timeChosen && !hasValue) {
+      setTimeOpen(true);
+    }
   }
 
   function pickTime(h: string, min: string) {
     setHour(h);
     setMinute(min);
-    tryCommit({ hour: h, minute: min });
+    setTimeChosen(true);
+    tryCommit({ hour: h, minute: min, forceTime: true });
     setTimeOpen(false);
   }
 
@@ -234,46 +271,38 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
   });
   const today = new Date();
   const cellClass =
-    "h-11 w-full rounded-xl border border-[var(--tf-line)] bg-white text-center text-base font-semibold tabular-nums text-[var(--tf-navy)] outline-none transition focus:border-[var(--tf-teal)] focus:shadow-[0_0_0_3px_rgba(20,184,166,0.18)]";
+    "h-8 w-full rounded-lg border border-[var(--tf-line)] bg-white px-1 text-center text-sm tabular-nums text-[var(--tf-navy)] outline-none transition focus:border-[var(--tf-teal)] focus:shadow-[0_0_0_2px_rgba(20,184,166,0.18)]";
 
   return (
-    <div ref={rootRef} className="relative grid gap-1.5">
+    <div ref={rootRef} className="relative grid gap-1">
       {name ? <input type="hidden" name={name} value={value} /> : null}
       <span className="text-sm font-medium text-[var(--tf-navy)]">{label}</span>
       {hint ? <span className="text-xs text-[var(--tf-text-secondary)]">{hint}</span> : null}
 
-      <div className="grid gap-2.5">
-        {/* Date: TT . MM . JJJJ — dots fixed, auto-advance */}
-        <div>
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-0 flex-1 basis-[12rem]">
+          <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
             Datum
           </span>
           <div
-            className={`flex cursor-text items-end gap-1.5 rounded-xl border bg-[#f8fafc] px-2.5 py-2 transition ${
+            className={`flex cursor-text items-center gap-1 rounded-lg border bg-[#f8fafc] px-1.5 py-1 transition ${
               dateOpen
-                ? "border-[var(--tf-teal)] shadow-[0_0_0_3px_rgba(20,184,166,0.18)]"
+                ? "border-[var(--tf-teal)] shadow-[0_0_0_2px_rgba(20,184,166,0.18)]"
                 : "border-[var(--tf-line)] hover:border-[var(--tf-teal)]/50"
             }`}
             onMouseDown={(e) => {
-              // Open calendar when clicking the row (not when focusing an input via its own click)
               const target = e.target as HTMLElement;
               if (target.tagName === "INPUT") {
-                setTimeOpen(false);
-                setDateOpen(true);
-                if (selected) setViewMonth(startOfMonth(selected));
+                openDatePanel();
                 return;
               }
               e.preventDefault();
-              setTimeOpen(false);
-              setDateOpen(true);
-              if (selected) setViewMonth(startOfMonth(selected));
+              openDatePanel();
               dayRef.current?.focus();
             }}
           >
-            <label className="grid min-w-[3rem] flex-[1.1] gap-0.5">
-              <span className="text-center text-[9px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
-                TT
-              </span>
+            <label className="grid w-[2.25rem] gap-0">
+              <span className="sr-only">TT</span>
               <input
                 ref={dayRef}
                 inputMode="numeric"
@@ -283,22 +312,14 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
                 className={cellClass}
                 value={day}
                 onChange={(e) => updateDay(e.target.value)}
-                onFocus={() => {
-                  setTimeOpen(false);
-                  setDateOpen(true);
-                  if (selected) setViewMonth(startOfMonth(selected));
-                }}
+                onFocus={openDatePanel}
                 onBlur={blurPadDay}
                 aria-label={`${label} Tag`}
               />
             </label>
-            <span className="mb-2.5 select-none text-lg font-semibold text-[var(--tf-text-secondary)]">
-              .
-            </span>
-            <label className="grid min-w-[3rem] flex-[1.1] gap-0.5">
-              <span className="text-center text-[9px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
-                MM
-              </span>
+            <span className="select-none text-sm text-[var(--tf-text-secondary)]">.</span>
+            <label className="grid w-[2.25rem] gap-0">
+              <span className="sr-only">MM</span>
               <input
                 ref={monthRef}
                 inputMode="numeric"
@@ -308,21 +329,14 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
                 className={cellClass}
                 value={month}
                 onChange={(e) => updateMonth(e.target.value)}
-                onFocus={() => {
-                  setTimeOpen(false);
-                  setDateOpen(true);
-                }}
+                onFocus={openDatePanel}
                 onBlur={blurPadMonth}
                 aria-label={`${label} Monat`}
               />
             </label>
-            <span className="mb-2.5 select-none text-lg font-semibold text-[var(--tf-text-secondary)]">
-              .
-            </span>
-            <label className="grid min-w-[4.25rem] flex-[1.5] gap-0.5">
-              <span className="text-center text-[9px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
-                JJJJ
-              </span>
+            <span className="select-none text-sm text-[var(--tf-text-secondary)]">.</span>
+            <label className="grid w-[3.25rem] gap-0">
+              <span className="sr-only">JJJJ</span>
               <input
                 ref={yearRef}
                 inputMode="numeric"
@@ -332,26 +346,22 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
                 className={cellClass}
                 value={year}
                 onChange={(e) => updateYear(e.target.value)}
-                onFocus={() => {
-                  setTimeOpen(false);
-                  setDateOpen(true);
-                }}
+                onFocus={openDatePanel}
                 aria-label={`${label} Jahr`}
               />
             </label>
           </div>
         </div>
 
-        {/* Time: click opens picker, digits only via picker / display */}
-        <div>
-          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+        <div className="shrink-0">
+          <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
             Uhrzeit
           </span>
           <button
             type="button"
-            className={`flex w-full max-w-[11rem] items-center gap-2 rounded-xl border bg-white px-3 py-2.5 text-left transition ${
+            className={`flex min-w-[6.5rem] items-center gap-1.5 rounded-lg border bg-white px-2.5 py-1.5 text-left transition ${
               timeOpen
-                ? "border-[var(--tf-teal)] shadow-[0_0_0_3px_rgba(20,184,166,0.18)]"
+                ? "border-[var(--tf-teal)] shadow-[0_0_0_2px_rgba(20,184,166,0.18)]"
                 : "border-[var(--tf-line)] hover:border-[var(--tf-teal)]/50"
             }`}
             aria-expanded={timeOpen}
@@ -361,8 +371,14 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               setTimeOpen((v) => !v);
             }}
           >
-            <Clock className="h-4 w-4 shrink-0 text-[var(--tf-teal)]" aria-hidden />
-            <span className="text-base font-semibold tabular-nums text-[var(--tf-navy)]">
+            <Clock className="h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" aria-hidden />
+            <span
+              className={`text-sm tabular-nums ${
+                timeChosen || hasValue
+                  ? "font-medium text-[var(--tf-navy)]"
+                  : "text-[var(--tf-text-secondary)]"
+              }`}
+            >
               {hour}:{minute}
             </span>
           </button>
@@ -372,15 +388,15 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
       {dateOpen ? (
         <div
           id={datePanelId}
-          className="absolute left-0 top-full z-50 mt-1 w-[min(100%,20.5rem)] overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white shadow-[0_18px_40px_rgba(15,39,71,0.16)]"
+          className="absolute left-0 top-full z-50 mt-1 w-[min(100%,18.5rem)] overflow-hidden rounded-xl border border-[var(--tf-line)] bg-white shadow-[0_18px_40px_rgba(15,39,71,0.16)]"
           role="dialog"
           aria-label={`${label} Kalender`}
         >
-          <div className="border-b border-[var(--tf-line)] bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_70%)] px-3 py-3">
+          <div className="border-b border-[var(--tf-line)] bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_70%)] px-2.5 py-2">
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                className="rounded-lg p-1.5 text-[var(--tf-navy)] hover:bg-[rgba(15,39,71,0.06)]"
+                className="rounded-lg p-1 text-[var(--tf-navy)] hover:bg-[rgba(15,39,71,0.06)]"
                 aria-label="Vorheriger Monat"
                 onClick={() => setViewMonth(new Date(vy, vm - 1, 1))}
               >
@@ -389,7 +405,7 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               <p className="text-sm font-semibold capitalize text-[var(--tf-navy)]">{monthLabel}</p>
               <button
                 type="button"
-                className="rounded-lg p-1.5 text-[var(--tf-navy)] hover:bg-[rgba(15,39,71,0.06)]"
+                className="rounded-lg p-1 text-[var(--tf-navy)] hover:bg-[rgba(15,39,71,0.06)]"
                 aria-label="Nächster Monat"
                 onClick={() => setViewMonth(new Date(vy, vm + 1, 1))}
               >
@@ -397,8 +413,8 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               </button>
             </div>
           </div>
-          <div className="px-3 py-3">
-            <div className="mb-1 grid grid-cols-7 gap-1">
+          <div className="px-2.5 py-2">
+            <div className="mb-1 grid grid-cols-7 gap-0.5">
               {WEEKDAYS.map((d) => (
                 <span
                   key={d}
@@ -408,16 +424,16 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
                 </span>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-0.5">
               {cells.map((cell, idx) => {
-                if (!cell) return <span key={`e-${idx}`} className="h-9" />;
+                if (!cell) return <span key={`e-${idx}`} className="h-8" />;
                 const isSelected = selected ? sameDay(cell.date, selected) : false;
                 const isToday = sameDay(cell.date, today);
                 return (
                   <button
                     key={cell.date.toISOString()}
                     type="button"
-                    className={`h-9 rounded-lg text-sm font-medium transition ${
+                    className={`h-8 rounded-md text-sm font-medium transition ${
                       isSelected
                         ? "bg-[var(--tf-navy)] text-white shadow-sm"
                         : isToday
@@ -432,7 +448,11 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               })}
             </div>
           </div>
-          <div className="flex justify-end border-t border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2">
+          <div className="flex items-center justify-between border-t border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-1.5">
+            <span className="text-[11px] text-[var(--tf-text-secondary)]">
+              Uhrzeit: {hour}:{minute}
+              {!timeChosen && !hasValue ? " (bitte wählen)" : ""}
+            </span>
             <button
               type="button"
               className="text-xs font-medium text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
@@ -447,24 +467,29 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
       {timeOpen ? (
         <div
           id={timePanelId}
-          className="absolute left-0 top-full z-50 mt-1 w-[min(100%,18rem)] overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white shadow-[0_18px_40px_rgba(15,39,71,0.16)]"
+          className="absolute left-0 top-full z-50 mt-1 w-[min(100%,16rem)] overflow-hidden rounded-xl border border-[var(--tf-line)] bg-white shadow-[0_18px_40px_rgba(15,39,71,0.16)]"
           role="dialog"
           aria-label={`${label} Uhrzeit`}
         >
-          <div className="border-b border-[var(--tf-line)] px-3 py-2.5">
+          <div className="border-b border-[var(--tf-line)] px-3 py-2">
             <p className="text-sm font-semibold text-[var(--tf-navy)]">Uhrzeit wählen</p>
-            <p className="text-[11px] text-[var(--tf-text-secondary)]">Nur Zahlen — Stunde und Minute tippen</p>
+            <p className="text-[11px] text-[var(--tf-text-secondary)]">
+              {hasValue || timeChosen
+                ? `Aktuell ${hour}:${minute}`
+                : `Vorschlag ${DEFAULT_HOUR}:${DEFAULT_MINUTE} — bitte bestätigen`}
+            </p>
           </div>
           <div className="grid grid-cols-2 gap-0">
-            <div className="max-h-56 overflow-y-auto border-r border-[var(--tf-line)]">
-              <p className="sticky top-0 bg-[#f8fafc] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
+            <div className="max-h-48 overflow-y-auto border-r border-[var(--tf-line)]">
+              <p className="sticky top-0 bg-[#f8fafc] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
                 Stunde
               </p>
               {HOURS.map((h) => (
                 <button
                   key={h}
+                  ref={h === hour ? hourBtnRef : undefined}
                   type="button"
-                  className={`flex w-full px-3 py-2 text-left text-sm tabular-nums transition ${
+                  className={`flex w-full px-3 py-1.5 text-left text-sm tabular-nums transition ${
                     h === hour
                       ? "bg-[var(--tf-navy)] font-semibold text-white"
                       : "text-[var(--tf-navy)] hover:bg-[rgba(20,184,166,0.1)]"
@@ -475,15 +500,16 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
                 </button>
               ))}
             </div>
-            <div className="max-h-56 overflow-y-auto">
-              <p className="sticky top-0 bg-[#f8fafc] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
+            <div className="max-h-48 overflow-y-auto">
+              <p className="sticky top-0 bg-[#f8fafc] px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
                 Minute
               </p>
               {MINUTES.map((m) => (
                 <button
                   key={m}
+                  ref={m === minute ? minuteBtnRef : undefined}
                   type="button"
-                  className={`flex w-full px-3 py-2 text-left text-sm tabular-nums transition ${
+                  className={`flex w-full px-3 py-1.5 text-left text-sm tabular-nums transition ${
                     m === minute
                       ? "bg-[var(--tf-navy)] font-semibold text-white"
                       : "text-[var(--tf-navy)] hover:bg-[rgba(20,184,166,0.1)]"
@@ -495,14 +521,24 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               ))}
             </div>
           </div>
-          <div className="flex justify-end border-t border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2">
-            <button
-              type="button"
-              className="tf-btn tf-btn-primary !min-h-9 !px-4 text-sm"
-              onClick={() => setTimeOpen(false)}
-            >
-              Fertig
-            </button>
+          <div className="flex justify-end gap-2 border-t border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-1.5">
+            {!timeChosen && !hasValue ? (
+              <button
+                type="button"
+                className="tf-btn tf-btn-primary !min-h-8 !px-3 text-xs"
+                onClick={() => pickTime(hour, minute)}
+              >
+                {hour}:{minute} übernehmen
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="tf-btn tf-btn-primary !min-h-8 !px-3 text-xs"
+                onClick={() => setTimeOpen(false)}
+              >
+                Fertig
+              </button>
+            )}
           </div>
         </div>
       ) : null}

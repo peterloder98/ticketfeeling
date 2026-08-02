@@ -21,6 +21,7 @@ import {
   formatFeeSurchargeNote,
 } from "@/lib/commerce/public-price";
 import { categoryNeedsSeats } from "@/lib/seating/types";
+import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export default async function EventPage({ params }: Props) {
     include: {
       location: true,
       room: true,
+      tour: { select: { coverImageUrl: true } },
       organization: { select: { name: true, settings: true } },
       artists: { include: { artist: true }, orderBy: { sortOrder: "asc" } },
       ticketCategories: {
@@ -66,6 +68,8 @@ export default async function EventPage({ params }: Props) {
   });
 
   if (!event) notFound();
+
+  const coverImageUrl = resolveEventCoverUrl(event);
 
   const feeConfig = resolveActivePlatformFeeConfig(event.organization.settings?.platformFeeConfig);
 
@@ -210,7 +214,7 @@ export default async function EventPage({ params }: Props) {
           <div className="mx-auto w-full max-w-[460px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
             <div className="aspect-square">
               <ResponsiveImage
-                src={event.coverImageUrl}
+                src={coverImageUrl}
                 alt={`Cover: ${event.name}`}
                 className="h-full w-full"
                 fallback="event"

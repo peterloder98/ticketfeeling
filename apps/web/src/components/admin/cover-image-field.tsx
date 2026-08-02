@@ -12,9 +12,14 @@ type Props = {
   name?: string;
   initialUrl?: string | null;
   eventId?: string;
+  tourId?: string;
+  /** Preview when no own cover is set (e.g. tour poster). */
+  inheritUrl?: string | null;
+  inheritLabel?: string;
   /** When false, skip router.refresh (required in create wizard — refresh remounts and wipes state). */
   refreshOnUpload?: boolean;
   onUploaded?: (url: string) => void;
+  onCleared?: () => void;
 };
 
 async function fileToDownscaledDataUrl(file: File): Promise<{ src: string; w: number; h: number }> {
@@ -65,8 +70,12 @@ export function CoverImageField({
   name = "coverImageUrl",
   initialUrl,
   eventId,
+  tourId,
+  inheritUrl,
+  inheritLabel = "Tour-Plakat",
   refreshOnUpload = true,
   onUploaded,
+  onCleared,
 }: Props) {
   const router = useRouter();
   const [url, setUrl] = useState(initialUrl ?? "");
@@ -168,6 +177,7 @@ export function CoverImageField({
       const body = new FormData();
       body.append("file", blob!, "cover.jpg");
       if (eventId) body.append("eventId", eventId);
+      if (tourId) body.append("tourId", tourId);
 
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 45_000);
@@ -190,7 +200,7 @@ export function CoverImageField({
       setSource(null);
       onUploaded?.(nextUrl);
       // Never refresh on create wizard — remount wipes all form state.
-      if (refreshOnUpload && eventId) {
+      if (refreshOnUpload && (eventId || tourId)) {
         router.refresh();
       }
     } catch (e) {
@@ -203,6 +213,34 @@ export function CoverImageField({
       setUploading(false);
     }
   }
+
+  async function clearOwnCover() {
+    setError(null);
+    if (eventId || tourId) {
+      setUploading(true);
+      try {
+        const body = new FormData();
+        body.append("clear", "1");
+        if (eventId) body.append("eventId", eventId);
+        if (tourId) body.append("tourId", tourId);
+        const res = await fetch("/api/v1/admin/uploads/cover", { method: "POST", body });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error?.code ?? "CLEAR_FAILED");
+        setUrl("");
+        onCleared?.();
+        if (refreshOnUpload) router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Entfernen fehlgeschlagen");
+      } finally {
+        setUploading(false);
+      }
+      return;
+    }
+    setUrl("");
+    onCleared?.();
+  }
+
+  const inherited = Boolean(!url && inheritUrl);
 
   return (
     <div className="space-y-3 md:col-span-2">
@@ -219,14 +257,59 @@ export function CoverImageField({
           />
           <div className="min-w-0 flex-1">
             <p className="flex items-center gap-1.5 text-sm font-semibold text-[var(--tf-navy)]">
-              <Check className="h-4 w-4 text-[var(--tf-teal)]" /> Cover hochgeladen
+              <Check className="h-4 w-4 text-[var(--tf-teal)]" /> Eigenes Cover
+            </p>
+            <div className="mt-1 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="text-xs font-medium text-[var(--tf-teal)] underline"
+                onClick={() => fileRef.current?.click()}
+              >
+                Anderes Bild wählen
+              </button>
+              {inheritUrl ? (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[var(--tf-text-secondary)] underline"
+                  disabled={uploading}
+                  onClick={() => void clearOwnCover()}
+                >
+                  {inheritLabel} verwenden
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[var(--tf-text-secondary)] underline"
+                  disabled={uploading}
+                  onClick={() => void clearOwnCover()}
+                >
+                  Cover entfernen
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {inherited && !source ? (
+        <div className="flex items-center gap-3 rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={inheritUrl!}
+            alt=""
+            className="h-16 w-16 rounded-xl object-cover"
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[var(--tf-navy)]">{inheritLabel}</p>
+            <p className="text-xs text-[var(--tf-text-secondary)]">
+              Wird verwendet, solange kein eigenes Cover gesetzt ist.
             </p>
             <button
               type="button"
               className="mt-1 text-xs font-medium text-[var(--tf-teal)] underline"
               onClick={() => fileRef.current?.click()}
             >
-              Anderes Bild wählen
+              Abweichendes Cover für diesen Termin
             </button>
           </div>
         </div>
@@ -301,7 +384,7 @@ export function CoverImageField({
             </button>
           </div>
         </div>
-      ) : !url ? (
+      ) : !url && !inherited ? (
         <div className="space-y-2">
           <div
             role="button"

@@ -19,6 +19,7 @@ import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
 import { buildEventEmbedSnippet, getPublicAppUrl } from "@/lib/embed/public-url";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
+import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
 
@@ -58,6 +59,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     where: { id, organizationId: membership.organizationId },
     include: {
       location: true,
+      tour: { select: { id: true, name: true, coverImageUrl: true } },
       venuePlan: { select: { id: true, name: true, locationId: true } },
       ticketCategories: {
         orderBy: { sortOrder: "asc" },
@@ -67,7 +69,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   });
   if (!event) notFound();
 
-  const [report, locations, venuePlans, templates] = await Promise.all([
+  const [report, locations, venuePlans, templates, tours] = await Promise.all([
     getEventSalesReport(event.id),
     prisma.location.findMany({
       where: { organizationId: membership.organizationId },
@@ -93,7 +95,15 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           select: { id: true, name: true, priceGrossCents: true, capacity: true },
         })
       : Promise.resolve([]),
+    prisma.tour.findMany({
+      where: { organizationId: membership.organizationId },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
+
+  const displayCover = resolveEventCoverUrl(event);
+  const ownCover = Boolean(event.coverImageUrl?.trim());
 
   const planOptions = venuePlans.map((p) => ({
     id: p.id,
@@ -138,6 +148,17 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
                   {event.location.city ? `, ${event.location.city}` : ""}
                 </p>
               ) : null}
+              {event.tour ? (
+                <p>
+                  Tour:{" "}
+                  <Link
+                    href={`/admin/tours/${event.tour.id}`}
+                    className="font-medium text-[var(--tf-navy)] underline"
+                  >
+                    {event.tour.name}
+                  </Link>
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -174,19 +195,23 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Cover-Bild</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Links das aktuelle Cover — rechts kannst du ein neues Bild hochladen.
+            {event.tour
+              ? ownCover
+                ? "Dieses Termin hat ein eigenes Cover (Override)."
+                : "Kein Termin-Cover — es gilt das Tour-Plakat."
+              : "Links das aktuelle Cover — rechts kannst du ein neues Bild hochladen."}
           </p>
         </div>
         <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,240px)_1fr] lg:items-start">
           <div>
             <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-              Aktuell
+              Aktuell {ownCover ? "(Termin)" : event.tour?.coverImageUrl ? "(Tour)" : ""}
             </p>
             <div className="relative aspect-square w-full max-w-[240px] overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.04)]">
-              {event.coverImageUrl ? (
+              {displayCover ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={event.coverImageUrl}
+                  src={displayCover}
                   alt={`Cover ${event.name}`}
                   className="h-full w-full object-cover"
                 />
@@ -200,12 +225,14 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           {canWrite ? (
             <div className="min-w-0">
               <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-                Neues Cover
+                Cover festlegen
               </p>
               <CoverImageField
                 name="coverImageUrl"
                 initialUrl={event.coverImageUrl}
                 eventId={event.id}
+                inheritUrl={event.tour?.coverImageUrl}
+                inheritLabel="Tour-Plakat"
               />
             </div>
           ) : null}
@@ -316,6 +343,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             locations={locations}
             planOptions={planOptions}
             venuePlan={event.venuePlan}
+            tours={tours}
           />
         ) : (
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">

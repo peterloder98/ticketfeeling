@@ -5,29 +5,15 @@ import { Search } from "lucide-react";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { getDefaultOrganization } from "@/lib/commerce/org";
+import {
+  buildPublicListingCards,
+  remainingForCategories,
+} from "@/lib/commerce/public-listings";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Events" };
 
 type Props = { searchParams: Promise<{ q?: string }> };
-
-function remainingForEvent(
-  categories: {
-    capacity: number;
-    pools: { soldQuantity: number; heldQuantity: number; capacity: number }[];
-  }[],
-) {
-  let capacity = 0;
-  let remaining = 0;
-  for (const cat of categories) {
-    const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
-    const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
-    const cap = Math.max(cat.capacity, ...cat.pools.map((p) => p.capacity), 0);
-    capacity += cap;
-    remaining += Math.max(0, cap - sold - held);
-  }
-  return { capacity, remaining };
-}
 
 export default async function EventsPage({ searchParams }: Props) {
   const sp = await searchParams;
@@ -46,6 +32,7 @@ export default async function EventsPage({ searchParams }: Props) {
               { subtitle: { contains: q, mode: "insensitive" } },
               { location: { name: { contains: q, mode: "insensitive" } } },
               { location: { city: { contains: q, mode: "insensitive" } } },
+              { tour: { name: { contains: q, mode: "insensitive" } } },
               {
                 artists: {
                   some: { artist: { name: { contains: q, mode: "insensitive" } } },
@@ -57,6 +44,16 @@ export default async function EventsPage({ searchParams }: Props) {
     },
     include: {
       location: true,
+      tour: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          coverImageUrl: true,
+          description: true,
+          visibility: true,
+        },
+      },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
         include: { pools: true },
@@ -71,6 +68,8 @@ export default async function EventsPage({ searchParams }: Props) {
     },
     orderBy: { eventStartsAt: "asc" },
   });
+
+  const listings = buildPublicListingCards(events);
 
   return (
     <div className="tf-container py-8 md:py-10">
@@ -96,12 +95,15 @@ export default async function EventsPage({ searchParams }: Props) {
       </form>
 
       <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {events.map((event) => {
-          const { remaining, capacity } = remainingForEvent(event.ticketCategories);
-          const cheapest = event.ticketCategories[0];
-          const priced = cheapest
+        {listings.map((card) => {
+          const { remaining, capacity } = remainingForCategories(card.ticketCategories);
+          const cheapest = card.ticketCategories.reduce(
+            (min, c) => Math.min(min, c.priceGrossCents),
+            Number.POSITIVE_INFINITY,
+          );
+          const priced = Number.isFinite(cheapest)
             ? formatCustomerPriceLabel({
-                ticketGrossCents: cheapest.priceGrossCents,
+                ticketGrossCents: cheapest,
                 feeConfig,
                 formatEuro: formatEuroFromCents,
                 prefix: "ab",
@@ -109,32 +111,30 @@ export default async function EventsPage({ searchParams }: Props) {
             : null;
           return (
             <EventCard
-              key={event.id}
+              key={card.key}
               event={{
-                id: event.id,
-                slug: event.slug,
-                name: event.name,
-                subtitle: event.subtitle,
-                status: event.status,
-                eventStartsAt: event.eventStartsAt,
-                locationName: event.location?.name,
-                locationCity: event.location?.city,
-                coverImageUrl: event.coverImageUrl,
+                id: card.key,
+                slug: card.key,
+                name: card.name,
+                status: card.status,
+                whenLabel: card.whenLabel,
+                locationName: card.locationName,
+                locationCity: card.locationCity,
+                coverImageUrl: card.coverImageUrl,
                 priceLabel: priced?.totalLabel ?? null,
                 priceNote: priced?.surchargeLabel || null,
                 remainingTickets: remaining,
                 capacity,
-                showRemainingAvailability: event.showRemainingAvailability,
-                artists: event.artists.map((a) => ({
-                  name: a.artist.name,
-                  imageUrl: a.artist.profileImageUrl,
-                })),
+                showRemainingAvailability: card.showRemainingAvailability,
+                artists: card.artists,
+                href: card.href,
+                ctaLabel: card.ctaLabel,
               }}
             />
           );
         })}
       </div>
-      {events.length === 0 ? (
+      {listings.length === 0 ? (
         <p className="mt-10 text-base text-[var(--tf-text-secondary)]">
           Keine Treffer{q ? ` für „${q}“` : ""}. Versuche einen anderen Suchbegriff.
         </p>

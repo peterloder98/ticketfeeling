@@ -16,12 +16,14 @@ type PlanOpt = {
   seatCapacity: number;
   sizeLabel: string;
 };
+type TourOpt = { id: string; name: string };
 
 export function EventEditForm({
   event,
   locations,
   planOptions,
   venuePlan,
+  tours,
 }: {
   event: {
     id: string;
@@ -29,6 +31,7 @@ export function EventEditForm({
     subtitle: string | null;
     slug: string;
     status: string;
+    tourId: string | null;
     shortDescription: string | null;
     description: string | null;
     showRemainingAvailability: boolean;
@@ -47,6 +50,7 @@ export function EventEditForm({
   locations: LocationOpt[];
   planOptions: PlanOpt[];
   venuePlan: { id: string; name: string } | null;
+  tours: TourOpt[];
 }) {
   const [startsAt, setStartsAt] = useState(toDatetimeLocalValue(event.eventStartsAt));
   const [endsAt, setEndsAt] = useState(toDatetimeLocalValue(event.eventEndsAt));
@@ -96,6 +100,21 @@ export function EventEditForm({
         <span className="text-xs text-[var(--tf-text-secondary)]">
           Kurzname in der Web-Adresse, z. B.{" "}
           <span className="font-medium text-[var(--tf-navy)]">/event/{event.slug}</span>
+        </span>
+      </label>
+
+      <label className="grid gap-1 md:col-span-2">
+        <span className="font-medium">Tour</span>
+        <select name="tourId" className="tf-input" defaultValue={event.tourId ?? ""}>
+          <option value="">Kein Tour-Termin (einzelnes Event)</option>
+          {tours.map((tour) => (
+            <option key={tour.id} value={tour.id}>
+              {tour.name}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-[var(--tf-text-secondary)]">
+          Zugehörigkeit zur Gesamttour. Ohne eigenes Cover gilt das Tour-Plakat.
         </span>
       </label>
 

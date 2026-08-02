@@ -14,6 +14,7 @@ import {
 import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { categoryNeedsSeats } from "@/lib/seating/types";
+import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
     where: { slug },
     include: {
       location: true,
+      tour: { select: { coverImageUrl: true } },
       organization: { select: { name: true, settings: true } },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
@@ -40,6 +42,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
     },
   });
   if (!event) notFound();
+
+  const coverImageUrl = resolveEventCoverUrl(event);
 
   const feeConfig = resolveActivePlatformFeeConfig(event.organization.settings?.platformFeeConfig);
   const { isEventSaleOpen } = await import("@/lib/commerce/event-sale");
@@ -111,7 +115,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
           <div className="flex flex-col sm:flex-row sm:items-center">
             <div className="relative mx-auto aspect-square w-[11.5rem] shrink-0 bg-[var(--tf-navy)] sm:mx-0 sm:w-[13rem] md:w-[14.5rem]">
               <ResponsiveImage
-                src={event.coverImageUrl}
+                src={coverImageUrl}
                 alt=""
                 className="absolute inset-0 h-full w-full object-cover"
                 fallback="event"

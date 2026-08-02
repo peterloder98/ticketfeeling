@@ -14,6 +14,8 @@ export type EventCardData = {
   subtitle?: string | null;
   status: string;
   eventStartsAt?: Date | string | null;
+  /** Override datetime line (e.g. tour: "3 Termine · …") */
+  whenLabel?: string | null;
   locationName?: string | null;
   locationCity?: string | null;
   coverImageUrl?: string | null;
@@ -25,6 +27,9 @@ export type EventCardData = {
   /** When false, scarcity badges based on remaining counts are hidden */
   showRemainingAvailability?: boolean;
   artists?: EventCardArtist[];
+  /** Defaults to /event/[slug] */
+  href?: string;
+  ctaLabel?: string;
 };
 
 function urgencyBadge(
@@ -58,18 +63,23 @@ function urgencyBadge(
 }
 
 export function EventCard({ event }: { event: EventCardData }) {
-  const when = event.eventStartsAt
-    ? new Date(event.eventStartsAt).toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
-        weekday: "short",
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "Termin folgt";
-  const place = [event.locationName, event.locationCity].filter(Boolean).join(", ");
+  const when =
+    event.whenLabel ??
+    (event.eventStartsAt
+      ? new Date(event.eventStartsAt).toLocaleString("de-DE", {
+          timeZone: "Europe/Berlin",
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "Termin folgt");
+  const place =
+    event.locationCity === "Mehrere Orte"
+      ? "Mehrere Orte"
+      : [event.locationName, event.locationCity].filter(Boolean).join(", ");
   const badge = urgencyBadge(
     event.remainingTickets,
     event.capacity,
@@ -77,10 +87,12 @@ export function EventCard({ event }: { event: EventCardData }) {
     Boolean(event.showRemainingAvailability),
   );
   const artists = event.artists?.slice(0, 4) ?? [];
+  const href = event.href ?? `/event/${event.slug}`;
+  const cta = event.ctaLabel ?? "Event ansehen";
 
   return (
     <Link
-      href={`/event/${event.slug}`}
+      href={href}
       className="group flex h-full flex-col overflow-hidden rounded-[24px] border border-[var(--tf-line)] bg-white shadow-[0_4px_16px_rgba(15,39,71,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_10px_28px_rgba(15,39,71,0.1)]"
     >
       <div className="relative aspect-square overflow-hidden bg-[var(--tf-navy)]">
@@ -101,14 +113,14 @@ export function EventCard({ event }: { event: EventCardData }) {
         </h3>
 
         <div className="space-y-1.5 text-sm text-[var(--tf-text-secondary)]">
-          <p className="inline-flex items-start gap-2">
+          <p className="flex w-full items-start gap-2">
             <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-            <span>{when}</span>
+            <span className="min-w-0">{when}</span>
           </p>
           {place ? (
-            <p className="inline-flex items-start gap-2">
+            <p className="flex w-full items-start gap-2">
               <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-              <span className="line-clamp-2">{place}</span>
+              <span className="min-w-0 line-clamp-2">{place}</span>
             </p>
           ) : null}
         </div>
@@ -130,7 +142,7 @@ export function EventCard({ event }: { event: EventCardData }) {
               </span>
             ) : null}
           </div>
-          <span className="tf-btn tf-btn-primary !min-h-11 !px-4 text-sm">Event ansehen</span>
+          <span className="tf-btn tf-btn-primary !min-h-11 !px-4 text-sm">{cta}</span>
         </div>
       </div>
     </Link>

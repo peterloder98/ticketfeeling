@@ -12,7 +12,7 @@ export default function KatalogHubPage() {
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Katalog</h1>
         <p className="mt-2 text-[var(--tf-text-secondary)]">
-          Vorlagen, Künstler und Locations.
+          Vorlagen, Künstler, Locations und Touren.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.katalog} />

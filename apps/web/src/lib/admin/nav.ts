@@ -19,7 +19,13 @@ export const ADMIN_TOP_NAV: AdminNavItem[] = [
   {
     href: "/admin/katalog",
     label: "Katalog",
-    match: ["/admin/katalog", "/admin/catalog", "/admin/artists", "/admin/locations"],
+    match: [
+      "/admin/katalog",
+      "/admin/catalog",
+      "/admin/artists",
+      "/admin/locations",
+      "/admin/tours",
+    ],
   },
   {
     href: "/admin/einstellungen",
@@ -57,6 +63,11 @@ export const ADMIN_SUBNAV = {
     },
     { href: "/admin/artists", label: "Künstler", description: "Line-up & Profile" },
     { href: "/admin/locations", label: "Locations", description: "Orte & Räume" },
+    {
+      href: "/admin/tours",
+      label: "Touren",
+      description: "Tour anlegen, dann Termine",
+    },
   ] satisfies AdminSubNavItem[],
   einstellungen: [
     { href: "/admin/einstellungen", label: "Übersicht", description: "Einstellungen im Überblick" },

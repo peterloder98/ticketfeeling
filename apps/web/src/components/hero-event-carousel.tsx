@@ -7,6 +7,8 @@ import { ResponsiveImage } from "@/components/responsive-image";
 export type HeroSlide = {
   id: string;
   slug: string;
+  /** Prefer over /event/[slug] when set (e.g. /tour/…) */
+  href?: string;
   name: string;
   whenLabel: string | null;
   locationLabel: string | null;
@@ -52,7 +54,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
   return (
     <div className="relative mx-auto w-full max-w-[444px]">
       <Link
-        href={`/event/${slide.slug}`}
+        href={slide.href ?? `/event/${slide.slug}`}
         className="relative block aspect-square w-full overflow-hidden rounded-[28px] border border-[var(--tf-line)] bg-[var(--tf-navy)] shadow-[0_12px_40px_rgba(15,39,71,0.12)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]"
         aria-label={`${slide.name} ansehen`}
       >
@@ -65,10 +67,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
             aria-hidden={i !== index}
           >
             <ResponsiveImage
-              src={
-                s.coverImageUrl ||
-                "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=80"
-              }
+              src={s.coverImageUrl}
               alt={`Cover: ${s.name}`}
               className="h-full w-full"
               fallback="event"

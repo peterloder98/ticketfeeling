@@ -34,6 +34,13 @@ export type WizardCategoryTemplate = {
   maxPerOrder: number;
 };
 
+export type WizardTour = {
+  id: string;
+  name: string;
+  description: string | null;
+  coverImageUrl: string | null;
+};
+
 type CategoryRow = {
   key: string;
   name: string;
@@ -67,18 +74,33 @@ function newCategoryRow(partial?: Partial<CategoryRow>): CategoryRow {
 type Props = {
   locations: WizardLocation[];
   templates: WizardCategoryTemplate[];
+  tours?: WizardTour[];
+  initialTourId?: string;
   action: (formData: FormData) => Promise<void>;
 };
 
-export function CreateEventWizard({ locations, templates, action }: Props) {
+export function CreateEventWizard({
+  locations,
+  templates,
+  tours = [],
+  initialTourId = "",
+  action,
+}: Props) {
   const [hydrated, setHydrated] = useState(false);
   const [step, setStep] = useState(0);
-  const [name, setName] = useState("");
+  const [tourId, setTourId] = useState(initialTourId);
+  const [name, setName] = useState(() => {
+    const t = tours.find((x) => x.id === initialTourId);
+    return t?.name ?? "";
+  });
   const [slug, setSlug] = useState("");
   const [slugManual, setSlugManual] = useState(false);
   const [subtitle, setSubtitle] = useState("");
   const [shortDescription, setShortDescription] = useState("");
-  const [description, setDescription] = useState("");
+  const [description, setDescription] = useState(() => {
+    const t = tours.find((x) => x.id === initialTourId);
+    return t?.description ?? "";
+  });
   const [status, setStatus] = useState<(typeof CREATE_EVENT_STATUSES)[number]>("draft");
   const [eventStartsAt, setEventStartsAt] = useState("");
   const [eventEndsAt, setEventEndsAt] = useState("");
@@ -90,6 +112,11 @@ export function CreateEventWizard({ locations, templates, action }: Props) {
   const [feeTaxMode, setFeeTaxMode] = useState("inherit");
   const [feeTaxPercent, setFeeTaxPercent] = useState("7");
   const [coverImageUrl, setCoverImageUrl] = useState("");
+
+  const selectedTour = useMemo(
+    () => tours.find((t) => t.id === tourId) ?? null,
+    [tours, tourId],
+  );
 
   const [locationMode, setLocationMode] = useState<"existing" | "new">(
     locations.length > 0 ? "existing" : "new",
@@ -144,6 +171,8 @@ export function CreateEventWizard({ locations, templates, action }: Props) {
         if (typeof draft.feeTaxMode === "string") setFeeTaxMode(draft.feeTaxMode);
         if (typeof draft.feeTaxPercent === "string") setFeeTaxPercent(draft.feeTaxPercent);
         if (typeof draft.coverImageUrl === "string") setCoverImageUrl(draft.coverImageUrl);
+        if (initialTourId) setTourId(initialTourId);
+        else if (typeof draft.tourId === "string") setTourId(draft.tourId);
         if (draft.locationMode === "existing" || draft.locationMode === "new") {
           setLocationMode(draft.locationMode);
         }
@@ -189,6 +218,7 @@ export function CreateEventWizard({ locations, templates, action }: Props) {
       feeTaxMode,
       feeTaxPercent,
       coverImageUrl,
+      tourId,
       locationMode,
       locationId,
       venuePlanId,
@@ -227,6 +257,7 @@ export function CreateEventWizard({ locations, templates, action }: Props) {
     feeTaxMode,
     feeTaxPercent,
     coverImageUrl,
+    tourId,
     locationMode,
     locationId,
     venuePlanId,
@@ -377,10 +408,52 @@ export function CreateEventWizard({ locations, templates, action }: Props) {
       {/* Step 1 — Inhalte */}
       <section className={step === 0 ? "space-y-4" : "hidden"}>
         <div className="tf-card grid gap-3 text-sm">
+          {tours.length > 0 ? (
+            <label className="grid gap-1">
+              <span className="font-medium">Tour (optional)</span>
+              <span className="text-xs text-[var(--tf-text-secondary)]">
+                Gesamttour mit mehreren Terminen — Cover kann vom Tour-Plakat kommen.
+              </span>
+              <select
+                name="tourId"
+                className="tf-input"
+                value={tourId}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTourId(next);
+                  const tour = tours.find((t) => t.id === next);
+                  if (tour) {
+                    if (!name.trim()) {
+                      setName(tour.name);
+                      if (!slugManual) setSlug(slugify(tour.name));
+                    }
+                    if (!description.trim() && tour.description) {
+                      setDescription(tour.description);
+                    }
+                    if (coverImageUrl) setCoverImageUrl("");
+                  }
+                }}
+              >
+                <option value="">Kein Tour-Termin (einzelnes Event)</option>
+                {tours.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <input type="hidden" name="tourId" value="" />
+          )}
+
           <label className="grid gap-1">
-            <span className="font-medium">Event-Titel</span>
+            <span className="font-medium">
+              {tourId ? "Titel / Termin-Name" : "Event-Titel"}
+            </span>
             <span className="text-xs text-[var(--tf-text-secondary)]">
-              Erscheint groß auf der Eventseite.
+              {tourId
+                ? "Oft Tourname + Ort, z. B. „Weihnachtstraum · Ergolding“."
+                : "Erscheint groß auf der Eventseite."}
             </span>
             <input
               name="name"
@@ -536,8 +609,11 @@ export function CreateEventWizard({ locations, templates, action }: Props) {
           <CoverImageField
             name="coverImageUrl"
             initialUrl={coverImageUrl || null}
+            inheritUrl={selectedTour?.coverImageUrl}
+            inheritLabel="Tour-Plakat"
             refreshOnUpload={false}
             onUploaded={setCoverImageUrl}
+            onCleared={() => setCoverImageUrl("")}
           />
 
           <details className="rounded-xl border border-[var(--tf-line)] p-3">

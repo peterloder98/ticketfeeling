@@ -59,6 +59,8 @@ export async function createEventAction(formData: FormData) {
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
   const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
+  const tourIdRaw = String(formData.get("tourId") ?? "").trim();
+  let tourId: string | null = tourIdRaw || null;
 
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   const eventEndsAt = parseDt(formData, "eventEndsAt");
@@ -117,6 +119,14 @@ export async function createEventAction(formData: FormData) {
     where: { organizationId: membership.organizationId, slug },
   });
   if (existingSlug) throw new Error("SLUG_TAKEN");
+
+  if (tourId) {
+    const tour = await prisma.tour.findFirst({
+      where: { id: tourId, organizationId: membership.organizationId },
+      select: { id: true },
+    });
+    if (!tour) throw new Error("TOUR_NOT_FOUND");
+  }
 
   const taxRate =
     (await prisma.taxRate.findFirst({
@@ -221,6 +231,7 @@ export async function createEventAction(formData: FormData) {
     const created = await tx.event.create({
       data: {
         organizationId: membership.organizationId,
+        tourId,
         name,
         subtitle,
         slug,
@@ -383,6 +394,8 @@ export async function updateEventAction(formData: FormData) {
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
   const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
+  const tourIdRaw = String(formData.get("tourId") ?? "").trim();
+  let tourId: string | null = tourIdRaw || null;
   const ticketTaxPercent = Number(
     String(formData.get("ticketTaxPercent") ?? "7").replace(",", "."),
   );
@@ -409,12 +422,21 @@ export async function updateEventAction(formData: FormData) {
   });
   if (slugTaken) throw new Error("SLUG_TAKEN");
 
+  if (tourId) {
+    const tour = await prisma.tour.findFirst({
+      where: { id: tourId, organizationId: membership.organizationId },
+      select: { id: true },
+    });
+    if (!tour) throw new Error("TOUR_NOT_FOUND");
+  }
+
   await prisma.event.update({
     where: { id: event.id },
     data: {
       name,
       slug,
       status,
+      tourId,
       locationId,
       venuePlanId,
       seatingBookingMode,

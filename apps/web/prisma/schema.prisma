@@ -116,8 +116,25 @@ model Organization {
   boxOfficeSessions BoxOfficeSession[]
   boxOfficeInvites BoxOfficeInvite[]
   boxOfficeSellerGrants BoxOfficeSellerGrant[]
+  uploadedAssets UploadedAsset[]
 
   @@map("organizations")
+}
+
+/// Durable binary uploads (covers etc.) — used instead of local filesystem on Vercel.
+model UploadedAsset {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind           String   @default("cover")
+  mimeType       String   @map("mime_type")
+  byteSize       Int      @map("byte_size")
+  data           Bytes
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, kind])
+  @@map("uploaded_assets")
 }
 
 /// Wiederverwendbare Vorlagen — echte Kategorien hängen immer am Event.

@@ -11,7 +11,9 @@ import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Neues Event" };
 
-export default async function NewEventPage() {
+type Props = { searchParams: Promise<{ tourId?: string }> };
+
+export default async function NewEventPage({ searchParams }: Props) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
@@ -24,7 +26,9 @@ export default async function NewEventPage() {
   );
   if (!canWrite) return <p className="text-[var(--danger)]">Keine Berechtigung (events:write).</p>;
 
-  const [locationsRaw, templates] = await Promise.all([
+  const { tourId: tourIdParam } = await searchParams;
+
+  const [locationsRaw, templates, tours] = await Promise.all([
     prisma.location.findMany({
       where: { organizationId: membership.organizationId },
       select: {
@@ -57,6 +61,16 @@ export default async function NewEventPage() {
           },
         })
       : Promise.resolve([]),
+    prisma.tour.findMany({
+      where: { organizationId: membership.organizationId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        coverImageUrl: true,
+      },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const locations = locationsRaw.map((loc) => ({
@@ -71,24 +85,32 @@ export default async function NewEventPage() {
     })),
   }));
 
+  const initialTourId =
+    tourIdParam && tours.some((t) => t.id === tourIdParam) ? tourIdParam : "";
+  const fromTour = Boolean(initialTourId);
+
   return (
     <div className="max-w-3xl">
       <Link
-        href="/admin/events"
+        href={fromTour ? `/admin/tours/${initialTourId}` : "/admin/events"}
         className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
       >
-        ← Zurück zur Event-Liste
+        {fromTour ? "← Zurück zur Tour" : "← Zurück zur Event-Liste"}
       </Link>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
-        Neues Event
+        {fromTour ? "Neuen Termin anlegen" : "Neues Event"}
       </h1>
       <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-        In vier Schritten: Inhalte, Ort (optional Saalplan), Tickets — und fertig.
+        {fromTour
+          ? "Termin einer Tour: Ort & Datum festlegen — Cover übernimmt das Tour-Plakat, sofern du nichts Abweichendes setzt."
+          : "In vier Schritten: Inhalte, Ort (optional Saalplan), Tickets — und fertig. Für Mehrfachtermine zuerst unter Touren anlegen."}
       </p>
 
       <CreateEventWizard
         locations={locations}
         templates={templates}
+        tours={tours}
+        initialTourId={initialTourId || undefined}
         action={createEventAction}
       />
     </div>

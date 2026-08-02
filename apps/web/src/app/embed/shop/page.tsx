@@ -8,6 +8,7 @@ import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { Calendar, MapPin } from "lucide-react";
+import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Events & Tickets" };
@@ -22,6 +23,7 @@ export default async function EmbedShopPage() {
     },
     include: {
       location: true,
+      tour: { select: { coverImageUrl: true } },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
         orderBy: { priceGrossCents: "asc" },
@@ -77,7 +79,7 @@ export default async function EmbedShopPage() {
               >
                 <div className="relative h-28 w-28 shrink-0 bg-[var(--tf-navy)] sm:h-32 sm:w-32">
                   <ResponsiveImage
-                    src={event.coverImageUrl}
+                    src={resolveEventCoverUrl(event)}
                     alt=""
                     className="h-full w-full object-cover"
                     fallback="event"
