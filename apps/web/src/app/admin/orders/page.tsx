@@ -80,8 +80,8 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
               : "Online-Selbstkauf und Tageskasse getrennt gekennzeichnet."}
           </p>
         </div>
-        <Link href="/kasse/verkaeufe" className="tf-btn tf-btn-secondary !py-2 text-sm">
-          Tageskasse-Liste
+        <Link href="/kasse#verkaeufe" className="tf-btn tf-btn-secondary !py-2 text-sm">
+          Tageskasse
         </Link>
       </div>
 

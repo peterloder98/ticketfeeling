@@ -52,8 +52,7 @@ export type AdminSubNavItem = {
 export const ADMIN_SUBNAV = {
   verkauf: [
     { href: "/admin/verkauf", label: "Übersicht", description: "Alle Verkaufswerkzeuge" },
-    { href: "/kasse", label: "Tageskasse", description: "Vor-Ort-Verkauf" },
-    { href: "/kasse/verkaeufe", label: "Kasse-Verkäufe", description: "Verkaufshistorie" },
+    { href: "/kasse", label: "Tageskasse", description: "Verkauf & alle Verkäufe" },
     { href: "/admin/partner", label: "Vorverkaufs-Partner", description: "Partner & Einladungen" },
     { href: "/scanner", label: "Einlass-Scanner", description: "Check-in vor Ort" },
     { href: "/admin/discounts", label: "Rabatte", description: "Codes & Aktionen" },
@@ -143,7 +142,11 @@ export function isAdminSubnavActive(pathname: string, href: string) {
     return pathname === href;
   }
   if (href === "/kasse") {
-    return pathname === "/kasse" || pathname.startsWith("/kasse/beleg");
+    return (
+      pathname === "/kasse" ||
+      pathname.startsWith("/kasse/beleg") ||
+      pathname.startsWith("/kasse/verkaeufe")
+    );
   }
   return pathname === href || pathname.startsWith(`${href}/`);
 }

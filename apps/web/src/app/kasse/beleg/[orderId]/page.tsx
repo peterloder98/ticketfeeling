@@ -226,12 +226,12 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
         <Link
           href={
             eventIdForList
-              ? `/kasse/verkaeufe?eventId=${eventIdForList}`
-              : "/kasse/verkaeufe"
+              ? `/kasse?eventId=${eventIdForList}#verkaeufe`
+              : "/kasse#verkaeufe"
           }
           className="tf-btn tf-btn-secondary"
         >
-          Event-Übersicht
+          Zur Übersicht
         </Link>
       </div>
     </div>

@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       orderId: result.orderId,
       detailPath: `/kasse/beleg/${result.orderId}`,
-      listPath: "/kasse/verkaeufe",
+      listPath: "/kasse#verkaeufe",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";

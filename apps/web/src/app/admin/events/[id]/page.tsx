@@ -182,14 +182,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             <Link href="/admin/catalog" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
               Kategorie-Vorlagen
             </Link>
-            <Link href="/kasse" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
-              Tageskasse
-            </Link>
             <Link
-              href={`/kasse/verkaeufe?eventId=${event.id}`}
+              href={`/kasse?eventId=${event.id}#verkaeufe`}
               className="tf-btn tf-btn-secondary !min-h-10 text-sm"
             >
-              Kasse-Verkäufe
+              Tageskasse
             </Link>
           </div>
         </div>
