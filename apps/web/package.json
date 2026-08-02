@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "node ./scripts/ensure-lightningcss.cjs && prisma generate && next build",
+    "build": "node ./scripts/ensure-lightningcss.cjs && prisma generate && node ./scripts/ensure-uploaded-assets.cjs && next build",
     "start": "next start",
     "lint": "next lint",
     "db:generate": "prisma generate",

@@ -121,6 +121,16 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";
-    return NextResponse.json({ error: { code: message } }, { status: 400 });
+    console.error("[cover upload]", message);
+    return NextResponse.json(
+      {
+        error: {
+          code: message.includes("ENOENT") || message.includes("mkdir")
+            ? "COVER_STORAGE_UNAVAILABLE"
+            : message,
+        },
+      },
+      { status: 400 },
+    );
   }
 }
