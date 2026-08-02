@@ -67,7 +67,10 @@ export function BoxOfficeForm({
   const [error, setError] = useState<string | null>(null);
 
   const selectedEvent = events.find((e) => e.id === eventId) ?? null;
-  const categories = selectedEvent?.categories ?? [];
+  const categories = useMemo(
+    () => selectedEvent?.categories ?? [],
+    [selectedEvent?.categories],
+  );
 
   const lineItems = useMemo(
     () =>
