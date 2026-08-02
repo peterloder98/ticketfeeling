@@ -294,6 +294,164 @@ export function buildTicketsResentMail(input: {
   };
 }
 
+export function buildSepaProcessingMail(input: {
+  firstName?: string | null;
+  orderNumber: string;
+  orderId: string;
+  eventName: string;
+  whenLabel?: string | null;
+  seatsLabel?: string | null;
+  totalLabel: string;
+  ticketsAfterConfirm: boolean;
+}): TicketMailContent {
+  const name = input.firstName?.trim();
+  const greeting = name ? `Hallo ${name},` : "Hallo,";
+  const orderUrl = `${appBaseUrl()}/konto/bestellung/${input.orderId}`;
+  const ticketHint = input.ticketsAfterConfirm
+    ? "Dein Ticket erhältst du per E-Mail, sobald die Zahlung bestätigt wurde."
+    : "Wir bereiten dein Ticket vor und senden es dir in Kürze zu.";
+
+  const lines = [
+    greeting,
+    "",
+    "vielen Dank für deine Bestellung. Der Betrag wird per Lastschrift von deinem Bankkonto eingezogen.",
+    "",
+    `Bestellnummer: ${input.orderNumber}`,
+    `Event: ${input.eventName}`,
+    ...(input.whenLabel ? [`Termin: ${input.whenLabel}`] : []),
+    ...(input.seatsLabel ? [`Plätze: ${input.seatsLabel}`] : []),
+    `Gesamtbetrag: ${input.totalLabel}`,
+    "Zahlungsart: Lastschrift vom Bankkonto",
+    "",
+    "Die Zahlung wird noch verarbeitet — das ist bei Lastschrift normal und kann einige Werktage dauern.",
+    ticketHint,
+    "",
+    `Bestellung ansehen: ${orderUrl}`,
+    "",
+    "Bei Fragen erreichst du uns über ticketfeeling.de/hilfe oder per Antwort auf diese E-Mail.",
+    "Dein Ticketfeeling-Team",
+  ];
+
+  return {
+    subject: "Deine Bestellung bei Ticketfeeling wird verarbeitet",
+    text: lines.join("\n"),
+    html: wrapHtml([
+      escapeHtml(greeting),
+      "vielen Dank für deine Bestellung. Der Betrag wird per Lastschrift von deinem Bankkonto eingezogen.",
+      `<strong>Bestellnummer ${escapeHtml(input.orderNumber)}</strong><br/>
+       ${escapeHtml(input.eventName)}${
+         input.whenLabel ? `<br/>${escapeHtml(input.whenLabel)}` : ""
+       }<br/>
+       Gesamtbetrag ${escapeHtml(input.totalLabel)} · Lastschrift`,
+      "Die Zahlung wird noch verarbeitet — das ist bei Lastschrift normal.",
+      escapeHtml(ticketHint),
+      `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung ansehen</a>`,
+      "Dein Ticketfeeling-Team",
+    ]),
+  };
+}
+
+export function buildSepaSucceededMail(input: {
+  firstName?: string | null;
+  eventName: string;
+  whenLabel: string;
+  eventDateLabel?: string | null;
+  locationLabel?: string | null;
+  orderId: string;
+  orderNumber: string;
+  ticketCount: number;
+  hasAttachment?: boolean;
+}): TicketMailContent {
+  const base = buildOrderPaidTicketsMail(input);
+  return {
+    ...base,
+    subject: "Deine Zahlung ist eingegangen – hier ist dein Ticket",
+  };
+}
+
+export function buildSepaFailedMail(input: {
+  firstName?: string | null;
+  orderNumber: string;
+  orderId: string;
+  eventName: string;
+  reservedUntilLabel?: string | null;
+  payUrl: string;
+}): TicketMailContent {
+  const name = input.firstName?.trim();
+  const greeting = name ? `Hallo ${name},` : "Hallo,";
+  const lines = [
+    greeting,
+    "",
+    "leider konnte die Lastschrift für deine Bestellung nicht abgeschlossen werden.",
+    "",
+    `Bestellnummer: ${input.orderNumber}`,
+    `Event: ${input.eventName}`,
+    "",
+    "Deine Plätze bleiben vorerst reserviert. Du kannst die Zahlung mit einer anderen verfügbaren Zahlungsart erneut versuchen:",
+    input.payUrl,
+    ...(input.reservedUntilLabel
+      ? [``, `Reservierung gültig bis: ${input.reservedUntilLabel}`]
+      : []),
+    "",
+    "Bei Fragen melde dich gern über ticketfeeling.de/hilfe.",
+    "Dein Ticketfeeling-Team",
+  ];
+
+  return {
+    subject: "Deine Zahlung konnte nicht abgeschlossen werden",
+    text: lines.join("\n"),
+    html: wrapHtml([
+      escapeHtml(greeting),
+      "leider konnte die Lastschrift für deine Bestellung nicht abgeschlossen werden.",
+      `<strong>Bestellnummer ${escapeHtml(input.orderNumber)}</strong><br/>${escapeHtml(input.eventName)}`,
+      "Deine Plätze bleiben vorerst reserviert. Bitte schließe die Zahlung mit einer verfügbaren Zahlungsart ab.",
+      `<a href="${escapeHtml(input.payUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Erneut bezahlen</a>`,
+      input.reservedUntilLabel
+        ? `Reservierung gültig bis: ${escapeHtml(input.reservedUntilLabel)}`
+        : "",
+      "Dein Ticketfeeling-Team",
+    ]),
+  };
+}
+
+export function buildSepaDisputeMail(input: {
+  firstName?: string | null;
+  orderNumber: string;
+  orderId: string;
+  eventName: string;
+  payUrl: string;
+}): TicketMailContent {
+  const name = input.firstName?.trim();
+  const greeting = name ? `Hallo ${name},` : "Hallo,";
+  const lines = [
+    greeting,
+    "",
+    "zu deiner Ticketzahlung liegt eine wichtige Information vor: Die Lastschrift wurde zurückgegeben oder konnte nicht eingezogen werden.",
+    "",
+    `Bestellnummer: ${input.orderNumber}`,
+    `Event: ${input.eventName}`,
+    "",
+    "Dein Ticket ist deshalb derzeit nicht gültig. Bitte begleiche den offenen Betrag erneut, damit wir dir wieder Zugang zum Event freischalten können:",
+    input.payUrl,
+    "",
+    "Wir helfen dir gern — schreib uns über ticketfeeling.de/hilfe oder antworte auf diese E-Mail.",
+    "Dein Ticketfeeling-Team",
+  ];
+
+  return {
+    subject: "Wichtige Information zu deiner Ticketzahlung",
+    text: lines.join("\n"),
+    html: wrapHtml([
+      escapeHtml(greeting),
+      "zu deiner Ticketzahlung liegt eine wichtige Information vor: Die Lastschrift wurde zurückgegeben oder konnte nicht eingezogen werden.",
+      `<strong>Bestellnummer ${escapeHtml(input.orderNumber)}</strong><br/>${escapeHtml(input.eventName)}`,
+      "Dein Ticket ist deshalb derzeit nicht gültig. Bitte begleiche den offenen Betrag erneut.",
+      `<a href="${escapeHtml(input.payUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Zahlung nachholen</a>`,
+      "Dein Ticketfeeling-Team",
+    ]),
+  };
+}
+
 export function buildBoxOfficeTicketsMail(input: {
   firstName?: string | null;
   lastName?: string | null;

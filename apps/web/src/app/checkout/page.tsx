@@ -13,7 +13,9 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
   buildCheckoutPaymentOptions,
   parsePaymentFeeConfig,
+  parsePaymentUiConfig,
 } from "@/lib/commerce/payment-fees";
+import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 
@@ -28,15 +30,14 @@ export default async function CheckoutPage() {
   const org = await getDefaultOrganization();
   const seller = buildSellerIdentity(org!, org?.settings);
   const feeConfig = parsePaymentFeeConfig(org?.settings?.paymentFeeConfig);
-  const soonestEventMs = cart.items.reduce((min, item) => {
-    const at = item.category.event.eventStartsAt?.getTime();
-    if (at == null) return min;
-    return min == null ? at : Math.min(min, at);
-  }, null as number | null);
-  const sepaMinDays = org?.settings?.sepaMinDaysBeforeEvent ?? 14;
-  const sepaDisabled =
-    soonestEventMs != null &&
-    soonestEventMs - Date.now() < sepaMinDays * 24 * 60 * 60 * 1000;
+  const uiConfig = parsePaymentUiConfig(org?.settings?.paymentUiConfig);
+  const sepaDisabled = isSepaDisabledForCheckout({
+    orgSepaMinDays: org?.settings?.sepaMinDaysBeforeEvent ?? uiConfig.sepaMinDaysBeforeEvent,
+    items: cart.items.map((item) => ({
+      eventStartsAt: item.category.event.eventStartsAt,
+      eventSepaMinDays: item.category.event.sepaMinDaysBeforeEvent,
+    })),
+  });
   const stripeLiveConfigured = Boolean(
     process.env.STRIPE_SECRET_KEY &&
       process.env.STRIPE_PUBLISHABLE_KEY &&
@@ -45,10 +46,17 @@ export default async function CheckoutPage() {
   const paymentOptions = buildCheckoutPaymentOptions({
     customerTotalCents: summary.grossCents,
     config: feeConfig,
+    ui: uiConfig,
     stripeLiveConfigured,
     allowDevTestCheckout: getPaymentProvider().key === "dev",
     sepaDisabled,
   });
+  const feePercentLabel =
+    summary.administrationFeePercentageBasisPoints > 0
+      ? (summary.administrationFeePercentageBasisPoints / 100)
+          .toFixed(summary.administrationFeePercentageBasisPoints % 100 === 0 ? 0 : 2)
+          .replace(".", ",")
+      : null;
 
   let isStaff = false;
   if (session?.user?.id) {
@@ -73,12 +81,6 @@ export default async function CheckoutPage() {
       </div>
     );
   }
-
-  const taxRateBps =
-    cart.items[0]?.category.event.ticketTaxRateBasisPoints ??
-    cart.items[0]?.category.taxRate?.rateBps ??
-    700;
-  const taxPercentLabel = (taxRateBps / 100).toFixed(taxRateBps % 100 === 0 ? 0 : 2).replace(".", ",");
 
   return (
     <div className="border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.85)]">
@@ -207,14 +209,27 @@ export default async function CheckoutPage() {
                   <span className="tabular-nums">{formatEuroFromCents(summary.grossCents)}</span>
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
-                  inkl. gesetzlicher USt von {taxPercentLabel}&nbsp;%
+                  inkl. gesetzlicher Umsatzsteuer
                   <br />
                   {summary.feeGrossCents > 0 ? (
-                    <>inkl. Verwaltungsgebühr {formatEuroFromCents(summary.feeGrossCents)}</>
+                    <>
+                      Verwaltungsgebühr{feePercentLabel ? ` ${feePercentLabel} %` : ""}{" "}
+                      {formatEuroFromCents(summary.feeGrossCents)}
+                    </>
                   ) : (
                     <>keine Verwaltungsgebühr</>
                   )}
                 </p>
+                <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+                  Die gewählte Zahlungsart verändert den Gesamtpreis nicht.
+                </p>
+                {feePercentLabel ? (
+                  <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+                    Unsere Verwaltungsgebühr beträgt nur {feePercentLabel}&nbsp;% und bleibt
+                    unabhängig von der Zahlungsart gleich. Damit halten wir den Ticketservice
+                    bewusst transparent und deutlich günstiger als viele klassische Ticketanbieter.
+                  </p>
+                ) : null}
               </div>
             </div>
 

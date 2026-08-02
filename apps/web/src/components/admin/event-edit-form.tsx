@@ -45,6 +45,7 @@ export function EventEditForm({
     ticketTaxRateBasisPoints: number | null;
     administrationFeeTaxMode: string | null;
     administrationFeeCustomTaxRateBasisPoints: number | null;
+    sepaMinDaysBeforeEvent: number | null;
     coverImageUrl: string | null;
   };
   locations: LocationOpt[];
@@ -205,6 +206,22 @@ export function EventEditForm({
           className="tf-input"
           defaultValue={((event.administrationFeeCustomTaxRateBasisPoints ?? 700) / 100).toFixed(2)}
         />
+      </label>
+      <label className="grid gap-1 md:col-span-2">
+        <span className="font-medium">SEPA deaktivieren (Tage vor Event)</span>
+        <input
+          name="sepaMinDaysBeforeEvent"
+          type="number"
+          min="0"
+          className="tf-input max-w-xs"
+          placeholder="Org-Standard"
+          defaultValue={
+            event.sepaMinDaysBeforeEvent != null ? String(event.sepaMinDaysBeforeEvent) : ""
+          }
+        />
+        <span className="text-xs text-[var(--tf-text-secondary)]">
+          Leer = Organisationseinstellung. Überschreibt den globalen Wert nur für dieses Event.
+        </span>
       </label>
 
       <div className="md:col-span-2">

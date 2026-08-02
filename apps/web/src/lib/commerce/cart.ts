@@ -16,13 +16,44 @@ async function expireHolds(now = new Date()) {
 
   const expired = await prisma.inventoryHold.findMany({
     where: { status: "held", expiresAt: { lt: now } },
-    select: { id: true, poolId: true, quantity: true, cartItemId: true },
+    select: {
+      id: true,
+      poolId: true,
+      quantity: true,
+      cartItemId: true,
+      orderId: true,
+      cartItem: {
+        select: {
+          cart: {
+            select: {
+              status: true,
+              orders: {
+                select: { paymentStatus: true, status: true },
+                orderBy: { createdAt: "desc" },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
   });
   if (expired.length === 0) return;
 
   // One transaction instead of N — each remote RTT used to add ~100–300ms.
   await prisma.$transaction(async (tx) => {
     for (const hold of expired) {
+      // Protect holds tied to orders awaiting async payment (SEPA processing).
+      const order = hold.cartItem?.cart?.orders?.[0];
+      const paymentStatus = order?.paymentStatus;
+      if (
+        hold.orderId ||
+        (hold.cartItem?.cart?.status === "converted" &&
+          (paymentStatus === "pending" || paymentStatus === "processing"))
+      ) {
+        continue;
+      }
+
       const current = await tx.inventoryHold.findUnique({
         where: { id: hold.id },
         select: { id: true, status: true, cartItemId: true },

@@ -86,8 +86,8 @@ export function CheckoutForm({
   const [city, setCity] = useState("");
   const [cityAuto, setCityAuto] = useState(false);
   const [cityHint, setCityHint] = useState<string | null>(null);
-  const firstSelectable = paymentOptions.find((o) => o.selectable)?.key ?? null;
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(firstSelectable);
+  // Never auto-select — customer must choose a payment method consciously.
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(null);
   const [invoiceRequested, setInvoiceRequested] = useState(false);
   const [invoiceRecipientType, setInvoiceRecipientType] = useState<"private" | "company">(
     "private",
@@ -704,13 +704,16 @@ export function CheckoutForm({
       <button
         type="submit"
         className="tf-btn tf-btn-primary mt-6 w-full !min-h-12 text-base"
-        disabled={loading}
+        disabled={loading || !paymentMethod}
+        aria-disabled={loading || !paymentMethod}
       >
         {loading
           ? "Wird erstellt…"
-          : mode === "register"
-            ? "Konto anlegen & zahlungspflichtig bestellen"
-            : "Zahlungspflichtig bestellen"}
+          : !paymentMethod
+            ? "Bitte Zahlungsart wählen"
+            : mode === "register"
+              ? "Konto anlegen & zahlungspflichtig bestellen"
+              : "Zahlungspflichtig bestellen"}
       </button>
     </form>
   );

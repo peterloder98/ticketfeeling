@@ -13,7 +13,7 @@ export const metadata = { title: "Tickets" };
 
 type Props = {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ paid?: string }>;
+  searchParams: Promise<{ paid?: string; processing?: string }>;
 };
 
 export default async function EmbedOrderTicketsPage({ params, searchParams }: Props) {
@@ -52,11 +52,17 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
     Boolean(session?.user) &&
     (order.customer.userId === session!.user!.id ||
       order.customer.emailNormalized === session!.user!.email?.toLowerCase());
-  if (!isOwner && !isStaff && sp.paid !== "1") {
+  if (!isOwner && !isStaff && sp.paid !== "1" && sp.processing !== "1") {
     redirect(`/embed/shop`);
   }
 
-  const paid = order.status === "paid" || order.status === "fulfilled" || sp.paid === "1";
+  const reallyPaid =
+    order.status === "paid" ||
+    order.status === "fulfilled" ||
+    order.paymentStatus === "paid";
+  const processing =
+    order.paymentStatus === "processing" || (sp.processing === "1" && !reallyPaid);
+  const paid = reallyPaid && !processing;
   const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
 
   const ticketsByItem = new Map<string, typeof order.tickets>();
@@ -134,15 +140,21 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
     <div className="space-y-4 text-sm">
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
-          {paid ? "Kauf bestätigt" : "Bestellung"}
+          {paid ? "Kauf bestätigt" : processing ? "Zahlung wird verarbeitet" : "Bestellung"}
         </p>
         <h1 className="mt-1 text-lg font-bold text-[var(--tf-navy)]">
-          {paid ? "Tickets bereit" : `Bestellung ${order.orderNumber}`}
+          {paid
+            ? "Tickets bereit"
+            : processing
+              ? "Deine Zahlung wird verarbeitet"
+              : `Bestellung ${order.orderNumber}`}
         </h1>
         <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
           {paid
             ? `${eventName} · ${formatEuroFromCents(order.customerTotalCents || order.grossCents)}`
-            : "Zahlung ausstehend."}
+            : processing
+              ? "Lastschrift eingereicht — Ticket kommt nach Zahlungsbestätigung per E-Mail."
+              : "Zahlung ausstehend."}
         </p>
       </div>
 
@@ -150,7 +162,9 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
         <OrderTicketsPanel positions={positions} canForward={Boolean(isOwner || isStaff)} />
       ) : (
         <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-4 text-xs text-[var(--tf-text-secondary)]">
-          Noch keine Tickets — bitte Zahlung abschließen.
+          {processing
+            ? "Noch keine Tickets — die Lastschrift wird verarbeitet."
+            : "Noch keine Tickets — bitte Zahlung abschließen."}
         </p>
       )}
 

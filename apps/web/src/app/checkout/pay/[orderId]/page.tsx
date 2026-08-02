@@ -102,6 +102,34 @@ export default async function PayPage({ params }: Props) {
     );
   }
 
+  if (order.paymentStatus === "processing") {
+    return (
+      <div className="border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.85)]">
+        <div className="tf-container py-14">
+          <div className="mx-auto max-w-2xl rounded-[24px] border border-[var(--tf-line)] bg-white p-8 text-center shadow-[0_8px_28px_rgba(15,39,71,0.06)]">
+            <p className="text-sm font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
+              Lastschrift
+            </p>
+            <h1 className="mt-2 text-3xl font-bold text-[var(--tf-navy)]">
+              Deine Zahlung wird verarbeitet
+            </h1>
+            <p className="mt-3 text-[var(--tf-text-secondary)]">
+              Vielen Dank für deine Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald
+              die Zahlung bestätigt wurde, erhältst du deine endgültige Zahlungsbestätigung und dein
+              Ticket per E-Mail.
+            </p>
+            <Link
+              href={`/konto/bestellung/${order.id}?processing=1`}
+              className="tf-btn tf-btn-primary mt-6 inline-flex"
+            >
+              Bestellung ansehen
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.85)]">
       <ClearCartBadge />
@@ -239,6 +267,9 @@ export default async function PayPage({ params }: Props) {
                       process.env.STRIPE_PUBLISHABLE_KEY ||
                       ""
                     }
+                    paymentMethod={order.paymentMethod}
+                    successPath={`/konto/bestellung/${order.id}?paid=1`}
+                    processingPath={`/konto/bestellung/${order.id}?processing=1`}
                   />
                 ) : (
                   <p className="text-sm text-[var(--tf-text-secondary)]">

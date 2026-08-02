@@ -15,6 +15,8 @@ import {
   providerForMethod,
   type PaymentMethodKey,
 } from "@/lib/commerce/payment-fees";
+import { sepaReservationExpiresAt } from "@/lib/commerce/sepa-availability";
+import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 
 export type CheckoutCustomerInput = {
   email: string;
@@ -64,6 +66,7 @@ export async function createOrderFromCart(input: {
   if (!input.customer.acceptTerms) throw new Error("TERMS_REQUIRED");
   if (!input.customer.acknowledgePrivacy) throw new Error("PRIVACY_REQUIRED");
   if (!input.customer.acknowledgeNoWithdrawal) throw new Error("WITHDRAWAL_ACK_REQUIRED");
+  await ensureSepaPaymentSchema(prisma);
   const paymentMethod =
     normalizePaymentMethodKey(String(input.paymentMethod)) ??
     (isPaymentMethodKey(String(input.paymentMethod))
@@ -353,6 +356,43 @@ export async function createOrderFromCart(input: {
     await tx.cart.update({
       where: { id: cart.id },
       data: { status: "converted", userId },
+    });
+
+    // Extend inventory holds for the payment window (esp. SEPA async clearing).
+    const soonestStart = cart.items.reduce<Date | null>((min, item) => {
+      const at = item.category.event.eventStartsAt;
+      if (!at) return min;
+      return !min || at < min ? at : min;
+    }, null);
+    const reservedUntil =
+      paymentMethod === "sepa_debit"
+        ? sepaReservationExpiresAt(soonestStart)
+        : new Date(Date.now() + 60 * 60 * 1000); // 1h for card/wallet confirm
+
+    for (const item of cart.items) {
+      if (!item.hold) continue;
+      await tx.inventoryHold.update({
+        where: { id: item.hold.id },
+        data: {
+          orderId: createdOrder.id,
+          expiresAt: reservedUntil,
+          status: "held",
+        },
+      });
+      if (item.seats?.length) {
+        await tx.eventSeat.updateMany({
+          where: { cartItemId: item.id, status: "held" },
+          data: { holdExpiresAt: reservedUntil },
+        });
+      }
+    }
+
+    await tx.order.update({
+      where: { id: createdOrder.id },
+      data: {
+        reservationStatus: "held",
+        reservedUntil,
+      },
     });
 
     return createdOrder;

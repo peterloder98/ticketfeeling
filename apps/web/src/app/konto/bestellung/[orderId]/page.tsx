@@ -11,7 +11,10 @@ import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ orderId: string }>; searchParams: Promise<{ paid?: string }> };
+type Props = {
+  params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ paid?: string; processing?: string }>;
+};
 
 export default async function OrderDetailPage({ params, searchParams }: Props) {
   const session = await getServerSession(authOptions);
@@ -51,7 +54,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
     Boolean(session?.user) &&
     (order.customer.userId === session!.user!.id ||
       order.customer.emailNormalized === session!.user!.email?.toLowerCase());
-  if (!isOwner && !isStaff && sp.paid !== "1") {
+  if (!isOwner && !isStaff && sp.paid !== "1" && sp.processing !== "1") {
     redirect("/login");
   }
 
@@ -59,7 +62,15 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
     redirect(`/kasse/beleg/${order.id}`);
   }
 
-  const paid = order.status === "paid" || order.status === "fulfilled" || sp.paid === "1";
+  const reallyPaid =
+    order.status === "paid" ||
+    order.status === "fulfilled" ||
+    order.paymentStatus === "paid";
+  // Never treat ?paid=1 as paid while SEPA is still processing
+  const processing =
+    order.paymentStatus === "processing" ||
+    (sp.processing === "1" && !reallyPaid);
+  const paid = reallyPaid && !processing;
   const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
   const taxRateBps = order.items[0]?.taxRateBps ?? 700;
   const taxPercentLabel = (taxRateBps / 100)
@@ -144,15 +155,21 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
           <div className="max-w-2xl">
             <BrandLogo href="/" variant="mark" />
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-teal)]">
-              {paid ? "Kauf bestätigt" : "Bestellung"}
+              {paid ? "Kauf bestätigt" : processing ? "Zahlung wird verarbeitet" : "Bestellung"}
             </p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight text-[var(--tf-navy)] md:text-4xl lg:text-5xl">
-              {paid ? "Vielen Dank — wir freuen uns auf dich!" : `Bestellung ${order.orderNumber}`}
+              {paid
+                ? "Vielen Dank — wir freuen uns auf dich!"
+                : processing
+                  ? "Deine Zahlung wird verarbeitet"
+                  : `Bestellung ${order.orderNumber}`}
             </h1>
             <p className="mt-3 text-base text-[var(--tf-text-secondary)] md:text-lg">
               {paid
                 ? `Deine Tickets für ${eventName} sind bereit. Klappe ein Ticket auf, um QR-Code und PDF zu sehen — oder leite einzelne Tickets an Begleitung weiter.`
-                : "Sobald die Zahlung durch ist, erscheinen hier deine Tickets."}
+                : processing
+                  ? "Vielen Dank für deine Bestellung. Der Betrag wird per Lastschrift von deinem Bankkonto eingezogen. Sobald die Zahlung bestätigt wurde, erhältst du deine endgültige Zahlungsbestätigung und dein Ticket per E-Mail."
+                  : "Sobald die Zahlung durch ist, erscheinen hier deine Tickets."}
             </p>
             {paid ? (
               <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
@@ -189,7 +206,9 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
                   ))}
                 </ul>
                 <p className="mt-4 text-sm text-[var(--tf-text-secondary)]">
-                  Noch keine Tickets — Zahlung ausstehend.
+                  {processing
+                    ? "Noch keine Tickets — die Lastschrift wird verarbeitet."
+                    : "Noch keine Tickets — Zahlung ausstehend."}
                 </p>
               </div>
             )}

@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/payments/stripe-client";
 import { processStripeWebhookEvent } from "@/lib/commerce/payments-stripe";
+import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
+import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  await ensureSepaPaymentSchema(prisma);
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "STRIPE_WEBHOOK_SECRET missing" }, { status: 500 });

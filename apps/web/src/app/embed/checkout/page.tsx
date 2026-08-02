@@ -11,7 +11,9 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
   buildCheckoutPaymentOptions,
   parsePaymentFeeConfig,
+  parsePaymentUiConfig,
 } from "@/lib/commerce/payment-fees";
+import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 
@@ -25,15 +27,14 @@ export default async function EmbedCheckoutPage() {
   const summary = await priceCart(cart);
   const org = await getDefaultOrganization();
   const feeConfig = parsePaymentFeeConfig(org?.settings?.paymentFeeConfig);
-  const soonestEventMs = cart.items.reduce((min, item) => {
-    const at = item.category.event.eventStartsAt?.getTime();
-    if (at == null) return min;
-    return min == null ? at : Math.min(min, at);
-  }, null as number | null);
-  const sepaMinDays = org?.settings?.sepaMinDaysBeforeEvent ?? 14;
-  const sepaDisabled =
-    soonestEventMs != null &&
-    soonestEventMs - Date.now() < sepaMinDays * 24 * 60 * 60 * 1000;
+  const uiConfig = parsePaymentUiConfig(org?.settings?.paymentUiConfig);
+  const sepaDisabled = isSepaDisabledForCheckout({
+    orgSepaMinDays: org?.settings?.sepaMinDaysBeforeEvent ?? uiConfig.sepaMinDaysBeforeEvent,
+    items: cart.items.map((item) => ({
+      eventStartsAt: item.category.event.eventStartsAt,
+      eventSepaMinDays: item.category.event.sepaMinDaysBeforeEvent,
+    })),
+  });
   const stripeLiveConfigured = Boolean(
     process.env.STRIPE_SECRET_KEY &&
       process.env.STRIPE_PUBLISHABLE_KEY &&
@@ -42,6 +43,7 @@ export default async function EmbedCheckoutPage() {
   const paymentOptions = buildCheckoutPaymentOptions({
     customerTotalCents: summary.grossCents,
     config: feeConfig,
+    ui: uiConfig,
     stripeLiveConfigured,
     allowDevTestCheckout: getPaymentProvider().key === "dev",
     sepaDisabled,

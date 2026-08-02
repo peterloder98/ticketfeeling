@@ -2,8 +2,24 @@ import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 import { shouldVoidTicketsOnRefund } from "@/lib/commerce/refund-rules";
+import { releaseOrderHolds } from "@/lib/commerce/release-order-holds";
+import { normalizeSepaTicketReleaseMode } from "@/lib/commerce/sepa-availability";
 import { writeAudit } from "@/lib/audit";
 import { getStripe } from "@/lib/payments/stripe-client";
+import { enqueueTransactionalEmail } from "@/lib/email/outbox";
+import {
+  buildSepaDisputeMail,
+  buildSepaFailedMail,
+  buildSepaProcessingMail,
+} from "@/lib/email/ticket-mail";
+import { formatEuroFromCents } from "@/lib/money";
+
+function appBaseUrl() {
+  return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
+    /\/$/,
+    "",
+  );
+}
 
 async function markInbox(providerEventId: string, payload: unknown, status: string, error?: string) {
   await prisma.webhookInbox.upsert({
@@ -61,6 +77,141 @@ async function applyBalanceFees(orderId: string, chargeId: string | null) {
   }
 }
 
+async function extractSepaDetails(pi: Stripe.PaymentIntent) {
+  const pmId =
+    typeof pi.payment_method === "string" ? pi.payment_method : pi.payment_method?.id ?? null;
+  if (!pmId) {
+    return {
+      stripePaymentMethodId: null as string | null,
+      stripeMandateId: null as string | null,
+      ibanLast4: null as string | null,
+      accountHolderName: null as string | null,
+      sepaMandateReference: null as string | null,
+    };
+  }
+  try {
+    const stripe = getStripe();
+    const pm = await stripe.paymentMethods.retrieve(pmId);
+    const sepa = pm.sepa_debit;
+    // Stripe types omit mandate on GeneratedFrom in some SDK versions
+    const generatedFrom = sepa?.generated_from as { mandate?: string | { id?: string } } | null;
+    const mandateRaw = generatedFrom?.mandate;
+    const mandateId =
+      typeof mandateRaw === "string"
+        ? mandateRaw
+        : typeof mandateRaw === "object" && mandateRaw?.id
+          ? mandateRaw.id
+          : null;
+    return {
+      stripePaymentMethodId: pm.id,
+      stripeMandateId: mandateId,
+      ibanLast4: sepa?.last4 ?? null,
+      accountHolderName: pm.billing_details?.name ?? null,
+      sepaMandateReference: sepa?.fingerprint ?? null,
+    };
+  } catch {
+    return {
+      stripePaymentMethodId: pmId,
+      stripeMandateId: null,
+      ibanLast4: null,
+      accountHolderName: null,
+      sepaMandateReference: null,
+    };
+  }
+}
+
+async function sendSepaProcessingEmail(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      customer: true,
+      items: true,
+      organization: { include: { settings: true } },
+    },
+  });
+  if (!order) return;
+  const releaseMode = normalizeSepaTicketReleaseMode(
+    order.organization.settings?.sepaTicketReleaseMode,
+  );
+  const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
+  const whenLabel = order.items[0]?.eventStartsAtSnapshot
+    ? order.items[0].eventStartsAtSnapshot.toLocaleString("de-DE", {
+        timeZone: "Europe/Berlin",
+        dateStyle: "full",
+        timeStyle: "short",
+      })
+    : null;
+  const mail = buildSepaProcessingMail({
+    firstName: order.customer.firstName,
+    orderNumber: order.orderNumber,
+    orderId: order.id,
+    eventName,
+    whenLabel,
+    totalLabel: formatEuroFromCents(order.customerTotalCents || order.grossCents),
+    ticketsAfterConfirm: releaseMode === "after_confirmed",
+  });
+  await enqueueTransactionalEmail({
+    organizationId: order.organizationId,
+    to: order.customer.email,
+    template: "sepa_payment_processing",
+    subject: mail.subject,
+    payload: { orderId: order.id },
+    text: mail.text,
+    html: mail.html,
+  });
+}
+
+async function sendSepaFailedEmail(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, items: true },
+  });
+  if (!order) return;
+  const mail = buildSepaFailedMail({
+    firstName: order.customer.firstName,
+    orderNumber: order.orderNumber,
+    orderId: order.id,
+    eventName: order.items[0]?.eventNameSnapshot ?? "dein Event",
+    reservedUntilLabel: order.reservedUntil
+      ? order.reservedUntil.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })
+      : null,
+    payUrl: `${appBaseUrl()}/checkout/pay/${order.id}`,
+  });
+  await enqueueTransactionalEmail({
+    organizationId: order.organizationId,
+    to: order.customer.email,
+    template: "sepa_payment_failed",
+    subject: mail.subject,
+    payload: { orderId: order.id },
+    text: mail.text,
+    html: mail.html,
+  });
+}
+
+async function sendSepaDisputeEmail(orderId: string) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { customer: true, items: true },
+  });
+  if (!order) return;
+  const mail = buildSepaDisputeMail({
+    firstName: order.customer.firstName,
+    orderNumber: order.orderNumber,
+    orderId: order.id,
+    eventName: order.items[0]?.eventNameSnapshot ?? "dein Event",
+    payUrl: `${appBaseUrl()}/checkout/pay/${order.id}`,
+  });
+  await enqueueTransactionalEmail({
+    organizationId: order.organizationId,
+    to: order.customer.email,
+    template: "sepa_payment_dispute",
+    subject: mail.subject,
+    payload: { orderId: order.id },
+    text: mail.text,
+    html: mail.html,
+  });
+}
+
 export async function processStripeWebhookEvent(event: Stripe.Event) {
   const existing = await prisma.webhookInbox.findUnique({
     where: {
@@ -73,6 +224,20 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
 
   try {
     switch (event.type) {
+      case "payment_intent.created": {
+        const pi = event.data.object as Stripe.PaymentIntent;
+        const orderId = pi.metadata?.orderId;
+        if (!orderId) break;
+        await prisma.order.updateMany({
+          where: { id: orderId, paymentCreatedAt: null },
+          data: {
+            paymentCreatedAt: new Date(),
+            stripePaymentIntentId: pi.id,
+            paymentStatus: "awaiting_payment_method",
+          },
+        });
+        break;
+      }
       case "payment_intent.succeeded": {
         const pi = event.data.object as Stripe.PaymentIntent;
         const orderId = pi.metadata?.orderId;
@@ -80,8 +245,14 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         const order = await prisma.order.findUnique({ where: { id: orderId } });
         if (!order) break;
 
+        // Idempotent: already fulfilled
+        if (order.paymentStatus === "paid" && order.fulfillmentLockedAt) {
+          break;
+        }
+
         const isSepa = pi.payment_method_types?.includes("sepa_debit");
-        // SEPA can succeed asynchronously; treat as paid when PI succeeded
+        const sepaDetails = isSepa ? await extractSepaDetails(pi) : null;
+
         await prisma.$transaction([
           prisma.payment.updateMany({
             where: { orderId, provider: "stripe" },
@@ -100,8 +271,18 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
               paymentStatus: "paid",
               paidAt: new Date(),
               paymentCompletedAt: new Date(),
+              paymentSucceededAt: new Date(),
               stripePaymentIntentId: pi.id,
               providerTransactionId: pi.id,
+              ...(sepaDetails
+                ? {
+                    stripePaymentMethodId: sepaDetails.stripePaymentMethodId,
+                    stripeMandateId: sepaDetails.stripeMandateId,
+                    ibanLast4: sepaDetails.ibanLast4,
+                    accountHolderName: sepaDetails.accountHolderName,
+                    sepaMandateReference: sepaDetails.sepaMandateReference,
+                  }
+                : {}),
             },
           }),
         ]);
@@ -112,49 +293,97 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             : pi.latest_charge?.id ?? null;
         await applyBalanceFees(orderId, chargeId);
         await fulfillPaidOrder(orderId);
+        await prisma.order.update({
+          where: { id: orderId },
+          data: {
+            ticketReleasedAt: new Date(),
+            reservationStatus: "consumed",
+          },
+        });
         break;
       }
       case "payment_intent.processing": {
         const pi = event.data.object as Stripe.PaymentIntent;
         const orderId = pi.metadata?.orderId;
         if (!orderId) break;
-        // SEPA Mandate submitted — NOT paid yet. Never issue tickets here.
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+          include: { organization: { include: { settings: true } } },
+        });
+        if (!order) break;
+
+        // SEPA Mandate submitted — NOT paid yet. Never issue tickets here (default).
+        const sepaDetails = await extractSepaDetails(pi);
         await prisma.order.update({
           where: { id: orderId },
-          data: { paymentStatus: "processing", status: "pending_payment" },
+          data: {
+            paymentStatus: "processing",
+            status: "pending_payment",
+            paymentProcessingAt: new Date(),
+            stripePaymentIntentId: pi.id,
+            stripePaymentMethodId: sepaDetails.stripePaymentMethodId,
+            stripeMandateId: sepaDetails.stripeMandateId,
+            ibanLast4: sepaDetails.ibanLast4,
+            accountHolderName: sepaDetails.accountHolderName,
+            sepaMandateReference: sepaDetails.sepaMandateReference,
+          },
         });
         await prisma.payment.updateMany({
           where: { orderId, provider: "stripe" },
           data: { status: "processing", rawStatus: pi.status },
         });
+
+        await sendSepaProcessingEmail(orderId);
+
+        const releaseMode = normalizeSepaTicketReleaseMode(
+          order.organization.settings?.sepaTicketReleaseMode,
+        );
+        if (releaseMode === "after_submission") {
+          // Optional admin setting — still mark payment as processing; fulfill only if
+          // product ever enables early release. Hard-gated off by default in admin UI.
+          await writeAudit({
+            organizationId: order.organizationId,
+            action: "payment.sepa_early_release_skipped",
+            entityType: "order",
+            entityId: orderId,
+            after: {
+              note: "after_submission configured but tickets still wait for succeeded for safety",
+            },
+          });
+        }
         break;
       }
-      case "payment_intent.payment_failed": {
+      case "payment_intent.payment_failed":
+      case "payment_intent.canceled": {
         const pi = event.data.object as Stripe.PaymentIntent;
         const orderId = pi.metadata?.orderId;
         if (!orderId) break;
+        const failed = event.type === "payment_intent.payment_failed";
         await prisma.order.update({
           where: { id: orderId },
           data: {
-            paymentStatus: "failed",
+            paymentStatus: failed ? "failed" : "canceled",
             paymentFailedAt: new Date(),
+            failedReasonCode: pi.last_payment_error?.code ?? event.type,
+            failedReasonMessage: pi.last_payment_error?.message ?? null,
           },
         });
         await prisma.payment.updateMany({
           where: { orderId, provider: "stripe" },
-          data: { status: "failed", rawStatus: pi.status },
+          data: {
+            status: failed ? "failed" : "canceled",
+            rawStatus: pi.status,
+          },
         });
-        // Safety net: there must never be active tickets without confirmed payment.
         await prisma.ticket.updateMany({
           where: { orderId, status: "active" },
           data: { status: "cancelled" },
         });
+        await releaseOrderHolds(orderId);
+        if (failed) await sendSepaFailedEmail(orderId);
         break;
       }
       case "charge.refunded": {
-        // Product policy: no customer online refunds. This only reacts if money was
-        // returned in Stripe (e.g. full event cancellation processed by support).
-        // Valid tickets must not remain after a full charge refund.
         const charge = event.data.object as Stripe.Charge;
         const piId =
           typeof charge.payment_intent === "string"
@@ -229,7 +458,6 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           },
         });
         if (event.type === "charge.dispute.created") {
-          // Chargeback / SEPA-Rückgabe: Geld kann später weg sein — Tickets sofort ungültig.
           await prisma.order.update({
             where: { id: order.id },
             data: {
@@ -241,6 +469,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             where: { orderId: order.id, status: "active" },
             data: { status: "cancelled" },
           });
+          await sendSepaDisputeEmail(order.id);
         }
         break;
       }

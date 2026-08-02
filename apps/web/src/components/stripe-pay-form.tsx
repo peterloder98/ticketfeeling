@@ -4,11 +4,16 @@ import { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useRouter } from "next/navigation";
+import { translateStripePaymentError } from "@/lib/commerce/payment-fees";
 
 function PayInner({
   successPath,
+  processingPath,
+  isSepa,
 }: {
   successPath: string;
+  processingPath: string;
+  isSepa: boolean;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -24,21 +29,32 @@ function PayInner({
     const result = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}${successPath}`,
+        return_url: `${window.location.origin}${isSepa ? processingPath : successPath}`,
       },
       redirect: "if_required",
     });
     setPending(false);
     if (result.error) {
-      setError(result.error.message ?? "Zahlung fehlgeschlagen");
+      setError(translateStripePaymentError(result.error.message));
       return;
     }
-    router.push(successPath);
+    const status = result.paymentIntent?.status;
+    if (status === "processing" || status === "requires_action" || isSepa) {
+      router.push(processingPath);
+    } else {
+      router.push(successPath);
+    }
     router.refresh();
   }
 
   return (
     <form onSubmit={onSubmit} className="space-y-4">
+      {isSepa ? (
+        <p className="rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
+          Die IBAN findest du auf deiner Bankkarte, deinem Kontoauszug oder im Online-Banking.
+          Mit der Bestätigung erteilst du Stripe das Mandat für den Lastschrifteinzug.
+        </p>
+      ) : null}
       <PaymentElement
         options={{
           layout: "tabs",
@@ -47,7 +63,7 @@ function PayInner({
       />
       {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
       <button type="submit" className="tf-btn tf-btn-primary w-full" disabled={!stripe || pending}>
-        {pending ? "Zahlung läuft…" : "Jetzt bezahlen"}
+        {pending ? "Zahlung läuft…" : isSepa ? "Lastschrift verbindlich erteilen" : "Jetzt bezahlen"}
       </button>
       <p className="text-center text-xs text-[var(--tf-text-secondary)]">
         Sichere Zahlungsabwicklung über Stripe.
@@ -61,12 +77,17 @@ export function StripePayForm({
   orderId,
   publishableKey,
   successPath,
+  processingPath,
+  paymentMethod,
 }: {
   clientSecret: string;
   orderId: string;
   publishableKey: string;
-  /** Where to go after successful payment (embed: /embed/bestellung/…) */
+  /** Where to go after confirmed card/wallet payment */
   successPath?: string;
+  /** Where to go while SEPA is still processing */
+  processingPath?: string;
+  paymentMethod?: string | null;
 }) {
   if (!publishableKey) {
     return (
@@ -75,11 +96,20 @@ export function StripePayForm({
       </p>
     );
   }
+  const isSepa =
+    paymentMethod === "sepa_debit" ||
+    paymentMethod === "stripe_sepa";
   const resolvedSuccess = successPath ?? `/konto/bestellung/${orderId}?paid=1`;
+  const resolvedProcessing =
+    processingPath ?? `/konto/bestellung/${orderId}?processing=1`;
   const stripePromise = loadStripe(publishableKey);
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, locale: "de" }}>
-      <PayInner successPath={resolvedSuccess} />
+      <PayInner
+        successPath={resolvedSuccess}
+        processingPath={resolvedProcessing}
+        isSepa={isSepa}
+      />
     </Elements>
   );
 }

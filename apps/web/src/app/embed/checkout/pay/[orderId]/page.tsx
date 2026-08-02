@@ -35,6 +35,7 @@ export default async function EmbedPayPage({ params }: Props) {
   );
   const isDev = getPaymentProvider().key === "dev";
   const successPath = `/embed/bestellung/${order.id}?paid=1`;
+  const processingPath = `/embed/bestellung/${order.id}?processing=1`;
 
   let clientSecret: string | null = null;
   if (!isDev && isStripeConfigured() && order.stripePaymentIntentId) {
@@ -52,6 +53,23 @@ export default async function EmbedPayPage({ params }: Props) {
         <h1 className="text-lg font-bold text-[var(--tf-navy)]">Schon bezahlt</h1>
         <Link href={successPath} className="tf-btn tf-btn-primary inline-flex !min-h-10 text-sm">
           Tickets anzeigen
+        </Link>
+      </div>
+    );
+  }
+
+  if (order.paymentStatus === "processing") {
+    return (
+      <div className="space-y-3 py-4 text-center text-sm">
+        <h1 className="text-lg font-bold text-[var(--tf-navy)]">Zahlung wird verarbeitet</h1>
+        <p className="text-xs text-[var(--tf-text-secondary)]">
+          Der Betrag wird per Lastschrift eingezogen. Dein Ticket kommt nach Bestätigung per E-Mail.
+        </p>
+        <Link
+          href={processingPath}
+          className="tf-btn tf-btn-primary inline-flex !min-h-10 text-sm"
+        >
+          Bestellung ansehen
         </Link>
       </div>
     );
@@ -108,6 +126,8 @@ export default async function EmbedPayPage({ params }: Props) {
               ""
             }
             successPath={successPath}
+            processingPath={processingPath}
+            paymentMethod={order.paymentMethod}
           />
         ) : (
           <p className="text-xs text-[var(--tf-text-secondary)]">

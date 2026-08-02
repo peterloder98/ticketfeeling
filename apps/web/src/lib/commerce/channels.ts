@@ -38,7 +38,7 @@ export function paymentMethodLabel(method: string | null | undefined): string {
       return "Kredit- oder Debitkarte";
     case "sepa_debit":
     case "stripe_sepa":
-      return "SEPA-Lastschrift";
+      return "Lastschrift vom Bankkonto";
     case "apple_pay":
       return "Apple Pay";
     case "google_pay":

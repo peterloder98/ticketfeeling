@@ -613,6 +613,17 @@ export async function fulfillPaidOrder(orderId: string) {
         if (sendResult.attachments < 1) {
           console.error("[fulfillment] ticket mail sent without PDF attachments", fresh.id);
         }
+        await prisma.order.update({
+          where: { id: fresh.id },
+          data: {
+            ticketSentAt: new Date(),
+            deliveryEmailedAt: new Date(),
+            deliveryStatus:
+              fresh.deliveryStatus === "printed" || fresh.deliveryStatus === "both"
+                ? "both"
+                : "emailed",
+          },
+        });
       }
       if (result.invoice?.id) {
         const sync = await lexwareStubProvider.createInvoice({ invoiceId: result.invoice.id });

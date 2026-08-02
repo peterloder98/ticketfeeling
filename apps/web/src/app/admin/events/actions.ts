@@ -489,6 +489,12 @@ export async function updateEventAction(formData: FormData) {
       ? Math.max(0, Math.round((Number.isFinite(customFeeTaxPercent) ? customFeeTaxPercent : 7) * 100))
       : null;
   const showRemainingAvailability = formData.get("showRemainingAvailability") === "on";
+  const sepaMinRaw = String(formData.get("sepaMinDaysBeforeEvent") ?? "").trim();
+  const sepaMinParsed = sepaMinRaw === "" ? null : Number(sepaMinRaw);
+  const sepaMinDaysBeforeEvent =
+    sepaMinParsed != null && Number.isFinite(sepaMinParsed)
+      ? Math.max(0, Math.round(sepaMinParsed))
+      : null;
 
   if (tourId) {
     const tour = await prisma.tour.findFirst({
@@ -553,6 +559,7 @@ export async function updateEventAction(formData: FormData) {
       administrationFeeTaxMode,
       administrationFeeCustomTaxRateBasisPoints,
       showRemainingAvailability,
+      sepaMinDaysBeforeEvent,
     },
   });
 

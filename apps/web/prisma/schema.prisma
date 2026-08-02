@@ -255,10 +255,12 @@ model OrganizationSettings {
 
   /// Internal Stripe cost estimates (not customer-facing)
   stripeFeeConfig Json @default("{}") @map("stripe_fee_config")
-  /// Always after_confirmed — tickets never issue on SEPA submit alone.
+  /// after_confirmed | after_submission — default: tickets only after Stripe succeeded
   sepaTicketReleaseMode String @default("after_confirmed") @map("sepa_ticket_release_mode")
-  /// Hide SEPA when event starts within this many days
-  sepaMinDaysBeforeEvent Int @default(14) @map("sepa_min_days_before_event")
+  /// Hide SEPA when event starts within this many days (global default 7)
+  sepaMinDaysBeforeEvent Int @default(7) @map("sepa_min_days_before_event")
+  /// UI: recommended badge, method order, etc.
+  paymentUiConfig Json @default("{}") @map("payment_ui_config")
 
   /// PSP fee rates + activation (server-side only; never customer surcharge by default)
   paymentFeeConfig Json @default("{}") @map("payment_fee_config")
@@ -648,6 +650,8 @@ model Event {
   /// inherit | custom
   administrationFeeTaxMode String @default("inherit") @map("administration_fee_tax_mode")
   administrationFeeCustomTaxRateBasisPoints Int? @map("administration_fee_custom_tax_rate_bps")
+  /// Optional override: hide SEPA N days before this event (null = use org default)
+  sepaMinDaysBeforeEvent Int? @map("sepa_min_days_before_event")
   /// When creating/editing: must confirm tracking defaults or set overrides
   trackingReviewedAt  DateTime? @map("tracking_reviewed_at")
   trackingUseOrgDefaults Boolean @default(true) @map("tracking_use_org_defaults")
@@ -935,6 +939,8 @@ model InventoryHold {
   id         String   @id @default(uuid()) @db.Uuid
   poolId     String   @map("pool_id") @db.Uuid
   cartItemId String?  @unique @map("cart_item_id") @db.Uuid
+  /// When set, hold belongs to an order awaiting async payment (e.g. SEPA)
+  orderId    String?  @map("order_id") @db.Uuid
   quantity   Int
   status     String   @default("held") // held|consumed|expired|released
   expiresAt  DateTime @map("expires_at")
@@ -944,6 +950,7 @@ model InventoryHold {
   cartItem CartItem?     @relation(fields: [cartItemId], references: [id], onDelete: SetNull)
 
   @@index([status, expiresAt])
+  @@index([orderId])
   @@map("inventory_holds")
 }
 
@@ -1065,19 +1072,34 @@ model Order {
   actualPaymentFeeCents    Int? @map("actual_payment_fee_cents")
   netPayoutCents           Int? @map("net_payout_cents")
   stripePaymentIntentId    String?   @map("stripe_payment_intent_id")
+  stripePaymentMethodId    String?   @map("stripe_payment_method_id")
+  stripeMandateId          String?   @map("stripe_mandate_id")
   stripeChargeId           String?   @map("stripe_charge_id")
   stripeBalanceTransactionId String? @map("stripe_balance_transaction_id")
   stripeFeeEstimatedCents  Int?      @map("stripe_fee_estimated_cents")
   stripeFeeActualCents     Int?      @map("stripe_fee_actual_cents")
   stripeNetPayoutCents     Int?      @map("stripe_net_payout_cents")
   sepaMandateReference     String?   @map("sepa_mandate_reference")
-  /// pending | processing | paid | failed | refunded | …
+  /// Masked IBAN last 4 from Stripe — never store full IBAN
+  ibanLast4                String?   @map("iban_last4")
+  accountHolderName        String?   @map("account_holder_name")
+  /// pending | processing | paid | failed | refunded | disputed | canceled | …
   paymentStatus            String?   @map("payment_status")
+  /// none | held | released | consumed
+  reservationStatus        String?   @map("reservation_status")
+  reservedUntil            DateTime? @map("reserved_until")
   providerTransactionId    String?   @map("provider_transaction_id")
   providerFeeCurrency      String?   @map("provider_fee_currency")
   paymentCreatedAt         DateTime? @map("payment_created_at")
+  paymentProcessingAt      DateTime? @map("payment_processing_at")
   paymentCompletedAt       DateTime? @map("payment_completed_at")
+  paymentSucceededAt       DateTime? @map("payment_succeeded_at")
   paymentFailedAt          DateTime? @map("payment_failed_at")
+  ticketReleasedAt         DateTime? @map("ticket_released_at")
+  ticketSentAt             DateTime? @map("ticket_sent_at")
+  failedReasonCode         String?   @map("failed_reason_code")
+  failedReasonMessage      String?   @map("failed_reason_message") @db.Text
+  webhookProcessingVersion Int       @default(1) @map("webhook_processing_version")
   refundedAmountCents      Int       @default(0) @map("refunded_amount_cents")
   refundFeeCents           Int       @default(0) @map("refund_fee_cents")
   invoiceRequested         Boolean   @default(false) @map("invoice_requested")
