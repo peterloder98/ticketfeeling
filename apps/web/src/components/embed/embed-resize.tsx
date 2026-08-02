@@ -2,8 +2,12 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { EMBED_FRAME_MAX_HEIGHT } from "@/lib/embed/public-url";
 
-/** Posts iframe content height to the parent page for auto-resize. */
+/**
+ * Posts iframe height to the parent. Caps at EMBED_FRAME_MAX_HEIGHT so the
+ * header stays visible and the embed body scrolls internally.
+ */
 export function EmbedResizeNotifier() {
   const pathname = usePathname();
 
@@ -11,15 +15,18 @@ export function EmbedResizeNotifier() {
     function publish() {
       if (typeof window === "undefined" || window.parent === window) return;
       const root = document.querySelector<HTMLElement>("[data-embed-root]");
-      const height = Math.ceil(
-        Math.max(
-          root?.scrollHeight ?? 0,
-          root?.offsetHeight ?? 0,
-          document.documentElement.scrollHeight,
-          document.body?.scrollHeight ?? 0,
-        ),
+      const scroll = document.querySelector<HTMLElement>("[data-embed-scroll]");
+      const header = root?.firstElementChild?.firstElementChild as HTMLElement | null;
+
+      const contentHeight = Math.ceil(
+        (header?.offsetHeight ?? 0) + (scroll?.scrollHeight ?? 0) + 4,
       );
-      if (!height) return;
+      const viewportCap = Math.min(
+        EMBED_FRAME_MAX_HEIGHT,
+        Math.round(window.innerHeight * 0.9) || EMBED_FRAME_MAX_HEIGHT,
+      );
+      const height = Math.max(320, Math.min(contentHeight, viewportCap));
+
       try {
         window.parent.postMessage({ type: "tf:embed-height", height }, "*");
       } catch {
@@ -29,10 +36,11 @@ export function EmbedResizeNotifier() {
 
     publish();
     const root = document.querySelector("[data-embed-root]");
+    const scroll = document.querySelector("[data-embed-scroll]");
     const ro =
       typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => publish()) : null;
     if (root) ro?.observe(root);
-    ro?.observe(document.documentElement);
+    if (scroll) ro?.observe(scroll);
     window.addEventListener("load", publish);
     const id = window.setInterval(publish, 800);
     return () => {

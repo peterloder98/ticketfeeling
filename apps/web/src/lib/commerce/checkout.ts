@@ -194,6 +194,7 @@ export async function createOrderFromCart(input: {
       status: "published",
       legalDocument: {
         organizationId: cart.organizationId,
+        enabled: true,
         type: { in: ["terms", "event_terms", "privacy", "withdrawal", "refund"] },
       },
     },

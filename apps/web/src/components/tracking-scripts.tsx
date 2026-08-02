@@ -1,17 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type ConsentState = {
-  necessary: true;
-  statistics: boolean;
-  marketing: boolean;
-  externalMedia: boolean;
-  version: string;
-  at: string;
-};
-
-const KEY = "tf_consent_v1";
+import { readConsent, type ConsentState } from "@/lib/consent";
 
 type Props = {
   ga4MeasurementId?: string | null;
@@ -23,16 +13,6 @@ type Props = {
   eventSlug?: string | null;
   embedMode?: boolean;
 };
-
-function readConsent(): ConsentState | null {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as ConsentState;
-  } catch {
-    return null;
-  }
-}
 
 function ensureScript(id: string, src?: string, inline?: string) {
   if (document.getElementById(id)) return;

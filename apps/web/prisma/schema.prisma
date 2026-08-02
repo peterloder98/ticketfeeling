@@ -433,6 +433,8 @@ model LegalDocument {
   id             String   @id @default(uuid()) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
   type           String
+  /// When false, document is hidden from public routes (admin can still edit).
+  enabled        Boolean  @default(true)
   createdAt      DateTime @default(now()) @map("created_at")
 
   organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -448,14 +450,19 @@ model LegalDocumentVersion {
   version         String
   title           String
   content         String    @db.Text
+  changelog       String?   @db.Text
   validFrom       DateTime  @map("valid_from")
+  /// draft | published | archived
   status          String    @default("draft")
   publishedAt     DateTime? @map("published_at")
+  createdByUserId String?   @map("created_by_user_id") @db.Uuid
   createdAt       DateTime  @default(now()) @map("created_at")
 
   legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+  orderAcceptances OrderLegalAcceptance[]
 
   @@unique([legalDocumentId, version])
+  @@index([legalDocumentId, status])
   @@map("legal_document_versions")
 }
 
@@ -1160,9 +1167,11 @@ model OrderLegalAcceptance {
   legalDocumentVersionId  String   @map("legal_document_version_id") @db.Uuid
   acceptedAt              DateTime @default(now()) @map("accepted_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order                 Order                 @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  legalDocumentVersion  LegalDocumentVersion  @relation(fields: [legalDocumentVersionId], references: [id], onDelete: Restrict)
 
   @@unique([orderId, legalDocumentVersionId])
+  @@index([legalDocumentVersionId])
   @@map("order_legal_acceptances")
 }
 

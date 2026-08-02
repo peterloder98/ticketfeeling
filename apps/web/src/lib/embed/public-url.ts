@@ -5,6 +5,9 @@ function stripTrailingSlash(url: string) {
 /** Fixed inner + iframe width for all public embeds (px). */
 export const EMBED_FRAME_WIDTH = 420;
 
+/** Max iframe height so header stays pinned and body scrolls inside the frame. */
+export const EMBED_FRAME_MAX_HEIGHT = 780;
+
 /**
  * Live Ticketfeeling host (Vercel). Change only when the production domain moves
  * (e.g. to ticketfeeling.de) — prefer Env NEXT_PUBLIC_APP_URL then.
@@ -73,11 +76,12 @@ export function buildEventEmbedSnippet(input: {
   const src = `${input.appUrl}/embed/event/${encodeURIComponent(input.slug)}`;
   const title = input.title?.trim() || "Tickets";
   const minHeight = input.minHeight ?? 520;
+  const maxHeight = EMBED_FRAME_MAX_HEIGHT;
   const w = EMBED_FRAME_WIDTH;
   return `<iframe
   src="${src}"
   title="${title.replace(/"/g, "&quot;")} – Tickets"
-  style="width:${w}px;max-width:100%;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
+  style="width:${w}px;max-width:100%;height:${minHeight}px;max-height:${maxHeight}px;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="payment *"
 ></iframe>
@@ -89,7 +93,7 @@ export function buildEventEmbedSnippet(input: {
     for(var i=0;i<frames.length;i++){
       var f=frames[i];
       if(f.src&&f.src.indexOf(${JSON.stringify(`/embed/event/${input.slug}`)})!==-1&&e.data.height){
-        f.style.height=Math.max(${minHeight},e.data.height)+"px";
+        f.style.height=Math.min(${maxHeight},Math.max(${minHeight},e.data.height))+"px";
       }
     }
   }
@@ -104,11 +108,12 @@ export function buildShopEmbedSnippet(input: {
 }) {
   const src = `${input.appUrl}/embed/shop`;
   const minHeight = input.minHeight ?? 560;
+  const maxHeight = EMBED_FRAME_MAX_HEIGHT;
   const w = EMBED_FRAME_WIDTH;
   return `<iframe
   src="${src}"
   title="Ticketfeeling – Events & Tickets"
-  style="width:${w}px;max-width:100%;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
+  style="width:${w}px;max-width:100%;height:${minHeight}px;max-height:${maxHeight}px;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="payment *"
 ></iframe>
@@ -120,7 +125,7 @@ export function buildShopEmbedSnippet(input: {
     for(var i=0;i<frames.length;i++){
       var f=frames[i];
       if(f.src&&f.src.indexOf("/embed/shop")!==-1&&e.data.height){
-        f.style.height=Math.max(${minHeight},e.data.height)+"px";
+        f.style.height=Math.min(${maxHeight},Math.max(${minHeight},e.data.height))+"px";
       }
     }
   }

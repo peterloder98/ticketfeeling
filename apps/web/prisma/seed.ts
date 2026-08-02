@@ -339,75 +339,8 @@ async function main() {
     }
   }
 
-  const legalTypes = [
-    {
-      type: "impressum",
-      title: "Impressum",
-      content:
-        "Peter Loder – Ticketfeeling\nPeter Loder, handelnd unter Ticketfeeling\nInnere Münchener Str. 36, 84028 Landshut\nE-Mail: info@ticketfeeling.de\n\nENTWURF — vor Produktivstart final prüfen.",
-    },
-    {
-      type: "privacy",
-      title: "Datenschutzerklärung",
-      content:
-        "Verantwortlicher: Peter Loder – Ticketfeeling, Innere Münchener Str. 36, 84028 Landshut.\n\nWir verarbeiten Daten für Kundenkonto, Bestellung, Zahlung, Ticket-/QR-Erzeugung, Einlass, Rechnungen, Support, Hosting/Backups und – nur nach Einwilligung – Statistik/Marketing.\n\nENTWURF — vor Produktivstart anwaltlich und fachlich prüfen. Muss AV-Verarbeiter, Löschfristen und Betroffenenrechte vollständig abdecken.",
-    },
-    {
-      type: "terms",
-      title: "Allgemeine Ticketshop-AGB",
-      content:
-        "Vertragspartner ist Peter Loder, handelnd unter Ticketfeeling.\n\nDer Vertrag kommt mit Klick auf „Zahlungspflichtig bestellen“ und erfolgreicher Zahlung zustande. Tickets werden nach Zahlungsbestätigung bereitgestellt.\n\nENTWURF — anwaltlich prüfen (Haftung, Übertragung, Weiterverkauf, QR-Nutzung).",
-    },
-    {
-      type: "event_terms",
-      title: "Veranstaltungsbedingungen",
-      content:
-        "Einlasszeiten, Hausrecht, Sicherheitskontrollen, Programmänderungen und Künstleränderungen richten sich nach diesen Bedingungen und den Angaben auf der Eventseite.\n\nENTWURF — anwaltlich prüfen.",
-    },
-    {
-      type: "withdrawal",
-      title: "Widerrufsinformation",
-      content:
-        "Für Eintrittskarten zu termingebundenen Freizeitveranstaltungen besteht regelmäßig kein gesetzliches Widerrufsrecht.\n\nNicht ausgeschlossen sind Ansprüche bei Absage, Verlegung oder anderen gesetzlich bzw. vertraglich geregelten Fällen — siehe Rückerstattungsrichtlinie.\n\nENTWURF — anwaltlich prüfen.",
-    },
-    {
-      type: "refund",
-      title: "Rückerstattungsrichtlinie",
-      content:
-        "Erstattungen bei Absage, Verlegung, Locationwechsel, erheblicher Programmänderung, höherer Gewalt und Kulanzfällen werden fallbezogen geregelt. Ticketverlust berechtigt nicht automatisch zur Erstattung.\n\nENTWURF — anwaltlich prüfen. Künstleränderungen nicht pauschal jede Erstattung ausschließen.",
-    },
-  ];
-
-  for (const legal of legalTypes) {
-    const doc = await prisma.legalDocument.upsert({
-      where: {
-        organizationId_type: { organizationId: org.id, type: legal.type },
-      },
-      update: {},
-      create: { organizationId: org.id, type: legal.type },
-    });
-
-    await prisma.legalDocumentVersion.upsert({
-      where: {
-        legalDocumentId_version: { legalDocumentId: doc.id, version: "1.0.0" },
-      },
-      update: {
-        title: legal.title,
-        content: legal.content,
-        status: "published",
-        publishedAt: new Date(),
-      },
-      create: {
-        legalDocumentId: doc.id,
-        version: "1.0.0",
-        title: legal.title,
-        content: legal.content,
-        validFrom: new Date(),
-        status: "published",
-        publishedAt: new Date(),
-      },
-    });
-  }
+  const { syncLegalCatalog } = await import("../src/lib/legal/sync-catalog");
+  await syncLegalCatalog(org.id, prisma);
 
   const location = await prisma.location.upsert({
     where: {

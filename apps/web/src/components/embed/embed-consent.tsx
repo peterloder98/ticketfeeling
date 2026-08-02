@@ -1,30 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
-type ConsentState = {
-  necessary: true;
-  statistics: boolean;
-  marketing: boolean;
-  externalMedia: boolean;
-  version: string;
-  at: string;
-};
-
-const KEY = "tf_consent_v1";
-const VERSION = "2026-07-31";
-
-function saveConsent(partial: Omit<ConsentState, "necessary" | "version" | "at">) {
-  const value: ConsentState = {
-    necessary: true,
-    ...partial,
-    version: VERSION,
-    at: new Date().toISOString(),
-  };
-  localStorage.setItem(KEY, JSON.stringify(value));
-  window.dispatchEvent(new CustomEvent("tf:consent", { detail: value }));
-  return value;
-}
+import {
+  CONSENT_STORAGE_KEY,
+  CONSENT_VERSION,
+  readConsent,
+  saveConsent,
+} from "@/lib/consent";
 
 /**
  * Compact consent chip for iframe embeds (not a full-width bar).
@@ -34,17 +16,7 @@ export function EmbedConsent() {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (!raw) {
-        setVisible(true);
-      } else {
-        const parsed = JSON.parse(raw) as ConsentState;
-        if (parsed.version !== VERSION) setVisible(true);
-      }
-    } catch {
-      setVisible(true);
-    }
+    if (!readConsent()) setVisible(true);
 
     function onMessage(event: MessageEvent) {
       const data = event.data;
@@ -64,12 +36,12 @@ export function EmbedConsent() {
   if (!visible) return null;
 
   return (
-    <div className="px-1 pb-2">
+    <div className="px-1 pb-2 pt-1">
       <div className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-2 shadow-sm">
         <p className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">
           Cookies für Statistik & Marketing.{" "}
           <a
-            href="/datenschutz"
+            href="/recht/datenschutz"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
@@ -99,6 +71,9 @@ export function EmbedConsent() {
             OK
           </button>
         </div>
+        <p className="mt-1 text-[9px] text-[var(--tf-text-secondary)]">
+          v{CONSENT_VERSION} · {CONSENT_STORAGE_KEY}
+        </p>
       </div>
     </div>
   );

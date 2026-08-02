@@ -26,13 +26,14 @@ function Fallback({
   className: string;
 }) {
   if (fallback === "person") {
-    const letters = (initials || "?")
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0] ?? "")
-      .join("")
-      .toUpperCase() || "?";
+    const letters =
+      (initials || "?")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0] ?? "")
+        .join("")
+        .toUpperCase() || "?";
     return (
       <span
         className={`inline-flex items-center justify-center bg-[rgba(20,184,166,0.12)] text-sm font-semibold text-[var(--tf-teal-hover)] ${className}`}
@@ -70,11 +71,9 @@ export function ResponsiveImage({
 }: Props) {
   const resolved = normalizeCoverImageUrl(src);
   const [failed, setFailed] = useState(false);
-  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setFailed(false);
-    setLoaded(false);
   }, [resolved]);
 
   const showImage = Boolean(resolved) && !failed;
@@ -86,30 +85,15 @@ export function ResponsiveImage({
   }
 
   return (
-    <span className={`relative block overflow-hidden ${className}`}>
-      {/* Keep brand fallback under the img so Safari never flashes a lone "?" */}
-      {!loaded ? (
-        <Fallback
-          fallback={fallback}
-          initials={initials}
-          alt=""
-          className="absolute inset-0 h-full w-full"
-        />
-      ) : null}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={resolved!}
-        alt={alt}
-        className={`h-full w-full ${fit === "cover" ? "object-cover" : "object-contain"} ${
-          loaded ? "opacity-100" : "opacity-0"
-        }`}
-        onLoad={() => setLoaded(true)}
-        onError={() => setFailed(true)}
-        loading={priority ? "eager" : "lazy"}
-        fetchPriority={priority ? "high" : "auto"}
-        decoding="async"
-        referrerPolicy="no-referrer"
-      />
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={resolved!}
+      alt={alt}
+      className={`${fit === "cover" ? "object-cover" : "object-contain"} ${className}`}
+      onError={() => setFailed(true)}
+      loading={priority ? "eager" : "lazy"}
+      fetchPriority={priority ? "high" : "auto"}
+      decoding="async"
+    />
   );
 }

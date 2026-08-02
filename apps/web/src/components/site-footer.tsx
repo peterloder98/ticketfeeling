@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
+import { CookieSettingsButton } from "@/components/cookie-settings-button";
 
 export function SiteFooter() {
   return (
@@ -86,6 +87,14 @@ export function SiteFooter() {
               <Link href="/recht/rueckerstattung" className="hover:text-[var(--tf-teal)]">
                 Rückerstattung
               </Link>
+            </li>
+            <li>
+              <Link href="/recht/cookies" className="hover:text-[var(--tf-teal)]">
+                Cookies
+              </Link>
+            </li>
+            <li>
+              <CookieSettingsButton className="hover:text-[var(--tf-teal)]" />
             </li>
           </ul>
         </div>

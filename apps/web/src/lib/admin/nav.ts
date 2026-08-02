@@ -106,6 +106,11 @@ export const ADMIN_SUBNAV = {
       label: "Website-Einbindung",
       description: "iframe Shop & Event",
     },
+    {
+      href: "/admin/einstellungen/recht",
+      label: "Rechtstexte",
+      description: "AGB, Datenschutz, Versionen",
+    },
   ] satisfies AdminSubNavItem[],
   system: [
     { href: "/admin/system", label: "Übersicht", description: "Support & Protokoll" },
