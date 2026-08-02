@@ -275,7 +275,14 @@ export function CheckoutForm({
           <p className="font-semibold">Du bist als Mitarbeiter angemeldet</p>
           <p className="mt-1 text-[var(--tf-text-secondary)]">
             Für einen normalen Kundentest: als Gast kaufen (unten) — oder{" "}
-            <Link href="/api/auth/signout?callbackUrl=/checkout" className="font-medium underline">
+            <Link
+              href={
+                embed
+                  ? "/api/auth/signout?callbackUrl=/embed/checkout"
+                  : "/api/auth/signout?callbackUrl=/checkout"
+              }
+              className="font-medium underline"
+            >
               abmelden
             </Link>{" "}
             und den Kauf ohne Admin-Konto durchführen.
@@ -319,7 +326,7 @@ export function CheckoutForm({
               </p>
             </button>
           </div>
-          {!isLoggedIn ? (
+          {!isLoggedIn && !embed ? (
             <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
               Schon ein Konto?{" "}
               <Link
@@ -328,6 +335,11 @@ export function CheckoutForm({
               >
                 Anmelden
               </Link>
+            </p>
+          ) : null}
+          {!isLoggedIn && embed ? (
+            <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+              Im eingebetteten Shop am einfachsten als Gast kaufen.
             </p>
           ) : null}
         </div>

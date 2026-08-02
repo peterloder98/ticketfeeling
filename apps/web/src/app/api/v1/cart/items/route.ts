@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { addToCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import { cartCookieHeader, readCartSessionKey } from "@/lib/commerce/cart-session";
+import { formatEuroFromCents } from "@/lib/money";
 
 const schema = z.object({
   categoryId: z.string().uuid(),
@@ -26,10 +27,14 @@ export async function POST(request: Request) {
       userId: session?.user?.id,
       sessionKey,
     });
+    const priced = await priceCart(cart);
     const response = NextResponse.json({
       ok: true,
       cartId: cart.id,
-      summary: await priceCart(cart),
+      summary: {
+        ...priced,
+        grossFormatted: formatEuroFromCents(priced.grossCents, priced.currency),
+      },
       expiresAt: cart.expiresAt,
       seats: cart.items.flatMap((item) =>
         item.seats.map((s) => ({

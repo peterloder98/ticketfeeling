@@ -5,43 +5,53 @@ import { usePathname } from "next/navigation";
 import { ShoppingCart } from "lucide-react";
 import { useCart } from "@/components/cart-context";
 
-/** Compact cart strip inside the embed iframe — never breaks out to the host page. */
+/**
+ * Always-visible cart control in the embed header.
+ * Links stay on /embed/* so navigation never leaves the iframe.
+ */
 export function EmbedCartBar() {
   const pathname = usePathname() ?? "";
-  const { itemCount, grossFormatted } = useCart();
-  if (itemCount <= 0) return null;
-  if (
-    pathname.startsWith("/embed/checkout") ||
-    pathname.startsWith("/embed/bestellung") ||
-    pathname.startsWith("/embed/warenkorb")
-  ) {
-    return null;
-  }
+  const { itemCount, grossFormatted, loading } = useCart();
+  const onCartPage = pathname.startsWith("/embed/warenkorb");
+  const onCheckoutFlow =
+    pathname.startsWith("/embed/checkout") || pathname.startsWith("/embed/bestellung");
+
+  const countLabel = loading && itemCount <= 0 ? "…" : String(itemCount);
 
   return (
-    <div className="sticky bottom-0 z-20 border-t border-[#e2e8f0] bg-white/95 px-3 py-2.5 backdrop-blur">
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-[var(--tf-navy)]">
-            <ShoppingCart className="h-3.5 w-3.5 text-[var(--tf-teal)]" aria-hidden />
-            {itemCount} {itemCount === 1 ? "Ticket" : "Tickets"}
-            {grossFormatted ? (
-              <span className="font-normal text-[var(--tf-text-secondary)]">
-                · {grossFormatted}
-              </span>
-            ) : null}
-          </p>
-        </div>
-        <Link
-          href="/embed/warenkorb"
-          className="tf-btn tf-btn-secondary !min-h-9 !px-2.5 !text-xs"
+    <div className="flex shrink-0 items-center gap-1.5">
+      <Link
+        href="/embed/warenkorb"
+        className={`inline-flex items-center gap-1.5 rounded-lg border px-2 py-1.5 text-xs font-semibold transition ${
+          onCartPage
+            ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.12)] text-[var(--tf-navy)]"
+            : "border-[#e2e8f0] bg-white text-[var(--tf-navy)] hover:border-[var(--tf-teal)]"
+        }`}
+        aria-label={`Warenkorb${itemCount > 0 ? `, ${itemCount} Tickets` : ""}`}
+      >
+        <ShoppingCart className="h-3.5 w-3.5 text-[var(--tf-teal)]" aria-hidden />
+        <span
+          className={`inline-flex min-w-[1.1rem] items-center justify-center rounded-md px-1 text-[11px] tabular-nums ${
+            itemCount > 0
+              ? "bg-[var(--tf-navy)] font-bold text-white"
+              : "bg-[#e2e8f0] font-medium text-[#64748b]"
+          }`}
         >
-          Warenkorb
+          {countLabel}
+        </span>
+        <span className="hidden min-[360px]:inline">Warenkorb</span>
+      </Link>
+      {itemCount > 0 && !onCheckoutFlow ? (
+        <Link
+          href="/embed/checkout"
+          className="tf-btn tf-btn-primary !min-h-8 !rounded-lg !px-2.5 !text-[11px]"
+        >
+          Kasse
+          {grossFormatted ? (
+            <span className="ml-1 font-normal opacity-90">{grossFormatted}</span>
+          ) : null}
         </Link>
-        <Link href="/embed/checkout" className="tf-btn tf-btn-primary !min-h-9 !px-2.5 !text-xs">
-          Zur Kasse
-        </Link>
-      </div>
+      ) : null}
     </div>
   );
 }

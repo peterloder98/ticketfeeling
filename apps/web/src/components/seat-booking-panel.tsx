@@ -163,6 +163,12 @@ export function SeatBookingPanel({
       }
       bump({
         itemCount: data?.summary?.itemCount,
+        grossFormatted:
+          typeof data?.summary?.grossFormatted === "string"
+            ? data.summary.grossFormatted
+            : typeof data?.summary?.grossCents === "number"
+              ? formatEuroFromCents(data.summary.grossCents)
+              : undefined,
         expiresAt: data?.expiresAt
           ? typeof data.expiresAt === "string"
             ? data.expiresAt
@@ -203,6 +209,12 @@ export function SeatBookingPanel({
       }
       bump({
         itemCount: data?.summary?.itemCount,
+        grossFormatted:
+          typeof data?.summary?.grossFormatted === "string"
+            ? data.summary.grossFormatted
+            : typeof data?.summary?.grossCents === "number"
+              ? formatEuroFromCents(data.summary.grossCents)
+              : undefined,
         expiresAt: data?.expiresAt
           ? typeof data.expiresAt === "string"
             ? data.expiresAt

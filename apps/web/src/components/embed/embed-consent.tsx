@@ -68,7 +68,12 @@ export function EmbedConsent() {
       <div className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-2 shadow-sm">
         <p className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">
           Cookies für Statistik & Marketing.{" "}
-          <a href="/datenschutz" target="_top" className="underline">
+          <a
+            href="/datenschutz"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
             Mehr
           </a>
         </p>
