@@ -63,7 +63,7 @@ export default async function AdminEventsPage({ searchParams }: Props) {
         </div>
         {canWrite ? (
           <div className="flex shrink-0 flex-wrap gap-2">
-            <Link href="/admin/tours" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
+            <Link href="/admin/tours" className="tf-btn tf-btn-primary !min-h-10 text-sm">
               Neue Tour
             </Link>
             <Link href="/admin/events/neu" className="tf-btn tf-btn-primary !min-h-10 text-sm">
@@ -87,8 +87,8 @@ export default async function AdminEventsPage({ searchParams }: Props) {
               href={eventListFilterHref(next)}
               className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold transition ${
                 active
-                  ? "border-[#0F2747] bg-[#0F2747] text-white"
-                  : "border-[var(--tf-line)] bg-white text-[#0F2747] hover:border-[var(--tf-teal)]"
+                  ? "border-[#0F2747] bg-[#0F2747] !text-white"
+                  : "border-[var(--tf-line)] bg-white !text-[#0F2747] hover:border-[var(--tf-teal)]"
               }`}
             >
               {filter.label}
