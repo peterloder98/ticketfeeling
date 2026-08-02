@@ -19,17 +19,20 @@ export function AddToCartPanel({
   categories,
   feeSurchargeNote,
   showRemainingAvailability = false,
-  /** Open cart/checkout in top window (required for reliable iframe checkout) */
-  breakOutToTop = false,
   /** Denser layout for iframe embeds */
   compact = false,
+  cartHref = "/warenkorb",
+  checkoutHref = "/checkout",
 }: {
   categories: Category[];
   /** e.g. "zzgl. 3 % Verwaltungsgebühr" — shown under ticket price */
   feeSurchargeNote?: string;
   showRemainingAvailability?: boolean;
+  /** @deprecated use cartHref/checkoutHref — kept so old call sites compile */
   breakOutToTop?: boolean;
   compact?: boolean;
+  cartHref?: string;
+  checkoutHref?: string;
 }) {
   const { bump } = useCart();
   const [qty, setQty] = useState<Record<string, number>>(
@@ -192,19 +195,11 @@ export function AddToCartPanel({
           }`}
         >
           Im Warenkorb.{" "}
-          <Link
-            href="/warenkorb"
-            target={breakOutToTop ? "_top" : undefined}
-            className="font-semibold text-[var(--tf-teal)] underline"
-          >
+          <Link href={cartHref} className="font-semibold text-[var(--tf-teal)] underline">
             Ansehen
           </Link>
           {" · "}
-          <Link
-            href="/checkout"
-            target={breakOutToTop ? "_top" : undefined}
-            className="font-semibold text-[var(--tf-teal)] underline"
-          >
+          <Link href={checkoutHref} className="font-semibold text-[var(--tf-teal)] underline">
             Zur Kasse
           </Link>
         </p>

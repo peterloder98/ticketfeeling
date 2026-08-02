@@ -103,7 +103,7 @@ export function EmbedCodePanel(props: Props) {
         <iframe
           src={previewUrl}
           title="Embed-Vorschau"
-          className="mx-auto block h-[560px] w-full max-w-[400px] bg-transparent"
+          className="mx-auto block h-[560px] w-[420px] max-w-full bg-transparent"
         />
       </div>
     </div>

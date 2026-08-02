@@ -5,7 +5,13 @@ import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useRouter } from "next/navigation";
 
-function PayInner({ orderId }: { orderId: string }) {
+function PayInner({
+  orderId,
+  successPath,
+}: {
+  orderId: string;
+  successPath: string;
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
@@ -20,7 +26,7 @@ function PayInner({ orderId }: { orderId: string }) {
     const result = await stripe.confirmPayment({
       elements,
       confirmParams: {
-        return_url: `${window.location.origin}/konto/bestellung/${orderId}?paid=1`,
+        return_url: `${window.location.origin}${successPath}`,
       },
       redirect: "if_required",
     });
@@ -29,7 +35,7 @@ function PayInner({ orderId }: { orderId: string }) {
       setError(result.error.message ?? "Zahlung fehlgeschlagen");
       return;
     }
-    router.push(`/konto/bestellung/${orderId}?paid=1`);
+    router.push(successPath);
     router.refresh();
   }
 
@@ -56,10 +62,13 @@ export function StripePayForm({
   clientSecret,
   orderId,
   publishableKey,
+  successPath,
 }: {
   clientSecret: string;
   orderId: string;
   publishableKey: string;
+  /** Where to go after successful payment (embed: /embed/bestellung/…) */
+  successPath?: string;
 }) {
   if (!publishableKey) {
     return (
@@ -68,10 +77,11 @@ export function StripePayForm({
       </p>
     );
   }
+  const resolvedSuccess = successPath ?? `/konto/bestellung/${orderId}?paid=1`;
   const stripePromise = loadStripe(publishableKey);
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, locale: "de" }}>
-      <PayInner orderId={orderId} />
+      <PayInner orderId={orderId} successPath={resolvedSuccess} />
     </Elements>
   );
 }

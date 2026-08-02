@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { AddToCartPanel } from "@/components/add-to-cart";
 import { SeatBookingPanel } from "@/components/seat-booking-panel";
@@ -135,42 +134,40 @@ export default async function EmbedEventShopPage({ params }: Props) {
 
       <article className="space-y-3">
         <div className="overflow-hidden rounded-xl border border-[var(--tf-line)]">
-          <div className="flex gap-2.5 p-2.5">
-            <div className="relative h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-lg bg-[var(--tf-navy)]">
-              <ResponsiveImage
-                src={coverImageUrl}
-                alt=""
-                className="absolute inset-0 h-full w-full object-cover"
-                fallback="event"
-              />
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col justify-center space-y-1">
-              <h1 className="text-sm font-bold leading-snug text-[var(--tf-navy)]">
-                {event.name}
-              </h1>
-              {when ? (
-                <p className="flex items-start gap-1 text-[11px] text-[var(--tf-text-secondary)]">
-                  <Calendar className="mt-0.5 h-3 w-3 shrink-0 text-[var(--tf-teal)]" />
-                  <span>{when} Uhr</span>
-                </p>
-              ) : null}
-              {place ? (
-                <p className="flex items-start gap-1 text-[11px] text-[var(--tf-text-secondary)]">
-                  <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-[var(--tf-teal)]" />
-                  <span className="line-clamp-1">{place}</span>
-                </p>
-              ) : null}
-              {fromPrice ? (
-                <p className="text-sm font-semibold text-[var(--tf-navy)]">
-                  {fromPrice.totalLabel}
-                </p>
-              ) : null}
-            </div>
+          <div className="relative aspect-square w-full bg-[var(--tf-navy)]">
+            <ResponsiveImage
+              src={coverImageUrl}
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+              fallback="event"
+            />
+          </div>
+          <div className="space-y-1.5 p-3">
+            <h1 className="text-base font-bold leading-snug text-[var(--tf-navy)]">
+              {event.name}
+            </h1>
+            {when ? (
+              <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
+                <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                <span>{when} Uhr</span>
+              </p>
+            ) : null}
+            {place ? (
+              <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                <span>{place}</span>
+              </p>
+            ) : null}
+            {fromPrice ? (
+              <p className="pt-0.5 text-base font-semibold text-[var(--tf-navy)]">
+                {fromPrice.totalLabel}
+              </p>
+            ) : null}
           </div>
         </div>
 
         {event.shortDescription ? (
-          <p className="line-clamp-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+          <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
             {event.shortDescription}
           </p>
         ) : null}
@@ -190,14 +187,16 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   categories={categories}
                   feeSurchargeNote={feeSurchargeNote || undefined}
                   showRemainingAvailability={event.showRemainingAvailability}
-                  breakOutToTop
+                  cartHref="/embed/warenkorb"
+                  checkoutHref="/embed/checkout"
                 />
               ) : (
                 <AddToCartPanel
                   categories={categories}
                   feeSurchargeNote={feeSurchargeNote || undefined}
                   showRemainingAvailability={event.showRemainingAvailability}
-                  breakOutToTop
+                  cartHref="/embed/warenkorb"
+                  checkoutHref="/embed/checkout"
                   compact
                 />
               )
@@ -215,10 +214,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
           </p>
           <PaymentBrandRow className="justify-center" />
           <p className="pt-1 text-center text-[11px] text-[var(--tf-text-secondary)]">
-            Zahlung über{" "}
-            <Link href="/" target="_top" className="font-medium text-[var(--tf-teal)] underline">
-              Ticketfeeling
-            </Link>
+            Zahlung über Ticketfeeling
           </p>
         </div>
       </article>

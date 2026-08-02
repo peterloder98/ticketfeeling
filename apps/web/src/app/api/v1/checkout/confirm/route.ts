@@ -38,6 +38,7 @@ const schema = z
     invoiceContactName: z.string().optional(),
     invoiceVatId: z.string().optional(),
     invoiceOrderReference: z.string().optional(),
+    embed: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.checkoutMode === "register" && (!data.password || data.password.length < 8)) {
@@ -85,7 +86,9 @@ export async function POST(request: Request) {
       customerTotalCents: result.order.customerTotalCents,
       paymentMethod: result.order.paymentMethod,
       clientSecret: result.clientSecret ?? null,
-      payUrl: `/checkout/pay/${result.order.id}`,
+      payUrl: body.embed
+        ? `/embed/checkout/pay/${result.order.id}`
+        : `/checkout/pay/${result.order.id}`,
       createdAccount: checkoutMode === "register" && !session?.user?.id,
     });
   } catch (error) {

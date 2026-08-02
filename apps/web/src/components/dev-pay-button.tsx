@@ -7,10 +7,12 @@ export function DevPayButton({
   orderId,
   providerPaymentId,
   amountLabel,
+  successPath,
 }: {
   orderId: string;
   providerPaymentId: string;
   amountLabel: string;
+  successPath?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -35,7 +37,7 @@ export function DevPayButton({
         setError(data?.error?.code ?? "Zahlung fehlgeschlagen");
         return;
       }
-      router.push(`/konto/bestellung/${orderId}?paid=1`);
+      router.push(successPath ?? `/konto/bestellung/${orderId}?paid=1`);
       router.refresh();
     } finally {
       setLoading(false);

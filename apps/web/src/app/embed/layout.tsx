@@ -1,11 +1,12 @@
 import { BrandLogo } from "@/components/brand-logo";
 import { EmbedConsent } from "@/components/embed/embed-consent";
 import { EmbedResizeNotifier } from "@/components/embed/embed-resize";
+import { EmbedCartBar } from "@/components/embed/embed-cart-bar";
+import { EMBED_FRAME_WIDTH } from "@/lib/embed/public-url";
 
 export default function EmbedLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      {/* Transparent page chrome so wide parent iframes don’t show a huge white slab */}
       <style>{`
         html, body {
           background: transparent !important;
@@ -20,7 +21,8 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
       `}</style>
       <div
         data-embed-root
-        className="mx-auto w-full max-w-[400px] bg-transparent px-1 py-1 text-[#0F2747]"
+        className="mx-auto bg-transparent text-[#0F2747]"
+        style={{ width: EMBED_FRAME_WIDTH, maxWidth: "100%" }}
       >
         <div className="overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-[0_8px_28px_rgba(15,39,71,0.08)]">
           <EmbedConsent />
@@ -33,6 +35,7 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
             </div>
           </div>
           <div className="px-3 py-3">{children}</div>
+          <EmbedCartBar />
         </div>
         <EmbedResizeNotifier />
       </div>

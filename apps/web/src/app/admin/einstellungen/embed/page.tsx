@@ -39,8 +39,8 @@ export default async function EmbedSettingsPage() {
           Website-Einbindung
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
-          Ticketshop als iframe z. B. auf schlagerfeeling.de einbinden. Tracking läuft im Embed mit
-          Cross-Domain-Linker; Warenkorb/Kasse öffnen sicher im Hauptfenster.
+          Ticketshop als iframe (feste Breite 420px, Höhe passt sich dem Inhalt an). Kompletter Kauf —
+          Warenkorb, Kasse, Zahlung und Tickets — bleibt im iframe.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />

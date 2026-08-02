@@ -38,6 +38,8 @@ type Props = {
   feeSurchargeNote?: string;
   showRemainingAvailability?: boolean;
   breakOutToTop?: boolean;
+  cartHref?: string;
+  checkoutHref?: string;
 };
 
 function errorLabel(code: string) {
@@ -63,7 +65,8 @@ export function SeatBookingPanel({
   categories,
   feeSurchargeNote,
   showRemainingAvailability = false,
-  breakOutToTop = false,
+  cartHref = "/warenkorb",
+  checkoutHref = "/checkout",
 }: Props) {
   const { bump } = useCart();
   const seatCategories = categories.filter((c) => c.needsSeats);
@@ -472,19 +475,11 @@ export function SeatBookingPanel({
             </ul>
           ) : null}
           <p className="mt-2">
-            <Link
-              href="/warenkorb"
-              target={breakOutToTop ? "_top" : undefined}
-              className="font-semibold text-[var(--tf-teal)] underline"
-            >
+            <Link href={cartHref} className="font-semibold text-[var(--tf-teal)] underline">
               Warenkorb
             </Link>
             {" · "}
-            <Link
-              href="/checkout"
-              target={breakOutToTop ? "_top" : undefined}
-              className="font-semibold text-[var(--tf-teal)] underline"
-            >
+            <Link href={checkoutHref} className="font-semibold text-[var(--tf-teal)] underline">
               Zur Kasse
             </Link>
           </p>

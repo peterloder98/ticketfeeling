@@ -65,12 +65,15 @@ export function CheckoutForm({
   loginEmail,
   paymentOptions,
   customerTotalCents,
+  embed = false,
 }: {
   isLoggedIn?: boolean;
   isStaff?: boolean;
   loginEmail?: string | null;
   paymentOptions: CheckoutPaymentOption[];
   customerTotalCents: number;
+  /** Keep payment + tickets inside the embed iframe */
+  embed?: boolean;
 }) {
   const router = useRouter();
   const { bump } = useCart();
@@ -227,6 +230,7 @@ export function CheckoutForm({
         body: JSON.stringify({
           ...payload,
           preferGuest: forceGuestStaff,
+          embed,
         }),
       });
       const data = await response.json();
@@ -241,7 +245,13 @@ export function CheckoutForm({
 
       // Clear cart badge / reminder immediately — don't wait for the next poll.
       bump({ itemCount: 0, expiresAt: null, grossFormatted: null });
-      router.push(data.payUrl);
+      const payUrl =
+        typeof data.payUrl === "string"
+          ? data.payUrl
+          : embed
+            ? `/embed/checkout/pay/${data.orderId}`
+            : `/checkout/pay/${data.orderId}`;
+      router.push(payUrl);
     } finally {
       setLoading(false);
     }
