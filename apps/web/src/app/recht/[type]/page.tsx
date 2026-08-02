@@ -1,24 +1,12 @@
 import { notFound } from "next/navigation";
-import { prisma } from "@/lib/db";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
 import { PUBLIC_SLUG_TO_TYPE } from "@/lib/legal/document-types";
-import { ensureLegalSchema, syncLegalCatalog } from "@/lib/legal/sync-catalog";
+import { findPublishedLegalVersion, syncLegalCatalog } from "@/lib/legal/sync-catalog";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ type: string }> };
-
-async function loadPublishedVersion(organizationId: string, docType: string) {
-  await ensureLegalSchema();
-  return prisma.legalDocumentVersion.findFirst({
-    where: {
-      status: "published",
-      legalDocument: { organizationId, type: docType, enabled: true },
-    },
-    orderBy: { publishedAt: "desc" },
-  });
-}
 
 export async function generateMetadata({ params }: Props) {
   try {
@@ -27,7 +15,7 @@ export async function generateMetadata({ params }: Props) {
     if (!docType) return { title: "Rechtliches" };
     const org = await getDefaultOrganization();
     if (!org) return { title: "Rechtliches" };
-    const version = await loadPublishedVersion(org.id, docType);
+    const version = await findPublishedLegalVersion(org.id, docType);
     return { title: version?.title ?? type };
   } catch {
     return { title: "Rechtliches" };
@@ -43,7 +31,7 @@ export default async function LegalPage({ params }: Props) {
   if (!org) notFound();
   const seller = buildSellerIdentity(org, org.settings);
 
-  let version = await loadPublishedVersion(org.id, docType);
+  let version = await findPublishedLegalVersion(org.id, docType);
 
   // Bootstrap catalog once if production DB still has empty/placeholder docs.
   if (!version || version.content.includes("ENTWURF —")) {
@@ -52,7 +40,7 @@ export default async function LegalPage({ params }: Props) {
     } catch (error) {
       console.error("[legal] syncLegalCatalog failed", error);
     }
-    version = await loadPublishedVersion(org.id, docType);
+    version = await findPublishedLegalVersion(org.id, docType);
   }
 
   // Impressum: DB text preferred; fall back to stammdaten if missing.
@@ -78,7 +66,9 @@ export default async function LegalPage({ params }: Props) {
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
         Version {version.version}
         {version.publishedAt
-          ? ` · ${version.publishedAt.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" })}`
+          ? ` · ${new Date(version.publishedAt).toLocaleDateString("de-DE", {
+              timeZone: "Europe/Berlin",
+            })}`
           : ""}
       </p>
       <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--tf-navy)]">
