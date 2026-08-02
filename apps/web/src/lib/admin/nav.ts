@@ -75,7 +75,7 @@ export const ADMIN_SUBNAV = {
     },
     {
       href: "/admin/events",
-      label: "Einzeltermine / Events",
+      label: "Events",
       description: "Alle Termine inkl. Tour-Termine",
     },
   ] satisfies AdminSubNavItem[],

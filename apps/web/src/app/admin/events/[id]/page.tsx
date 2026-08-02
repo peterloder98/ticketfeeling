@@ -6,7 +6,8 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { getEventSalesReport } from "@/lib/commerce/event-sales-report";
 import { formatEuroFromCents } from "@/lib/money";
-import { eventStatusLabel } from "@/lib/admin/nav";
+import { ADMIN_SUBNAV, eventStatusLabel } from "@/lib/admin/nav";
+import { AdminSubnav } from "@/components/admin/admin-subnav";
 import {
   CategorySalesTable,
   TicketProgressBar,
@@ -140,7 +141,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         >
           ← Alle Events
         </Link>
-        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+        <div className="mt-3 space-y-4">
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
@@ -171,6 +172,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               ) : null}
             </div>
           </div>
+          <AdminSubnav items={ADMIN_SUBNAV.tours} />
           <div className="flex flex-wrap gap-2">
             <Link
               href={`/event/${event.slug}`}

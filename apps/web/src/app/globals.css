@@ -156,7 +156,9 @@ a {
   padding: 0 20px;
   font-weight: 600;
   font-size: 0.95rem;
-  border: 1px solid transparent;
+  border: 1px solid var(--tf-line);
+  background: var(--tf-card);
+  color: #0f2747;
   transition:
     background var(--tf-duration) var(--tf-ease),
     border-color var(--tf-duration) var(--tf-ease),
@@ -188,8 +190,8 @@ a {
 
 .tf-btn-secondary {
   background: var(--tf-card);
-  border-color: var(--tf-navy);
-  color: var(--tf-navy);
+  border-color: #0f2747;
+  color: #0f2747;
 }
 
 html.dark .tf-btn-secondary {

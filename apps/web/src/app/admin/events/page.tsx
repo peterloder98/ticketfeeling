@@ -16,6 +16,8 @@ import {
   toggleEventListFilter,
   type EventListFilterKey,
 } from "@/lib/admin/event-list-filters";
+import { ADMIN_SUBNAV } from "@/lib/admin/nav";
+import { AdminSubnav } from "@/components/admin/admin-subnav";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Events" };
@@ -49,7 +51,7 @@ export default async function AdminEventsPage({ searchParams }: Props) {
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
+        <div className="min-w-0">
           <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Events</h1>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             Einzeltermine und Tour-Termine. Mehrere Orte/Daten? Zuerst unter{" "}
@@ -60,7 +62,7 @@ export default async function AdminEventsPage({ searchParams }: Props) {
           </p>
         </div>
         {canWrite ? (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex shrink-0 flex-wrap gap-2">
             <Link href="/admin/tours" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
               Neue Tour
             </Link>
@@ -71,7 +73,11 @@ export default async function AdminEventsPage({ searchParams }: Props) {
         ) : null}
       </div>
 
-      <div className="mt-5 flex flex-wrap items-center gap-2">
+      <div className="mt-5">
+        <AdminSubnav items={ADMIN_SUBNAV.tours} />
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         {EVENT_LIST_FILTERS.map((filter) => {
           const active = activeFilters.includes(filter.key);
           const next = toggleEventListFilter(activeFilters, filter.key as EventListFilterKey);
@@ -79,10 +85,10 @@ export default async function AdminEventsPage({ searchParams }: Props) {
             <Link
               key={filter.key}
               href={eventListFilterHref(next)}
-              className={`rounded-full border px-3.5 py-1.5 text-sm font-medium transition ${
+              className={`rounded-full border px-3.5 py-1.5 text-sm font-semibold transition ${
                 active
-                  ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
-                  : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)] hover:border-[var(--tf-teal)] hover:text-[var(--tf-navy)]"
+                  ? "border-[#0F2747] bg-[#0F2747] text-white"
+                  : "border-[var(--tf-line)] bg-white text-[#0F2747] hover:border-[var(--tf-teal)]"
               }`}
             >
               {filter.label}
