@@ -12,7 +12,14 @@ export async function OrgTracking({
   eventSlug?: string | null;
   eventTracking?: Parameters<typeof resolveTrackingConfig>[1];
 } = {}) {
-  const org = await getDefaultOrganization();
+  let org: Awaited<ReturnType<typeof getDefaultOrganization>> = null;
+  try {
+    org = await getDefaultOrganization();
+  } catch (error) {
+    // Never break page render / SSG (e.g. /agb) when DB schema lags.
+    console.error("[tracking] org load failed", error);
+    return null;
+  }
   const config = resolveTrackingConfig(org?.settings, eventTracking);
 
   if (!config.enabled) return null;
