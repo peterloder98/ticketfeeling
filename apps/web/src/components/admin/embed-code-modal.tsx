@@ -1,24 +1,36 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { X } from "lucide-react";
+import { buildEventEmbedSnippet } from "@/lib/embed/public-url";
 
 export function EmbedCodeModalButton({
   buttonLabel = "iframe codes des Events anzeigen",
   title = "iframe-Code dieses Events",
   description,
-  previewUrl,
-  snippet,
+  slug,
+  eventTitle,
+  /** @deprecated server absolute URL — ignored; origin comes from the browser */
+  previewUrl: _previewUrl,
+  /** @deprecated server snippet — ignored; rebuilt from window.location.origin */
+  snippet: _snippet,
 }: {
   buttonLabel?: string;
   title?: string;
   description?: string;
-  previewUrl: string;
-  snippet: string;
+  slug: string;
+  eventTitle?: string;
+  previewUrl?: string;
+  snippet?: string;
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [origin, setOrigin] = useState("");
+
+  useEffect(() => {
+    setOrigin(window.location.origin.replace(/\/$/, ""));
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -33,6 +45,17 @@ export function EmbedCodeModalButton({
       document.body.style.overflow = prev;
     };
   }, [open]);
+
+  const previewPath = `/embed/event/${encodeURIComponent(slug)}`;
+  const absoluteSrc = origin ? `${origin}${previewPath}` : previewPath;
+  const snippet = useMemo(() => {
+    if (!origin) return "Lade Embed-URL…";
+    return buildEventEmbedSnippet({
+      appUrl: origin,
+      slug,
+      title: eventTitle,
+    });
+  }, [origin, slug, eventTitle]);
 
   async function copy() {
     try {
@@ -64,7 +87,7 @@ export function EmbedCodeModalButton({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="relative w-full max-w-lg rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
+            className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -82,24 +105,39 @@ export function EmbedCodeModalButton({
             {description ? (
               <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">{description}</p>
             ) : null}
+            <p className="mt-2 break-all text-xs text-[var(--tf-text-secondary)]">
+              src: <span className="font-medium text-[var(--tf-navy)]">{absoluteSrc}</span>
+            </p>
 
-            <pre className="mt-4 max-h-64 overflow-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3 text-[11px] leading-relaxed text-[var(--tf-navy)]">
+            <pre className="mt-4 max-h-48 overflow-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3 text-[11px] leading-relaxed text-[var(--tf-navy)]">
               {snippet}
             </pre>
 
+            <div className="mt-4 overflow-hidden rounded-xl border border-[var(--tf-line)]">
+              <p className="border-b border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-xs font-medium text-[var(--tf-text-secondary)]">
+                Live-Vorschau
+              </p>
+              <iframe
+                src={previewPath}
+                title="Embed-Vorschau"
+                className="block h-[420px] w-full bg-white"
+              />
+            </div>
+
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <a
-                href={previewUrl}
+                href={previewPath}
                 target="_blank"
                 rel="noreferrer"
                 className="tf-btn tf-btn-secondary !min-h-10 text-sm"
               >
-                Vorschau
+                In neuem Tab
               </a>
               <button
                 type="button"
                 className="tf-btn tf-btn-primary !min-h-10 text-sm"
                 onClick={() => void copy()}
+                disabled={!origin}
               >
                 {copied ? "Kopiert" : "Kopieren"}
               </button>

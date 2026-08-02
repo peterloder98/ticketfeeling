@@ -6,11 +6,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { EmbedCodePanel } from "@/components/admin/embed-code-panel";
-import {
-  buildShopEmbedSnippetForRequest,
-  getEmbedFrameAncestors,
-  getPublicAppUrl,
-} from "@/lib/embed/public-url";
+import { getEmbedAppUrlFromRequest, getEmbedFrameAncestors } from "@/lib/embed/public-url";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Website-Einbindung (iframe)" };
@@ -30,10 +26,8 @@ export default async function EmbedSettingsPage() {
     return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
   }
 
-  const envUrl = getPublicAppUrl();
-  const { appUrl, previewUrl, snippet: shopSnippet } = await buildShopEmbedSnippetForRequest();
+  const appUrl = await getEmbedAppUrlFromRequest();
   const ancestors = getEmbedFrameAncestors();
-  const urlMismatch = envUrl !== appUrl;
 
   return (
     <div className="space-y-6">
@@ -52,22 +46,15 @@ export default async function EmbedSettingsPage() {
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />
 
       <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-3 text-sm text-[var(--tf-text-secondary)]">
-        iframe-Basis (immer die Domain, auf der du gerade im Admin bist):{" "}
+        iframe-Basis kommt aus deinem Browser (
         <code className="font-medium text-[var(--tf-navy)]">{appUrl}</code>
-        {urlMismatch ? (
-          <>
-            {" "}
-            — Env <code className="text-xs">{envUrl}</code> wird für Embeds ignoriert, bis du die
-            eigene Domain wirklich hier öffnest.
-          </>
-        ) : null}
+        ). Später eigene Domain → Admin dort öffnen, Code neu kopieren.
       </div>
 
       <EmbedCodePanel
+        kind="shop"
         title="Gesamtshop – alle laufenden Events"
         description="Zeigt die aktuelle Eventliste. Nach Klick auf ein Event erscheint der Ticketverkauf für genau dieses Event."
-        previewUrl={previewUrl}
-        snippet={shopSnippet}
       />
 
       <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-5 text-sm">
