@@ -27,7 +27,7 @@ function saveConsent(partial: Omit<ConsentState, "necessary" | "version" | "at">
 }
 
 /**
- * Compact consent for iframe embeds.
+ * Compact consent chip for iframe embeds (not a full-width bar).
  * Also accepts parent postMessage: { type: "tf:consent", statistics, marketing }.
  */
 export function EmbedConsent() {
@@ -64,18 +64,18 @@ export function EmbedConsent() {
   if (!visible) return null;
 
   return (
-    <div className="sticky top-0 z-40 border-b border-[var(--tf-line)] bg-white/95 px-3 py-2.5 backdrop-blur">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs leading-snug text-[var(--tf-text-secondary)]">
-          Cookies für Statistik & Marketing helfen uns, Tickets sicher zu verkaufen.{" "}
+    <div className="px-1 pb-2">
+      <div className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-2 shadow-sm">
+        <p className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">
+          Cookies für Statistik & Marketing.{" "}
           <a href="/datenschutz" target="_top" className="underline">
-            Datenschutz
+            Mehr
           </a>
         </p>
-        <div className="flex shrink-0 gap-1.5">
+        <div className="mt-1.5 flex gap-1.5">
           <button
             type="button"
-            className="rounded-lg border border-[var(--tf-line)] px-2.5 py-1.5 text-xs font-medium"
+            className="min-h-7 flex-1 rounded-md border border-[var(--tf-line)] bg-white px-2 text-[11px] font-medium text-[var(--tf-navy)]"
             onClick={() => {
               saveConsent({ statistics: false, marketing: false, externalMedia: false });
               setVisible(false);
@@ -85,7 +85,7 @@ export function EmbedConsent() {
           </button>
           <button
             type="button"
-            className="rounded-lg bg-[var(--tf-navy)] px-2.5 py-1.5 text-xs font-medium text-white"
+            className="min-h-7 flex-1 rounded-md bg-[var(--tf-navy)] px-2 text-[11px] font-semibold text-white"
             onClick={() => {
               saveConsent({ statistics: true, marketing: true, externalMedia: true });
               setVisible(false);

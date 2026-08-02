@@ -134,10 +134,9 @@ export default async function EmbedEventShopPage({ params }: Props) {
       <OrgTracking embedMode eventSlug={event.slug} eventTracking={event} />
 
       <article className="space-y-3">
-        {/* Cover is 444×444 — keep square; text vertically centered beside it */}
         <div className="overflow-hidden rounded-xl border border-[var(--tf-line)]">
-          <div className="flex flex-col sm:flex-row sm:items-center">
-            <div className="relative mx-auto aspect-square w-[11.5rem] shrink-0 bg-[var(--tf-navy)] sm:mx-0 sm:w-[13rem] md:w-[14.5rem]">
+          <div className="flex gap-2.5 p-2.5">
+            <div className="relative h-[5.5rem] w-[5.5rem] shrink-0 overflow-hidden rounded-lg bg-[var(--tf-navy)]">
               <ResponsiveImage
                 src={coverImageUrl}
                 alt=""
@@ -145,33 +144,25 @@ export default async function EmbedEventShopPage({ params }: Props) {
                 fallback="event"
               />
             </div>
-            <div className="flex min-w-0 flex-1 flex-col justify-center space-y-1.5 px-3 py-3 sm:px-4 sm:py-4">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
-                Tickets
-              </p>
-              <h1 className="text-base font-bold leading-tight text-[var(--tf-navy)] sm:text-lg">
+            <div className="flex min-w-0 flex-1 flex-col justify-center space-y-1">
+              <h1 className="text-sm font-bold leading-snug text-[var(--tf-navy)]">
                 {event.name}
               </h1>
               {when ? (
-                <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
-                  <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                <p className="flex items-start gap-1 text-[11px] text-[var(--tf-text-secondary)]">
+                  <Calendar className="mt-0.5 h-3 w-3 shrink-0 text-[var(--tf-teal)]" />
                   <span>{when} Uhr</span>
                 </p>
               ) : null}
               {place ? (
-                <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
-                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                  <span>{place}</span>
+                <p className="flex items-start gap-1 text-[11px] text-[var(--tf-text-secondary)]">
+                  <MapPin className="mt-0.5 h-3 w-3 shrink-0 text-[var(--tf-teal)]" />
+                  <span className="line-clamp-1">{place}</span>
                 </p>
               ) : null}
               {fromPrice ? (
-                <p className="pt-0.5 text-sm font-semibold text-[var(--tf-navy)]">
+                <p className="text-sm font-semibold text-[var(--tf-navy)]">
                   {fromPrice.totalLabel}
-                  {fromPrice.surchargeLabel ? (
-                    <span className="ml-1 text-[11px] font-normal text-[var(--tf-text-secondary)]">
-                      {fromPrice.surchargeLabel}
-                    </span>
-                  ) : null}
                 </p>
               ) : null}
             </div>

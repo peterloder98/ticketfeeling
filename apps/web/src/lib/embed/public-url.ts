@@ -69,11 +69,11 @@ export function buildEventEmbedSnippet(input: {
 }) {
   const src = `${input.appUrl}/embed/event/${encodeURIComponent(input.slug)}`;
   const title = input.title?.trim() || "Tickets";
-  const minHeight = input.minHeight ?? 520;
+  const minHeight = input.minHeight ?? 640;
   return `<iframe
   src="${src}"
   title="${title.replace(/"/g, "&quot;")} – Tickets"
-  style="width:100%;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:#fff;"
+  style="width:100%;max-width:420px;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="payment *"
 ></iframe>
@@ -99,11 +99,11 @@ export function buildShopEmbedSnippet(input: {
   minHeight?: number;
 }) {
   const src = `${input.appUrl}/embed/shop`;
-  const minHeight = input.minHeight ?? 640;
+  const minHeight = input.minHeight ?? 720;
   return `<iframe
   src="${src}"
   title="Ticketfeeling – Events & Tickets"
-  style="width:100%;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:#fff;"
+  style="width:100%;max-width:420px;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
   referrerpolicy="strict-origin-when-cross-origin"
   allow="payment *"
 ></iframe>

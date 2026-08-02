@@ -118,7 +118,7 @@ export function EmbedCodeModalButton({
               <iframe
                 src={previewUrl}
                 title="Embed-Vorschau"
-                className="block h-[420px] w-full bg-white"
+                className="mx-auto block h-[520px] w-full max-w-[400px] bg-transparent"
               />
             </div>
 

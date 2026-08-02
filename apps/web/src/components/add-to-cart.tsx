@@ -92,11 +92,11 @@ export function AddToCartPanel({
             key={category.id}
             className={
               compact
-                ? "rounded-xl border border-[var(--tf-line)] bg-white px-3 py-2.5"
+                ? "rounded-lg border border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-2"
                 : "rounded-[16px] border border-[var(--tf-line)] bg-[#f8fafc] p-4"
             }
           >
-            <div className="flex flex-wrap items-start justify-between gap-2">
+            <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">
                 <p
                   className={`font-semibold text-[var(--tf-navy)] ${compact ? "text-sm" : "text-base"}`}
@@ -104,20 +104,23 @@ export function AddToCartPanel({
                   {category.name}
                 </p>
                 <p
-                  className={`font-bold text-[var(--tf-navy)] ${compact ? "mt-0.5 text-base" : "mt-1 text-lg"}`}
+                  className={`font-bold text-[var(--tf-navy)] ${compact ? "mt-0.5 text-sm" : "mt-1 text-lg"}`}
                 >
                   {formatEuroFromCents(category.priceGrossCents)}
-                  {feeSurchargeNote ? (
+                  {feeSurchargeNote && !compact ? (
                     <span className="ml-1.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
                       {feeSurchargeNote}
                     </span>
                   ) : null}
                 </p>
+                {feeSurchargeNote && compact ? (
+                  <p className="text-[10px] text-[var(--tf-text-secondary)]">{feeSurchargeNote}</p>
+                ) : null}
               </div>
               {soldOut ? (
-                <p className="text-xs font-medium text-[var(--tf-text-secondary)]">Ausverkauft</p>
+                <p className="text-[11px] font-medium text-[var(--tf-text-secondary)]">Ausverkauft</p>
               ) : showRemainingAvailability ? (
-                <p className="text-xs font-medium text-[var(--tf-text-secondary)]">
+                <p className="text-[11px] font-medium text-[var(--tf-text-secondary)]">
                   Noch {category.available}
                 </p>
               ) : null}
@@ -127,22 +130,19 @@ export function AddToCartPanel({
                 {category.description}
               </p>
             ) : null}
-            {category.description && compact ? (
-              <p className="mt-0.5 line-clamp-1 text-[11px] text-[var(--tf-text-secondary)]">
-                {category.description}
-              </p>
-            ) : null}
 
-            <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-2" : "mt-4 gap-3"}`}>
+            <div
+              className={`flex items-center gap-2 ${compact ? "mt-2" : "mt-4 flex-wrap gap-3"}`}
+            >
               <div
-                className={`inline-flex items-center border border-[var(--tf-line)] bg-white ${
-                  compact ? "rounded-lg" : "rounded-[14px]"
+                className={`inline-flex shrink-0 items-center border border-[var(--tf-line)] bg-white ${
+                  compact ? "rounded-md" : "rounded-[14px]"
                 }`}
               >
                 <button
                   type="button"
                   className={`inline-flex items-center justify-center text-[var(--tf-navy)] disabled:opacity-40 ${
-                    compact ? "h-9 w-9" : "h-11 w-11"
+                    compact ? "h-8 w-8" : "h-11 w-11"
                   }`}
                   aria-label="Weniger"
                   disabled={soldOut || current <= 1}
@@ -152,7 +152,7 @@ export function AddToCartPanel({
                 </button>
                 <span
                   className={`text-center font-semibold tabular-nums text-[var(--tf-navy)] ${
-                    compact ? "min-w-8 text-sm" : "min-w-10 text-base"
+                    compact ? "min-w-6 text-sm" : "min-w-10 text-base"
                   }`}
                 >
                   {current}
@@ -160,7 +160,7 @@ export function AddToCartPanel({
                 <button
                   type="button"
                   className={`inline-flex items-center justify-center text-[var(--tf-navy)] disabled:opacity-40 ${
-                    compact ? "h-9 w-9" : "h-11 w-11"
+                    compact ? "h-8 w-8" : "h-11 w-11"
                   }`}
                   aria-label="Mehr"
                   disabled={soldOut || current >= max}
@@ -171,8 +171,8 @@ export function AddToCartPanel({
               </div>
               <button
                 type="button"
-                className={`tf-btn tf-btn-primary flex-1 text-sm sm:flex-none ${
-                  compact ? "!min-h-9 !px-3" : "!min-h-11"
+                className={`tf-btn tf-btn-primary flex-1 text-sm ${
+                  compact ? "!min-h-8 !rounded-md !px-2.5 !text-xs" : "!min-h-11"
                 }`}
                 disabled={soldOut || loadingId === category.id}
                 onClick={() => add(category.id)}
