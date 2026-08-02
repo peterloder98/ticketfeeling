@@ -4,7 +4,7 @@ import { LEGAL_SEED_CATALOG } from "@/lib/legal/content/catalog";
 import { LEGAL_DOCUMENT_TYPES } from "@/lib/legal/document-types";
 
 /** Best-effort schema patch when migrate deploy has not run yet. */
-async function ensureLegalSchema(db: PrismaClient) {
+export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
   try {
     await db.$executeRawUnsafe(
       `ALTER TABLE "legal_documents" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN NOT NULL DEFAULT true`,

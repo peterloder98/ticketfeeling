@@ -59,6 +59,15 @@ function inputClass(hasError: boolean) {
     : "tf-input";
 }
 
+function RequiredMark() {
+  return (
+    <span className="text-[var(--danger)]" aria-hidden>
+      {" "}
+      *
+    </span>
+  );
+}
+
 export function CheckoutForm({
   isLoggedIn = false,
   isStaff = false,
@@ -352,10 +361,15 @@ export function CheckoutForm({
         </div>
       )}
 
+      <p className="mb-3 text-xs text-[var(--tf-text-secondary)]">
+        Pflichtfelder sind mit <span className="text-[var(--danger)]">*</span> markiert.
+      </p>
+
       <div className="grid gap-3 md:grid-cols-2">
         <div className="md:col-span-2">
           <label className="tf-label" htmlFor="email">
             E-Mail
+            <RequiredMark />
           </label>
           <input
             id="email"
@@ -373,6 +387,7 @@ export function CheckoutForm({
           <div className="md:col-span-2">
             <label className="tf-label" htmlFor="password">
               Passwort (min. 8 Zeichen)
+              <RequiredMark />
             </label>
             <input
               id="password"
@@ -390,6 +405,7 @@ export function CheckoutForm({
         <div>
           <label className="tf-label" htmlFor="gender">
             Geschlecht
+            <RequiredMark />
           </label>
           <select
             id="gender"
@@ -410,6 +426,7 @@ export function CheckoutForm({
         <div>
           <label className="tf-label" htmlFor="firstName">
             Vorname
+            <RequiredMark />
           </label>
           <input
             id="firstName"
@@ -422,6 +439,7 @@ export function CheckoutForm({
         <div>
           <label className="tf-label" htmlFor="lastName">
             Nachname
+            <RequiredMark />
           </label>
           <input
             id="lastName"
@@ -433,11 +451,12 @@ export function CheckoutForm({
         </div>
         <SmartDateInput name="birthDate" label="Geburtsdatum (optional)" />
         <div className="md:col-span-2">
-          <PhoneInput name="phone" />
+          <PhoneInput name="phone" label="Telefon (optional)" />
         </div>
         <div>
           <label className="tf-label" htmlFor="street">
             Straße
+            <RequiredMark />
           </label>
           <input
             id="street"
@@ -450,6 +469,7 @@ export function CheckoutForm({
         <div>
           <label className="tf-label" htmlFor="houseNumber">
             Hausnummer
+            <RequiredMark />
           </label>
           <input
             id="houseNumber"
@@ -461,6 +481,7 @@ export function CheckoutForm({
         <div>
           <label className="tf-label" htmlFor="postalCode">
             PLZ
+            <RequiredMark />
           </label>
           <input
             id="postalCode"
@@ -481,6 +502,7 @@ export function CheckoutForm({
         <div>
           <label className="tf-label" htmlFor="city">
             Ort
+            <RequiredMark />
           </label>
           <input
             id="city"
@@ -560,7 +582,10 @@ export function CheckoutForm({
             {invoiceRecipientType === "company" ? (
               <>
                 <label className="grid gap-1 text-sm sm:col-span-2">
-                  <span>Firmenname</span>
+                  <span>
+                    Firmenname
+                    <RequiredMark />
+                  </span>
                   <input
                     name="invoiceCompanyName"
                     className={inputClass(Boolean(fieldErrors.invoiceCompanyName))}
@@ -609,7 +634,7 @@ export function CheckoutForm({
         data-field="acceptTerms"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tf-navy)]">
-          Bitte lesen und bestätigen
+          Bitte lesen und bestätigen <span className="text-[var(--danger)]">*</span>
         </p>
         {legalError ? (
           <p className="text-xs font-medium text-[var(--danger)]">

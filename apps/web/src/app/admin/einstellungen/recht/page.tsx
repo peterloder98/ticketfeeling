@@ -11,7 +11,7 @@ import {
   setLegalDocumentEnabledAction,
   syncLegalCatalogAction,
 } from "@/app/admin/einstellungen/recht/actions";
-import { syncLegalCatalog } from "@/lib/legal/sync-catalog";
+import { ensureLegalSchema, syncLegalCatalog } from "@/lib/legal/sync-catalog";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Rechtstexte" };
@@ -30,6 +30,8 @@ export default async function AdminLegalPage() {
   const canWrite =
     (await userHasPermission(session.user.id, membership.organizationId, "legal:write")) ||
     (await userHasPermission(session.user.id, membership.organizationId, "org:write"));
+
+  await ensureLegalSchema();
 
   // First visit: ensure document rows + catalog v1 exist (idempotent).
   const existingCount = await prisma.legalDocument.count({

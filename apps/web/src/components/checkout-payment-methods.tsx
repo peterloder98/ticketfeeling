@@ -111,7 +111,7 @@ export function CheckoutPaymentMethods({
   return (
     <fieldset className="space-y-3">
       <legend className="text-lg font-semibold text-[var(--tf-navy)]">
-        Zahlungsart auswählen
+        Zahlungsart auswählen <span className="text-[var(--danger)]">*</span>
       </legend>
       <p className="text-sm text-[var(--tf-text-secondary)]">
         Gesamtbetrag bleibt{" "}

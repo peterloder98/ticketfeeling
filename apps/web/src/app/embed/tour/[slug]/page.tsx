@@ -9,6 +9,7 @@ import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { OrgTracking } from "@/components/org-tracking";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
+import { ExpandableText } from "@/components/expandable-text";
 
 export const dynamic = "force-dynamic";
 
@@ -78,9 +79,7 @@ export default async function EmbedTourPage({ params }: Props) {
               {tour.name}
             </h1>
             {tour.description ? (
-              <p className="mt-2 line-clamp-3 text-sm text-[var(--tf-text-secondary)]">
-                {tour.description}
-              </p>
+              <ExpandableText text={tour.description} lines={3} className="mt-2" />
             ) : null}
           </div>
         </div>

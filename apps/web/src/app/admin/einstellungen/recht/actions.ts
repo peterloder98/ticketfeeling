@@ -5,7 +5,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { syncLegalCatalog } from "@/lib/legal/sync-catalog";
+import { ensureLegalSchema, syncLegalCatalog } from "@/lib/legal/sync-catalog";
 import { LEGAL_DOCUMENT_TYPES, type LegalDocumentType } from "@/lib/legal/document-types";
 
 async function requireLegalWrite() {
@@ -31,6 +31,7 @@ async function requireLegalWrite() {
 
 export async function syncLegalCatalogAction() {
   const { organizationId } = await requireLegalWrite();
+  await ensureLegalSchema();
   await syncLegalCatalog(organizationId);
   revalidatePath("/admin/einstellungen/recht");
   revalidatePath("/recht", "layout");
@@ -38,6 +39,7 @@ export async function syncLegalCatalogAction() {
 
 export async function setLegalDocumentEnabledAction(formData: FormData) {
   const { organizationId } = await requireLegalWrite();
+  await ensureLegalSchema();
   const type = String(formData.get("type") ?? "") as LegalDocumentType;
   const enabled = String(formData.get("enabled") ?? "") === "true";
   if (!LEGAL_DOCUMENT_TYPES.includes(type)) throw new Error("INVALID_TYPE");

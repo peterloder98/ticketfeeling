@@ -3,26 +3,35 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
 import { PUBLIC_SLUG_TO_TYPE } from "@/lib/legal/document-types";
-import { syncLegalCatalog } from "@/lib/legal/sync-catalog";
+import { ensureLegalSchema, syncLegalCatalog } from "@/lib/legal/sync-catalog";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ type: string }> };
 
-export async function generateMetadata({ params }: Props) {
-  const { type } = await params;
-  const docType = PUBLIC_SLUG_TO_TYPE[type];
-  if (!docType) return { title: "Rechtliches" };
-  const org = await getDefaultOrganization();
-  if (!org) return { title: "Rechtliches" };
-  const version = await prisma.legalDocumentVersion.findFirst({
+async function loadPublishedVersion(organizationId: string, docType: string) {
+  await ensureLegalSchema();
+  return prisma.legalDocumentVersion.findFirst({
     where: {
       status: "published",
-      legalDocument: { organizationId: org.id, type: docType, enabled: true },
+      legalDocument: { organizationId, type: docType, enabled: true },
     },
     orderBy: { publishedAt: "desc" },
   });
-  return { title: version?.title ?? type };
+}
+
+export async function generateMetadata({ params }: Props) {
+  try {
+    const { type } = await params;
+    const docType = PUBLIC_SLUG_TO_TYPE[type];
+    if (!docType) return { title: "Rechtliches" };
+    const org = await getDefaultOrganization();
+    if (!org) return { title: "Rechtliches" };
+    const version = await loadPublishedVersion(org.id, docType);
+    return { title: version?.title ?? type };
+  } catch {
+    return { title: "Rechtliches" };
+  }
 }
 
 export default async function LegalPage({ params }: Props) {
@@ -34,24 +43,16 @@ export default async function LegalPage({ params }: Props) {
   if (!org) notFound();
   const seller = buildSellerIdentity(org, org.settings);
 
-  let version = await prisma.legalDocumentVersion.findFirst({
-    where: {
-      status: "published",
-      legalDocument: { organizationId: org.id, type: docType, enabled: true },
-    },
-    orderBy: { publishedAt: "desc" },
-  });
+  let version = await loadPublishedVersion(org.id, docType);
 
   // Bootstrap catalog once if production DB still has empty/placeholder docs.
   if (!version || version.content.includes("ENTWURF —")) {
-    await syncLegalCatalog(org.id);
-    version = await prisma.legalDocumentVersion.findFirst({
-      where: {
-        status: "published",
-        legalDocument: { organizationId: org.id, type: docType, enabled: true },
-      },
-      orderBy: { publishedAt: "desc" },
-    });
+    try {
+      await syncLegalCatalog(org.id);
+    } catch (error) {
+      console.error("[legal] syncLegalCatalog failed", error);
+    }
+    version = await loadPublishedVersion(org.id, docType);
   }
 
   // Impressum: DB text preferred; fall back to stammdaten if missing.
