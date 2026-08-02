@@ -110,7 +110,7 @@ export function normalizeSmtpTransport(input: {
   secure: boolean;
 }) {
   const host = input.host.trim();
-  let port = input.port || 465;
+  const port = input.port || 465;
   let secure = input.secure;
   // Implicit SSL on 465; STARTTLS on 587
   if (port === 465) secure = true;

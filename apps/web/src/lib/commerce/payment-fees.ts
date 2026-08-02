@@ -233,5 +233,6 @@ export function buildCheckoutPaymentOptions(input: {
 }
 
 export function providerForMethod(_method: PaymentMethodKey): "stripe" {
+  void _method;
   return "stripe";
 }

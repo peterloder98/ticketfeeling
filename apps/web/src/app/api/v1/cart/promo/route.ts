@@ -77,7 +77,7 @@ export async function POST(request: Request) {
             const message = error instanceof Error ? error.message : "CODE_NOT_FOUND";
             return NextResponse.json({ error: { code: message } }, { status: 400 });
           }
-        } catch (giftError) {
+        } catch {
           const message = error instanceof Error ? error.message : "CODE_NOT_FOUND";
           return NextResponse.json({ error: { code: message } }, { status: 400 });
         }

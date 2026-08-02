@@ -87,10 +87,10 @@ export async function getOpenCart(opts?: {
   await expireHolds();
   const org = await getDefaultOrganization();
   if (!org) throw new Error("NO_ORGANIZATION");
-  let sessionKey = await resolveCartSessionKey(opts?.sessionKey);
+  const sessionKey = await resolveCartSessionKey(opts?.sessionKey);
   const now = new Date();
 
-  let cart = await prisma.cart.findUnique({
+  const cart = await prisma.cart.findUnique({
     where: {
       organizationId_sessionKey: {
         organizationId: org.id,

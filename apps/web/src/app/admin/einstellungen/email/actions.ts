@@ -32,7 +32,7 @@ async function requireOrgWrite() {
 function parseAccountForm(formData: FormData) {
   const label = String(formData.get("label") ?? "").trim() || "E-Mail-Konto";
   const host = String(formData.get("host") ?? "").trim();
-  let port = Math.max(1, Number(formData.get("port") ?? 465) || 465);
+  const port = Math.max(1, Number(formData.get("port") ?? 465) || 465);
   let secure = formData.get("secure") === "on" || formData.get("secure") === "true";
   // Align TLS with common provider defaults
   if (port === 465) secure = true;
@@ -243,7 +243,7 @@ export async function testEmailAccountAction(
     const id = String(formData.get("id") ?? "");
 
     const host = String(formData.get("host") ?? "").trim();
-    let port = Math.max(1, Number(formData.get("port") ?? 465) || 465);
+    const port = Math.max(1, Number(formData.get("port") ?? 465) || 465);
     let secure = formData.get("secure") === "on" || formData.get("secure") === "true";
     if (port === 465) secure = true;
     if (port === 587) secure = false;
@@ -315,9 +315,11 @@ export async function testEmailAccountAction(
 }
 
 export async function testDefaultEmailAccountAction(
-  _prev: SmtpTestState,
-  _formData: FormData,
+  prev: SmtpTestState,
+  formData: FormData,
 ): Promise<SmtpTestState> {
+  void prev;
+  void formData;
   try {
     const { membership } = await requireOrgWrite();
     await ensureEmailAccountsMigrated(membership.organizationId);

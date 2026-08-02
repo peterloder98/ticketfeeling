@@ -5,7 +5,6 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { normalizeFeeMode } from "@/lib/commerce/fees";
 import Link from "next/link";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
@@ -26,56 +25,6 @@ async function requireOrgWrite() {
   );
   if (!allowed) throw new Error("FORBIDDEN");
   return { session, membership };
-}
-
-async function updatePresaleFees(formData: FormData) {
-  "use server";
-  const { session, membership } = await requireOrgWrite();
-
-  const mode = normalizeFeeMode(String(formData.get("presaleFeeMode") ?? "none"));
-  const fixedEuros = Number(String(formData.get("presaleFeeFixedEuros") ?? "0").replace(",", "."));
-  const percent = Number(String(formData.get("presaleFeePercent") ?? "0").replace(",", "."));
-  const taxPercent = Number(String(formData.get("presaleFeeTaxPercent") ?? "7").replace(",", "."));
-
-  const fixedCents = Math.max(0, Math.round((Number.isFinite(fixedEuros) ? fixedEuros : 0) * 100));
-  const percentBps = Math.max(0, Math.round((Number.isFinite(percent) ? percent : 0) * 100));
-  const taxRateBps = Math.max(0, Math.round((Number.isFinite(taxPercent) ? taxPercent : 7) * 100));
-
-  const before = await prisma.organizationSettings.findUnique({
-    where: { organizationId: membership.organizationId },
-  });
-
-  await prisma.organizationSettings.update({
-    where: { organizationId: membership.organizationId },
-    data: {
-      presaleFeeMode: mode,
-      presaleFeeFixedCents: fixedCents,
-      presaleFeePercentBps: percentBps,
-      presaleFeeTaxRateBps: taxRateBps,
-    },
-  });
-
-  await writeAudit({
-    organizationId: membership.organizationId,
-    actorUserId: session.user.id,
-    action: "org.presale_fees.updated",
-    entityType: "organization_settings",
-    entityId: membership.organizationId,
-    before: before
-      ? {
-          mode: before.presaleFeeMode,
-          fixedCents: before.presaleFeeFixedCents,
-          percentBps: before.presaleFeePercentBps,
-          taxBps: before.presaleFeeTaxRateBps,
-        }
-      : null,
-    after: { mode, fixedCents, percentBps, taxRateBps },
-  });
-
-  revalidatePath("/admin/stammdaten");
-  revalidatePath("/admin/einstellungen");
-  revalidatePath("/warenkorb");
-  revalidatePath("/checkout");
 }
 
 async function updateTrackingDefaults(formData: FormData) {
