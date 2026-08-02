@@ -8,6 +8,7 @@ import { ADMIN_SUBNAV, eventStatusLabel } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { updateTourAction } from "@/app/admin/tours/actions";
 import { CoverImageField } from "@/components/admin/cover-image-field";
+import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
@@ -123,24 +124,16 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
                 <option value="published">Veröffentlicht</option>
               </select>
             </label>
-            <label className="grid gap-1 text-sm">
-              <span className="text-[var(--tf-text-secondary)]">Tour-Start</span>
-              <input
-                type="date"
-                name="startsOn"
-                className="tf-input"
-                defaultValue={dateValue(tour.startsOn)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="text-[var(--tf-text-secondary)]">Tour-Ende</span>
-              <input
-                type="date"
-                name="endsOn"
-                className="tf-input"
-                defaultValue={dateValue(tour.endsOn)}
-              />
-            </label>
+            <SmartDateInput
+              name="startsOn"
+              label="Tour-Start"
+              defaultValue={dateValue(tour.startsOn)}
+            />
+            <SmartDateInput
+              name="endsOn"
+              label="Tour-Ende"
+              defaultValue={dateValue(tour.endsOn)}
+            />
             <label className="grid gap-1 text-sm sm:col-span-2">
               <span className="text-[var(--tf-text-secondary)]">Beschreibung</span>
               <textarea

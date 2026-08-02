@@ -12,6 +12,7 @@ import {
 } from "@/lib/commerce/platform-fee";
 import { formatEuroFromCents } from "@/lib/money";
 import { updatePlatformFeeConfigAction } from "./actions";
+import { SmartDateTimeField } from "@/components/admin/smart-datetime-input";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Preise und Gebühren" };
@@ -115,19 +116,15 @@ export default async function PreiseEinstellungenPage() {
                 defaultValue={((config.customTaxRateBasisPoints ?? 700) / 100).toFixed(2)}
               />
             </label>
-            <label className="grid gap-1">
-              <span>Aktiv ab (optional)</span>
-              <input
-                name="activeFrom"
-                type="datetime-local"
-                className="tf-input"
-                defaultValue={
-                  config.activeFrom
-                    ? new Date(config.activeFrom).toISOString().slice(0, 16)
-                    : ""
-                }
-              />
-            </label>
+            <SmartDateTimeField
+              name="activeFrom"
+              label="Aktiv ab (optional)"
+              defaultValue={
+                config.activeFrom
+                  ? new Date(config.activeFrom).toISOString().slice(0, 16)
+                  : ""
+              }
+            />
           </div>
 
           <label className="grid gap-1">

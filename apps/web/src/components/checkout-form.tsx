@@ -6,6 +6,7 @@ import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { PhoneInput } from "@/components/phone-input";
 import { CheckoutPaymentMethods } from "@/components/checkout-payment-methods";
+import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { useCart } from "@/components/cart-context";
 import type { CheckoutPaymentOption, PaymentMethodKey } from "@/lib/commerce/payment-fees";
 
@@ -408,12 +409,7 @@ export function CheckoutForm({
             onChange={() => clearFieldError("lastName")}
           />
         </div>
-        <div>
-          <label className="tf-label" htmlFor="birthDate">
-            Geburtsdatum (optional)
-          </label>
-          <input id="birthDate" name="birthDate" type="date" className="tf-input" />
-        </div>
+        <SmartDateInput name="birthDate" label="Geburtsdatum (optional)" />
         <div className="md:col-span-2">
           <PhoneInput name="phone" />
         </div>

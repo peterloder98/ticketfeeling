@@ -545,3 +545,27 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     </div>
   );
 }
+
+/** Uncontrolled wrapper for server-rendered forms (hidden input via `name`). */
+export function SmartDateTimeField({
+  name,
+  label,
+  hint,
+  defaultValue = "",
+}: {
+  name?: string;
+  label: string;
+  hint?: string;
+  defaultValue?: string;
+}) {
+  const [value, setValue] = useState(defaultValue);
+  return (
+    <SmartDateTimeInput
+      name={name}
+      label={label}
+      hint={hint}
+      value={value}
+      onChange={setValue}
+    />
+  );
+}

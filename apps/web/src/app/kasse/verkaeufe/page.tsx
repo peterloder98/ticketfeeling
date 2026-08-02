@@ -18,6 +18,7 @@ import {
   BoxOfficeSaleRowActions,
   BoxOfficeVoidButton,
 } from "@/components/box-office-sale-row-actions";
+import { SmartDateInput } from "@/components/admin/smart-date-input";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tageskasse · Verkäufe" };
@@ -137,10 +138,9 @@ export default async function BoxOfficeSalesPage({ searchParams }: Props) {
         className="flex flex-wrap items-end gap-3 rounded-2xl border border-[var(--tf-line)] bg-white p-4 text-sm"
         method="get"
       >
-        <label className="grid gap-1">
-          <span className="text-[var(--tf-text-secondary)]">Tag</span>
-          <input type="date" name="day" defaultValue={dayParam} className="tf-input" />
-        </label>
+        <div className="min-w-[11rem]">
+          <SmartDateInput name="day" label="Tag" defaultValue={dayParam} />
+        </div>
         <label className="grid min-w-[12rem] flex-1 gap-1">
           <span className="text-[var(--tf-text-secondary)]">Event</span>
           <select name="eventId" defaultValue={eventId ?? ""} className="tf-input">

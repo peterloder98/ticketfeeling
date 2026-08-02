@@ -8,6 +8,7 @@ import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { createTourAction } from "@/app/admin/tours/actions";
 import { CoverImageField } from "@/components/admin/cover-image-field";
+import { SmartDateInput } from "@/components/admin/smart-date-input";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Touren" };
@@ -97,14 +98,8 @@ export default async function AdminToursPage() {
               <span className="text-[var(--tf-text-secondary)]">Link-Name (optional)</span>
               <input name="slug" className="tf-input" placeholder="wird aus dem Namen erzeugt" />
             </label>
-            <label className="grid gap-1 text-sm">
-              <span className="text-[var(--tf-text-secondary)]">Tour-Start</span>
-              <input type="date" name="startsOn" className="tf-input" />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="text-[var(--tf-text-secondary)]">Tour-Ende</span>
-              <input type="date" name="endsOn" className="tf-input" />
-            </label>
+            <SmartDateInput name="startsOn" label="Tour-Start" />
+            <SmartDateInput name="endsOn" label="Tour-Ende" />
             <label className="grid gap-1 text-sm sm:col-span-2">
               <span className="text-[var(--tf-text-secondary)]">Beschreibung</span>
               <textarea

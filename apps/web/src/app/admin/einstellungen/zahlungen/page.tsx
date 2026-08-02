@@ -18,6 +18,7 @@ import {
 } from "./actions";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+import { SmartDateInput } from "@/components/admin/smart-date-input";
 
 export const dynamic = "force-dynamic";
 
@@ -230,24 +231,12 @@ export default async function ZahlungenEinstellungenPage({
             </p>
           </div>
           <form className="flex flex-wrap items-end gap-2">
-            <label className="grid gap-1 text-xs">
-              <span>Von</span>
-              <input
-                type="date"
-                name="from"
-                defaultValue={sp.from ?? ""}
-                className="tf-input !min-h-10"
-              />
-            </label>
-            <label className="grid gap-1 text-xs">
-              <span>Bis</span>
-              <input
-                type="date"
-                name="to"
-                defaultValue={sp.to ?? ""}
-                className="tf-input !min-h-10"
-              />
-            </label>
+            <div className="min-w-[11rem] text-xs [&_span]:text-xs">
+              <SmartDateInput name="from" label="Von" defaultValue={sp.from ?? ""} />
+            </div>
+            <div className="min-w-[11rem] text-xs [&_span]:text-xs">
+              <SmartDateInput name="to" label="Bis" defaultValue={sp.to ?? ""} />
+            </div>
             <button type="submit" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
               Filtern
             </button>

@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { updateCustomerAction } from "@/app/admin/kunden/actions";
+import { SmartDateInput } from "@/components/admin/smart-date-input";
 
 type CustomerEditFormProps = {
   customer: {
@@ -101,15 +102,11 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
         <span className="text-[var(--muted)]">Telefon</span>
         <input name="phone" defaultValue={customer.phone ?? ""} className="tf-input" />
       </label>
-      <label className="grid gap-1">
-        <span className="text-[var(--muted)]">Geburtsdatum</span>
-        <input
-          type="date"
-          name="birthDate"
-          defaultValue={birthDateValue(customer.birthDate)}
-          className="tf-input"
-        />
-      </label>
+      <SmartDateInput
+        name="birthDate"
+        label="Geburtsdatum"
+        defaultValue={birthDateValue(customer.birthDate)}
+      />
       <label className="grid gap-1">
         <span className="text-[var(--muted)]">Straße</span>
         <input name="street" defaultValue={customer.street ?? ""} className="tf-input" />
