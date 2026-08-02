@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -34,18 +35,27 @@ type Props = {
   saveAction: (formData: FormData) => Promise<void>;
 };
 
-type DragMode =
-  | { kind: "move"; startX: number; startY: number; origX: number; origY: number }
+type DragState =
+  | {
+      kind: "move";
+      objectId: string;
+      startClientX: number;
+      startClientY: number;
+      origX: number;
+      origY: number;
+    }
   | {
       kind: "resize";
+      objectId: string;
       corner: "nw" | "ne" | "sw" | "se";
-      startX: number;
-      startY: number;
+      startClientX: number;
+      startClientY: number;
       orig: VenuePlanObject;
-    }
-  | null;
+    };
 
-const PAD = 48;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4;
+const ZOOM_STEP = 0.25;
 
 export function SaalplanEditor({
   planId,
@@ -67,28 +77,54 @@ export function SaalplanEditor({
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const dragRef = useRef<DragMode>(null);
+  const [viewport, setViewport] = useState({ w: 720, h: 520 });
+
+  const dragRef = useRef<DragState | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const scaleRef = useRef(1);
+  const hallRef = useRef({ widthCm: initialWidthCm, depthCm: initialDepthCm });
 
   const selected = objects.find((o) => o.id === selectedId) ?? null;
   const capacity = planSeatCapacity(objects);
   const hasStage = objects.some((o) => o.type === "stage");
   const hasSeats = capacity > 0;
 
-  const viewW = 900;
-  const viewH = 620;
-  const scale = useMemo(() => {
-    const availW = viewW - PAD * 2;
-    const availH = viewH - PAD * 2;
-    const s = Math.min(availW / widthCm, availH / depthCm) * zoom;
-    return Math.max(0.05, s);
-  }, [widthCm, depthCm, zoom]);
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const update = () => {
+      const rect = el.getBoundingClientRect();
+      setViewport({
+        w: Math.max(280, Math.round(rect.width)),
+        h: Math.max(280, Math.round(rect.height)),
+      });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  hallRef.current = { widthCm, depthCm };
+
+  const pad = Math.max(28, Math.min(48, Math.round(Math.min(viewport.w, viewport.h) * 0.06)));
+  const fitScale = Math.min(
+    (viewport.w - pad * 2) / Math.max(1, widthCm),
+    (viewport.h - pad * 2) / Math.max(1, depthCm),
+  );
+  const scale = Math.max(0.01, fitScale * zoom);
+  scaleRef.current = scale;
+
+  const hallW = widthCm * scale;
+  const hallH = depthCm * scale;
+  // View grows with zoom so the hall can fill / overflow the scrollable canvas.
+  const viewW = Math.max(viewport.w, Math.ceil(hallW + pad * 2));
+  const viewH = Math.max(viewport.h, Math.ceil(hallH + pad * 2));
+  const hallLeft = (viewW - hallW) / 2;
+  const hallTop = (viewH - hallH) / 2;
 
   const toPx = useCallback((cm: number) => cm * scale, [scale]);
-  const hallLeft = PAD;
-  const hallTop = PAD;
-  const hallW = toPx(widthCm);
-  const hallH = toPx(depthCm);
 
   function markDirty(next: VenuePlanObject[]) {
     setObjects(next);
@@ -98,7 +134,21 @@ export function SaalplanEditor({
 
   function updateSelected(patch: Partial<VenuePlanObject>) {
     if (!selectedId) return;
-    markDirty(objects.map((o) => (o.id === selectedId ? { ...o, ...patch } : o)));
+    setObjects((prev) => {
+      const next = prev.map((o) => (o.id === selectedId ? { ...o, ...patch } : o));
+      return next;
+    });
+    setDirty(true);
+    setMessage(null);
+  }
+
+  function deleteSelected() {
+    if (!selectedId) return;
+    const id = selectedId;
+    setObjects((prev) => prev.filter((o) => o.id !== id));
+    setSelectedId(null);
+    setDirty(true);
+    setMessage(null);
   }
 
   function addStage() {
@@ -120,15 +170,125 @@ export function SaalplanEditor({
     setSelectedId(block.id);
   }
 
+  /** Screen pixels → SVG viewBox delta → cm */
+  function clientDeltaToCm(e: PointerEvent, startClientX: number, startClientY: number) {
+    const svg = svgRef.current;
+    const s = scaleRef.current || 1;
+    if (!svg) {
+      return { dxCm: 0, dyCm: 0 };
+    }
+    const ctm = svg.getScreenCTM();
+    if (!ctm) {
+      return {
+        dxCm: (e.clientX - startClientX) / s,
+        dyCm: (e.clientY - startClientY) / s,
+      };
+    }
+    const inv = ctm.inverse();
+    const p0 = new DOMPoint(startClientX, startClientY).matrixTransform(inv);
+    const p1 = new DOMPoint(e.clientX, e.clientY).matrixTransform(inv);
+    return { dxCm: (p1.x - p0.x) / s, dyCm: (p1.y - p0.y) / s };
+  }
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    setGuides([]);
+  }, []);
+
+  useEffect(() => {
+    function onMove(e: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const { widthCm: hallWCm, depthCm: hallDCm } = hallRef.current;
+      const { dxCm, dyCm } = clientDeltaToCm(e, drag.startClientX, drag.startClientY);
+
+      if (drag.kind === "move") {
+        setObjects((prev) => {
+          const current = prev.find((o) => o.id === drag.objectId);
+          if (!current) return prev;
+          const snapped = snapObjectCenter({
+            xCm: drag.origX + dxCm,
+            yCm: drag.origY + dyCm,
+            widthCm: current.widthCm,
+            heightCm: current.heightCm,
+            hallWidthCm: hallWCm,
+            hallDepthCm: hallDCm,
+          });
+          setGuides(snapped.guides);
+          return prev.map((o) =>
+            o.id === drag.objectId ? { ...o, xCm: snapped.xCm, yCm: snapped.yCm } : o,
+          );
+        });
+        setDirty(true);
+        setMessage(null);
+      } else {
+        const o = drag.orig;
+        const signX = drag.corner.includes("e") ? 1 : -1;
+        const signY = drag.corner.includes("s") ? 1 : -1;
+        const w = Math.max(40, o.widthCm + signX * dxCm * 2);
+        const h = Math.max(40, o.heightCm + signY * dyCm * 2);
+        let cx = o.xCm + (signX * (w - o.widthCm)) / 2;
+        let cy = o.yCm + (signY * (h - o.heightCm)) / 2;
+        const halfW = w / 2;
+        const halfH = h / 2;
+        cx = Math.min(hallWCm - halfW, Math.max(halfW, cx));
+        cy = Math.min(hallDCm - halfH, Math.max(halfH, cy));
+        setGuides([]);
+        setObjects((prev) =>
+          prev.map((obj) =>
+            obj.id === drag.objectId
+              ? { ...obj, widthCm: w, heightCm: h, xCm: cx, yCm: cy }
+              : obj,
+          ),
+        );
+        setDirty(true);
+        setMessage(null);
+      }
+    }
+
+    function onUp() {
+      if (dragRef.current) endDrag();
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [endDrag]);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+        return;
+      }
+      if (!selectedId) return;
+      e.preventDefault();
+      const id = selectedId;
+      setObjects((prev) => prev.filter((o) => o.id !== id));
+      setSelectedId(null);
+      setDirty(true);
+      setMessage(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId]);
+
   function onPointerDownObject(e: React.PointerEvent, obj: VenuePlanObject) {
     e.stopPropagation();
+    e.preventDefault();
     setSelectedId(obj.id);
     if (obj.locked) return;
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     dragRef.current = {
       kind: "move",
-      startX: e.clientX,
-      startY: e.clientY,
+      objectId: obj.id,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
       origX: obj.xCm,
       origY: obj.yCm,
     };
@@ -140,69 +300,16 @@ export function SaalplanEditor({
     obj: VenuePlanObject,
   ) {
     e.stopPropagation();
+    e.preventDefault();
     setSelectedId(obj.id);
-    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
     dragRef.current = {
       kind: "resize",
+      objectId: obj.id,
       corner,
-      startX: e.clientX,
-      startY: e.clientY,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
       orig: { ...obj },
     };
-  }
-
-  function onPointerMove(e: React.PointerEvent) {
-    const drag = dragRef.current;
-    if (!drag || !selectedId) return;
-    const dxCm = (e.clientX - drag.startX) / scale;
-    const dyCm = (e.clientY - drag.startY) / scale;
-
-    if (drag.kind === "move") {
-      setObjects((prev) => {
-        const current = prev.find((o) => o.id === selectedId);
-        const snapped = snapObjectCenter({
-          xCm: drag.origX + dxCm,
-          yCm: drag.origY + dyCm,
-          widthCm: current?.widthCm ?? 100,
-          heightCm: current?.heightCm ?? 100,
-          hallWidthCm: widthCm,
-          hallDepthCm: depthCm,
-        });
-        setGuides(snapped.guides);
-        return prev.map((o) =>
-          o.id === selectedId ? { ...o, xCm: snapped.xCm, yCm: snapped.yCm } : o,
-        );
-      });
-      setDirty(true);
-      setMessage(null);
-    } else if (drag.kind === "resize") {
-      const o = drag.orig;
-      const signX = drag.corner.includes("e") ? 1 : -1;
-      const signY = drag.corner.includes("s") ? 1 : -1;
-      const w = Math.max(40, o.widthCm + signX * dxCm * 2);
-      const h = Math.max(40, o.heightCm + signY * dyCm * 2);
-      let cx = o.xCm + (signX * (w - o.widthCm)) / 2;
-      let cy = o.yCm + (signY * (h - o.heightCm)) / 2;
-      const halfW = w / 2;
-      const halfH = h / 2;
-      cx = Math.min(widthCm - halfW, Math.max(halfW, cx));
-      cy = Math.min(depthCm - halfH, Math.max(halfH, cy));
-      setGuides([]);
-      setObjects((prev) =>
-        prev.map((obj) =>
-          obj.id === selectedId
-            ? { ...obj, widthCm: w, heightCm: h, xCm: cx, yCm: cy }
-            : obj,
-        ),
-      );
-      setDirty(true);
-      setMessage(null);
-    }
-  }
-
-  function onPointerUp() {
-    dragRef.current = null;
-    setGuides([]);
   }
 
   function save() {
@@ -265,7 +372,6 @@ export function SaalplanEditor({
 
   return (
     <div className="space-y-4">
-      {/* Guided steps */}
       <ol className="grid gap-2 rounded-2xl border border-[var(--tf-line)] bg-white p-4 text-sm sm:grid-cols-4">
         {[
           {
@@ -380,29 +486,36 @@ export function SaalplanEditor({
 
       {message ? <p className="text-sm text-[var(--tf-teal)]">{message}</p> : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_17rem]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
-          <div className="flex items-center justify-between border-b border-[var(--tf-line)] px-3 py-2">
+          <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              Ziehen = verschieben · Ecken = Größe · Teal-Linien = zentriert
+              Ziehen = verschieben · Ecken = Größe · Entf = löschen
               {dirty ? " · ungespeichert" : ""}
             </p>
             <div className="flex items-center gap-1">
               <button
                 type="button"
-                className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)]"
-                onClick={() => setZoom((z) => Math.max(0.4, z - 0.1))}
+                className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
+                disabled={zoom <= MIN_ZOOM}
+                onClick={() => setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100))}
                 aria-label="Verkleinern"
               >
                 <ZoomOut className="h-4 w-4" />
               </button>
-              <span className="min-w-[3rem] text-center text-xs tabular-nums">
-                {Math.round(zoom * 100)}%
-              </span>
               <button
                 type="button"
-                className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)]"
-                onClick={() => setZoom((z) => Math.min(2.5, z + 0.1))}
+                className="min-w-[3.25rem] rounded-md px-1 py-1 text-center text-xs tabular-nums hover:bg-[rgba(15,39,71,0.06)]"
+                onClick={() => setZoom(1)}
+                title="Saal auf Fläche einpassen"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
+                disabled={zoom >= MAX_ZOOM}
+                onClick={() => setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + ZOOM_STEP) * 100) / 100))}
                 aria-label="Vergrößern"
               >
                 <ZoomIn className="h-4 w-4" />
@@ -410,171 +523,185 @@ export function SaalplanEditor({
             </div>
           </div>
 
-          <svg
-            ref={svgRef}
-            viewBox={`0 0 ${viewW} ${viewH}`}
-            className="h-[min(70vh,620px)] w-full touch-none select-none bg-[#f8fafc]"
-            onPointerMove={onPointerMove}
-            onPointerUp={onPointerUp}
-            onPointerLeave={onPointerUp}
-            onPointerDown={() => setSelectedId(null)}
+          <div
+            ref={canvasRef}
+            className="h-[min(72vh,640px)] w-full overflow-auto bg-[#f8fafc]"
           >
-            {gridLines.map((l, i) => (
-              <line
-                key={i}
-                x1={l.x1}
-                y1={l.y1}
-                x2={l.x2}
-                y2={l.y2}
-                stroke={l.major ? "rgba(15,39,71,0.12)" : "rgba(15,39,71,0.06)"}
-                strokeWidth={l.major ? 1 : 0.6}
+            <svg
+              ref={svgRef}
+              width={viewW}
+              height={viewH}
+              viewBox={`0 0 ${viewW} ${viewH}`}
+              className="touch-none select-none"
+              onPointerDown={() => {
+                if (!dragRef.current) setSelectedId(null);
+              }}
+            >
+              {gridLines.map((l, i) => (
+                <line
+                  key={i}
+                  x1={l.x1}
+                  y1={l.y1}
+                  x2={l.x2}
+                  y2={l.y2}
+                  stroke={l.major ? "rgba(15,39,71,0.12)" : "rgba(15,39,71,0.06)"}
+                  strokeWidth={l.major ? 1 : 0.6}
+                />
+              ))}
+
+              <rect
+                x={hallLeft}
+                y={hallTop}
+                width={hallW}
+                height={hallH}
+                fill="rgba(255,255,255,0.9)"
+                stroke="var(--tf-navy)"
+                strokeWidth={1.5}
+                rx={2}
               />
-            ))}
 
-            <rect
-              x={hallLeft}
-              y={hallTop}
-              width={hallW}
-              height={hallH}
-              fill="rgba(255,255,255,0.85)"
-              stroke="var(--tf-navy)"
-              strokeWidth={1.5}
-              rx={2}
-            />
+              {meterLabelsX.map((l) => (
+                <text
+                  key={`x-${l.text}-${l.x}`}
+                  x={l.x}
+                  y={Math.max(12, hallTop - 10)}
+                  textAnchor="middle"
+                  className="fill-[var(--tf-text-secondary)]"
+                  style={{ fontSize: 10 }}
+                >
+                  {l.text}
+                </text>
+              ))}
+              {meterLabelsY.map((l) => (
+                <text
+                  key={`y-${l.text}-${l.y}`}
+                  x={Math.max(4, hallLeft - 8)}
+                  y={l.y + 3}
+                  textAnchor="end"
+                  className="fill-[var(--tf-text-secondary)]"
+                  style={{ fontSize: 10 }}
+                >
+                  {l.text}
+                </text>
+              ))}
 
-            {meterLabelsX.map((l) => (
-              <text
-                key={`x-${l.text}-${l.x}`}
-                x={l.x}
-                y={PAD - 14}
-                textAnchor="middle"
-                className="fill-[var(--tf-text-secondary)]"
-                style={{ fontSize: 10 }}
-              >
-                {l.text}
-              </text>
-            ))}
-            {meterLabelsY.map((l) => (
-              <text
-                key={`y-${l.text}-${l.y}`}
-                x={PAD - 8}
-                y={l.y + 3}
-                textAnchor="end"
-                className="fill-[var(--tf-text-secondary)]"
-                style={{ fontSize: 10 }}
-              >
-                {l.text}
-              </text>
-            ))}
+              {guides.map((g, i) =>
+                g.orientation === "v" ? (
+                  <line
+                    key={`g-${i}`}
+                    x1={hallLeft + toPx(g.atCm)}
+                    y1={hallTop}
+                    x2={hallLeft + toPx(g.atCm)}
+                    y2={hallTop + hallH}
+                    stroke="var(--tf-teal)"
+                    strokeWidth={1.5}
+                    strokeDasharray="6 4"
+                  />
+                ) : (
+                  <line
+                    key={`g-${i}`}
+                    x1={hallLeft}
+                    y1={hallTop + toPx(g.atCm)}
+                    x2={hallLeft + hallW}
+                    y2={hallTop + toPx(g.atCm)}
+                    stroke="var(--tf-teal)"
+                    strokeWidth={1.5}
+                    strokeDasharray="6 4"
+                  />
+                ),
+              )}
 
-            {guides.map((g, i) =>
-              g.orientation === "v" ? (
-                <line
-                  key={`g-${i}`}
-                  x1={hallLeft + toPx(g.atCm)}
-                  y1={hallTop}
-                  x2={hallLeft + toPx(g.atCm)}
-                  y2={hallTop + hallH}
-                  stroke="var(--tf-teal)"
-                  strokeWidth={1.5}
-                  strokeDasharray="6 4"
-                />
-              ) : (
-                <line
-                  key={`g-${i}`}
-                  x1={hallLeft}
-                  y1={hallTop + toPx(g.atCm)}
-                  x2={hallLeft + hallW}
-                  y2={hallTop + toPx(g.atCm)}
-                  stroke="var(--tf-teal)"
-                  strokeWidth={1.5}
-                  strokeDasharray="6 4"
-                />
-              ),
-            )}
-
-            {[...objects]
-              .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
-              .map((obj) => {
-                const x = hallLeft + toPx(obj.xCm - obj.widthCm / 2);
-                const y = hallTop + toPx(obj.yCm - obj.heightCm / 2);
-                const w = toPx(obj.widthCm);
-                const h = toPx(obj.heightCm);
-                const isSel = obj.id === selectedId;
-                const cx = hallLeft + toPx(obj.xCm);
-                const cy = hallTop + toPx(obj.yCm);
-                const seats = seatCountOfObject(obj);
-                return (
-                  <g
-                    key={obj.id}
-                    transform={`rotate(${obj.rotationDeg} ${cx} ${cy})`}
-                    onPointerDown={(e) => onPointerDownObject(e, obj)}
-                    style={{ cursor: "move" }}
-                  >
-                    <rect
-                      x={x}
-                      y={y}
-                      width={w}
-                      height={h}
-                      rx={4}
-                      fill={
-                        obj.type === "stage"
-                          ? "rgba(15,39,71,0.05)"
-                          : "rgba(20,184,166,0.1)"
-                      }
-                      stroke={isSel ? "var(--tf-teal)" : "var(--tf-navy)"}
-                      strokeWidth={isSel ? 2 : 1.25}
-                    />
-
-                    {obj.type === "stage" ? (
-                      <path
-                        d={`M ${cx - 10} ${cy + 4} L ${cx - 10} ${cy - 2} L ${cx - 5} ${cy + 2} L ${cx} ${cy - 6} L ${cx + 5} ${cy + 2} L ${cx + 10} ${cy - 2} L ${cx + 10} ${cy + 4} Z`}
-                        fill="var(--tf-navy)"
-                        opacity={0.85}
-                      />
-                    ) : null}
-
-                    {obj.type === "seat_block" && (obj.rows ?? 0) > 0 && (obj.seatsPerRow ?? 0) > 0
-                      ? renderSeatDots(obj, x, y, w, h)
-                      : null}
-
-                    <text
-                      x={cx}
-                      y={
-                        obj.type === "stage"
-                          ? cy + 22
-                          : cy + (obj.type === "seat_block" ? h * 0.05 + 4 : 4)
-                      }
-                      textAnchor="middle"
-                      style={{ fontSize: 11, fontWeight: 600, fill: "var(--tf-navy)" }}
+              {[...objects]
+                .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+                .map((obj) => {
+                  const x = hallLeft + toPx(obj.xCm - obj.widthCm / 2);
+                  const y = hallTop + toPx(obj.yCm - obj.heightCm / 2);
+                  const w = toPx(obj.widthCm);
+                  const h = toPx(obj.heightCm);
+                  const isSel = obj.id === selectedId;
+                  const cx = hallLeft + toPx(obj.xCm);
+                  const cy = hallTop + toPx(obj.yCm);
+                  const seats = seatCountOfObject(obj);
+                  return (
+                    <g
+                      key={obj.id}
+                      transform={`rotate(${obj.rotationDeg} ${cx} ${cy})`}
+                      onPointerDown={(e) => onPointerDownObject(e, obj)}
+                      style={{ cursor: "move" }}
                     >
-                      {obj.label || objectTypeLabel(obj.type)}
-                      {obj.type === "seat_block" ? ` · ${seats}` : ""}
-                    </text>
+                      <rect
+                        x={x}
+                        y={y}
+                        width={w}
+                        height={h}
+                        rx={4}
+                        fill={
+                          obj.type === "stage"
+                            ? "rgba(15,39,71,0.05)"
+                            : "rgba(20,184,166,0.1)"
+                        }
+                        stroke={isSel ? "var(--tf-teal)" : "var(--tf-navy)"}
+                        strokeWidth={isSel ? 2 : 1.25}
+                      />
 
-                    {isSel
-                      ? (["nw", "ne", "sw", "se"] as const).map((corner) => {
-                          const hx = corner.includes("w") ? x : x + w;
-                          const hy = corner.includes("n") ? y : y + h;
-                          return (
-                            <circle
-                              key={corner}
-                              cx={hx}
-                              cy={hy}
-                              r={5}
-                              fill="var(--tf-teal)"
-                              stroke="white"
-                              strokeWidth={1.5}
-                              style={{ cursor: `${corner}-resize` }}
-                              onPointerDown={(e) => onPointerDownResize(e, corner, obj)}
-                            />
-                          );
-                        })
-                      : null}
-                  </g>
-                );
-              })}
-          </svg>
+                      {obj.type === "stage" ? (
+                        <path
+                          d={`M ${cx - 10} ${cy + 4} L ${cx - 10} ${cy - 2} L ${cx - 5} ${cy + 2} L ${cx} ${cy - 6} L ${cx + 5} ${cy + 2} L ${cx + 10} ${cy - 2} L ${cx + 10} ${cy + 4} Z`}
+                          fill="var(--tf-navy)"
+                          opacity={0.85}
+                          style={{ pointerEvents: "none" }}
+                        />
+                      ) : null}
+
+                      {obj.type === "seat_block" &&
+                      (obj.rows ?? 0) > 0 &&
+                      (obj.seatsPerRow ?? 0) > 0
+                        ? renderSeatDots(obj, x, y, w, h)
+                        : null}
+
+                      <text
+                        x={cx}
+                        y={
+                          obj.type === "stage"
+                            ? cy + 22
+                            : cy + (obj.type === "seat_block" ? h * 0.05 + 4 : 4)
+                        }
+                        textAnchor="middle"
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          fill: "var(--tf-navy)",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {obj.label || objectTypeLabel(obj.type)}
+                        {obj.type === "seat_block" ? ` · ${seats}` : ""}
+                      </text>
+
+                      {isSel
+                        ? (["nw", "ne", "sw", "se"] as const).map((corner) => {
+                            const hx = corner.includes("w") ? x : x + w;
+                            const hy = corner.includes("n") ? y : y + h;
+                            return (
+                              <circle
+                                key={corner}
+                                cx={hx}
+                                cy={hy}
+                                r={6}
+                                fill="var(--tf-teal)"
+                                stroke="white"
+                                strokeWidth={1.5}
+                                style={{ cursor: `${corner}-resize` }}
+                                onPointerDown={(e) => onPointerDownResize(e, corner, obj)}
+                              />
+                            );
+                          })
+                        : null}
+                    </g>
+                  );
+                })}
+            </svg>
+          </div>
         </div>
 
         <aside className="space-y-3 rounded-2xl border border-[var(--tf-line)] bg-white p-4">
@@ -588,11 +715,16 @@ export function SaalplanEditor({
             <Plus className="mr-1 inline h-4 w-4" />
             {hasStage ? "Bühne ist schon da" : "Bühne einfügen"}
           </button>
-          <button type="button" className="tf-btn tf-btn-secondary w-full justify-start text-sm" onClick={addSeatBlock}>
+          <button
+            type="button"
+            className="tf-btn tf-btn-primary w-full justify-start text-sm"
+            onClick={addSeatBlock}
+          >
             <Plus className="mr-1 inline h-4 w-4" /> Sitzblock einfügen
           </button>
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Tipp: Beim Ziehen erscheinen Hilfslinien in der Mitte — dort rastet das Objekt ein.
+            Nach dem Einfügen: Objekt auf dem Plan ziehen oder an den Ecken vergrößern.
+            Hilfslinien zeigen die Mitte.
           </p>
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>
@@ -701,18 +833,15 @@ export function SaalplanEditor({
               </label>
               <button
                 type="button"
-                className="text-left text-xs text-[var(--danger)] underline"
-                onClick={() => {
-                  markDirty(objects.filter((o) => o.id !== selected.id));
-                  setSelectedId(null);
-                }}
+                className="tf-btn w-full !min-h-10 border border-[rgba(220,38,38,0.35)] bg-white text-sm text-[var(--danger)] hover:bg-[rgba(220,38,38,0.06)]"
+                onClick={deleteSelected}
               >
                 Objekt löschen
               </button>
             </div>
           ) : (
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              Klicke ein Objekt an — oder füge links Bühne / Sitzblock ein.
+              Klicke ein Objekt an — oder füge Bühne / Sitzblock ein.
             </p>
           )}
 
@@ -768,6 +897,7 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
           r={r}
           fill="var(--tf-navy)"
           opacity={0.35}
+          style={{ pointerEvents: "none" }}
         />,
       );
     }
@@ -779,11 +909,11 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
         x={x + w / 2}
         y={y + h - 6}
         textAnchor="middle"
-        style={{ fontSize: 9, fill: "var(--tf-text-secondary)" }}
+        style={{ fontSize: 9, fill: "var(--tf-text-secondary)", pointerEvents: "none" }}
       >
         Ausschnitt
       </text>,
     );
   }
-  return <g>{nodes}</g>;
+  return <g style={{ pointerEvents: "none" }}>{nodes}</g>;
 }
