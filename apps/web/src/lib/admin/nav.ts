@@ -70,7 +70,7 @@ export const ADMIN_SUBNAV = {
   tours: [
     {
       href: "/admin/tours",
-      label: "Alle Touren",
+      label: "Touren",
       description: "Tour-Projekte mit mehreren Terminen",
     },
     {
