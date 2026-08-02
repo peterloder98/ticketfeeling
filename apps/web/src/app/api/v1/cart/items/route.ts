@@ -1,0 +1,55 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { addToCart } from "@/lib/commerce/cart";
+import { priceCart } from "@/lib/commerce/pricing";
+import { cartCookieHeader, readCartSessionKey } from "@/lib/commerce/cart-session";
+
+const schema = z.object({
+  categoryId: z.string().uuid(),
+  quantity: z.number().int().min(1).max(20),
+  seatingMode: z.enum(["best_available", "seat_map", "free"]).optional(),
+  seatIds: z.array(z.string().uuid()).max(20).optional(),
+});
+
+export async function POST(request: Request) {
+  try {
+    const body = schema.parse(await request.json());
+    const session = await getServerSession(authOptions);
+    const sessionKey = await readCartSessionKey();
+    const cart = await addToCart({
+      categoryId: body.categoryId,
+      quantity: body.quantity,
+      seatingMode: body.seatingMode,
+      seatIds: body.seatIds,
+      userId: session?.user?.id,
+      sessionKey,
+    });
+    const response = NextResponse.json({
+      ok: true,
+      cartId: cart.id,
+      summary: await priceCart(cart),
+      expiresAt: cart.expiresAt,
+      seats: cart.items.flatMap((item) =>
+        item.seats.map((s) => ({
+          cartItemId: item.id,
+          seatLabel: `${s.blockLabel} · Reihe ${s.rowLabel} · Platz ${s.seatNumber}`,
+        })),
+      ),
+    });
+    response.headers.append("Set-Cookie", cartCookieHeader(cart.sessionKey));
+    return response;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ERROR";
+    const status =
+      message === "SOLD_OUT" ||
+      message === "QUANTITY_LIMIT" ||
+      message === "SEATS_UNAVAILABLE" ||
+      message === "COMPANION_SEAT_UNAVAILABLE" ||
+      message === "SEATS_REQUIRED"
+        ? 409
+        : 400;
+    return NextResponse.json({ error: { code: message } }, { status });
+  }
+}

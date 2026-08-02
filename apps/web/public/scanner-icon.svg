@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Ticketfeeling Scanner">
+  <rect width="512" height="512" rx="96" fill="#0b1220"/>
+  <rect x="96" y="96" width="320" height="320" rx="28" fill="none" stroke="#d4af37" stroke-width="28"/>
+  <rect x="160" y="160" width="80" height="80" fill="#d4af37"/>
+  <rect x="272" y="160" width="80" height="80" fill="#d4af37"/>
+  <rect x="160" y="272" width="80" height="80" fill="#d4af37"/>
+  <rect x="272" y="300" width="28" height="28" fill="#d4af37"/>
+  <rect x="324" y="272" width="28" height="28" fill="#d4af37"/>
+  <rect x="272" y="352" width="80" height="28" fill="#d4af37"/>
+</svg>

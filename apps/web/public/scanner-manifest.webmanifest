@@ -1,0 +1,18 @@
+{
+  "name": "Ticketfeeling Einlass",
+  "short_name": "TF Scanner",
+  "description": "QR-Einlass-Scanner für Mitarbeiter vor Ort",
+  "start_url": "/scanner",
+  "display": "standalone",
+  "background_color": "#0b1220",
+  "theme_color": "#0b1220",
+  "lang": "de",
+  "icons": [
+    {
+      "src": "/scanner-icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

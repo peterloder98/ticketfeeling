@@ -1,0 +1,369 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────────────────────
+   Ticketfeeling Brand & Design System v1.0
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  /* Brand */
+  --tf-navy: #0f2747;
+  --tf-teal: #14b8a6;
+  --tf-teal-hover: #0d9488;
+  --tf-gold: #d6a642;
+
+  /* Semantic */
+  --tf-success: #22c55e;
+  --tf-warning: #f59e0b;
+  --tf-danger: #ef4444;
+
+  /* Surfaces (light) */
+  --tf-bg: #f8fafc;
+  --tf-bg-elevated: #ffffff;
+  --tf-card: #ffffff;
+  --tf-text: #0b1421;
+  --tf-text-secondary: #64748b;
+  --tf-line: #e5e7eb;
+  --tf-overlay: rgba(15, 39, 71, 0.04);
+
+  /* Shadows */
+  --tf-shadow: 0 8px 30px rgba(15, 39, 71, 0.08);
+  --tf-shadow-hover: 0 16px 40px rgba(15, 39, 71, 0.12);
+
+  /* Radius */
+  --tf-radius-btn: 14px;
+  --tf-radius-card: 20px;
+  --tf-radius-dialog: 24px;
+  --tf-radius-input: 14px;
+  --tf-radius-badge: 999px;
+
+  /* Spacing */
+  --tf-space-page: 24px;
+  --tf-space-card: 24px;
+  --tf-space-section: 64px;
+  --tf-space-gap: 24px;
+
+  /* Motion */
+  --tf-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --tf-duration: 240ms;
+
+  /* Legacy aliases (map old class usage → new system) */
+  --bg-deep: var(--tf-bg);
+  --bg-panel: var(--tf-card);
+  --bg-elevated: var(--tf-bg-elevated);
+  --gold: var(--tf-teal);
+  --gold-soft: var(--tf-navy);
+  --ink: var(--tf-text);
+  --muted: var(--tf-text-secondary);
+  --line: var(--tf-line);
+  --danger: var(--tf-danger);
+  --ok: var(--tf-success);
+  --background: var(--tf-bg);
+  --foreground: var(--tf-text);
+  --vip: var(--tf-gold);
+}
+
+html.dark {
+  --tf-bg: #081829;
+  --tf-bg-elevated: #0c1f35;
+  --tf-card: #10233f;
+  --tf-text: #ffffff;
+  --tf-text-secondary: #94a3b8;
+  --tf-line: rgba(255, 255, 255, 0.1);
+  --tf-overlay: rgba(255, 255, 255, 0.04);
+  --tf-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --tf-shadow-hover: 0 16px 40px rgba(0, 0, 0, 0.45);
+  --tf-navy: #e8eef7;
+  --gold-soft: #ffffff;
+  --ink: var(--tf-text);
+  --muted: var(--tf-text-secondary);
+  --line: var(--tf-line);
+  --background: var(--tf-bg);
+  --foreground: var(--tf-text);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-body);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--tf-bg);
+  color: var(--tf-text);
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+::selection {
+  background: rgba(20, 184, 166, 0.25);
+}
+
+/* Layout */
+.tf-container {
+  width: min(1400px, calc(100% - 32px));
+  margin-inline: auto;
+}
+
+@media (min-width: 768px) {
+  .tf-container {
+    width: min(1400px, calc(100% - 48px));
+  }
+}
+
+/* Cards — white surface, soft shadow, no hard border */
+.tf-card {
+  background: var(--tf-card);
+  border: none;
+  border-radius: var(--tf-radius-card);
+  padding: var(--tf-space-card);
+  box-shadow: var(--tf-shadow);
+  transition:
+    transform var(--tf-duration) var(--tf-ease),
+    box-shadow var(--tf-duration) var(--tf-ease);
+}
+
+.tf-card-hover:hover {
+  transform: scale(1.02);
+  box-shadow: var(--tf-shadow-hover);
+}
+
+/* Buttons */
+.tf-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 48px;
+  border-radius: var(--tf-radius-btn);
+  padding: 0 20px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+  transition:
+    background var(--tf-duration) var(--tf-ease),
+    border-color var(--tf-duration) var(--tf-ease),
+    color var(--tf-duration) var(--tf-ease),
+    transform var(--tf-duration) var(--tf-ease),
+    box-shadow var(--tf-duration) var(--tf-ease);
+  cursor: pointer;
+}
+
+.tf-btn:hover {
+  transform: translateY(-1px);
+}
+
+.tf-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.tf-btn-primary {
+  background: var(--tf-teal);
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(20, 184, 166, 0.25);
+}
+
+.tf-btn-primary:hover {
+  background: var(--tf-teal-hover);
+}
+
+.tf-btn-secondary {
+  background: var(--tf-card);
+  border-color: var(--tf-navy);
+  color: var(--tf-navy);
+}
+
+html.dark .tf-btn-secondary {
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+  background: transparent;
+}
+
+.tf-btn-ghost {
+  background: transparent;
+  color: var(--tf-navy);
+}
+
+.tf-btn-danger {
+  background: var(--tf-danger);
+  color: #fff;
+}
+
+/* Forms */
+.tf-input {
+  width: 100%;
+  min-height: 48px;
+  border-radius: var(--tf-radius-input);
+  border: 1px solid var(--tf-line);
+  background: var(--tf-card);
+  color: var(--tf-text);
+  padding: 0.8rem 1rem;
+  outline: none;
+  transition:
+    border-color var(--tf-duration) var(--tf-ease),
+    box-shadow var(--tf-duration) var(--tf-ease);
+}
+
+/* Search with leading icon — padding must beat .tf-input shorthand */
+.tf-input-search {
+  padding-left: 2.85rem;
+  padding-right: 1rem;
+}
+
+input.tf-input-search[type="search"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input.tf-input-search[type="search"]::-webkit-search-decoration,
+input.tf-input-search[type="search"]::-webkit-search-cancel-button,
+input.tf-input-search[type="search"]::-webkit-search-results-button,
+input.tf-input-search[type="search"]::-webkit-search-results-decoration {
+  display: none;
+}
+
+.tf-input:focus {
+  border-color: var(--tf-teal);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.18);
+}
+
+.tf-label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: var(--tf-text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Badges */
+.tf-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--tf-radius-badge);
+  padding: 0.25rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--tf-overlay);
+  color: var(--tf-navy);
+}
+
+.tf-badge-vip {
+  background: rgba(214, 166, 66, 0.15);
+  color: #a87b1a;
+}
+
+html.dark .tf-badge-vip {
+  color: var(--tf-gold);
+}
+
+.tf-badge-teal {
+  background: rgba(20, 184, 166, 0.12);
+  color: var(--tf-teal-hover);
+}
+
+/* Typography helpers */
+.tf-display {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--tf-navy);
+  line-height: 1.1;
+}
+
+html.dark .tf-display {
+  color: #fff;
+}
+
+.tf-section {
+  padding-block: var(--tf-space-section);
+}
+
+/* Motion */
+@keyframes tf-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tf-animate-in {
+  animation: tf-fade-up var(--tf-duration) var(--tf-ease) both;
+}
+
+/* Links accent */
+.tf-link {
+  color: var(--tf-teal);
+  font-weight: 500;
+}
+
+.tf-link:hover {
+  color: var(--tf-teal-hover);
+}
+
+/* Soft page wash — atmosphere without loud gradients */
+.tf-page-wash {
+  background:
+    radial-gradient(900px 420px at 0% -10%, rgba(20, 184, 166, 0.08), transparent 55%),
+    radial-gradient(700px 380px at 100% 0%, rgba(15, 39, 71, 0.06), transparent 50%),
+    var(--tf-bg);
+}
+
+html.dark .tf-page-wash {
+  background:
+    radial-gradient(900px 420px at 0% -10%, rgba(20, 184, 166, 0.1), transparent 55%),
+    radial-gradient(700px 380px at 100% 0%, rgba(255, 255, 255, 0.04), transparent 50%),
+    var(--tf-bg);
+}
+
+/* Scanner: mobile fullscreen; desktop stays in AdminShell */
+@media (max-width: 767px) {
+  html.tf-scanner-route,
+  html.tf-scanner-route body {
+    background: #0b1220;
+  }
+  html.tf-scanner-route .tf-page-wash {
+    background: #0b1220;
+  }
+  html.tf-scanner-route main {
+    padding-bottom: 0;
+  }
+  .tf-scanner-bleed {
+    width: 100% !important;
+    max-width: none !important;
+    margin-inline: 0 !important;
+  }
+}
+
+/* Embed iframe shop: clean white shell, no site chrome padding */
+html.tf-embed-route,
+html.tf-embed-route body {
+  background: #ffffff;
+}
+html.tf-embed-route .tf-page-wash {
+  background: #ffffff;
+}
+html.tf-embed-route main {
+  padding-bottom: 0 !important;
+}

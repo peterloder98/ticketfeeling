@@ -1,0 +1,376 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/db";
+import { AddToCartPanel } from "@/components/add-to-cart";
+import { SeatBookingPanel } from "@/components/seat-booking-panel";
+import { MobilePurchaseBar } from "@/components/mobile-purchase-bar";
+import { ResponsiveImage } from "@/components/responsive-image";
+import { formatEuroFromCents } from "@/lib/money";
+import {
+  Calendar,
+  MapPin,
+  Clock,
+  DoorOpen,
+  Accessibility,
+  Car,
+  Utensils,
+} from "lucide-react";
+import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
+import {
+  formatCustomerPriceLabel,
+  formatFeeSurchargeNote,
+} from "@/lib/commerce/public-price";
+import { categoryNeedsSeats } from "@/lib/seating/types";
+
+export const dynamic = "force-dynamic";
+
+type Props = { params: Promise<{ slug: string }> };
+
+export async function generateMetadata({ params }: Props) {
+  const { slug } = await params;
+  const event = await prisma.event.findFirst({ where: { slug } });
+  return { title: event?.name ?? "Event" };
+}
+
+function formatEventDate(date: Date) {
+  const day = date.toLocaleDateString("de-DE", {
+    timeZone: "Europe/Berlin",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const time = date.toLocaleTimeString("de-DE", {
+    timeZone: "Europe/Berlin",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return `${day} · ${time} Uhr`;
+}
+
+export default async function EventPage({ params }: Props) {
+  const { slug } = await params;
+  const event = await prisma.event.findFirst({
+    where: { slug },
+    include: {
+      location: true,
+      room: true,
+      organization: { select: { name: true, settings: true } },
+      artists: { include: { artist: true }, orderBy: { sortOrder: "asc" } },
+      ticketCategories: {
+        where: { status: "active", onlineBookable: true },
+        include: { pools: true },
+        orderBy: { sortOrder: "asc" },
+      },
+    },
+  });
+
+  if (!event) notFound();
+
+  const feeConfig = resolveActivePlatformFeeConfig(event.organization.settings?.platformFeeConfig);
+
+  const { isEventSaleOpen } = await import("@/lib/commerce/event-sale");
+  const saleOpen = isEventSaleOpen(event);
+
+  const hasReservedSeating =
+    Boolean(event.venuePlanId) &&
+    (event.seatingBookingMode === "best_available" ||
+      event.seatingBookingMode === "seat_map_and_best");
+
+  const categories = event.ticketCategories.map((category) => {
+    const pool = category.pools.find((p) => p.channel === "online");
+    const available = pool
+      ? Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity)
+      : Math.max(0, category.capacity - category.safetyReserve);
+    return {
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      priceGrossCents: category.priceGrossCents,
+      available,
+      maxPerOrder: category.maxPerOrder,
+      needsSeats: categoryNeedsSeats({
+        seatingBookingMode: event.seatingBookingMode,
+        categoryKind: category.categoryKind,
+        freeSeating: category.freeSeating,
+      }),
+      categoryKind: category.categoryKind,
+      companionFree: category.companionFree,
+    };
+  });
+
+  const feeSurchargeNote = formatFeeSurchargeNote(feeConfig);
+  const fromTicket = categories.length
+    ? Math.min(...categories.map((c) => c.priceGrossCents))
+    : null;
+  const fromPrice =
+    fromTicket != null
+      ? formatCustomerPriceLabel({
+          ticketGrossCents: fromTicket,
+          feeConfig,
+          formatEuro: formatEuroFromCents,
+          prefix: "ab",
+        })
+      : null;
+  const fromPriceLabel = fromPrice ? `Tickets ${fromPrice.totalLabel}` : "Tickets";
+
+  const placeName = event.location?.name ?? null;
+  const placeAddress = event.location
+    ? [
+        [event.location.street, event.location.houseNumber].filter(Boolean).join(" "),
+        [event.location.postalCode, event.location.city].filter(Boolean).join(" "),
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : null;
+  const place = [placeName, placeAddress || event.location?.city].filter(Boolean).join(" · ") || null;
+
+  const infoItems = [
+    event.eventStartsAt
+      ? {
+          icon: Clock,
+          label: "Beginn",
+          value: event.eventStartsAt.toLocaleTimeString("de-DE", {
+            timeZone: "Europe/Berlin",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        }
+      : null,
+    event.doorsOpenAt
+      ? {
+          icon: DoorOpen,
+          label: "Einlass",
+          value: event.doorsOpenAt.toLocaleTimeString("de-DE", {
+            timeZone: "Europe/Berlin",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        }
+      : null,
+    place ? { icon: MapPin, label: "Location", value: place } : null,
+    event.location?.parking
+      ? { icon: Car, label: "Parken", value: "Parkmöglichkeiten vorhanden" }
+      : null,
+    event.location?.gastronomy
+      ? { icon: Utensils, label: "Gastronomie", value: "Vor Ort verfügbar" }
+      : null,
+    event.location?.wheelchairAccess
+      ? { icon: Accessibility, label: "Barrierefreiheit", value: "Rollstuhlzugang" }
+      : null,
+  ].filter(Boolean) as { icon: typeof Calendar; label: string; value: string }[];
+
+  return (
+    <div className="pb-28 md:pb-0">
+      <section className="border-b border-[var(--tf-line)] bg-[var(--tf-navy)] text-white">
+        <div className="tf-container grid items-center gap-8 py-8 md:grid-cols-[1.4fr_1fr] md:gap-10 md:py-10">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--tf-teal)]">
+              Live bei Ticketfeeling
+            </p>
+            <h1 className="mt-3 max-w-3xl text-[2.125rem] font-bold leading-[1.1] tracking-tight md:text-5xl lg:text-[3.75rem]">
+              {event.name}
+            </h1>
+            {event.shortDescription ? (
+              <p className="mt-3 max-w-[40rem] text-base leading-relaxed text-white/85 md:text-lg">
+                {event.shortDescription}
+              </p>
+            ) : null}
+            <div className="mt-5 flex flex-col gap-2 text-base text-white/85">
+              {event.eventStartsAt ? (
+                <p className="flex items-start gap-2">
+                  <Calendar className="mt-0.5 h-5 w-5 shrink-0 text-[var(--tf-teal)]" strokeWidth={2} />
+                  <span>{formatEventDate(event.eventStartsAt)}</span>
+                </p>
+              ) : null}
+              {placeName || placeAddress ? (
+                <p className="flex items-start gap-2">
+                  <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-[var(--tf-teal)]" strokeWidth={2} />
+                  <span className="min-w-0">
+                    {placeName ? <span className="font-medium text-white">{placeName}</span> : null}
+                    {placeName && placeAddress ? <span className="text-white/60"> · </span> : null}
+                    {placeAddress ? <span className="text-white/75">{placeAddress}</span> : null}
+                  </span>
+                </p>
+              ) : null}
+            </div>
+            <div className="mt-6">
+              {saleOpen ? (
+                <a href="#tickets" className="tf-btn tf-btn-primary !min-h-12 !px-6 text-base">
+                  Tickets sichern
+                </a>
+              ) : (
+                <span className="tf-btn tf-btn-secondary cursor-default !border-white/30 !bg-white/10 !text-white">
+                  Vorverkauf folgt
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="mx-auto w-full max-w-[460px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
+            <div className="aspect-square">
+              <ResponsiveImage
+                src={event.coverImageUrl}
+                alt={`Cover: ${event.name}`}
+                className="h-full w-full"
+                fallback="event"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="tf-container grid gap-8 py-8 lg:grid-cols-3 lg:py-10">
+        <div className="order-2 space-y-10 lg:order-1 lg:col-span-2">
+          <div>
+            <h2 className="tf-display text-2xl md:text-3xl">Darauf kannst du dich freuen</h2>
+            <p className="mt-3 max-w-[70ch] whitespace-pre-wrap text-base leading-relaxed text-[var(--tf-text-secondary)]">
+              {event.description || event.shortDescription || "Details folgen in Kürze."}
+            </p>
+          </div>
+
+          <div>
+            <h2 className="tf-display text-2xl md:text-3xl">Line-up</h2>
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              {event.artists.map((link) => {
+                const role = link.isHeadliner
+                  ? "Headliner"
+                  : link.role === "moderation"
+                    ? "Moderation"
+                    : "Künstler";
+                return (
+                  <Link
+                    key={link.id}
+                    href={`/kuenstler/${link.artist.slug}`}
+                    className="flex items-center gap-4 rounded-[20px] border border-[var(--tf-line)] bg-white p-4 transition hover:border-[var(--tf-teal)]"
+                  >
+                    <ResponsiveImage
+                      src={link.artist.profileImageUrl}
+                      alt=""
+                      className="h-16 w-16 shrink-0 rounded-full"
+                      fallback="person"
+                      initials={link.artist.name}
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate text-lg font-semibold text-[var(--tf-navy)]">
+                        {link.artist.name}
+                      </p>
+                      <p className="text-sm text-[var(--tf-text-secondary)]">{role}</p>
+                      {link.artist.shortBio ? (
+                        <p className="mt-1 line-clamp-2 text-sm text-[var(--tf-text-secondary)]">
+                          {link.artist.shortBio}
+                        </p>
+                      ) : null}
+                    </div>
+                  </Link>
+                );
+              })}
+              {event.artists.length === 0 ? (
+                <p className="text-base text-[var(--tf-text-secondary)]">Line-up folgt.</p>
+              ) : null}
+            </div>
+          </div>
+
+          {infoItems.length > 0 ? (
+            <div>
+              <h2 className="tf-display text-2xl md:text-3xl">Wichtige Infos</h2>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                {infoItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-[16px] border border-[var(--tf-line)] bg-white p-4"
+                  >
+                    <dt className="flex items-center gap-2 text-sm font-semibold text-[var(--tf-navy)]">
+                      <item.icon className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
+                      {item.label}
+                    </dt>
+                    <dd className="mt-1 text-base text-[var(--tf-text-secondary)]">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
+
+          <div className="rounded-[20px] border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] p-5">
+            <p className="text-base font-semibold text-[var(--tf-navy)]">
+              Veranstaltet von {event.organization.name}
+            </p>
+            <p className="mt-1 text-base text-[var(--tf-text-secondary)]">
+              Die Tickets werden direkt über Ticketfeeling verkauft.
+            </p>
+            <Link href="/hilfe#kontakt" className="tf-link mt-3 inline-flex text-base">
+              Noch Fragen zu diesem Event?
+            </Link>
+          </div>
+        </div>
+
+        {!hasReservedSeating ? (
+          <aside
+            id="tickets"
+            className="order-1 h-fit scroll-mt-24 lg:sticky lg:top-[88px] lg:order-2"
+          >
+            <div className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-6">
+              <h2 className="tf-display text-2xl">Tickets</h2>
+              <p className="mt-1 text-base text-[var(--tf-text-secondary)]">
+                Sichere dir jetzt deinen Platz.
+              </p>
+              {saleOpen ? (
+                <div className="mt-4">
+                  <AddToCartPanel
+                    categories={categories}
+                    feeSurchargeNote={feeSurchargeNote || undefined}
+                    showRemainingAvailability={event.showRemainingAvailability}
+                  />
+                </div>
+              ) : (
+                <p className="mt-3 text-base text-[var(--tf-text-secondary)]">
+                  Der Vorverkauf ist noch nicht offen.
+                </p>
+              )}
+            </div>
+          </aside>
+        ) : null}
+      </section>
+
+      {hasReservedSeating ? (
+        <section
+          id="tickets"
+          className="scroll-mt-24 rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-8"
+        >
+          <h2 className="tf-display text-2xl md:text-3xl">Tickets & Sitzplätze</h2>
+          <p className="mt-1 max-w-2xl text-base text-[var(--tf-text-secondary)]">
+            Wähle Bestplatzbuchung oder deinen Platz auf dem Saalplan — wie bei den großen
+            Ticketshops, nur direkter beim Veranstalter.
+          </p>
+          {saleOpen ? (
+            <div className="mt-6">
+              <SeatBookingPanel
+                eventId={event.id}
+                bookingMode={
+                  event.seatingBookingMode === "best_available"
+                    ? "best_available"
+                    : "seat_map_and_best"
+                }
+                categories={categories}
+                feeSurchargeNote={feeSurchargeNote || undefined}
+                showRemainingAvailability={event.showRemainingAvailability}
+              />
+            </div>
+          ) : (
+            <p className="mt-3 text-base text-[var(--tf-text-secondary)]">
+              Der Vorverkauf ist noch nicht offen.
+            </p>
+          )}
+        </section>
+      ) : null}
+
+      {saleOpen ? (
+        <MobilePurchaseBar
+          fromPriceLabel={fromPriceLabel}
+          priceNote={feeSurchargeNote || null}
+          targetId="tickets"
+        />
+      ) : null}
+    </div>
+  );
+}

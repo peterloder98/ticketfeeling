@@ -1,0 +1,1421 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth (Auth.js) ───────────────────────────────────────────
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  name          String?
+  passwordHash  String?   @map("password_hash")
+  image         String?
+  status        String    @default("active")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships Membership[]
+  auditLogs   AuditLog[]
+  customers   Customer[]
+  carts       Cart[]
+  boxOfficeInvitesSent BoxOfficeInvite[] @relation("BoxOfficeInviter")
+  boxOfficeInvitesAccepted BoxOfficeInvite[] @relation("BoxOfficeInvitee")
+  boxOfficeSellerGrants BoxOfficeSellerGrant[]
+  boxOfficeSales Order[] @relation("BoxOfficeSeller")
+  boxOfficeVoids Order[] @relation("BoxOfficeVoider")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(uuid()) @db.Uuid
+  userId            String  @map("user_id") @db.Uuid
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(uuid()) @db.Uuid
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id") @db.Uuid
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Organizations & RBAC ─────────────────────────────────────
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  status    String   @default("active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  settings     OrganizationSettings?
+  bankAccounts OrganizationBankAccount[]
+  emailAccounts OrganizationEmailAccount[]
+  memberships  Membership[]
+  roles        Role[]
+  auditLogs    AuditLog[]
+  legalDocuments LegalDocument[]
+  artists      Artist[]
+  locations    Location[]
+  venuePlans   VenuePlan[]
+  tours        Tour[]
+  events       Event[]
+  knowledgeArticles SupportKnowledgeArticle[]
+  chatSessions SupportChatSession[]
+  forgottenTicketRequests ForgottenTicketRequest[]
+  supportRequests SupportRequest[]
+  taxRates TaxRate[]
+  ticketCategoryTemplates TicketCategoryTemplate[]
+  customers Customer[]
+  carts Cart[]
+  orders Order[]
+  invoiceSequences InvoiceNumberSequence[]
+  invoices Invoice[]
+  payments Payment[]
+  tickets Ticket[]
+  webhookInbox WebhookInbox[]
+  discountCodes DiscountCode[]
+  giftCards GiftCard[]
+  fiscalTransactions FiscalTransaction[]
+  boxOfficeSessions BoxOfficeSession[]
+  boxOfficeInvites BoxOfficeInvite[]
+  boxOfficeSellerGrants BoxOfficeSellerGrant[]
+
+  @@map("organizations")
+}
+
+/// Wiederverwendbare Vorlagen — echte Kategorien hängen immer am Event.
+model TicketCategoryTemplate {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  name            String
+  description     String?  @db.Text
+  priceGrossCents Int      @map("price_gross_cents")
+  capacity        Int      @default(100)
+  maxPerOrder     Int      @default(10) @map("max_per_order")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, sortOrder])
+  @@map("ticket_category_templates")
+}
+
+/// Einladung für Vorverkaufs-Partner (z. B. Location verkauft vor Ort).
+model BoxOfficeInvite {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  email            String
+  emailNormalized  String    @map("email_normalized")
+  firstName        String    @map("first_name")
+  lastName         String    @map("last_name")
+  tokenHash        String    @unique @map("token_hash")
+  /// Plain token only until accepted; clear after accept in production prefer hash-only
+  token            String
+  status           String    @default("pending") // pending|accepted|revoked|expired
+  invitedByUserId  String    @map("invited_by_user_id") @db.Uuid
+  invitedAt        DateTime  @default(now()) @map("invited_at")
+  expiresAt        DateTime  @map("expires_at")
+  acceptedAt       DateTime? @map("accepted_at")
+  acceptedUserId   String?   @map("accepted_user_id") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  invitedBy    User         @relation("BoxOfficeInviter", fields: [invitedByUserId], references: [id])
+  acceptedUser User?        @relation("BoxOfficeInvitee", fields: [acceptedUserId], references: [id])
+  events       BoxOfficeInviteEvent[]
+
+  @@index([organizationId, status])
+  @@index([emailNormalized])
+  @@map("box_office_invites")
+}
+
+model BoxOfficeInviteEvent {
+  id       String @id @default(uuid()) @db.Uuid
+  inviteId String @map("invite_id") @db.Uuid
+  eventId  String @map("event_id") @db.Uuid
+
+  invite BoxOfficeInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  event  Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([inviteId, eventId])
+  @@map("box_office_invite_events")
+}
+
+/// Dauerhafte Event-Freigabe für Vorverkaufs-Partner nach Annahme der Einladung.
+model BoxOfficeSellerGrant {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  eventId        String   @map("event_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event        Event        @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([organizationId, userId])
+  @@map("box_office_seller_grants")
+}
+
+model OrganizationSettings {
+  id               String  @id @default(uuid()) @db.Uuid
+  organizationId   String  @unique @map("organization_id") @db.Uuid
+  legalName        String? @map("legal_name")
+  legalForm        String? @map("legal_form")
+  contactFirstName String? @map("contact_first_name")
+  contactLastName  String? @map("contact_last_name")
+  street           String?
+  houseNumber      String? @map("house_number")
+  postalCode       String? @map("postal_code")
+  city             String?
+  country          String  @default("DE")
+  phone            String?
+  email            String?
+  supportEmail     String? @map("support_email")
+  homepage         String?
+  ticketShopDomain String? @map("ticket_shop_domain")
+  logoUrl          String? @map("logo_url")
+  faviconUrl       String? @map("favicon_url")
+  vatId            String? @map("vat_id")
+  taxNumber        String? @map("tax_number")
+  commercialRegister String? @map("commercial_register")
+  registerCourt    String? @map("register_court")
+  managingDirectors String? @map("managing_directors")
+  defaultCurrency  String  @default("EUR") @map("default_currency")
+  defaultTimezone  String  @default("Europe/Berlin") @map("default_timezone")
+  defaultLocale    String  @default("de-DE") @map("default_locale")
+  /// Legacy Vorverkaufsgebühr — superseded by platformFeeConfig (kept for migration)
+  presaleFeeMode   String  @default("none") @map("presale_fee_mode")
+  presaleFeeFixedCents Int @default(0) @map("presale_fee_fixed_cents")
+  /// e.g. 250 = 2.50%
+  presaleFeePercentBps Int @default(0) @map("presale_fee_percent_bps")
+  /// Tax on fee; default 700 = 7%. Change only if advised otherwise.
+  presaleFeeTaxRateBps Int @default(700) @map("presale_fee_tax_rate_bps")
+
+  /// Central Verwaltungsgebühr config (JSON PlatformFeeConfig)
+  platformFeeConfig Json @default("{}") @map("platform_fee_config")
+
+  /// Internal Stripe cost estimates (not customer-facing)
+  stripeFeeConfig Json @default("{}") @map("stripe_fee_config")
+  /// after_confirmed | after_submitted
+  sepaTicketReleaseMode String @default("after_confirmed") @map("sepa_ticket_release_mode")
+  /// Hide SEPA when event starts within this many days
+  sepaMinDaysBeforeEvent Int @default(7) @map("sepa_min_days_before_event")
+
+  /// PSP fee rates + activation (server-side only; never customer surcharge by default)
+  paymentFeeConfig Json @default("{}") @map("payment_fee_config")
+
+  /// Legacy single SMTP — prefer OrganizationEmailAccount; kept for migration fallback
+  smtpHost         String?  @map("smtp_host")
+  smtpPort         Int      @default(465) @map("smtp_port")
+  smtpSecure       Boolean  @default(true) @map("smtp_secure")
+  smtpUser         String?  @map("smtp_user")
+  smtpPasswordEnc  String?  @map("smtp_password_enc") @db.Text
+  smtpFromEmail    String?  @map("smtp_from_email")
+  smtpFromName     String?  @map("smtp_from_name")
+
+  /// Org-default tracking (overridable per event)
+  trackingEnabled             Boolean @default(false) @map("tracking_enabled")
+  trackingGa4MeasurementId    String? @map("tracking_ga4_measurement_id")
+  trackingGtmContainerId      String? @map("tracking_gtm_container_id")
+  trackingMetaPixelId         String? @map("tracking_meta_pixel_id")
+  trackingGoogleAdsId         String? @map("tracking_google_ads_id")
+  trackingMetaCapiTokenEnc    String? @map("tracking_meta_capi_token_enc") @db.Text
+
+  /// TSE / KasseSichV — none | planned | fiskaly | external
+  tseMode          String  @default("none") @map("tse_mode")
+  tseProvider      String? @map("tse_provider")
+  tseConfigEnc     String? @map("tse_config_enc") @db.Text
+  tseClientId      String? @map("tse_client_id")
+  tseTssId         String? @map("tse_tss_id")
+
+  data             Json    @default("{}")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("organization_settings")
+}
+
+/// Outbound SMTP account (multiple per org; one marked default for transactional mail)
+model OrganizationEmailAccount {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  /// Display label, e.g. "Tickets Versand" or "Support"
+  label           String
+  host            String
+  port            Int       @default(465)
+  secure          Boolean   @default(true)
+  username        String
+  passwordEnc     String    @map("password_enc") @db.Text
+  fromEmail       String    @map("from_email")
+  fromName        String?   @map("from_name")
+  isDefault       Boolean   @default(false) @map("is_default")
+  lastTestedAt    DateTime? @map("last_tested_at")
+  lastTestOk      Boolean?  @map("last_test_ok")
+  lastTestMessage String?   @map("last_test_message") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, isDefault])
+  @@map("organization_email_accounts")
+}
+
+model OrganizationBankAccount {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  accountHolderEnc String?  @map("account_holder_enc")
+  ibanEnc          String?  @map("iban_enc")
+  bicEnc           String?  @map("bic_enc")
+  bankNameEnc      String?  @map("bank_name_enc")
+  purposeSchema    String?  @map("purpose_schema")
+  paymentProvider  String?  @map("payment_provider")
+  providerStatus   String   @default("not_connected") @map("provider_status")
+  lexwareStatus    String   @default("not_connected") @map("lexware_status")
+  payoutRhythm     String?  @map("payout_rhythm")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@map("organization_bank_accounts")
+}
+
+model Membership {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  userId         String @map("user_id") @db.Uuid
+  status         String @default("active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles        MembershipRole[]
+
+  @@unique([organizationId, userId])
+  @@map("memberships")
+}
+
+model Role {
+  id             String  @id @default(uuid()) @db.Uuid
+  organizationId String? @map("organization_id") @db.Uuid
+  key            String
+  name           String
+  isSystem       Boolean @default(false) @map("is_system")
+  description    String?
+
+  organization Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions  RolePermission[]
+  memberships  MembershipRole[]
+
+  @@unique([organizationId, key])
+  @@map("roles")
+}
+
+model Permission {
+  id          String @id @default(uuid()) @db.Uuid
+  key         String @unique
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model MembershipRole {
+  membershipId String @map("membership_id") @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+
+  membership Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([membershipId, roleId])
+  @@map("membership_roles")
+}
+
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  action         String
+  entityType     String   @map("entity_type")
+  entityId       String?  @map("entity_id")
+  before         Json?
+  after          Json?
+  reason         String?
+  ip             String?
+  userAgent      String?  @map("user_agent")
+  requestId      String?  @map("request_id")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actor        User?         @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
+
+// ─── Legal ────────────────────────────────────────────────────
+
+model LegalDocument {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  type           String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  versions     LegalDocumentVersion[]
+
+  @@unique([organizationId, type])
+  @@map("legal_documents")
+}
+
+model LegalDocumentVersion {
+  id              String    @id @default(uuid()) @db.Uuid
+  legalDocumentId String    @map("legal_document_id") @db.Uuid
+  version         String
+  title           String
+  content         String    @db.Text
+  validFrom       DateTime  @map("valid_from")
+  status          String    @default("draft")
+  publishedAt     DateTime? @map("published_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  legalDocument LegalDocument @relation(fields: [legalDocumentId], references: [id], onDelete: Cascade)
+
+  @@unique([legalDocumentId, version])
+  @@map("legal_document_versions")
+}
+
+// ─── Artists / Locations / Tours / Events ─────────────────────
+
+model Artist {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  name            String
+  legalName       String?   @map("legal_name")
+  slug            String
+  artistType      String    @default("solo") @map("artist_type")
+  genre           String?
+  origin          String?
+  shortBio        String?   @map("short_bio") @db.Text
+  biography       String?   @db.Text
+  profileImageUrl String?   @map("profile_image_url")
+  headerImageUrl  String?   @map("header_image_url")
+  homepage        String?
+  instagram       String?
+  facebook        String?
+  tiktok          String?
+  youtube         String?
+  spotify         String?
+  seoTitle        String?   @map("seo_title")
+  seoDescription  String?   @map("seo_description")
+  visibility      String    @default("draft")
+  publishedAt     DateTime? @map("published_at")
+  sortOrder       Int       @default(0) @map("sort_order")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  eventLinks   EventArtist[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, visibility])
+  @@map("artists")
+}
+
+model Location {
+  id                 String   @id @default(uuid()) @db.Uuid
+  organizationId     String   @map("organization_id") @db.Uuid
+  name               String
+  slug               String
+  street             String?
+  houseNumber        String?  @map("house_number")
+  postalCode         String?  @map("postal_code")
+  city               String?
+  country            String   @default("DE")
+  latitude           Decimal? @db.Decimal(10, 7)
+  longitude          Decimal? @db.Decimal(10, 7)
+  homepage           String?
+  phone              String?
+  email              String?
+  description        String?  @db.Text
+  maxCapacity        Int?     @map("max_capacity")
+  wheelchairAccess   Boolean  @default(false) @map("wheelchair_access")
+  accessibleToilet   Boolean  @default(false) @map("accessible_toilet")
+  parking            Boolean  @default(false)
+  cloakroom          Boolean  @default(false)
+  gastronomy         Boolean  @default(false)
+  houseRules         String?  @map("house_rules") @db.Text
+  internalSecurity   String?  @map("internal_security") @db.Text
+  travelInfo         Json     @default("{}") @map("travel_info")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  rooms        LocationRoom[]
+  venuePlans   VenuePlan[]
+  events       Event[]
+
+  @@unique([organizationId, slug])
+  @@map("locations")
+}
+
+/// Saalplan / Raumgestaltung (Location-basiert, Events können referenzieren).
+model VenuePlan {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  locationId     String   @map("location_id") @db.Uuid
+  roomId         String?  @map("room_id") @db.Uuid
+  name           String
+  /// Hall width (X) in centimeters — exact physical size
+  widthCm        Int      @map("width_cm")
+  /// Hall depth (Y) in centimeters
+  depthCm        Int      @map("depth_cm")
+  /// Plan objects: stage, seat blocks, … (JSON array of VenuePlanObject)
+  objects        Json     @default("[]")
+  isTemplate     Boolean  @default(false) @map("is_template")
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location     Location     @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  room         LocationRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  events       Event[]
+
+  @@index([organizationId, locationId])
+  @@map("venue_plans")
+}
+
+model LocationRoom {
+  id           String   @id @default(uuid()) @db.Uuid
+  locationId   String   @map("location_id") @db.Uuid
+  name         String
+  lengthM      Decimal? @map("length_m") @db.Decimal(8, 2)
+  widthM       Decimal? @map("width_m") @db.Decimal(8, 2)
+  heightM      Decimal? @map("height_m") @db.Decimal(8, 2)
+  maxCapacity  Int?     @map("max_capacity")
+  description  String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  location   Location    @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  events     Event[]
+  venuePlans VenuePlan[]
+
+  @@index([locationId])
+  @@map("location_rooms")
+}
+
+model Tour {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String
+  slug           String
+  description    String?   @db.Text
+  coverImageUrl  String?   @map("cover_image_url")
+  logoUrl        String?   @map("logo_url")
+  startsOn       DateTime? @map("starts_on") @db.Date
+  endsOn         DateTime? @map("ends_on") @db.Date
+  visibility     String    @default("draft")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       Event[]
+
+  @@unique([organizationId, slug])
+  @@map("tours")
+}
+
+model Event {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  locationId        String?   @map("location_id") @db.Uuid
+  roomId            String?   @map("room_id") @db.Uuid
+  /// Optional seating / room layout for this event
+  venuePlanId       String?   @map("venue_plan_id") @db.Uuid
+  /// none | best_available | seat_map_and_best — relevant when venuePlanId is set
+  seatingBookingMode String   @default("none") @map("seating_booking_mode")
+  tourId            String?   @map("tour_id") @db.Uuid
+  name              String
+  subtitle          String?
+  slug              String
+  eventType         String    @default("concert") @map("event_type")
+  shortDescription  String?   @map("short_description") @db.Text
+  description       String?   @db.Text
+  coverImageUrl     String?   @map("cover_image_url")
+  mobileCoverUrl    String?   @map("mobile_cover_url")
+  status            String    @default("draft")
+  locale            String    @default("de-DE")
+  seoTitle          String?   @map("seo_title")
+  seoDescription    String?   @map("seo_description")
+  eventStartsAt     DateTime? @map("event_starts_at")
+  eventEndsAt       DateTime? @map("event_ends_at")
+  doorsOpenAt       DateTime? @map("doors_open_at")
+  doorsCloseAt      DateTime? @map("doors_close_at")
+  vipDoorsOpenAt    DateTime? @map("vip_doors_open_at")
+  visibleFrom       DateTime? @map("visible_from")
+  visibleUntil      DateTime? @map("visible_until")
+  presaleStartsAt   DateTime? @map("presale_starts_at")
+  presaleEndsAt     DateTime? @map("presale_ends_at")
+  /// null = inherit organization settings (legacy; unused after platform fee)
+  presaleFeeMode    String?   @map("presale_fee_mode")
+  presaleFeeFixedCents Int?   @map("presale_fee_fixed_cents")
+  presaleFeePercentBps Int?   @map("presale_fee_percent_bps")
+  /// Ticket VAT for this event; 700 = 7%
+  ticketTaxRateBasisPoints Int @default(700) @map("ticket_tax_rate_basis_points")
+  /// inherit | custom
+  administrationFeeTaxMode String @default("inherit") @map("administration_fee_tax_mode")
+  administrationFeeCustomTaxRateBasisPoints Int? @map("administration_fee_custom_tax_rate_bps")
+  /// When creating/editing: must confirm tracking defaults or set overrides
+  trackingReviewedAt  DateTime? @map("tracking_reviewed_at")
+  trackingUseOrgDefaults Boolean @default(true) @map("tracking_use_org_defaults")
+  trackingGa4MeasurementId String? @map("tracking_ga4_measurement_id")
+  trackingGtmContainerId   String? @map("tracking_gtm_container_id")
+  trackingMetaPixelId      String? @map("tracking_meta_pixel_id")
+  trackingGoogleAdsId      String? @map("tracking_google_ads_id")
+  /// Public: show remaining counts / scarcity badges (off by default)
+  showRemainingAvailability Boolean @default(false) @map("show_remaining_availability")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location     Location?     @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  room         LocationRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  venuePlan    VenuePlan?    @relation(fields: [venuePlanId], references: [id], onDelete: SetNull)
+  tour         Tour?         @relation(fields: [tourId], references: [id], onDelete: SetNull)
+  artists      EventArtist[]
+  ticketCategories EventTicketCategory[]
+  inventoryPools InventoryPool[]
+  orderItems   OrderItem[]
+  tickets      Ticket[]
+  seats        EventSeat[]
+  checkinEvents CheckinEvent[]
+  discountCodes DiscountCode[]
+  boxOfficeInviteEvents BoxOfficeInviteEvent[]
+  boxOfficeSellerGrants BoxOfficeSellerGrant[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, status])
+  @@index([eventStartsAt])
+  @@index([venuePlanId])
+  @@map("events")
+}
+
+/// Per-event seat inventory expanded from VenuePlan seat_blocks.
+model EventSeat {
+  id             String    @id @default(uuid()) @db.Uuid
+  eventId        String    @map("event_id") @db.Uuid
+  venuePlanId    String    @map("venue_plan_id") @db.Uuid
+  blockObjectId  String    @map("block_object_id")
+  blockLabel     String    @map("block_label")
+  rowIndex       Int       @map("row_index")
+  seatIndex      Int       @map("seat_index")
+  rowLabel       String    @map("row_label")
+  seatNumber     String    @map("seat_number")
+  /// Stable key e.g. blockId:R3:S12
+  seatKey        String    @map("seat_key")
+  /// available | held | sold
+  status         String    @default("available")
+  holdExpiresAt  DateTime? @map("hold_expires_at")
+  cartItemId     String?   @map("cart_item_id") @db.Uuid
+  ticketId       String?   @unique @map("ticket_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  event    Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  cartItem CartItem? @relation(fields: [cartItemId], references: [id], onDelete: SetNull)
+  ticket   Ticket?   @relation(fields: [ticketId], references: [id], onDelete: SetNull)
+
+  @@unique([eventId, seatKey])
+  @@index([eventId, status])
+  @@index([cartItemId])
+  @@index([holdExpiresAt])
+  @@map("event_seats")
+}
+
+model EventArtist {
+  id                 String    @id @default(uuid()) @db.Uuid
+  eventId            String    @map("event_id") @db.Uuid
+  artistId           String    @map("artist_id") @db.Uuid
+  role               String    @default("artist")
+  isHeadliner        Boolean   @default(false) @map("is_headliner")
+  sortOrder          Int       @default(0) @map("sort_order")
+  shortBioOverride   String?   @map("short_bio_override") @db.Text
+  announced          Boolean   @default(true)
+  cancelled          Boolean   @default(false)
+  visibleFrom        DateTime? @map("visible_from")
+  visibleUntil       DateTime? @map("visible_until")
+  internalSetTime    DateTime? @map("internal_set_time")
+  publicSetTime      DateTime? @map("public_set_time")
+  setDurationMinutes Int?      @map("set_duration_minutes")
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, artistId])
+  @@map("event_artists")
+}
+
+// ─── Support / Chatbot / Forgotten ticket ─────────────────────
+
+model SupportKnowledgeArticle {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  slug           String
+  title          String
+  body           String    @db.Text
+  locale         String    @default("de-DE")
+  tags           String[]  @default([])
+  visibility     String    @default("public")
+  status         String    @default("draft")
+  publishedAt    DateTime? @map("published_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, slug, locale])
+  @@index([organizationId, status])
+  @@map("support_knowledge_articles")
+}
+
+model SupportChatSession {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  visitorId      String?  @map("visitor_id")
+  customerEmail  String?  @map("customer_email")
+  channel        String   @default("widget")
+  status         String   @default("open")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  messages     SupportChatMessage[]
+
+  @@index([organizationId, createdAt])
+  @@map("support_chat_sessions")
+}
+
+model SupportChatMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  role      String
+  content   String   @db.Text
+  intent    String?
+  sources   Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session SupportChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("support_chat_messages")
+}
+
+model ForgottenTicketRequest {
+  id              String   @id @default(uuid()) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  emailNormalized String   @map("email_normalized")
+  orderNumberHint String?  @map("order_number_hint")
+  eventIdHint     String?  @map("event_id_hint") @db.Uuid
+  ipHash          String   @map("ip_hash")
+  status          String   @default("received")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, emailNormalized, createdAt])
+  @@map("forgotten_ticket_requests")
+}
+
+model AccessRecoveryToken {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  emailNormalized String    @map("email_normalized")
+  tokenHash       String    @unique @map("token_hash")
+  expiresAt       DateTime  @map("expires_at")
+  usedAt          DateTime? @map("used_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@index([organizationId, emailNormalized])
+  @@index([expiresAt])
+  @@map("access_recovery_tokens")
+}
+
+model TicketResendEvent {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  ticketId       String   @map("ticket_id") @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  actorUserId    String?  @map("actor_user_id") @db.Uuid
+  channel        String   @default("account")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId, createdAt])
+  @@map("ticket_resend_events")
+}
+
+model SupportRequest {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  email          String
+  subject        String
+  body           String   @db.Text
+  status         String   @default("open")
+  source         String   @default("chat_handoff")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
+  @@map("support_requests")
+}
+
+// ─── Commerce Phase 2 ─────────────────────────────────────────
+
+model TaxRate {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String
+  rateBps        Int      @map("rate_bps") // 700 = 7.00%
+  isDefaultTicket Boolean @default(false) @map("is_default_ticket")
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  categories   EventTicketCategory[]
+
+  @@unique([organizationId, name])
+  @@map("tax_rates")
+}
+
+model EventTicketCategory {
+  id               String    @id @default(uuid()) @db.Uuid
+  eventId          String    @map("event_id") @db.Uuid
+  taxRateId        String    @map("tax_rate_id") @db.Uuid
+  name             String
+  internalName     String?   @map("internal_name")
+  description      String?   @db.Text
+  color            String?
+  priceGrossCents  Int       @map("price_gross_cents")
+  currency         String    @default("EUR")
+  capacity         Int
+  safetyReserve    Int       @default(0) @map("safety_reserve")
+  minPerOrder      Int       @default(1) @map("min_per_order")
+  maxPerOrder      Int       @default(10) @map("max_per_order")
+  maxPerCustomer   Int?      @map("max_per_customer")
+  saleStartsAt     DateTime? @map("sale_starts_at")
+  saleEndsAt       DateTime? @map("sale_ends_at")
+  onlineBookable   Boolean   @default(true) @map("online_bookable")
+  boxOfficeBookable Boolean  @default(true) @map("box_office_bookable")
+  freeSeating      Boolean   @default(true) @map("free_seating")
+  /// standard | standing | free_choice | vip | wheelchair
+  categoryKind     String    @default("standard") @map("category_kind")
+  /// Wheelchair: companion ticket free of charge
+  companionFree    Boolean   @default(false) @map("companion_free")
+  transferable     Boolean   @default(true)
+  refundable       Boolean   @default(true)
+  sortOrder        Int       @default(0) @map("sort_order")
+  status           String    @default("active")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  event    Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  taxRate  TaxRate        @relation(fields: [taxRateId], references: [id])
+  pools    InventoryPool[]
+  cartItems CartItem[]
+  orderItems OrderItem[]
+  tickets  Ticket[]
+
+  @@index([eventId, status])
+  @@map("event_ticket_categories")
+}
+
+model InventoryPool {
+  id             String @id @default(uuid()) @db.Uuid
+  eventId        String @map("event_id") @db.Uuid
+  categoryId     String @map("category_id") @db.Uuid
+  channel        String @default("online") // online|box_office|internal
+  capacity       Int
+  soldQuantity   Int    @default(0) @map("sold_quantity")
+  heldQuantity   Int    @default(0) @map("held_quantity")
+  version        Int    @default(0)
+
+  event    Event               @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  category EventTicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  holds    InventoryHold[]
+
+  @@unique([categoryId, channel])
+  @@index([eventId])
+  @@map("inventory_pools")
+}
+
+model InventoryHold {
+  id         String   @id @default(uuid()) @db.Uuid
+  poolId     String   @map("pool_id") @db.Uuid
+  cartItemId String?  @unique @map("cart_item_id") @db.Uuid
+  quantity   Int
+  status     String   @default("held") // held|consumed|expired|released
+  expiresAt  DateTime @map("expires_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  pool     InventoryPool @relation(fields: [poolId], references: [id], onDelete: Cascade)
+  cartItem CartItem?     @relation(fields: [cartItemId], references: [id], onDelete: SetNull)
+
+  @@index([status, expiresAt])
+  @@map("inventory_holds")
+}
+
+model Customer {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  userId          String?   @map("user_id") @db.Uuid
+  email           String
+  emailNormalized String    @map("email_normalized")
+  salutation      String?
+  gender          String?   // female|male|diverse|undisclosed
+  firstName       String    @map("first_name")
+  lastName        String    @map("last_name")
+  birthDate       DateTime? @map("birth_date") @db.Date
+  phone           String?
+  locale          String    @default("de-DE")
+  street          String?
+  houseNumber     String?   @map("house_number")
+  postalCode      String?   @map("postal_code")
+  city            String?
+  country         String    @default("DE")
+  /// Internal staff notes (CRM)
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orders       Order[]
+  ticketsOwned Ticket[]     @relation("TicketHolder")
+
+  @@unique([organizationId, emailNormalized])
+  @@index([userId])
+  @@map("customers")
+}
+
+model Cart {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  sessionKey     String   @map("session_key")
+  status         String   @default("open") // open|converted|expired
+  currency       String   @default("EUR")
+  discountCode   String?  @map("discount_code")
+  discountCents  Int      @default(0) @map("discount_cents")
+  giftCardCode   String?  @map("gift_card_code")
+  giftCardAppliedCents Int @default(0) @map("gift_card_applied_cents")
+  expiresAt      DateTime @map("expires_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items        CartItem[]
+  orders       Order[]
+
+  @@unique([organizationId, sessionKey])
+  @@index([status, expiresAt])
+  @@map("carts")
+}
+
+model CartItem {
+  id               String   @id @default(uuid()) @db.Uuid
+  cartId           String   @map("cart_id") @db.Uuid
+  eventId          String   @map("event_id") @db.Uuid
+  categoryId       String   @map("category_id") @db.Uuid
+  quantity         Int
+  unitPriceGrossCents Int   @map("unit_price_gross_cents")
+  /// best_available | seat_map | free
+  seatingMode      String?  @map("seating_mode")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  cart     Cart                @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  category EventTicketCategory @relation(fields: [categoryId], references: [id])
+  hold     InventoryHold?
+  seats    EventSeat[]
+
+  @@index([cartId])
+  @@map("cart_items")
+}
+
+model Order {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  customerId         String    @map("customer_id") @db.Uuid
+  cartId             String?   @map("cart_id") @db.Uuid
+  orderNumber        String    @map("order_number")
+  status             String    @default("pending_payment")
+  channel            String    @default("online")
+  currency           String    @default("EUR")
+  netCents           Int       @map("net_cents")
+  taxCents           Int       @map("tax_cents")
+  grossCents         Int       @map("gross_cents")
+  /// Ticket subtotal gross before fees / discounts (alias of tickets before discount)
+  ticketsGrossCents  Int       @default(0) @map("tickets_gross_cents")
+  /// Explicit ticket subtotal before discounts (same semantics as ticketsGrossCents)
+  ticketSubtotalCents Int      @default(0) @map("ticket_subtotal_cents")
+  feeGrossCents      Int       @default(0) @map("fee_gross_cents")
+  feeNetCents        Int       @default(0) @map("fee_net_cents")
+  feeTaxCents        Int       @default(0) @map("fee_tax_cents")
+  feeSnapshot        Json      @default("{}") @map("fee_snapshot")
+  /// Verwaltungsgebühr snapshot (aliases fee* for clarity)
+  administrationFeePercentageBasisPoints Int @default(0) @map("admin_fee_percentage_bps")
+  administrationFeeGrossCents Int @default(0) @map("admin_fee_gross_cents")
+  administrationFeeNetCents   Int @default(0) @map("admin_fee_net_cents")
+  administrationFeeTaxCents   Int @default(0) @map("admin_fee_tax_cents")
+  administrationFeeTaxAllocations Json @default("[]") @map("admin_fee_tax_allocations")
+  calculationVersion String    @default("v1") @map("calculation_version")
+  discountCode       String?   @map("discount_code")
+  discountCents      Int       @default(0) @map("discount_cents")
+  giftCardCode       String?   @map("gift_card_code")
+  giftCardAppliedCents Int     @default(0) @map("gift_card_applied_cents")
+  /// Customer-facing payable total (includes Verwaltungsgebühr; no payment-method surcharge)
+  customerTotalCents Int       @default(0) @map("customer_total_cents")
+  /// Selected online method: card | sepa_debit | apple_pay | google_pay | stripe_card | stripe_sepa
+  paymentMethod      String?   @map("payment_method")
+  paymentProvider    String?   @map("payment_provider")
+  estimatedPaymentFeeCents Int? @map("estimated_payment_fee_cents")
+  actualPaymentFeeCents    Int? @map("actual_payment_fee_cents")
+  netPayoutCents           Int? @map("net_payout_cents")
+  stripePaymentIntentId    String?   @map("stripe_payment_intent_id")
+  stripeChargeId           String?   @map("stripe_charge_id")
+  stripeBalanceTransactionId String? @map("stripe_balance_transaction_id")
+  stripeFeeEstimatedCents  Int?      @map("stripe_fee_estimated_cents")
+  stripeFeeActualCents     Int?      @map("stripe_fee_actual_cents")
+  stripeNetPayoutCents     Int?      @map("stripe_net_payout_cents")
+  sepaMandateReference     String?   @map("sepa_mandate_reference")
+  /// pending | processing | paid | failed | refunded | …
+  paymentStatus            String?   @map("payment_status")
+  providerTransactionId    String?   @map("provider_transaction_id")
+  providerFeeCurrency      String?   @map("provider_fee_currency")
+  paymentCreatedAt         DateTime? @map("payment_created_at")
+  paymentCompletedAt       DateTime? @map("payment_completed_at")
+  paymentFailedAt          DateTime? @map("payment_failed_at")
+  refundedAmountCents      Int       @default(0) @map("refunded_amount_cents")
+  refundFeeCents           Int       @default(0) @map("refund_fee_cents")
+  invoiceRequested         Boolean   @default(false) @map("invoice_requested")
+  /// private | company | null
+  invoiceRecipientType     String?   @map("invoice_recipient_type")
+  invoiceCompanyName       String?   @map("invoice_company_name")
+  invoiceContactName       String?   @map("invoice_contact_name")
+  invoiceVatId             String?   @map("invoice_vat_id")
+  invoiceOrderReference    String?   @map("invoice_order_reference")
+  invoiceStreet            String?   @map("invoice_street")
+  invoiceHouseNumber       String?   @map("invoice_house_number")
+  invoicePostalCode        String?   @map("invoice_postal_code")
+  invoiceCity              String?   @map("invoice_city")
+  invoiceCountry           String?   @map("invoice_country")
+  lexofficeVoucherId       String?   @map("lexoffice_voucher_id")
+  lexofficeSyncStatus      String?   @map("lexoffice_sync_status")
+  lexofficeSyncedAt        DateTime? @map("lexoffice_synced_at")
+  billingSnapshot    Json      @map("billing_snapshot")
+  sellerSnapshot     Json      @default("{}") @map("seller_snapshot")
+  organizerSnapshot  Json      @default("{}") @map("organizer_snapshot")
+  contractSnapshot   Json      @default("{}") @map("contract_snapshot")
+  paidAt             DateTime? @map("paid_at")
+  fulfillmentLockedAt DateTime? @map("fulfillment_locked_at")
+  /// Tageskasse: Verkäufer (Partner oder Mitarbeiter)
+  soldByUserId       String?   @map("sold_by_user_id") @db.Uuid
+  /// none | printed | emailed | both
+  deliveryStatus     String    @default("none") @map("delivery_status")
+  deliveryPrintedAt  DateTime? @map("delivery_printed_at")
+  deliveryEmailedAt  DateTime? @map("delivery_emailed_at")
+  voidedAt           DateTime? @map("voided_at")
+  voidedByUserId     String?   @map("voided_by_user_id") @db.Uuid
+  voidReason         String?   @map("void_reason")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id])
+  cart         Cart?        @relation(fields: [cartId], references: [id], onDelete: SetNull)
+  soldByUser   User?        @relation("BoxOfficeSeller", fields: [soldByUserId], references: [id], onDelete: SetNull)
+  voidedByUser User?        @relation("BoxOfficeVoider", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  items        OrderItem[]
+  payments     Payment[]
+  invoices     Invoice[]
+  tickets      Ticket[]
+  legalAcceptances OrderLegalAcceptance[]
+  fiscalTransactions FiscalTransaction[]
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId, status, createdAt])
+  @@index([customerId])
+  @@index([soldByUserId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                    String @id @default(uuid()) @db.Uuid
+  orderId               String @map("order_id") @db.Uuid
+  eventId               String @map("event_id") @db.Uuid
+  categoryId            String? @map("category_id") @db.Uuid
+  quantity              Int
+  productNameSnapshot   String @map("product_name_snapshot")
+  eventNameSnapshot     String @map("event_name_snapshot")
+  eventStartsAtSnapshot DateTime? @map("event_starts_at_snapshot")
+  locationSnapshot      String? @map("location_snapshot")
+  categorySnapshot      String @map("category_snapshot")
+  unitListGrossCents    Int    @map("unit_list_gross_cents")
+  unitPaidGrossCents    Int    @map("unit_paid_gross_cents")
+  discountCents         Int    @default(0) @map("discount_cents")
+  taxRateBps            Int    @map("tax_rate_bps")
+  netCents              Int    @map("net_cents")
+  taxCents              Int    @map("tax_cents")
+  grossCents            Int    @map("gross_cents")
+
+  order    Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  event    Event                @relation(fields: [eventId], references: [id])
+  category EventTicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  tickets  Ticket[]
+
+  @@index([orderId])
+  @@index([eventId])
+  @@map("order_items")
+}
+
+model OrderLegalAcceptance {
+  id                      String   @id @default(uuid()) @db.Uuid
+  orderId                 String   @map("order_id") @db.Uuid
+  legalDocumentVersionId  String   @map("legal_document_version_id") @db.Uuid
+  acceptedAt              DateTime @default(now()) @map("accepted_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId, legalDocumentVersionId])
+  @@map("order_legal_acceptances")
+}
+
+model Payment {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  orderId           String    @map("order_id") @db.Uuid
+  provider          String
+  providerPaymentId String?   @map("provider_payment_id")
+  status            String    @default("created")
+  amountCents       Int       @map("amount_cents")
+  currency          String    @default("EUR")
+  method            String?
+  rawStatus         String?   @map("raw_status")
+  /// Stripe/PayPal fee withheld from merchant (not customer price)
+  providerFeeCents  Int?      @map("provider_fee_cents")
+  /// amountCents - providerFeeCents when known
+  netSettledCents   Int?      @map("net_settled_cents")
+  paidAt            DateTime? @map("paid_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerPaymentId])
+  @@index([orderId])
+  @@map("payments")
+}
+
+model WebhookInbox {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String?   @map("organization_id") @db.Uuid
+  provider        String
+  providerEventId String    @map("provider_event_id")
+  payload         Json
+  status          String    @default("received") // received|processed|failed|ignored
+  processedAt     DateTime? @map("processed_at")
+  errorMessage    String?   @map("error_message") @db.Text
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@unique([provider, providerEventId])
+  @@index([status, createdAt])
+  @@map("webhook_inbox")
+}
+
+model InvoiceNumberSequence {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  year           Int
+  lastNumber     Int    @default(0) @map("last_number")
+  prefix         String @default("TF")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, year, prefix])
+  @@map("invoice_number_sequences")
+}
+
+model Invoice {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  orderId        String   @map("order_id") @db.Uuid
+  invoiceNumber  String   @map("invoice_number")
+  status         String   @default("final")
+  currency       String   @default("EUR")
+  netCents       Int      @map("net_cents")
+  taxCents       Int      @map("tax_cents")
+  grossCents     Int      @map("gross_cents")
+  issuedAt       DateTime @default(now()) @map("issued_at")
+  sellerSnapshot Json     @map("seller_snapshot")
+  buyerSnapshot  Json     @map("buyer_snapshot")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  items        InvoiceItem[]
+
+  @@unique([organizationId, invoiceNumber])
+  @@index([orderId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id           String @id @default(uuid()) @db.Uuid
+  invoiceId    String @map("invoice_id") @db.Uuid
+  description  String
+  quantity     Int
+  taxRateBps   Int    @map("tax_rate_bps")
+  netCents     Int    @map("net_cents")
+  taxCents     Int    @map("tax_cents")
+  grossCents   Int    @map("gross_cents")
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Ticket {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  orderId          String   @map("order_id") @db.Uuid
+  orderItemId      String   @map("order_item_id") @db.Uuid
+  eventId          String   @map("event_id") @db.Uuid
+  categoryId       String?  @map("category_id") @db.Uuid
+  holderCustomerId String?  @map("holder_customer_id") @db.Uuid
+  ticketNumber     String   @map("ticket_number")
+  status           String   @default("active")
+  presence         String   @default("not_arrived") // not_arrived|in|out
+  categorySnapshot String   @map("category_snapshot")
+  eventNameSnapshot String  @map("event_name_snapshot")
+  /// e.g. "Block A · Reihe 3 · Platz 12"
+  seatLabel        String?  @map("seat_label")
+  seatRow          String?  @map("seat_row")
+  seatNumber       String?  @map("seat_number")
+  blockLabel       String?  @map("block_label")
+  issuedAt         DateTime @default(now()) @map("issued_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem    OrderItem            @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  event        Event                @relation(fields: [eventId], references: [id])
+  category     EventTicketCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  holder       Customer?            @relation("TicketHolder", fields: [holderCustomerId], references: [id], onDelete: SetNull)
+  qrTokens     TicketQrToken[]
+  checkins     CheckinEvent[]
+  eventSeat    EventSeat?
+
+  @@unique([organizationId, ticketNumber])
+  @@index([eventId, status])
+  @@index([orderId])
+  @@map("tickets")
+}
+
+model TicketQrToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  ticketId   String    @map("ticket_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  /// Plain token for authenticated ticket rendering. Encrypt at rest before production.
+  token      String
+  status     String    @default("active") // active|revoked
+  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, status])
+  @@map("ticket_qr_tokens")
+}
+
+model CheckinEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  eventId          String   @map("event_id") @db.Uuid
+  ticketId         String   @map("ticket_id") @db.Uuid
+  action           String   // in|out|lookup
+  result           String   // green|red|orange|blue
+  previousPresence String?  @map("previous_presence")
+  newPresence      String?  @map("new_presence")
+  reason           String?
+  actorUserId      String?  @map("actor_user_id") @db.Uuid
+  deviceLabel      String?  @map("device_label")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  event  Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([eventId, createdAt])
+  @@index([ticketId, createdAt])
+  @@map("checkin_events")
+}
+
+model DiscountCode {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  eventId          String?   @map("event_id") @db.Uuid
+  code             String
+  /// percent | fixed
+  type             String
+  /// for percent: basis points (1000 = 10%); for fixed: cents
+  value            Int
+  currency         String    @default("EUR")
+  minOrderCents    Int       @default(0) @map("min_order_cents")
+  maxRedemptions   Int?      @map("max_redemptions")
+  redemptionCount  Int       @default(0) @map("redemption_count")
+  validFrom        DateTime? @map("valid_from")
+  validUntil       DateTime? @map("valid_until")
+  active           Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event        Event?       @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, active])
+  @@map("discount_codes")
+}
+
+model GiftCard {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  code           String
+  initialCents   Int       @map("initial_cents")
+  balanceCents   Int       @map("balance_cents")
+  currency       String    @default("EUR")
+  status         String    @default("active") // active|disabled|exhausted
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, code])
+  @@index([organizationId, status])
+  @@map("gift_cards")
+}
+
+/// TSE / fiscal signatures for Tageskasse (and future POS)
+model FiscalTransaction {
+  id                 String    @id @default(uuid()) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  orderId            String    @map("order_id") @db.Uuid
+  paymentId          String?   @map("payment_id") @db.Uuid
+  /// none | stub | fiskaly | external
+  provider           String
+  status             String    @default("recorded") // recorded|signed|failed|skipped
+  externalId         String?   @map("external_id")
+  tssId              String?   @map("tss_id")
+  clientId           String?   @map("client_id")
+  processType        String?   @map("process_type")
+  signatureValue     String?   @map("signature_value") @db.Text
+  signatureCounter   Int?      @map("signature_counter")
+  qrCodeData         String?   @map("qr_code_data") @db.Text
+  certificateSerial  String?   @map("certificate_serial")
+  timeStart          DateTime? @map("time_start")
+  timeEnd            DateTime? @map("time_end")
+  raw                Json      @default("{}")
+  errorMessage       String?   @map("error_message") @db.Text
+  createdAt          DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([organizationId, createdAt])
+  @@map("fiscal_transactions")
+}
+
+model BoxOfficeSession {
+  id                String    @id @default(uuid()) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  openedByUserId    String    @map("opened_by_user_id") @db.Uuid
+  closedByUserId    String?   @map("closed_by_user_id") @db.Uuid
+  status            String    @default("open") // open|closed
+  openingCashCents  Int       @default(0) @map("opening_cash_cents")
+  closingCashCents  Int?      @map("closing_cash_cents")
+  expectedCashCents Int?      @map("expected_cash_cents")
+  differenceCents   Int?      @map("difference_cents")
+  notes             String?   @db.Text
+  openedAt          DateTime  @default(now()) @map("opened_at")
+  closedAt          DateTime? @map("closed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status])
+  @@map("box_office_sessions")
+}
+

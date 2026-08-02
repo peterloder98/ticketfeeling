@@ -1,0 +1,210 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { writeAudit } from "@/lib/audit";
+import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { canMutateEventCategories } from "@/lib/commerce/event-sale";
+
+const CATEGORY_KINDS = [
+  "standard",
+  "standing",
+  "free_choice",
+  "vip",
+  "wheelchair",
+] as const;
+
+const upsertSchema = z.object({
+  eventId: z.string().uuid(),
+  categoryId: z.string().uuid().optional(),
+  name: z.string().min(1).max(120),
+  description: z.string().max(2000).optional().nullable(),
+  priceEuro: z.number().min(0),
+  capacity: z.number().int().min(0),
+  maxPerOrder: z.number().int().min(1).max(50),
+  categoryKind: z.enum(CATEGORY_KINDS).optional(),
+  companionFree: z.boolean().optional(),
+});
+
+async function requireWrite() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) return { error: NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }) };
+  const membership = await getDefaultOrganizationForUser(session.user.id);
+  if (!membership) return { error: NextResponse.json({ error: { code: "NO_ORG" } }, { status: 403 }) };
+  const allowed = await userHasPermission(session.user.id, membership.organizationId, "events:write");
+  if (!allowed) return { error: NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 }) };
+  return { session, membership };
+}
+
+export async function PUT(request: Request) {
+  const auth = await requireWrite();
+  if ("error" in auth && auth.error) return auth.error;
+  const { session, membership } = auth as {
+    session: { user: { id: string } };
+    membership: { organizationId: string };
+  };
+
+  try {
+    const body = upsertSchema.parse(await request.json());
+    const event = await prisma.event.findFirst({
+      where: { id: body.eventId, organizationId: membership.organizationId },
+    });
+    if (!event) return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
+
+    // New categories only while event is still draft / announcement
+    if (!body.categoryId && !canMutateEventCategories(event.status)) {
+      return NextResponse.json({ error: { code: "CATEGORIES_LOCKED" } }, { status: 409 });
+    }
+
+    const priceGrossCents = Math.round(body.priceEuro * 100);
+    const description = body.description?.trim() || null;
+    const categoryKind = body.categoryKind ?? "standard";
+    const companionFree = categoryKind === "wheelchair" ? Boolean(body.companionFree) : false;
+    const freeSeating =
+      categoryKind === "standing" ||
+      categoryKind === "free_choice" ||
+      event.seatingBookingMode === "none";
+
+    if (body.categoryId) {
+      const category = await prisma.eventTicketCategory.findFirst({
+        where: { id: body.categoryId, eventId: event.id },
+        include: { pools: true },
+      });
+      if (!category) return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+
+      await prisma.$transaction(async (tx) => {
+        await tx.eventTicketCategory.update({
+          where: { id: category.id },
+          data: {
+            name: body.name,
+            description,
+            priceGrossCents,
+            capacity: body.capacity,
+            maxPerOrder: body.maxPerOrder,
+            categoryKind,
+            companionFree,
+            freeSeating,
+          },
+        });
+        for (const pool of category.pools) {
+          const newCap = Math.max(pool.soldQuantity + pool.heldQuantity, body.capacity);
+          await tx.inventoryPool.update({
+            where: { id: pool.id },
+            data: { capacity: newCap },
+          });
+        }
+      });
+
+      await writeAudit({
+        organizationId: membership.organizationId,
+        actorUserId: session.user.id,
+        action: "event.category.updated",
+        entityType: "event_ticket_category",
+        entityId: category.id,
+        after: { name: body.name, priceGrossCents, capacity: body.capacity },
+      });
+
+      const updated = await prisma.eventTicketCategory.findUniqueOrThrow({
+        where: { id: category.id },
+        include: { pools: true },
+      });
+      return NextResponse.json({ ok: true, category: updated });
+    }
+
+    const taxRate =
+      (await prisma.taxRate.findFirst({
+        where: { organizationId: membership.organizationId, active: true, isDefaultTicket: true },
+      })) ??
+      (await prisma.taxRate.findFirst({
+        where: { organizationId: membership.organizationId, active: true, rateBps: 700 },
+      }));
+    if (!taxRate) return NextResponse.json({ error: { code: "TAX_RATE_MISSING" } }, { status: 400 });
+
+    const sortOrder = await prisma.eventTicketCategory.count({ where: { eventId: event.id } });
+    const created = await prisma.$transaction(async (tx) => {
+      const cat = await tx.eventTicketCategory.create({
+        data: {
+          eventId: event.id,
+          taxRateId: taxRate.id,
+          name: body.name,
+          description,
+          priceGrossCents,
+          capacity: body.capacity,
+          maxPerOrder: body.maxPerOrder,
+          onlineBookable: true,
+          boxOfficeBookable: true,
+          freeSeating,
+          categoryKind,
+          companionFree,
+          sortOrder,
+          status: "active",
+        },
+      });
+      await tx.inventoryPool.create({
+        data: {
+          eventId: event.id,
+          categoryId: cat.id,
+          channel: "online",
+          capacity: body.capacity,
+          soldQuantity: 0,
+          heldQuantity: 0,
+        },
+      });
+      await tx.inventoryPool.create({
+        data: {
+          eventId: event.id,
+          categoryId: cat.id,
+          channel: "box_office",
+          capacity: body.capacity,
+          soldQuantity: 0,
+          heldQuantity: 0,
+        },
+      });
+      return cat;
+    });
+
+    const full = await prisma.eventTicketCategory.findUniqueOrThrow({
+      where: { id: created.id },
+      include: { pools: true },
+    });
+    return NextResponse.json({ ok: true, category: full });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ERROR";
+    return NextResponse.json({ error: { code: message } }, { status: 400 });
+  }
+}
+
+export async function DELETE(request: Request) {
+  const auth = await requireWrite();
+  if ("error" in auth && auth.error) return auth.error;
+  const { session, membership } = auth as {
+    session: { user: { id: string } };
+    membership: { organizationId: string };
+  };
+
+  try {
+    const { categoryId } = z.object({ categoryId: z.string().uuid() }).parse(await request.json());
+    const category = await prisma.eventTicketCategory.findFirst({
+      where: { id: categoryId, event: { organizationId: membership.organizationId } },
+      include: { pools: true, _count: { select: { orderItems: true, tickets: true } } },
+    });
+    if (!category) return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+    const sold = category.pools.reduce((s, p) => s + p.soldQuantity, 0);
+    if (sold > 0 || category._count.tickets > 0 || category._count.orderItems > 0) {
+      return NextResponse.json({ error: { code: "CATEGORY_HAS_SALES" } }, { status: 409 });
+    }
+    await prisma.eventTicketCategory.delete({ where: { id: category.id } });
+    await writeAudit({
+      organizationId: membership.organizationId,
+      actorUserId: session.user.id,
+      action: "event.category.deleted",
+      entityType: "event_ticket_category",
+      entityId: category.id,
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "ERROR";
+    return NextResponse.json({ error: { code: message } }, { status: 400 });
+  }
+}

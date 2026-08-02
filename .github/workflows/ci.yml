@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ticketfeeling
+          POSTGRES_PASSWORD: ticketfeeling
+          POSTGRES_DB: ticketfeeling
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ticketfeeling"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://ticketfeeling:ticketfeeling@localhost:5432/ticketfeeling?schema=public
+      NEXTAUTH_SECRET: ci-secret-ticketfeeling-not-for-production
+      NEXTAUTH_URL: http://localhost:3000
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npm run db:generate -w web
+      - run: npm run db:migrate:deploy -w web
+      - run: npm run typecheck -w web
+      - run: npm run lint -w web

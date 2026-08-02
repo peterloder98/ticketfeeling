@@ -1,0 +1,420 @@
+import { prisma } from "@/lib/db";
+import { getDefaultOrganization } from "@/lib/commerce/org";
+import { createSecureToken } from "@/lib/crypto-token";
+import { resolveCartSessionKey } from "@/lib/commerce/cart-session";
+import { Prisma } from "@prisma/client";
+
+const HOLD_MINUTES = 10;
+
+async function expireHolds(now = new Date()) {
+  const { expireSeatHolds } = await import("@/lib/seating/materialize");
+  await expireSeatHolds(now);
+
+  const expired = await prisma.inventoryHold.findMany({
+    where: { status: "held", expiresAt: { lt: now } },
+  });
+
+  for (const hold of expired) {
+    await prisma.$transaction(async (tx) => {
+      const current = await tx.inventoryHold.findUnique({ where: { id: hold.id } });
+      if (!current || current.status !== "held") return;
+      await tx.inventoryHold.update({
+        where: { id: hold.id },
+        data: { status: "expired" },
+      });
+      await tx.inventoryPool.update({
+        where: { id: hold.poolId },
+        data: { heldQuantity: { decrement: hold.quantity } },
+      });
+      await tx.eventSeat.updateMany({
+        where: { cartItemId: current.cartItemId, status: "held" },
+        data: { status: "available", holdExpiresAt: null, cartItemId: null },
+      });
+    });
+  }
+}
+
+const cartInclude = {
+  items: {
+    include: {
+      category: {
+        include: {
+          event: {
+            include: { location: true },
+          },
+          taxRate: true,
+        },
+      },
+      hold: true,
+      seats: {
+        orderBy: [{ blockLabel: "asc" }, { rowIndex: "asc" }, { seatIndex: "asc" }],
+      },
+    },
+  },
+} satisfies Prisma.CartInclude;
+
+export type OpenCart = Prisma.CartGetPayload<{ include: typeof cartInclude }>;
+
+function freshExpiresAt() {
+  return new Date(Date.now() + HOLD_MINUTES * 60 * 1000);
+}
+
+async function renewCartInPlace(
+  cartId: string,
+  userId?: string | null,
+) {
+  await releaseCartHolds(cartId);
+  await prisma.cartItem.deleteMany({ where: { cartId } });
+  return prisma.cart.update({
+    where: { id: cartId },
+    data: {
+      status: "open",
+      expiresAt: freshExpiresAt(),
+      userId: userId ?? undefined,
+      discountCode: null,
+      discountCents: 0,
+      giftCardCode: null,
+      giftCardAppliedCents: 0,
+    },
+    include: cartInclude,
+  });
+}
+
+export async function getOpenCart(opts?: {
+  userId?: string | null;
+  sessionKey?: string | null;
+}): Promise<OpenCart> {
+  await expireHolds();
+  const org = await getDefaultOrganization();
+  if (!org) throw new Error("NO_ORGANIZATION");
+  let sessionKey = await resolveCartSessionKey(opts?.sessionKey);
+  const now = new Date();
+
+  let cart = await prisma.cart.findUnique({
+    where: {
+      organizationId_sessionKey: {
+        organizationId: org.id,
+        sessionKey,
+      },
+    },
+    include: cartInclude,
+  });
+
+  // Active open cart → reuse (and optionally attach user)
+  if (cart?.status === "open" && cart.expiresAt >= now) {
+    if (opts?.userId && !cart.userId) {
+      return prisma.cart.update({
+        where: { id: cart.id },
+        data: { userId: opts.userId },
+        include: cartInclude,
+      });
+    }
+    return cart;
+  }
+
+  // Expired / marked expired with same session → reopen in place (unique on session_key)
+  if (cart && (cart.status === "expired" || cart.status === "open")) {
+    return renewCartInPlace(cart.id, opts?.userId ?? cart.userId);
+  }
+
+  // Converted checkout cart keeps the cookie session_key → free it, then create a new open cart
+  if (cart && cart.status === "converted") {
+    await prisma.cart.update({
+      where: { id: cart.id },
+      data: { sessionKey: `converted:${cart.id}:${createSecureToken(8)}` },
+    });
+  }
+
+  try {
+    return await prisma.cart.create({
+      data: {
+        organizationId: org.id,
+        userId: opts?.userId ?? null,
+        sessionKey,
+        status: "open",
+        expiresAt: freshExpiresAt(),
+      },
+      include: cartInclude,
+    });
+  } catch (error) {
+    // Parallel requests: unique race — load and reopen
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const existing = await prisma.cart.findUnique({
+        where: {
+          organizationId_sessionKey: {
+            organizationId: org.id,
+            sessionKey,
+          },
+        },
+        include: cartInclude,
+      });
+      if (existing?.status === "open" && existing.expiresAt >= new Date()) {
+        return existing;
+      }
+      if (existing) {
+        return renewCartInPlace(existing.id, opts?.userId ?? existing.userId);
+      }
+    }
+    throw error;
+  }
+}
+
+async function releaseCartHolds(cartId: string) {
+  const items = await prisma.cartItem.findMany({
+    where: { cartId },
+    include: { hold: true },
+  });
+  for (const item of items) {
+    await prisma.$transaction(async (tx) => {
+      if (item.hold?.status === "held") {
+        await tx.inventoryHold.update({
+          where: { id: item.hold.id },
+          data: { status: "released" },
+        });
+        await tx.inventoryPool.update({
+          where: { id: item.hold.poolId },
+          data: { heldQuantity: { decrement: item.hold.quantity } },
+        });
+      }
+      await tx.eventSeat.updateMany({
+        where: { cartItemId: item.id, status: "held" },
+        data: { status: "available", holdExpiresAt: null, cartItemId: null },
+      });
+    });
+  }
+}
+
+export async function addToCart(input: {
+  categoryId: string;
+  quantity: number;
+  userId?: string | null;
+  sessionKey?: string | null;
+  /** best_available | seat_map — only when event has reserved seating */
+  seatingMode?: "best_available" | "seat_map" | "free";
+  /** Required when seatingMode === seat_map */
+  seatIds?: string[];
+}) {
+  if (input.quantity < 1) throw new Error("INVALID_QUANTITY");
+
+  const cart = await getOpenCart({ userId: input.userId, sessionKey: input.sessionKey });
+  const category = await prisma.eventTicketCategory.findUnique({
+    where: { id: input.categoryId },
+    include: { event: true, taxRate: true, pools: true },
+  });
+  if (!category || category.status !== "active" || !category.onlineBookable) {
+    throw new Error("CATEGORY_UNAVAILABLE");
+  }
+  if (category.event.organizationId !== cart.organizationId) {
+    throw new Error("ORG_MISMATCH");
+  }
+
+  const now = new Date();
+  const { isEventSaleOpen, isCategorySaleWindowOpen } = await import("@/lib/commerce/event-sale");
+  if (!isEventSaleOpen(category.event, now) || !isCategorySaleWindowOpen(category, now)) {
+    throw new Error("SALE_CLOSED");
+  }
+
+  if (input.quantity < category.minPerOrder || input.quantity > category.maxPerOrder) {
+    throw new Error("QUANTITY_LIMIT");
+  }
+
+  const { categoryNeedsSeats, seatsPerTicket } = await import("@/lib/seating/types");
+  const { ensureEventSeats } = await import("@/lib/seating/materialize");
+  const {
+    pickBestAvailableSeats,
+    pickBestAvailablePairs,
+    assignCompanionSeats,
+  } = await import("@/lib/seating/best-available");
+
+  const needsSeats = categoryNeedsSeats({
+    seatingBookingMode: category.event.seatingBookingMode,
+    categoryKind: category.categoryKind,
+    freeSeating: category.freeSeating,
+  });
+  const companionFree =
+    category.categoryKind === "wheelchair" && Boolean(category.companionFree);
+  const seatSlots = input.quantity * seatsPerTicket({
+    categoryKind: category.categoryKind,
+    companionFree,
+  });
+
+  let seatingMode: "best_available" | "seat_map" | "free" = input.seatingMode ?? "free";
+  if (needsSeats) {
+    if (category.event.seatingBookingMode === "best_available") {
+      seatingMode = "best_available";
+    } else if (seatingMode === "free") {
+      seatingMode = "best_available";
+    }
+    await ensureEventSeats(category.eventId);
+  } else {
+    seatingMode = "free";
+  }
+
+  if (needsSeats && seatingMode === "seat_map") {
+    // Customer picks wheelchair / primary seats only; companions are assigned adjacent.
+    if (!input.seatIds?.length || input.seatIds.length !== input.quantity) {
+      throw new Error("SEATS_REQUIRED");
+    }
+  }
+
+  const pool =
+    category.pools.find((p) => p.channel === "online") ??
+    (await prisma.inventoryPool.create({
+      data: {
+        eventId: category.eventId,
+        categoryId: category.id,
+        channel: "online",
+        capacity: Math.max(0, category.capacity - category.safetyReserve),
+      },
+    }));
+
+  const expiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000);
+
+  await prisma.$transaction(async (tx) => {
+    const locked = await tx.inventoryPool.findUniqueOrThrow({ where: { id: pool.id } });
+    const available = locked.capacity - locked.soldQuantity - locked.heldQuantity;
+    if (available < input.quantity) throw new Error("SOLD_OUT");
+
+    let seatIdsToHold: string[] = [];
+    if (needsSeats) {
+      if (seatingMode === "seat_map") {
+        const requested = await tx.eventSeat.findMany({
+          where: {
+            id: { in: input.seatIds! },
+            eventId: category.eventId,
+            status: "available",
+          },
+        });
+        if (requested.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
+        if (companionFree) {
+          const pool = await tx.eventSeat.findMany({
+            where: { eventId: category.eventId, status: "available" },
+          });
+          const withCompanions = assignCompanionSeats(requested, pool);
+          if (!withCompanions || withCompanions.length !== seatSlots) {
+            throw new Error("COMPANION_SEAT_UNAVAILABLE");
+          }
+          seatIdsToHold = withCompanions.map((s) => s.id);
+        } else {
+          seatIdsToHold = requested.map((s) => s.id);
+        }
+      } else {
+        const all = await tx.eventSeat.findMany({
+          where: { eventId: category.eventId, status: "available" },
+        });
+        if (companionFree) {
+          const picked = pickBestAvailablePairs(all, input.quantity);
+          if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
+          seatIdsToHold = picked.map((s) => s.id);
+        } else {
+          const picked = pickBestAvailableSeats(all, input.quantity);
+          if (picked.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
+          seatIdsToHold = picked.map((s) => s.id);
+        }
+      }
+
+      // Lock seats — re-check status
+      const lockedSeats = await tx.eventSeat.findMany({
+        where: { id: { in: seatIdsToHold }, status: "available" },
+      });
+      if (lockedSeats.length !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
+    }
+
+    await tx.inventoryPool.update({
+      where: { id: pool.id },
+      data: {
+        heldQuantity: { increment: input.quantity },
+        version: { increment: 1 },
+      },
+    });
+
+    const item = await tx.cartItem.create({
+      data: {
+        cartId: cart.id,
+        eventId: category.eventId,
+        categoryId: category.id,
+        quantity: input.quantity,
+        unitPriceGrossCents: category.priceGrossCents,
+        seatingMode,
+      },
+    });
+
+    await tx.inventoryHold.create({
+      data: {
+        poolId: pool.id,
+        cartItemId: item.id,
+        quantity: input.quantity,
+        status: "held",
+        expiresAt,
+      },
+    });
+
+    if (seatIdsToHold.length > 0) {
+      await tx.eventSeat.updateMany({
+        where: { id: { in: seatIdsToHold } },
+        data: {
+          status: "held",
+          holdExpiresAt: expiresAt,
+          cartItemId: item.id,
+        },
+      });
+    }
+
+    await tx.cart.update({
+      where: { id: cart.id },
+      data: { expiresAt },
+    });
+  });
+
+  return getOpenCart({ userId: input.userId, sessionKey: cart.sessionKey });
+}
+
+export async function removeCartItem(
+  itemId: string,
+  opts?: { userId?: string | null; sessionKey?: string | null },
+) {
+  const cart = await getOpenCart(opts);
+  const item = await prisma.cartItem.findFirst({
+    where: { id: itemId, cartId: cart.id },
+    include: { hold: true },
+  });
+  if (!item) throw new Error("NOT_FOUND");
+
+  await prisma.$transaction(async (tx) => {
+    if (item.hold?.status === "held") {
+      await tx.inventoryHold.update({
+        where: { id: item.hold.id },
+        data: { status: "released" },
+      });
+      await tx.inventoryPool.update({
+        where: { id: item.hold.poolId },
+        data: { heldQuantity: { decrement: item.hold.quantity } },
+      });
+    }
+    await tx.eventSeat.updateMany({
+      where: { cartItemId: item.id, status: "held" },
+      data: { status: "available", holdExpiresAt: null, cartItemId: null },
+    });
+    await tx.cartItem.delete({ where: { id: item.id } });
+  });
+
+  return getOpenCart(opts);
+}
+
+/** Ticket subtotal only — use priceCart() for totals including fees. */
+export function summarizeCart(cart: Awaited<ReturnType<typeof getOpenCart>>) {
+  const ticketsGrossCents = cart.items.reduce(
+    (sum, item) => sum + item.quantity * item.unitPriceGrossCents,
+    0,
+  );
+  return {
+    itemCount: cart.items.reduce((s, i) => s + i.quantity, 0),
+    ticketsGrossCents,
+    grossCents: ticketsGrossCents,
+    currency: cart.currency,
+    expiresAt: cart.expiresAt,
+  };
+}

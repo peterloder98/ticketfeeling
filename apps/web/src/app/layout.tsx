@@ -1,0 +1,68 @@
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
+import { ChatWidget } from "@/components/chat-widget";
+import { ConsentBanner } from "@/components/consent-banner";
+import { OrgTracking } from "@/components/org-tracking";
+import { Providers } from "@/components/providers";
+import { MobileBottomNav } from "@/components/mobile-bottom-nav";
+import { CartReminder } from "@/components/cart-reminder";
+import { TestModeBanner } from "@/components/test-mode-banner";
+import { HideSiteChrome } from "@/components/hide-site-chrome";
+import { SkipOnEmbed } from "@/components/skip-on-embed";
+import "./globals.css";
+
+const inter = Inter({
+  variable: "--font-body",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+});
+
+export const metadata: Metadata = {
+  title: {
+    default: "Ticketfeeling",
+    template: "%s · Ticketfeeling",
+  },
+  description: "Mehr als ein Ticket. Vorfreude, Erinnerungen und Live-Erlebnisse.",
+  icons: {
+    icon: [
+      { url: "/brand/icon-mark-clear.png", type: "image/png" },
+      { url: "/brand/icon-app-clear.png", type: "image/png", sizes: "512x512" },
+    ],
+    apple: "/brand/icon-app-clear.png",
+  },
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html lang="de">
+      <body className={`${inter.variable} tf-page-wash antialiased`}>
+        <Providers>
+          <HideSiteChrome>
+            <SiteHeader />
+            <TestModeBanner />
+          </HideSiteChrome>
+          <main className="pb-20 md:pb-0">{children}</main>
+          <HideSiteChrome>
+            <SiteFooter />
+            <MobileBottomNav />
+            <CartReminder />
+            <ChatWidget compact />
+          </HideSiteChrome>
+          <HideSiteChrome>
+            <ConsentBanner />
+          </HideSiteChrome>
+          <SkipOnEmbed>
+            <OrgTracking />
+          </SkipOnEmbed>
+        </Providers>
+      </body>
+    </html>
+  );
+}

@@ -1,0 +1,22 @@
+{
+  "name": "ticketfeeling",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "start": "npm run start -w web",
+    "lint": "npm run lint -w web",
+    "db:generate": "npm run db:generate -w web",
+    "db:migrate": "npm run db:migrate -w web",
+    "db:seed": "npm run db:seed -w web",
+    "db:studio": "npm run db:studio -w web",
+    "setup": "npm install && npm run db:generate -w web && npm run db:migrate -w web && npm run db:seed -w web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

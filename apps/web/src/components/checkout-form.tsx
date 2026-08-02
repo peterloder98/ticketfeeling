@@ -1,0 +1,696 @@
+"use client";
+
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { signIn } from "next-auth/react";
+import { PhoneInput } from "@/components/phone-input";
+import { CheckoutPaymentMethods } from "@/components/checkout-payment-methods";
+import { useCart } from "@/components/cart-context";
+import type { CheckoutPaymentOption, PaymentMethodKey } from "@/lib/commerce/payment-fees";
+
+type Mode = "guest" | "register";
+
+type FieldKey =
+  | "email"
+  | "password"
+  | "firstName"
+  | "lastName"
+  | "street"
+  | "houseNumber"
+  | "postalCode"
+  | "city"
+  | "paymentMethod"
+  | "acceptTerms"
+  | "acknowledgePrivacy"
+  | "acknowledgeNoWithdrawal"
+  | "invoiceCompanyName";
+
+function checkoutErrorMessage(code: string) {
+  switch (code) {
+    case "ACCOUNT_EXISTS":
+      return "Zu dieser E-Mail gibt es schon ein Konto. Bitte anmelden.";
+    case "PASSWORD_REQUIRED":
+      return "Bitte ein Passwort mit mindestens 8 Zeichen wählen.";
+    case "CART_EMPTY":
+      return "Warenkorb ist leer.";
+    case "CART_EXPIRED":
+      return "Reservierung abgelaufen — bitte erneut in den Warenkorb legen.";
+    case "TERMS_REQUIRED":
+    case "PRIVACY_REQUIRED":
+    case "WITHDRAWAL_ACK_REQUIRED":
+      return "Bitte alle Pflichtangaben bestätigen.";
+    case "PAYMENT_METHOD_REQUIRED":
+      return "Bitte eine Zahlungsart wählen.";
+    case "PAYMENT_METHOD_UNAVAILABLE":
+      return "Diese Zahlungsart ist gerade nicht verfügbar.";
+    case "VALIDATION":
+      return "Bitte die rot markierten Felder ausfüllen.";
+    default:
+      return code || "Checkout fehlgeschlagen";
+  }
+}
+
+function inputClass(hasError: boolean) {
+  return hasError
+    ? "tf-input !border-[var(--danger)] !ring-2 !ring-[rgba(220,38,38,0.25)]"
+    : "tf-input";
+}
+
+export function CheckoutForm({
+  isLoggedIn = false,
+  isStaff = false,
+  loginEmail,
+  paymentOptions,
+  customerTotalCents,
+}: {
+  isLoggedIn?: boolean;
+  isStaff?: boolean;
+  loginEmail?: string | null;
+  paymentOptions: CheckoutPaymentOption[];
+  customerTotalCents: number;
+}) {
+  const router = useRouter();
+  const { bump } = useCart();
+  const formRef = useRef<HTMLFormElement>(null);
+  const [mode, setMode] = useState<Mode>("guest");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [postalCode, setPostalCode] = useState("");
+  const [city, setCity] = useState("");
+  const [cityAuto, setCityAuto] = useState(false);
+  const [cityHint, setCityHint] = useState<string | null>(null);
+  const firstSelectable = paymentOptions.find((o) => o.selectable)?.key ?? null;
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(firstSelectable);
+  const [invoiceRequested, setInvoiceRequested] = useState(false);
+  const [invoiceRecipientType, setInvoiceRecipientType] = useState<"private" | "company">(
+    "private",
+  );
+
+  useEffect(() => {
+    if (postalCode.length !== 5) {
+      setCityHint(null);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/v1/geo/postal-code?country=DE&code=${postalCode}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (data?.city) {
+          setCity(String(data.city));
+          setCityAuto(true);
+          setCityHint(`Ort erkannt: ${data.city}`);
+        } else {
+          setCityHint("Ort nicht gefunden — bitte manuell eintragen");
+        }
+      } catch {
+        if (!cancelled) setCityHint("Ort nicht gefunden — bitte manuell eintragen");
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [postalCode]);
+
+  function clearFieldError(key: FieldKey) {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function validate(form: HTMLFormElement): Partial<Record<FieldKey, boolean>> {
+    const fd = new FormData(form);
+    const errors: Partial<Record<FieldKey, boolean>> = {};
+    const email = String(fd.get("email") ?? "").trim();
+    if (!email) errors.email = true;
+    if (mode === "register" && (!isLoggedIn || isStaff)) {
+      const password = String(fd.get("password") ?? "");
+      if (password.length < 8) errors.password = true;
+    }
+    if (!String(fd.get("firstName") ?? "").trim()) errors.firstName = true;
+    if (!String(fd.get("lastName") ?? "").trim()) errors.lastName = true;
+    if (!String(fd.get("street") ?? "").trim()) errors.street = true;
+    if (!String(fd.get("houseNumber") ?? "").trim()) errors.houseNumber = true;
+    if (!/^\d{5}$/.test(postalCode)) errors.postalCode = true;
+    if (!city.trim()) errors.city = true;
+    if (!paymentMethod) errors.paymentMethod = true;
+    if (fd.get("acceptTerms") !== "on") errors.acceptTerms = true;
+    if (fd.get("acknowledgePrivacy") !== "on") errors.acknowledgePrivacy = true;
+    if (fd.get("acknowledgeNoWithdrawal") !== "on") errors.acknowledgeNoWithdrawal = true;
+    if (invoiceRequested && invoiceRecipientType === "company") {
+      if (!String(fd.get("invoiceCompanyName") ?? "").trim()) errors.invoiceCompanyName = true;
+    }
+    return errors;
+  }
+
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setLoading(true);
+    setError(null);
+    const form = event.currentTarget;
+    const errors = validate(form);
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setError(checkoutErrorMessage("VALIDATION"));
+      setLoading(false);
+      const firstKey = Object.keys(errors)[0];
+      const el =
+        form.querySelector<HTMLElement>(`[name="${firstKey}"]`) ??
+        form.querySelector<HTMLElement>(`#${firstKey}`) ??
+        form.querySelector<HTMLElement>(`[data-field="${firstKey}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (el && "focus" in el) (el as HTMLElement).focus?.();
+      return;
+    }
+
+    const fd = new FormData(form);
+    const email = String(fd.get("email"));
+    const password = String(fd.get("password") || "");
+    const effectiveMode: Mode = isLoggedIn && !isStaff ? "register" : mode;
+    const forceGuestStaff = isStaff && mode === "guest";
+
+    const payload = {
+      checkoutMode: forceGuestStaff ? "guest" : effectiveMode,
+      paymentMethod,
+      email: forceGuestStaff ? email : isLoggedIn && !isStaff ? email : email,
+      password:
+        !forceGuestStaff && effectiveMode === "register" && !(isLoggedIn && !isStaff)
+          ? password
+          : undefined,
+      salutation: String(fd.get("salutation") || "") || undefined,
+      gender: String(fd.get("gender") || "undisclosed"),
+      firstName: String(fd.get("firstName")),
+      lastName: String(fd.get("lastName")),
+      birthDate: String(fd.get("birthDate") || "") || undefined,
+      street: String(fd.get("street")),
+      houseNumber: String(fd.get("houseNumber")),
+      postalCode,
+      city,
+      country: "DE",
+      phone: String(fd.get("phone") || "") || undefined,
+      acceptTerms: true,
+      acknowledgePrivacy: true,
+      acknowledgeNoWithdrawal: true,
+      invoiceRequested,
+      invoiceRecipientType: invoiceRequested ? invoiceRecipientType : undefined,
+      invoiceCompanyName: invoiceRequested
+        ? String(fd.get("invoiceCompanyName") || "") || undefined
+        : undefined,
+      invoiceContactName: invoiceRequested
+        ? String(fd.get("invoiceContactName") || "") || undefined
+        : undefined,
+      invoiceVatId: invoiceRequested
+        ? String(fd.get("invoiceVatId") || "") || undefined
+        : undefined,
+      invoiceOrderReference: invoiceRequested
+        ? String(fd.get("invoiceOrderReference") || "") || undefined
+        : undefined,
+    };
+
+    try {
+      const response = await fetch("/api/v1/checkout/confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          preferGuest: forceGuestStaff,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setError(checkoutErrorMessage(String(data?.error?.code ?? "")));
+        return;
+      }
+
+      if (data.createdAccount && password) {
+        await signIn("credentials", { email, password, redirect: false });
+      }
+
+      // Clear cart badge / reminder immediately — don't wait for the next poll.
+      bump({ itemCount: 0, expiresAt: null, grossFormatted: null });
+      router.push(data.payUrl);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const showAccountChoice = !isLoggedIn || isStaff;
+  const legalError =
+    fieldErrors.acceptTerms ||
+    fieldErrors.acknowledgePrivacy ||
+    fieldErrors.acknowledgeNoWithdrawal;
+
+  return (
+    <form
+      ref={formRef}
+      onSubmit={(e) => void onSubmit(e)}
+      noValidate
+      className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.05)] md:p-6"
+    >
+      {isStaff ? (
+        <div className="mb-5 rounded-[16px] border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] p-4 text-sm text-[var(--tf-navy)]">
+          <p className="font-semibold">Du bist als Mitarbeiter angemeldet</p>
+          <p className="mt-1 text-[var(--tf-text-secondary)]">
+            Für einen normalen Kundentest: als Gast kaufen (unten) — oder{" "}
+            <Link href="/api/auth/signout?callbackUrl=/checkout" className="font-medium underline">
+              abmelden
+            </Link>{" "}
+            und den Kauf ohne Admin-Konto durchführen.
+          </p>
+        </div>
+      ) : null}
+
+      {showAccountChoice ? (
+        <div className="mb-6">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Wie möchtest du kaufen?</h2>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Gastkauf ohne Konto — oder schnell registrieren für später.
+          </p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => setMode("guest")}
+              className={`rounded-[16px] border px-4 py-3 text-left transition ${
+                mode === "guest"
+                  ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.1)]"
+                  : "border-[var(--tf-line)] hover:border-[var(--tf-teal)]"
+              }`}
+            >
+              <p className="font-semibold text-[var(--tf-navy)]">Als Gast kaufen</p>
+              <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                Schnell — Daten nur für diese Bestellung
+              </p>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("register")}
+              className={`rounded-[16px] border px-4 py-3 text-left transition ${
+                mode === "register"
+                  ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.1)]"
+                  : "border-[var(--tf-line)] hover:border-[var(--tf-teal)]"
+              }`}
+            >
+              <p className="font-semibold text-[var(--tf-navy)]">Konto anlegen</p>
+              <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                E-Mail + Passwort — für spätere Käufe
+              </p>
+            </button>
+          </div>
+          {!isLoggedIn ? (
+            <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+              Schon ein Konto?{" "}
+              <Link
+                href="/login?callbackUrl=/checkout"
+                className="font-medium text-[var(--tf-teal-hover)] underline"
+              >
+                Anmelden
+              </Link>
+            </p>
+          ) : null}
+        </div>
+      ) : (
+        <div className="mb-5">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Deine Daten</h2>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Angemeldet als {loginEmail ?? "Konto"}
+          </p>
+        </div>
+      )}
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <label className="tf-label" htmlFor="email">
+            E-Mail
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            className={inputClass(Boolean(fieldErrors.email))}
+            autoComplete="email"
+            defaultValue={isStaff ? "" : (loginEmail ?? "")}
+            readOnly={isLoggedIn && !isStaff}
+            onChange={() => clearFieldError("email")}
+          />
+        </div>
+
+        {mode === "register" && (!isLoggedIn || isStaff) ? (
+          <div className="md:col-span-2">
+            <label className="tf-label" htmlFor="password">
+              Passwort (min. 8 Zeichen)
+            </label>
+            <input
+              id="password"
+              name="password"
+              type="password"
+              minLength={8}
+              className={inputClass(Boolean(fieldErrors.password))}
+              autoComplete="new-password"
+              placeholder="Für dein Ticketfeeling-Konto"
+              onChange={() => clearFieldError("password")}
+            />
+          </div>
+        ) : null}
+
+        <div>
+          <label className="tf-label" htmlFor="salutation">
+            Anrede (optional)
+          </label>
+          <select id="salutation" name="salutation" className="tf-input" defaultValue="">
+            <option value="">—</option>
+            <option value="frau">Frau</option>
+            <option value="herr">Herr</option>
+            <option value="divers">Divers</option>
+          </select>
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="gender">
+            Geschlecht (optional)
+          </label>
+          <select id="gender" name="gender" className="tf-input" defaultValue="undisclosed">
+            <option value="undisclosed">keine Angabe</option>
+            <option value="female">weiblich</option>
+            <option value="male">männlich</option>
+            <option value="diverse">divers</option>
+          </select>
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="firstName">
+            Vorname
+          </label>
+          <input
+            id="firstName"
+            name="firstName"
+            className={inputClass(Boolean(fieldErrors.firstName))}
+            autoComplete="given-name"
+            onChange={() => clearFieldError("firstName")}
+          />
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="lastName">
+            Nachname
+          </label>
+          <input
+            id="lastName"
+            name="lastName"
+            className={inputClass(Boolean(fieldErrors.lastName))}
+            autoComplete="family-name"
+            onChange={() => clearFieldError("lastName")}
+          />
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="birthDate">
+            Geburtsdatum (optional)
+          </label>
+          <input id="birthDate" name="birthDate" type="date" className="tf-input" />
+        </div>
+        <div className="md:col-span-2">
+          <PhoneInput name="phone" />
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="street">
+            Straße
+          </label>
+          <input
+            id="street"
+            name="street"
+            className={inputClass(Boolean(fieldErrors.street))}
+            autoComplete="address-line1"
+            onChange={() => clearFieldError("street")}
+          />
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="houseNumber">
+            Hausnummer
+          </label>
+          <input
+            id="houseNumber"
+            name="houseNumber"
+            className={inputClass(Boolean(fieldErrors.houseNumber))}
+            onChange={() => clearFieldError("houseNumber")}
+          />
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="postalCode">
+            PLZ
+          </label>
+          <input
+            id="postalCode"
+            name="postalCode"
+            inputMode="numeric"
+            pattern="[0-9]{5}"
+            maxLength={5}
+            className={inputClass(Boolean(fieldErrors.postalCode))}
+            autoComplete="postal-code"
+            value={postalCode}
+            onChange={(e) => {
+              setPostalCode(e.target.value.replace(/\D/g, "").slice(0, 5));
+              setCityAuto(false);
+              clearFieldError("postalCode");
+            }}
+          />
+        </div>
+        <div>
+          <label className="tf-label" htmlFor="city">
+            Ort
+          </label>
+          <input
+            id="city"
+            name="city"
+            className={inputClass(Boolean(fieldErrors.city))}
+            autoComplete="address-level2"
+            value={city}
+            onChange={(e) => {
+              setCity(e.target.value);
+              setCityAuto(false);
+              setCityHint(null);
+              clearFieldError("city");
+            }}
+          />
+          {cityHint ? (
+            <p
+              className={`mt-1 text-xs ${cityAuto ? "text-[var(--tf-teal-hover)]" : "text-[var(--tf-text-secondary)]"}`}
+            >
+              {cityHint}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {mode === "guest" ? (
+        <p className="mt-4 text-xs text-[var(--tf-text-secondary)]">
+          Als Gast wird kein Login-Konto angelegt.
+        </p>
+      ) : null}
+
+      <div
+        className={`mt-8 rounded-[18px] ${
+          fieldErrors.paymentMethod
+            ? "ring-2 ring-[rgba(220,38,38,0.35)] ring-offset-2"
+            : ""
+        }`}
+        data-field="paymentMethod"
+      >
+        <CheckoutPaymentMethods
+          options={paymentOptions}
+          value={paymentMethod}
+          onChange={(key) => {
+            setPaymentMethod(key);
+            clearFieldError("paymentMethod");
+          }}
+          customerTotalCents={customerTotalCents}
+        />
+        {fieldErrors.paymentMethod ? (
+          <p className="mt-2 text-xs text-[var(--danger)]">Bitte eine Zahlungsart wählen.</p>
+        ) : null}
+      </div>
+
+      <div className="mt-8 space-y-3 rounded-[18px] border border-[var(--tf-line)] bg-white p-4">
+        <label className="flex items-center gap-2 text-sm font-semibold text-[var(--tf-navy)]">
+          <input
+            type="checkbox"
+            checked={invoiceRequested}
+            onChange={(e) => setInvoiceRequested(e.target.checked)}
+          />
+          Ich benötige eine Rechnung
+        </label>
+        {invoiceRequested ? (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm sm:col-span-2">
+              <span>Empfänger</span>
+              <select
+                className="tf-input"
+                value={invoiceRecipientType}
+                onChange={(e) =>
+                  setInvoiceRecipientType(e.target.value === "company" ? "company" : "private")
+                }
+              >
+                <option value="private">Privatperson</option>
+                <option value="company">Unternehmen</option>
+              </select>
+            </label>
+            {invoiceRecipientType === "company" ? (
+              <>
+                <label className="grid gap-1 text-sm sm:col-span-2">
+                  <span>Firmenname</span>
+                  <input
+                    name="invoiceCompanyName"
+                    className={inputClass(Boolean(fieldErrors.invoiceCompanyName))}
+                    onChange={() => clearFieldError("invoiceCompanyName")}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span>Ansprechpartner</span>
+                  <input name="invoiceContactName" className="tf-input" />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span>USt-IdNr. (optional)</span>
+                  <input name="invoiceVatId" className="tf-input" />
+                </label>
+                <label className="grid gap-1 text-sm sm:col-span-2">
+                  <span>Bestellreferenz (optional)</span>
+                  <input name="invoiceOrderReference" className="tf-input" />
+                </label>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-6 rounded-[16px] border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] p-4 text-sm text-[var(--tf-text-secondary)]">
+        <p className="font-semibold text-[var(--tf-navy)]">Hinweis zum Widerruf</p>
+        <p className="mt-1.5 leading-relaxed">
+          Für termingebundene Eintrittskarten besteht kein gesetzliches Widerrufsrecht. Details in
+          der{" "}
+          <Link
+            href="/recht/rueckerstattung"
+            className="font-medium text-[var(--tf-teal-hover)] underline"
+          >
+            Rückerstattungsrichtlinie
+          </Link>
+          .
+        </p>
+      </div>
+
+      <div
+        className={`mt-5 space-y-3 rounded-[16px] border-2 p-4 ${
+          legalError
+            ? "border-[var(--danger)] bg-[rgba(220,38,38,0.04)]"
+            : "border-[var(--tf-navy)]/15 bg-[rgba(15,39,71,0.03)]"
+        }`}
+        data-field="acceptTerms"
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tf-navy)]">
+          Bitte lesen und bestätigen
+        </p>
+        {legalError ? (
+          <p className="text-xs font-medium text-[var(--danger)]">
+            Bitte alle drei Punkte bestätigen.
+          </p>
+        ) : null}
+        <label
+          className={`flex items-start gap-3 text-sm ${
+            fieldErrors.acceptTerms ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+          }`}
+        >
+          <input
+            type="checkbox"
+            name="acceptTerms"
+            className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
+              fieldErrors.acceptTerms ? "outline outline-2 outline-[var(--danger)]" : ""
+            }`}
+            onChange={() => clearFieldError("acceptTerms")}
+          />
+          <span>
+            Ich akzeptiere die{" "}
+            <Link
+              href="/recht/agb"
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
+            >
+              AGB
+            </Link>{" "}
+            und die{" "}
+            <Link
+              href="/recht/veranstaltungsbedingungen"
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
+            >
+              Veranstaltungsbedingungen
+            </Link>
+            .
+          </span>
+        </label>
+        <label
+          className={`flex items-start gap-3 text-sm ${
+            fieldErrors.acknowledgePrivacy ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+          }`}
+        >
+          <input
+            type="checkbox"
+            name="acknowledgePrivacy"
+            className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
+              fieldErrors.acknowledgePrivacy ? "outline outline-2 outline-[var(--danger)]" : ""
+            }`}
+            onChange={() => clearFieldError("acknowledgePrivacy")}
+          />
+          <span>
+            Ich habe die{" "}
+            <Link
+              href="/recht/datenschutz"
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
+            >
+              Datenschutzerklärung
+            </Link>{" "}
+            zur Kenntnis genommen.
+          </span>
+        </label>
+        <label
+          className={`flex items-start gap-3 text-sm ${
+            fieldErrors.acknowledgeNoWithdrawal ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+          }`}
+        >
+          <input
+            type="checkbox"
+            name="acknowledgeNoWithdrawal"
+            className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
+              fieldErrors.acknowledgeNoWithdrawal
+                ? "outline outline-2 outline-[var(--danger)]"
+                : ""
+            }`}
+            onChange={() => clearFieldError("acknowledgeNoWithdrawal")}
+          />
+          <span>
+            Mir ist bekannt, dass für diese termingebundenen Eintrittskarten kein gesetzliches
+            Widerrufsrecht besteht.
+          </span>
+        </label>
+      </div>
+
+      {error ? <p className="mt-4 text-sm text-[var(--danger)]">{error}</p> : null}
+
+      <button
+        type="submit"
+        className="tf-btn tf-btn-primary mt-6 w-full !min-h-12 text-base"
+        disabled={loading}
+      >
+        {loading
+          ? "Wird erstellt…"
+          : mode === "register"
+            ? "Konto anlegen & zahlungspflichtig bestellen"
+            : "Zahlungspflichtig bestellen"}
+      </button>
+    </form>
+  );
+}
