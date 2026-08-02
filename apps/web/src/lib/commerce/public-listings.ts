@@ -68,94 +68,156 @@ function formatWhen(d: Date | null) {
   });
 }
 
-/** Collapse tour dates into one card; keep standalone events as-is. */
+function sortByStart(a: ListingEvent, b: ListingEvent) {
+  const at = a.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+  const bt = b.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+  return at - bt;
+}
+
+function cardFromDates(
+  dates: ListingEvent[],
+  opts: { key: string; href: string; name: string; coverHint?: string | null },
+): PublicListingCard {
+  const ordered = [...dates].sort(sortByStart);
+  const first = ordered[0]!;
+  const last = ordered[ordered.length - 1]!;
+  const cover =
+    opts.coverHint?.trim() ||
+    resolveEventCoverUrl(first) ||
+    ordered.map((d) => resolveEventCoverUrl(d)).find(Boolean) ||
+    null;
+
+  const whenLabel =
+    ordered.length === 1
+      ? formatWhen(first.eventStartsAt)
+      : first.eventStartsAt && last.eventStartsAt
+        ? `${ordered.length} Termine · ${formatShortDate(first.eventStartsAt)} – ${formatShortDate(last.eventStartsAt)}`
+        : `${ordered.length} Termine`;
+
+  const cities = [
+    ...new Set(
+      ordered
+        .map((d) => d.location?.city || d.location?.name)
+        .filter((x): x is string => Boolean(x)),
+    ),
+  ];
+
+  return {
+    key: opts.key,
+    href: opts.href,
+    name: opts.name,
+    status: first.status,
+    coverImageUrl: cover,
+    whenLabel,
+    locationName:
+      cities.length === 1
+        ? ordered.find((d) => (d.location?.city || d.location?.name) === cities[0])?.location
+            ?.name ?? cities[0]!
+        : null,
+    locationCity: cities.length === 1 ? cities[0]! : cities.length > 1 ? "Mehrere Orte" : null,
+    ctaLabel: ordered.length > 1 ? "Termine wählen" : "Event ansehen",
+    eventStartsAt: first.eventStartsAt,
+    showRemainingAvailability: ordered.some((d) => d.showRemainingAvailability),
+    ticketCategories: ordered.flatMap((d) => d.ticketCategories),
+    artists: first.artists.map((a) => ({
+      name: a.artist.name,
+      imageUrl: a.artist.profileImageUrl,
+    })),
+    dateCount: ordered.length,
+  };
+}
+
+function cardFromSingle(event: ListingEvent): PublicListingCard {
+  return {
+    key: `event-${event.id}`,
+    href: `/event/${event.slug}`,
+    name: event.name,
+    status: event.status,
+    coverImageUrl: resolveEventCoverUrl(event),
+    whenLabel: formatWhen(event.eventStartsAt),
+    locationName: event.location?.name ?? null,
+    locationCity: event.location?.city ?? null,
+    ctaLabel: "Event ansehen",
+    eventStartsAt: event.eventStartsAt,
+    showRemainingAvailability: event.showRemainingAvailability,
+    ticketCategories: event.ticketCategories,
+    artists: event.artists.map((a) => ({
+      name: a.artist.name,
+      imageUrl: a.artist.profileImageUrl,
+    })),
+    dateCount: 1,
+  };
+}
+
+/**
+ * Collapse tour dates into one card (hero + listings).
+ * 1) Group by tourId (skip draft tours)
+ * 2) Fallback: same display name with 2+ dates (legacy / unlinked)
+ */
 export function buildPublicListingCards(events: ListingEvent[]): PublicListingCard[] {
   const cards: PublicListingCard[] = [];
-  const seenTourIds = new Set<string>();
+  const consumed = new Set<string>();
 
+  // 1) Official tour grouping
   for (const event of events) {
-    if (event.tourId && event.tour && event.tour.visibility !== "draft") {
-      if (seenTourIds.has(event.tourId)) continue;
-      seenTourIds.add(event.tourId);
-
-      const dates = events
-        .filter((e) => e.tourId === event.tourId)
-        .sort((a, b) => {
-          const at = a.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
-          const bt = b.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
-          return at - bt;
-        });
-      const first = dates[0]!;
-      const last = dates[dates.length - 1]!;
-      const cover =
-        event.tour.coverImageUrl?.trim() ||
-        resolveEventCoverUrl(first) ||
-        dates.map((d) => resolveEventCoverUrl(d)).find(Boolean) ||
-        null;
-
-      const whenLabel =
-        dates.length === 1
-          ? formatWhen(first.eventStartsAt)
-          : first.eventStartsAt && last.eventStartsAt
-            ? `${dates.length} Termine · ${formatShortDate(first.eventStartsAt)} – ${formatShortDate(last.eventStartsAt)}`
-            : `${dates.length} Termine`;
-
-      const cities = [
-        ...new Set(
-          dates
-            .map((d) => d.location?.city || d.location?.name)
-            .filter((x): x is string => Boolean(x)),
-        ),
-      ];
-
-      cards.push({
-        key: `tour-${event.tour.id}`,
-        href: `/tour/${event.tour.slug}`,
-        name: event.tour.name,
-        status: first.status,
-        coverImageUrl: cover,
-        whenLabel,
-        locationName:
-          cities.length === 1
-            ? dates.find((d) => (d.location?.city || d.location?.name) === cities[0])?.location
-                ?.name ?? cities[0]!
-            : null,
-        locationCity: cities.length === 1 ? cities[0]! : cities.length > 1 ? "Mehrere Orte" : null,
-        ctaLabel: "Termine wählen",
-        eventStartsAt: first.eventStartsAt,
-        showRemainingAvailability: dates.some((d) => d.showRemainingAvailability),
-        ticketCategories: dates.flatMap((d) => d.ticketCategories),
-        artists: first.artists.map((a) => ({
-          name: a.artist.name,
-          imageUrl: a.artist.profileImageUrl,
-        })),
-        dateCount: dates.length,
-      });
+    if (!event.tourId || consumed.has(event.id)) continue;
+    if (event.tour?.visibility === "draft") {
+      consumed.add(event.id);
       continue;
     }
 
-    cards.push({
-      key: `event-${event.id}`,
-      href: `/event/${event.slug}`,
-      name: event.name,
-      status: event.status,
-      coverImageUrl: resolveEventCoverUrl(event),
-      whenLabel: formatWhen(event.eventStartsAt),
-      locationName: event.location?.name ?? null,
-      locationCity: event.location?.city ?? null,
-      ctaLabel: "Event ansehen",
-      eventStartsAt: event.eventStartsAt,
-      showRemainingAvailability: event.showRemainingAvailability,
-      ticketCategories: event.ticketCategories,
-      artists: event.artists.map((a) => ({
-        name: a.artist.name,
-        imageUrl: a.artist.profileImageUrl,
-      })),
-      dateCount: 1,
-    });
+    const dates = events
+      .filter((e) => e.tourId === event.tourId && e.tour?.visibility !== "draft")
+      .sort(sortByStart);
+    for (const d of dates) consumed.add(d.id);
+
+    const tour = event.tour;
+    cards.push(
+      cardFromDates(dates, {
+        key: `tour-${event.tourId}`,
+        href: tour?.slug ? `/tour/${tour.slug}` : `/event/${dates[0]!.slug}`,
+        name: tour?.name || event.name,
+        coverHint: tour?.coverImageUrl,
+      }),
+    );
   }
 
-  return cards;
+  // 2) Fallback: identical names (e.g. 3 Weihnachtstraum dates without tour link)
+  const leftovers = events.filter((e) => !consumed.has(e.id));
+  const byName = new Map<string, ListingEvent[]>();
+  for (const event of leftovers) {
+    const key = event.name.trim().toLocaleLowerCase("de-DE");
+    const list = byName.get(key) ?? [];
+    list.push(event);
+    byName.set(key, list);
+  }
+
+  for (const group of byName.values()) {
+    if (group.length >= 2) {
+      for (const d of group) consumed.add(d.id);
+      const ordered = [...group].sort(sortByStart);
+      cards.push(
+        cardFromDates(ordered, {
+          key: `name-${ordered[0]!.id}`,
+          href: `/event/${ordered[0]!.slug}`,
+          name: ordered[0]!.name,
+        }),
+      );
+    }
+  }
+
+  // 3) Remaining singles, keep chronological insertion by scanning original order
+  for (const event of events) {
+    if (consumed.has(event.id)) continue;
+    consumed.add(event.id);
+    cards.push(cardFromSingle(event));
+  }
+
+  return cards.sort((a, b) => {
+    const at = a.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    const bt = b.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+    return at - bt;
+  });
 }
 
 export function remainingForCategories(

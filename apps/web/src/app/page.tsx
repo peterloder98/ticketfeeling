@@ -54,8 +54,9 @@ export default async function HomePage() {
     orderBy: { eventStartsAt: "asc" },
   });
 
-  const listings = buildPublicListingCards(events).slice(0, 6);
-
+  // Tours collapse to one card — hero + grid never list each tour date separately.
+  const listings = buildPublicListingCards(events);
+  const gridListings = listings.slice(0, 6);
   const heroSlides = listings.slice(0, 3).map((card) => ({
     id: card.key,
     slug: card.href.startsWith("/tour/")
@@ -117,7 +118,7 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {listings.map((card) => {
+            {gridListings.map((card) => {
               const { remaining, capacity } = remainingForCategories(card.ticketCategories);
               const cheapest = card.ticketCategories.reduce(
                 (min, c) => Math.min(min, c.priceGrossCents),
@@ -156,7 +157,7 @@ export default async function HomePage() {
               );
             })}
           </div>
-          {listings.length === 0 ? (
+          {gridListings.length === 0 ? (
             <p className="mt-8 text-base text-[var(--tf-text-secondary)]">
               Bald erscheinen hier die nächsten Events.
             </p>
