@@ -6,11 +6,31 @@ on:
   pull_request:
 
 jobs:
-  check:
+  # No Docker — stays green even when Docker Hub / registry pulls time out.
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      # Prisma generate does not need a live DB; placeholder keeps schema tooling happy.
+      DATABASE_URL: postgresql://ticketfeeling:ticketfeeling@localhost:5432/ticketfeeling?schema=public
+      NEXTAUTH_SECRET: ci-secret-ticketfeeling-not-for-production
+      NEXTAUTH_URL: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npm run db:generate -w web
+      - run: npm run typecheck -w web
+      - run: npm run lint -w web
+
+  # Uses AWS Public ECR mirror of official Postgres (avoids flaky Docker Hub pulls).
+  migrate:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16-alpine
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: ticketfeeling
           POSTGRES_PASSWORD: ticketfeeling
@@ -21,7 +41,7 @@ jobs:
           --health-cmd "pg_isready -U ticketfeeling"
           --health-interval 5s
           --health-timeout 5s
-          --health-retries 10
+          --health-retries 20
 
     env:
       DATABASE_URL: postgresql://ticketfeeling:ticketfeeling@localhost:5432/ticketfeeling?schema=public
@@ -37,5 +57,3 @@ jobs:
       - run: npm install
       - run: npm run db:generate -w web
       - run: npm run db:migrate:deploy -w web
-      - run: npm run typecheck -w web
-      - run: npm run lint -w web
