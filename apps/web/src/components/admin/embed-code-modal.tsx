@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useMemo, useState } from "react";
 import { X } from "lucide-react";
-import { buildEventEmbedSnippet } from "@/lib/embed/public-url";
+import { buildEventEmbedSnippet, getEmbedAppUrl } from "@/lib/embed/public-url";
 
 export function EmbedCodeModalButton({
   buttonLabel = "iframe codes des Events anzeigen",
@@ -10,10 +10,6 @@ export function EmbedCodeModalButton({
   description,
   slug,
   eventTitle,
-  /** @deprecated server absolute URL — ignored; origin comes from the browser */
-  previewUrl: _previewUrl,
-  /** @deprecated server snippet — ignored; rebuilt from window.location.origin */
-  snippet: _snippet,
 }: {
   buttonLabel?: string;
   title?: string;
@@ -26,11 +22,18 @@ export function EmbedCodeModalButton({
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [origin, setOrigin] = useState("");
 
-  useEffect(() => {
-    setOrigin(window.location.origin.replace(/\/$/, ""));
-  }, []);
+  const appUrl = getEmbedAppUrl();
+  const previewUrl = `${appUrl}/embed/event/${encodeURIComponent(slug)}`;
+  const snippet = useMemo(
+    () =>
+      buildEventEmbedSnippet({
+        appUrl,
+        slug,
+        title: eventTitle,
+      }),
+    [appUrl, slug, eventTitle],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -45,17 +48,6 @@ export function EmbedCodeModalButton({
       document.body.style.overflow = prev;
     };
   }, [open]);
-
-  const previewPath = `/embed/event/${encodeURIComponent(slug)}`;
-  const absoluteSrc = origin ? `${origin}${previewPath}` : previewPath;
-  const snippet = useMemo(() => {
-    if (!origin) return "Lade Embed-URL…";
-    return buildEventEmbedSnippet({
-      appUrl: origin,
-      slug,
-      title: eventTitle,
-    });
-  }, [origin, slug, eventTitle]);
 
   async function copy() {
     try {
@@ -106,7 +98,15 @@ export function EmbedCodeModalButton({
               <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">{description}</p>
             ) : null}
             <p className="mt-2 break-all text-xs text-[var(--tf-text-secondary)]">
-              src: <span className="font-medium text-[var(--tf-navy)]">{absoluteSrc}</span>
+              src:{" "}
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="font-medium text-[var(--tf-navy)] underline"
+              >
+                {previewUrl}
+              </a>
             </p>
 
             <pre className="mt-4 max-h-48 overflow-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3 text-[11px] leading-relaxed text-[var(--tf-navy)]">
@@ -118,7 +118,7 @@ export function EmbedCodeModalButton({
                 Live-Vorschau
               </p>
               <iframe
-                src={previewPath}
+                src={previewUrl}
                 title="Embed-Vorschau"
                 className="block h-[420px] w-full bg-white"
               />
@@ -126,7 +126,7 @@ export function EmbedCodeModalButton({
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">
               <a
-                href={previewPath}
+                href={previewUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="tf-btn tf-btn-secondary !min-h-10 text-sm"
@@ -137,7 +137,6 @@ export function EmbedCodeModalButton({
                 type="button"
                 className="tf-btn tf-btn-primary !min-h-10 text-sm"
                 onClick={() => void copy()}
-                disabled={!origin}
               >
                 {copied ? "Kopiert" : "Kopieren"}
               </button>

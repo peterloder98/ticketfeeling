@@ -6,7 +6,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { EmbedCodePanel } from "@/components/admin/embed-code-panel";
-import { getEmbedAppUrlFromRequest, getEmbedFrameAncestors } from "@/lib/embed/public-url";
+import { getEmbedAppUrl, getEmbedFrameAncestors } from "@/lib/embed/public-url";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Website-Einbindung (iframe)" };
@@ -26,7 +26,7 @@ export default async function EmbedSettingsPage() {
     return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
   }
 
-  const appUrl = await getEmbedAppUrlFromRequest();
+  const appUrl = getEmbedAppUrl();
   const ancestors = getEmbedFrameAncestors();
 
   return (
@@ -46,9 +46,11 @@ export default async function EmbedSettingsPage() {
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />
 
       <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-3 text-sm text-[var(--tf-text-secondary)]">
-        iframe-Basis kommt aus deinem Browser (
-        <code className="font-medium text-[var(--tf-navy)]">{appUrl}</code>
-        ). Später eigene Domain → Admin dort öffnen, Code neu kopieren.
+        iframe-Basis (fest):{" "}
+        <a href={appUrl} className="font-medium text-[var(--tf-navy)] underline" target="_blank" rel="noreferrer">
+          {appUrl}
+        </a>
+        . Später eigene Domain über Env <code>NEXT_PUBLIC_APP_URL</code>.
       </div>
 
       <EmbedCodePanel
