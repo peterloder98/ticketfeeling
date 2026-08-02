@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "installCommand": "cd ../.. && npm install && npm install -w web --no-save --os=linux --cpu=x64 lightningcss-linux-x64-gnu@1.32.0 @tailwindcss/oxide-linux-x64-gnu@4.3.3",
-  "buildCommand": "prisma generate && next build"
+  "installCommand": "cd ../.. && npm install",
+  "buildCommand": "npm run build"
 }
