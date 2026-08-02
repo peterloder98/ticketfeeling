@@ -366,7 +366,7 @@ async function main() {
       shortDescription: "Ein Abend voller Hits, Emotionen und großer Stimmen im Bürgersaal Ergolding.",
       description:
         "Schlagerparadies on tour präsentiert die Schlagernacht der Herzen. Mit dabei u. a. Anni Perka, Norman Langen, Sonia Liebing, Pietro Basile, Laura und Mark sowie Bürgermeister MarKuss. Beginn 18:00 Uhr.",
-      // coverImageUrl: never overwrite — keep admin uploads
+      // coverImageUrl: filled below if still empty (keep existing admin uploads)
       visibleFrom: new Date(),
       presaleStartsAt: new Date(),
     },
@@ -384,13 +384,24 @@ async function main() {
       shortDescription: "Ein Abend voller Hits, Emotionen und großer Stimmen im Bürgersaal Ergolding.",
       description:
         "Schlagerparadies on tour präsentiert die Schlagernacht der Herzen. Mit dabei u. a. Anni Perka, Norman Langen, Sonia Liebing, Pietro Basile, Laura und Mark sowie Bürgermeister MarKuss. Beginn 18:00 Uhr.",
-      coverImageUrl: "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?w=1600&q=80",
+      coverImageUrl: "/events/schlagernacht-der-herzen-2027.webp",
       visibleFrom: new Date(),
       presaleStartsAt: new Date(),
       trackingReviewedAt: new Date(),
       trackingUseOrgDefaults: true,
     },
   });
+
+  // Prefer bundled demo cover over empty / broken remote placeholders
+  if (
+    !herzen.coverImageUrl ||
+    herzen.coverImageUrl.startsWith("https://images.unsplash.com/")
+  ) {
+    await prisma.event.update({
+      where: { id: herzen.id },
+      data: { coverImageUrl: "/events/schlagernacht-der-herzen-2027.webp" },
+    });
+  }
 
   await ensureCategories(herzen.id, tax7.id, [
     { name: "Kategorie 3", priceGrossCents: 4500, capacity: 350, sortOrder: 4, description: "Eintritt Kat. 3" },

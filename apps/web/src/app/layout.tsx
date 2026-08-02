@@ -8,7 +8,6 @@ import { OrgTracking } from "@/components/org-tracking";
 import { Providers } from "@/components/providers";
 import { MobileBottomNav } from "@/components/mobile-bottom-nav";
 import { CartReminder } from "@/components/cart-reminder";
-import { TestModeBanner } from "@/components/test-mode-banner";
 import { HideSiteChrome } from "@/components/hide-site-chrome";
 import { SkipOnEmbed } from "@/components/skip-on-embed";
 import "./globals.css";
@@ -46,7 +45,6 @@ export default function RootLayout({
         <Providers>
           <HideSiteChrome>
             <SiteHeader />
-            <TestModeBanner />
           </HideSiteChrome>
           <main className="pb-20 md:pb-0">{children}</main>
           <HideSiteChrome>
