@@ -16,8 +16,6 @@ export function EmbedCodeModalButton({
   description?: string;
   slug: string;
   eventTitle?: string;
-  previewUrl?: string;
-  snippet?: string;
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);

@@ -32,9 +32,7 @@ export async function allocateUniqueEventSlug(input: {
   }
 
   const stem = candidate;
-  let n = 2;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
+  for (let n = 2; n <= 200; n += 1) {
     const taken = await prisma.event.findFirst({
       where: {
         organizationId: input.organizationId,
@@ -45,7 +43,6 @@ export async function allocateUniqueEventSlug(input: {
     });
     if (!taken) return candidate;
     candidate = `${stem}-${n}`;
-    n += 1;
-    if (n > 200) throw new Error("SLUG_TAKEN");
   }
+  throw new Error("SLUG_TAKEN");
 }
