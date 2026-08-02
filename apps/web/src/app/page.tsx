@@ -116,7 +116,7 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          <div className="mt-6 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
             {listings.map((card) => {
               const { remaining, capacity } = remainingForCategories(card.ticketCategories);
               const cheapest = card.ticketCategories.reduce(

@@ -195,7 +195,7 @@ export function CreateEventWizard({
       /* ignore corrupt draft */
     }
     setHydrated(true);
-  }, []);
+  }, [initialTourId]);
 
   useEffect(() => {
     if (!hydrated) return;

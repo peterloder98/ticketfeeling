@@ -60,7 +60,7 @@ export async function createEventAction(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
   const tourIdRaw = String(formData.get("tourId") ?? "").trim();
-  let tourId: string | null = tourIdRaw || null;
+  const tourId: string | null = tourIdRaw || null;
 
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   const eventEndsAt = parseDt(formData, "eventEndsAt");
@@ -395,7 +395,7 @@ export async function updateEventAction(formData: FormData) {
   const description = String(formData.get("description") ?? "").trim() || null;
   const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
   const tourIdRaw = String(formData.get("tourId") ?? "").trim();
-  let tourId: string | null = tourIdRaw || null;
+  const tourId: string | null = tourIdRaw || null;
   const ticketTaxPercent = Number(
     String(formData.get("ticketTaxPercent") ?? "7").replace(",", "."),
   );
