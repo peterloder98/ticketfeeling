@@ -6,10 +6,8 @@ import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-
 import { useRouter } from "next/navigation";
 
 function PayInner({
-  orderId,
   successPath,
 }: {
-  orderId: string;
   successPath: string;
 }) {
   const stripe = useStripe();
@@ -81,7 +79,7 @@ export function StripePayForm({
   const stripePromise = loadStripe(publishableKey);
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, locale: "de" }}>
-      <PayInner orderId={orderId} successPath={resolvedSuccess} />
+      <PayInner successPath={resolvedSuccess} />
     </Elements>
   );
 }
