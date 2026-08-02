@@ -2,6 +2,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { EmbedConsent } from "@/components/embed/embed-consent";
 import { EmbedResizeNotifier } from "@/components/embed/embed-resize";
 import { EmbedCartBar } from "@/components/embed/embed-cart-bar";
+import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { EmbedStayInFrame } from "@/components/embed/embed-stay-in-frame";
 import { EMBED_FRAME_WIDTH, EMBED_FRAME_MAX_HEIGHT } from "@/lib/embed/public-url";
 
@@ -41,7 +42,10 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
             <EmbedConsent />
             <div className="px-3 py-2">
               <div className="flex items-center justify-between gap-2">
-                <BrandLogo href="/embed/shop" variant="full" className="!w-[72px]" />
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <EmbedBackLink variant="header" label="Zurück" />
+                  <BrandLogo href="/embed/shop" variant="full" className="!w-[72px]" />
+                </div>
                 <EmbedCartBar />
               </div>
             </div>

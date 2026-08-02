@@ -6,9 +6,11 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { cartFetch, clearStoredCartSession, storeCartSession } from "@/lib/commerce/cart-client";
 
 export type CartSnapshot = {
   itemCount: number;
@@ -23,6 +25,7 @@ type CartContextValue = CartSnapshot & {
     itemCount?: number;
     grossFormatted?: string | null;
     expiresAt?: string | null;
+    sessionKey?: string | null;
   }) => void;
 };
 
@@ -37,16 +40,23 @@ const EMPTY: CartSnapshot = {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [snapshot, setSnapshot] = useState<CartSnapshot>(EMPTY);
   const [loading, setLoading] = useState(true);
+  const requestIdRef = useRef(0);
 
   const refresh = useCallback(async (opts?: { full?: boolean }) => {
+    const requestId = ++requestIdRef.current;
     try {
       const path = opts?.full ? "/api/v1/cart" : "/api/v1/cart?summary=1";
-      const response = await fetch(path, { credentials: "same-origin" });
+      const response = await cartFetch(path);
+      if (requestId !== requestIdRef.current) return;
       if (!response.ok) {
-        setSnapshot(EMPTY);
+        // Keep last known cart — don't wipe after a successful add.
         return;
       }
       const data = await response.json();
+      if (requestId !== requestIdRef.current) return;
+      if (typeof data?.sessionKey === "string") {
+        storeCartSession(data.sessionKey);
+      }
       const itemCount =
         typeof data?.summary?.itemCount === "number"
           ? data.summary.itemCount
@@ -57,22 +67,41 @@ export function CartProvider({ children }: { children: ReactNode }) {
               )
             : 0;
       const expiresRaw = data?.expiresAt ?? null;
-      setSnapshot((prev) => ({
-        itemCount,
-        // Summary poll skips pricing — keep last known total if still in cart
-        grossFormatted:
-          data?.summary?.grossFormatted ?? (itemCount > 0 ? prev.grossFormatted : null),
-        expiresAt:
-          typeof expiresRaw === "string"
-            ? expiresRaw
-            : expiresRaw
-              ? new Date(expiresRaw).toISOString()
-              : null,
-      }));
+
+      setSnapshot((prev) => {
+        // Ignore stale summary that reports empty while we still show items
+        // (race: mount peek finishing after a successful add).
+        if (
+          !opts?.full &&
+          itemCount === 0 &&
+          prev.itemCount > 0 &&
+          requestId !== requestIdRef.current
+        ) {
+          return prev;
+        }
+        // Another guard: never let a summary-only poll clear a just-bumped cart
+        // unless a later full refresh confirmed empty (handled below via full).
+        if (!opts?.full && itemCount === 0 && prev.itemCount > 0) {
+          return prev;
+        }
+        return {
+          itemCount,
+          grossFormatted:
+            data?.summary?.grossFormatted ?? (itemCount > 0 ? prev.grossFormatted : null),
+          expiresAt:
+            typeof expiresRaw === "string"
+              ? expiresRaw
+              : expiresRaw
+                ? new Date(expiresRaw).toISOString()
+                : null,
+        };
+      });
     } catch {
-      setSnapshot(EMPTY);
+      /* keep previous snapshot on network errors */
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -81,7 +110,15 @@ export function CartProvider({ children }: { children: ReactNode }) {
       itemCount?: number;
       grossFormatted?: string | null;
       expiresAt?: string | null;
+      sessionKey?: string | null;
     }) => {
+      if (summary?.sessionKey) {
+        storeCartSession(summary.sessionKey);
+      }
+      // Invalidate in-flight peeks so they cannot overwrite this bump.
+      requestIdRef.current += 1;
+      const bumpRequestId = requestIdRef.current;
+
       if (
         summary?.itemCount != null ||
         summary?.grossFormatted !== undefined ||
@@ -89,6 +126,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       ) {
         setSnapshot((prev) => {
           const nextCount = summary.itemCount ?? prev.itemCount;
+          if (nextCount === 0) clearStoredCartSession();
           return {
             itemCount: nextCount,
             grossFormatted:
@@ -108,7 +146,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
           };
         });
       }
-      void refresh({ full: true });
+      // Confirm totals; ignore if another bump already advanced the request id.
+      void refresh({ full: true }).then(() => {
+        void bumpRequestId;
+      });
     },
     [refresh],
   );

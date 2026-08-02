@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getOpenCart } from "@/lib/commerce/cart";
@@ -16,6 +15,7 @@ import {
 import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
+import { EmbedBackLink } from "@/components/embed/embed-back-link";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
@@ -64,9 +64,7 @@ export default async function EmbedCheckoutPage() {
     return (
       <p className="py-6 text-center text-sm text-[var(--tf-text-secondary)]">
         Warenkorb leer.{" "}
-        <Link href="/embed/shop" className="font-medium text-[var(--tf-teal)] underline">
-          Events entdecken
-        </Link>
+        <EmbedBackLink label="Zurück" className="font-medium" />
       </p>
     );
   }
@@ -75,12 +73,7 @@ export default async function EmbedCheckoutPage() {
     <div className="space-y-4 text-sm">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-[var(--tf-navy)]">Zur Kasse</h1>
-        <Link
-          href="/embed/warenkorb"
-          className="text-xs font-medium text-[var(--tf-teal)] underline"
-        >
-          Warenkorb
-        </Link>
+        <EmbedBackLink fallbackHref="/embed/warenkorb" label="Zurück zum Warenkorb" />
       </div>
 
       <CartCountdownDisplay expiresAt={cart.expiresAt.toISOString()} />

@@ -4,7 +4,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getOpenCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
-import { cartCookieHeader, readCartSessionKey } from "@/lib/commerce/cart-session";
+import {
+  cartCookieHeader,
+  readCartSessionKeyFromRequest,
+} from "@/lib/commerce/cart-session";
 import { prisma } from "@/lib/db";
 import { resolveDiscountCode, resolveGiftCard } from "@/lib/commerce/discounts";
 
@@ -26,7 +29,7 @@ function cleanCode(raw?: string | null) {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKey();
+    const sessionKey = await readCartSessionKeyFromRequest(request);
     const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
     const body = schema.parse(await request.json());
 
@@ -148,7 +151,11 @@ export async function POST(request: Request) {
       },
     });
 
-    const response = NextResponse.json({ ok: true, summary });
+    const response = NextResponse.json({
+      ok: true,
+      sessionKey: updated.sessionKey,
+      summary,
+    });
     response.headers.append("Set-Cookie", cartCookieHeader(updated.sessionKey));
     return response;
   } catch (error) {

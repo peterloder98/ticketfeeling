@@ -8,6 +8,7 @@ import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { OrgTracking } from "@/components/org-tracking";
+import { EmbedBackLink } from "@/components/embed/embed-back-link";
 
 export const dynamic = "force-dynamic";
 
@@ -58,12 +59,7 @@ export default async function EmbedTourPage({ params }: Props) {
     <>
       <OrgTracking embedMode />
       <div className="space-y-5">
-        <Link
-          href="/embed/shop"
-          className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
-        >
-          ← Alle Events
-        </Link>
+        <EmbedBackLink label="Zurück" />
 
         <div className="flex gap-3">
           <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-[var(--tf-navy)] sm:h-32 sm:w-32">

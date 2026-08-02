@@ -3,13 +3,16 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getOpenCart, peekCartItemCount } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
-import { cartCookieHeader, readCartSessionKey } from "@/lib/commerce/cart-session";
+import {
+  cartCookieHeader,
+  readCartSessionKeyFromRequest,
+} from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
 
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKey();
+    const sessionKey = await readCartSessionKeyFromRequest(request);
     const url = new URL(request.url);
     const summaryOnly = url.searchParams.get("summary") === "1";
 
@@ -21,26 +24,44 @@ export async function GET(request: Request) {
       });
       const response = NextResponse.json({
         expiresAt: peek.expiresAt,
+        sessionKey: peek.sessionKey,
         summary: {
           itemCount: peek.itemCount,
           grossFormatted: null,
         },
         items: [],
       });
-      if (peek.sessionKey) {
+      // Only re-affirm an existing session — never mint empty cookies on peek.
+      if (peek.sessionKey && sessionKey && peek.sessionKey === sessionKey && peek.itemCount > 0) {
         response.headers.append("Set-Cookie", cartCookieHeader(peek.sessionKey));
       }
       return response;
     }
 
+    // Full cart: if no session yet, return empty without creating a cart.
+    if (!sessionKey) {
+      return NextResponse.json({
+        id: null,
+        expiresAt: null,
+        sessionKey: null,
+        summary: {
+          itemCount: 0,
+          grossFormatted: null,
+        },
+        items: [],
+      });
+    }
+
     const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
     const priced = await priceCart(cart);
+    const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
     const response = NextResponse.json({
       id: cart.id,
       expiresAt: cart.expiresAt,
+      sessionKey: cart.sessionKey,
       summary: {
         ...priced,
-        itemCount: cart.items.reduce((sum, item) => sum + item.quantity, 0),
+        itemCount,
         ticketsGrossFormatted: formatEuroFromCents(priced.ticketsGrossCents, priced.currency),
         feeGrossFormatted: formatEuroFromCents(priced.feeGrossCents, priced.currency),
         grossFormatted: formatEuroFromCents(priced.grossCents, priced.currency),

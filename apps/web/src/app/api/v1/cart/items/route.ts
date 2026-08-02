@@ -4,7 +4,10 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { addToCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
-import { cartCookieHeader, readCartSessionKey } from "@/lib/commerce/cart-session";
+import {
+  cartCookieHeader,
+  readCartSessionKeyFromRequest,
+} from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
 
 const schema = z.object({
@@ -18,7 +21,7 @@ export async function POST(request: Request) {
   try {
     const body = schema.parse(await request.json());
     const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKey();
+    const sessionKey = await readCartSessionKeyFromRequest(request);
     const cart = await addToCart({
       categoryId: body.categoryId,
       quantity: body.quantity,
@@ -28,11 +31,14 @@ export async function POST(request: Request) {
       sessionKey,
     });
     const priced = await priceCart(cart);
+    const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
     const response = NextResponse.json({
       ok: true,
       cartId: cart.id,
+      sessionKey: cart.sessionKey,
       summary: {
         ...priced,
+        itemCount,
         grossFormatted: formatEuroFromCents(priced.grossCents, priced.currency),
       },
       expiresAt: cart.expiresAt,

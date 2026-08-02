@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Minus, Plus, Mail, Smartphone, ShieldCheck, Headphones, BadgeCheck } from "lucide-react";
 import { formatEuroFromCents } from "@/lib/money";
 import { useCart } from "@/components/cart-context";
+import { cartFetch } from "@/lib/commerce/cart-client";
 
 type Category = {
   id: string;
@@ -51,7 +52,7 @@ export function AddToCartPanel({
     setLoadingId(categoryId);
     setError(null);
     try {
-      const response = await fetch("/api/v1/cart/items", {
+      const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categoryId, quantity: qty[categoryId] ?? 1 }),
@@ -68,6 +69,7 @@ export function AddToCartPanel({
       }
       bump({
         itemCount: data?.summary?.itemCount,
+        sessionKey: typeof data?.sessionKey === "string" ? data.sessionKey : undefined,
         grossFormatted:
           typeof data?.summary?.grossFormatted === "string"
             ? data.summary.grossFormatted

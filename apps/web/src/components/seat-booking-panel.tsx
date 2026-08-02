@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { formatEuroFromCents } from "@/lib/money";
 import { useCart } from "@/components/cart-context";
+import { cartFetch } from "@/lib/commerce/cart-client";
 import { SeatMap } from "@/components/seat-map";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { formatSeatLabel } from "@/lib/seating/types";
@@ -150,7 +151,7 @@ export function SeatBookingPanel({
         }
         body.seatIds = selectedIds;
       }
-      const response = await fetch("/api/v1/cart/items", {
+      const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -163,6 +164,7 @@ export function SeatBookingPanel({
       }
       bump({
         itemCount: data?.summary?.itemCount,
+        sessionKey: typeof data?.sessionKey === "string" ? data.sessionKey : undefined,
         grossFormatted:
           typeof data?.summary?.grossFormatted === "string"
             ? data.summary.grossFormatted
@@ -193,7 +195,7 @@ export function SeatBookingPanel({
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/v1/cart/items", {
+      const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -209,6 +211,7 @@ export function SeatBookingPanel({
       }
       bump({
         itemCount: data?.summary?.itemCount,
+        sessionKey: typeof data?.sessionKey === "string" ? data.sessionKey : undefined,
         grossFormatted:
           typeof data?.summary?.grossFormatted === "string"
             ? data.summary.grossFormatted

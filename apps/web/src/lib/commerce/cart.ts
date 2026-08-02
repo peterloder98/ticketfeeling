@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { createSecureToken } from "@/lib/crypto-token";
-import { resolveCartSessionKey } from "@/lib/commerce/cart-session";
+import { readCartSessionKey, resolveCartSessionKey } from "@/lib/commerce/cart-session";
 import { Prisma } from "@prisma/client";
 
 const HOLD_MINUTES = 10;
@@ -128,7 +128,7 @@ async function renewCartInPlace(
   });
 }
 
-/** Header badge: no cart create, no full pricing — just item count if a cart exists. */
+/** Header badge: no cart create, no mint, no full pricing — count only if session exists. */
 export async function peekCartItemCount(opts?: {
   userId?: string | null;
   sessionKey?: string | null;
@@ -137,7 +137,12 @@ export async function peekCartItemCount(opts?: {
   const org = await getDefaultOrganization();
   if (!org) return { itemCount: 0, expiresAt: null, sessionKey: null };
 
-  const sessionKey = await resolveCartSessionKey(opts?.sessionKey);
+  // Never mint on peek — that used to overwrite a real cart cookie with an empty session.
+  const sessionKey = opts?.sessionKey?.trim() || (await readCartSessionKey());
+  if (!sessionKey) {
+    return { itemCount: 0, expiresAt: null, sessionKey: null };
+  }
+
   const now = new Date();
   const cart = await prisma.cart.findUnique({
     where: {
@@ -155,7 +160,7 @@ export async function peekCartItemCount(opts?: {
   });
 
   if (!cart || cart.status !== "open" || cart.expiresAt < now) {
-    return { itemCount: 0, expiresAt: null, sessionKey };
+    return { itemCount: 0, expiresAt: null, sessionKey: cart?.sessionKey ?? sessionKey };
   }
 
   return {

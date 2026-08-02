@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { cartFetch } from "@/lib/commerce/cart-client";
 
 function normalizePromo(raw: string) {
   const code = raw.trim().toUpperCase();
@@ -55,7 +56,7 @@ export function PromoCodeForm({
     const normalized = normalizePromo(code);
     setCode(normalized);
     try {
-      const response = await fetch("/api/v1/cart/promo", {
+      const response = await cartFetch("/api/v1/cart/promo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: normalized || null }),

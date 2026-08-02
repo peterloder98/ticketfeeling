@@ -13,6 +13,7 @@ import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { EmbedBackLink } from "@/components/embed/embed-back-link";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
     where: { slug },
     include: {
       location: true,
-      tour: { select: { coverImageUrl: true, visibility: true } },
+      tour: { select: { slug: true, coverImageUrl: true, visibility: true } },
       organization: { select: { name: true, settings: true } },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
@@ -133,6 +134,11 @@ export default async function EmbedEventShopPage({ params }: Props) {
       <OrgTracking embedMode eventSlug={event.slug} eventTracking={event} />
 
       <article className="space-y-3">
+        {event.tour?.slug ? (
+          <EmbedBackLink fallbackHref={`/embed/tour/${event.tour.slug}`} label="Zurück zur Tour" />
+        ) : (
+          <EmbedBackLink label="Zurück" />
+        )}
         <div className="overflow-hidden rounded-xl border border-[var(--tf-line)]">
           <div className="relative aspect-square w-full bg-[var(--tf-navy)]">
             <ResponsiveImage

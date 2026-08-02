@@ -7,6 +7,7 @@ import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
 import { CartRemoveButton } from "@/components/cart-remove-button";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
+import { EmbedBackLink } from "@/components/embed/embed-back-link";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Warenkorb" };
@@ -16,14 +17,17 @@ export default async function EmbedCartPage() {
   const sessionKey = await readCartSessionKey();
   const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
   const summary = await priceCart(cart);
+  const backToEventSlug = cart.items[0]?.category.event.slug;
+  const backHref = backToEventSlug ? `/embed/event/${backToEventSlug}` : null;
 
   return (
     <div className="space-y-3 text-sm">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold text-[var(--tf-navy)]">Warenkorb</h1>
-        <Link href="/embed/shop" className="text-xs font-medium text-[var(--tf-teal)] underline">
-          Weiter shoppen
-        </Link>
+        <EmbedBackLink
+          fallbackHref={backHref}
+          label={backToEventSlug ? "Zurück zum Event" : "Zurück"}
+        />
       </div>
 
       {cart.items.length > 0 ? (
@@ -67,10 +71,10 @@ export default async function EmbedCartPage() {
         ))}
         {cart.items.length === 0 ? (
           <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-6 text-center text-[var(--tf-text-secondary)]">
-            Warenkorb ist leer.{" "}
-            <Link href="/embed/shop" className="font-medium text-[var(--tf-teal)] underline">
-              Events ansehen
-            </Link>
+            Warenkorb ist leer.
+            <span className="mt-2 flex justify-center">
+              <EmbedBackLink label="Zurück" />
+            </span>
           </p>
         ) : null}
       </div>
