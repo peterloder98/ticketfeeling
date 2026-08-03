@@ -109,11 +109,23 @@ export default async function CheckoutPage() {
             loginEmail={session?.user?.email}
             paymentOptions={paymentOptions}
             customerTotalCents={summary.grossCents}
+            eventHref={
+              cart.items[0]?.category.event.slug
+                ? `/event/${cart.items[0].category.event.slug}`
+                : "/events"
+            }
           />
         </div>
 
         <aside className="h-fit space-y-3 lg:sticky lg:top-28">
-          <CartCountdownDisplay expiresAt={cart.expiresAt.toISOString()} />
+          <CartCountdownDisplay
+            expiresAt={cart.expiresAt.toISOString()}
+            eventHref={
+              cart.items[0]?.category.event.slug
+                ? `/event/${cart.items[0].category.event.slug}`
+                : "/events"
+            }
+          />
           <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.05)] md:p-6">
             <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Zusammenfassung</h2>
 

@@ -19,6 +19,7 @@ import { cartFetch } from "@/lib/commerce/cart-client";
 import { SeatMap } from "@/components/seat-map";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { formatSeatLabel } from "@/lib/seating/types";
+import { cartErrorMessage } from "@/lib/commerce/cart-error-messages";
 
 type Category = {
   id: string;
@@ -43,23 +44,6 @@ type Props = {
   checkoutHref?: string;
 };
 
-function errorLabel(code: string) {
-  switch (code) {
-    case "SOLD_OUT":
-      return "Leider ausverkauft.";
-    case "SEATS_UNAVAILABLE":
-      return "Diese Plätze sind gerade nicht mehr frei — bitte neu wählen.";
-    case "COMPANION_SEAT_UNAVAILABLE":
-      return "Neben dem gewählten Rollstuhlplatz ist kein Begleitplatz frei. Bitte anderen Platz wählen.";
-    case "SEATS_REQUIRED":
-      return "Bitte wähle die Plätze auf dem Saalplan.";
-    case "QUANTITY_LIMIT":
-      return "Ungültige Anzahl.";
-    default:
-      return code || "Fehler beim Hinzufügen";
-  }
-}
-
 export function SeatBookingPanel({
   eventId,
   bookingMode,
@@ -73,9 +57,7 @@ export function SeatBookingPanel({
   const seatCategories = categories.filter((c) => c.needsSeats);
   const freeCategories = categories.filter((c) => !c.needsSeats);
 
-  const [mode, setMode] = useState<"best_available" | "seat_map">(
-    bookingMode === "best_available" ? "best_available" : "seat_map",
-  );
+  const [mode, setMode] = useState<"best_available" | "seat_map">("best_available");
   const [categoryId, setCategoryId] = useState(seatCategories[0]?.id ?? "");
   const [qty, setQty] = useState(1);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -166,7 +148,7 @@ export function SeatBookingPanel({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(errorLabel(String(data?.error?.code ?? "")));
+        setError(cartErrorMessage(String(data?.error?.code ?? "")));
         void loadMap();
         return;
       }
@@ -231,7 +213,7 @@ export function SeatBookingPanel({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(errorLabel(String(data?.error?.code ?? "")));
+        setError(cartErrorMessage(String(data?.error?.code ?? "")));
         return;
       }
       bump({
@@ -512,15 +494,17 @@ export function SeatBookingPanel({
               ))}
             </ul>
           ) : null}
-          <p className="mt-2">
-            <Link href={cartHref} className="font-semibold text-[var(--tf-teal)] underline">
-              Warenkorb
-            </Link>
-            {" · "}
-            <Link href={checkoutHref} className="font-semibold text-[var(--tf-teal)] underline">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Link href={checkoutHref} className="tf-btn tf-btn-primary !min-h-10 text-sm">
               Zur Kasse
             </Link>
-          </p>
+            <Link
+              href={cartHref}
+              className="text-sm font-medium text-[var(--tf-text-secondary)] underline"
+            >
+              Warenkorb
+            </Link>
+          </div>
         </div>
       ) : null}
 

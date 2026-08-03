@@ -4,7 +4,11 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createOrderFromCart } from "@/lib/commerce/checkout";
 import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
-import { STREET_NO_NUMBERS_MESSAGE, streetNameSchema } from "@/lib/commerce/address";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  optionalStreetNameSchema,
+  streetNameSchema,
+} from "@/lib/commerce/address";
 
 const schema = z
   .object({
@@ -21,14 +25,14 @@ const schema = z
     email: z.string().email(),
     password: z.string().min(8).optional(),
     salutation: z.string().optional(),
-    gender: z.enum(["female", "male", "diverse"]),
+    gender: z.enum(["female", "male", "diverse"]).optional().nullable(),
     firstName: z.string().min(1),
     lastName: z.string().min(1),
     birthDate: z.string().optional(),
-    street: streetNameSchema,
-    houseNumber: z.string().min(1),
-    postalCode: z.string().regex(/^\d{4,5}$/),
-    city: z.string().min(1),
+    street: optionalStreetNameSchema.or(z.literal("")),
+    houseNumber: z.string().optional().default(""),
+    postalCode: z.string().optional().default(""),
+    city: z.string().optional().default(""),
     country: z.string().optional(),
     phone: z.string().optional(),
     acceptTerms: z.literal(true),
@@ -51,12 +55,16 @@ const schema = z
       });
     }
     if (data.invoiceRequested) {
-      if (
-        !data.street?.trim() ||
-        !data.houseNumber?.trim() ||
-        !data.postalCode?.trim() ||
-        !data.city?.trim()
-      ) {
+      const streetCheck = streetNameSchema.safeParse(data.street ?? "");
+      if (!streetCheck.success) {
+        const msg = streetCheck.error.issues[0]?.message ?? "INVOICE_FIELDS_REQUIRED";
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["street"],
+          message: msg === "STREET_NO_NUMBERS" ? "STREET_NO_NUMBERS" : "INVOICE_FIELDS_REQUIRED",
+        });
+      }
+      if (!data.houseNumber?.trim() || !/^\d{4,5}$/.test(data.postalCode?.trim() ?? "") || !data.city?.trim()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["invoiceRequested"],
@@ -70,8 +78,18 @@ const schema = z
           message: "INVOICE_COMPANY_REQUIRED",
         });
       }
+    } else if (data.street?.trim() && streetContainsDigitsSafe(data.street)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["street"],
+        message: "STREET_NO_NUMBERS",
+      });
     }
   });
+
+function streetContainsDigitsSafe(value: string) {
+  return /[0-9]/.test(value);
+}
 
 export async function POST(request: Request) {
   try {
@@ -91,15 +109,30 @@ export async function POST(request: Request) {
         contactName: body.invoiceContactName ?? null,
         vatId: body.invoiceVatId ?? null,
         orderReference: body.invoiceOrderReference ?? null,
-        street: body.street,
-        houseNumber: body.houseNumber,
-        postalCode: body.postalCode,
-        city: body.city,
+        street: body.street || null,
+        houseNumber: body.houseNumber || null,
+        postalCode: body.postalCode || null,
+        city: body.city || null,
         country: body.country ?? "DE",
       },
       customer: {
-        ...body,
+        email: body.email,
         checkoutMode,
+        password: body.password,
+        salutation: body.salutation,
+        gender: body.gender ?? null,
+        firstName: body.firstName,
+        lastName: body.lastName,
+        birthDate: body.birthDate,
+        street: body.street || null,
+        houseNumber: body.houseNumber || null,
+        postalCode: body.postalCode || null,
+        city: body.city || null,
+        country: body.country ?? "DE",
+        phone: body.phone,
+        acceptTerms: body.acceptTerms,
+        acknowledgePrivacy: body.acknowledgePrivacy,
+        acknowledgeNoWithdrawal: body.acknowledgeNoWithdrawal,
       },
     });
     return NextResponse.json({

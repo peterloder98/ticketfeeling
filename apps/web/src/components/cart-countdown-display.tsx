@@ -1,14 +1,18 @@
 "use client";
 
 import { Clock } from "lucide-react";
+import Link from "next/link";
 import { useCartCountdown } from "@/hooks/use-cart-countdown";
 
 export function CartCountdownDisplay({
   expiresAt,
   variant = "page",
+  eventHref,
 }: {
   expiresAt: string | Date | null | undefined;
   variant?: "page" | "compact" | "inline";
+  /** When reservation expired — link back to event / saalplan */
+  eventHref?: string | null;
 }) {
   const countdown = useCartCountdown(expiresAt);
   if (!countdown || !expiresAt) return null;
@@ -80,13 +84,21 @@ export function CartCountdownDisplay({
             </p>
             <p className="text-sm text-[var(--tf-navy)]">
               {countdown.expired
-                ? "Abgelaufen — bitte Tickets erneut in den Warenkorb legen."
+                ? "Abgelaufen — bitte Tickets erneut wählen."
                 : countdown.critical
                   ? "Gleich vorbei — jetzt zur Kasse!"
                   : countdown.urgent
                     ? "Noch etwas Zeit — am besten bald abschließen."
                     : "Deine Tickets sind für den Moment für dich gesichert… warte nicht zu lange!"}
             </p>
+            {countdown.expired && eventHref ? (
+              <Link
+                href={eventHref}
+                className="tf-btn tf-btn-primary mt-2 inline-flex !min-h-9 text-sm"
+              >
+                Plätze neu wählen
+              </Link>
+            ) : null}
           </div>
         </div>
         <p

@@ -6,6 +6,7 @@ import { Minus, Plus, Mail, Smartphone, ShieldCheck, Headphones, BadgeCheck } fr
 import { formatEuroFromCents } from "@/lib/money";
 import { useCart } from "@/components/cart-context";
 import { cartFetch } from "@/lib/commerce/cart-client";
+import { cartErrorMessage } from "@/lib/commerce/cart-error-messages";
 
 type Category = {
   id: string;
@@ -59,7 +60,7 @@ export function AddToCartPanel({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(data?.error?.code ?? "Fehler beim Hinzufügen");
+        setError(cartErrorMessage(String(data?.error?.code ?? "")));
         return;
       }
       try {
@@ -197,20 +198,27 @@ export function AddToCartPanel({
 
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       {justAdded ? (
-        <p
+        <div
           className={`rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.08)] text-[var(--tf-navy)] ${
-            compact ? "px-2.5 py-1.5 text-xs" : "px-3 py-2 text-sm"
+            compact ? "px-2.5 py-2" : "px-3 py-3"
           }`}
         >
-          Im Warenkorb.{" "}
-          <Link href={cartHref} className="font-semibold text-[var(--tf-teal)] underline">
-            Ansehen
-          </Link>
-          {" · "}
-          <Link href={checkoutHref} className="font-semibold text-[var(--tf-teal)] underline">
-            Zur Kasse
-          </Link>
-        </p>
+          <p className={`font-semibold ${compact ? "text-xs" : "text-sm"}`}>Im Warenkorb.</p>
+          <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1.5" : "mt-2"}`}>
+            <Link
+              href={checkoutHref}
+              className={`tf-btn tf-btn-primary ${compact ? "!min-h-8 !px-2.5 !text-xs" : "!min-h-10 text-sm"}`}
+            >
+              Zur Kasse
+            </Link>
+            <Link
+              href={cartHref}
+              className={`font-medium text-[var(--tf-text-secondary)] underline ${compact ? "text-xs" : "text-sm"}`}
+            >
+              Warenkorb
+            </Link>
+          </div>
+        </div>
       ) : null}
 
       {compact ? (

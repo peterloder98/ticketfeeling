@@ -7,7 +7,6 @@ import { computePlatformFeeGrossCents } from "@/lib/commerce/platform-fee";
 import { formatFeePercentageLabel } from "@/lib/commerce/public-price";
 import { Minus, Plus, ArrowLeft, Check } from "lucide-react";
 import {
-  STREET_NO_NUMBERS_MESSAGE,
   filterStreetNameInput,
 } from "@/lib/commerce/address";
 
@@ -352,85 +351,99 @@ export function BoxOfficeForm({
           <div>
             <h2 className="text-xl font-semibold text-[var(--tf-navy)]">Kundendaten</h2>
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-              Optional — für E-Mail-Versand der Tickets empfohlen.
+              Standard: Walk-in ohne Kundendaten — direkt zur Zahlung.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Vorname</span>
-              <input
-                className="tf-input"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Nachname</span>
-              <input
-                className="tf-input"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm sm:col-span-2">
-              <span className="font-medium">E-Mail</span>
-              <input
-                type="email"
-                className="tf-input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="kunde@beispiel.de"
-              />
-            </label>
-            <label className="grid gap-1 text-sm sm:col-span-2">
-              <span className="font-medium">Straße</span>
-              <div className="grid grid-cols-[1fr_5rem] gap-2">
+          <button
+            type="button"
+            className="tf-btn tf-btn-primary w-full !min-h-12 text-base"
+            onClick={() => {
+              setFirstName("");
+              setLastName("");
+              setEmail("");
+              setStreet("");
+              setHouseNumber("");
+              setPostalCode("");
+              setCity("");
+              setStep(3);
+            }}
+          >
+            Walk-in — weiter zur Zahlung
+          </button>
+          <details className="rounded-2xl border border-[var(--tf-line)] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--tf-navy)]">
+              Kundendaten erfassen (optional)
+            </summary>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium">Vorname</span>
                 <input
                   className="tf-input"
-                  value={street}
-                  onChange={(e) => setStreet(filterStreetNameInput(e.target.value))}
-                  placeholder="Straße ohne Hausnummer"
+                  value={firstName}
+                  onChange={(e) => setFirstName(e.target.value)}
                 />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium">Nachname</span>
                 <input
                   className="tf-input"
-                  value={houseNumber}
-                  onChange={(e) => setHouseNumber(e.target.value)}
-                  placeholder="Nr."
+                  value={lastName}
+                  onChange={(e) => setLastName(e.target.value)}
                 />
-              </div>
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">PLZ</span>
-              <input
-                className="tf-input"
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-              />
-            </label>
-            <label className="grid gap-1 text-sm">
-              <span className="font-medium">Ort</span>
-              <input className="tf-input" value={city} onChange={(e) => setCity(e.target.value)} />
-            </label>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="tf-btn" onClick={() => setStep(1)}>
-              Zurück
-            </button>
-            <button
-              type="button"
-              className="tf-btn tf-btn-secondary"
-              onClick={() => setStep(3)}
-            >
-              Überspringen
-            </button>
-            <button
-              type="button"
-              className="tf-btn tf-btn-primary flex-1 sm:flex-none"
-              onClick={() => setStep(3)}
-            >
-              Weiter zur Zahlung
-            </button>
-          </div>
+              </label>
+              <label className="grid gap-1 text-sm sm:col-span-2">
+                <span className="font-medium">E-Mail</span>
+                <input
+                  type="email"
+                  className="tf-input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="kunde@beispiel.de"
+                />
+              </label>
+              <label className="grid gap-1 text-sm sm:col-span-2">
+                <span className="font-medium">Straße</span>
+                <div className="grid grid-cols-[1fr_5rem] gap-2">
+                  <input
+                    className="tf-input"
+                    value={street}
+                    onChange={(e) => setStreet(filterStreetNameInput(e.target.value))}
+                    placeholder="Straße ohne Hausnummer"
+                  />
+                  <input
+                    className="tf-input"
+                    value={houseNumber}
+                    onChange={(e) => setHouseNumber(e.target.value)}
+                    placeholder="Nr."
+                  />
+                </div>
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium">PLZ</span>
+                <input
+                  className="tf-input"
+                  value={postalCode}
+                  onChange={(e) => setPostalCode(e.target.value)}
+                />
+              </label>
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium">Ort</span>
+                <input className="tf-input" value={city} onChange={(e) => setCity(e.target.value)} />
+              </label>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="tf-btn tf-btn-primary"
+                onClick={() => setStep(3)}
+              >
+                Weiter zur Zahlung
+              </button>
+            </div>
+          </details>
+          <button type="button" className="tf-btn" onClick={() => setStep(1)}>
+            Zurück
+          </button>
         </div>
       ) : null}
 

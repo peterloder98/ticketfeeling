@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
+import { orderStatusLabel } from "@/lib/commerce/channels";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Mein Konto" };
@@ -21,7 +22,10 @@ export default async function AccountPage() {
   const orders = await prisma.order.findMany({
     where: { customerId: { in: customerIds } },
     orderBy: { createdAt: "desc" },
-    include: { tickets: true, invoices: true },
+    include: {
+      tickets: true,
+      invoices: { select: { id: true, invoiceNumber: true, pdfFilename: true } },
+    },
   });
 
   return (
@@ -32,25 +36,26 @@ export default async function AccountPage() {
       <p className="mt-2 text-[var(--muted)]">{session.user.email}</p>
 
       <div className="mt-8 space-y-3">
-        {orders.map((order) => (
-          <Link key={order.id} href={`/konto/bestellung/${order.id}`} className="tf-card block">
-            <div className="flex flex-wrap justify-between gap-2">
-              <p className="font-semibold">{order.orderNumber}</p>
-              <p className="text-sm text-[var(--gold)]">{order.status}</p>
-            </div>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              {formatEuroFromCents(order.grossCents)} · {order.tickets.length} Ticket(s) ·{" "}
-              {order.invoices[0] ? (
-                <>
-                  {order.invoices[0].invoiceNumber}
-                  {order.invoiceRequested ? " (angefordert)" : ""}
-                </>
-              ) : (
-                "Rechnung folgt"
-              )}
-            </p>
-          </Link>
-        ))}
+        {orders.map((order) => {
+          const invoice = order.invoices[0];
+          const hasPdf = Boolean(invoice?.pdfFilename);
+          return (
+            <Link key={order.id} href={`/konto/bestellung/${order.id}`} className="tf-card block">
+              <div className="flex flex-wrap justify-between gap-2">
+                <p className="font-semibold">{order.orderNumber}</p>
+                <p className="text-sm text-[var(--gold)]">{orderStatusLabel(order.status)}</p>
+              </div>
+              <p className="mt-1 text-sm text-[var(--muted)]">
+                {formatEuroFromCents(order.grossCents)} · {order.tickets.length} Ticket(s)
+                {hasPdf && invoice ? (
+                  <> · Rechnung {invoice.invoiceNumber}</>
+                ) : order.invoiceRequested ? (
+                  <> · Rechnung angefordert</>
+                ) : null}
+              </p>
+            </Link>
+          );
+        })}
         {orders.length === 0 ? (
           <p className="text-[var(--muted)]">Noch keine Bestellungen.</p>
         ) : null}

@@ -20,6 +20,7 @@ type Bootstrap = {
     unitPriceGrossCents: number;
     categoryName: string;
     eventName: string;
+    eventSlug?: string;
     eventStartsAt?: string | Date | null;
     locationName?: string | null;
     locationCity?: string | null;
@@ -97,6 +98,10 @@ export function EmbedCheckoutView() {
         ? new Date(data.expiresAt).toISOString()
         : null;
 
+  const eventHref = data.items[0]?.eventSlug
+    ? `/embed/event/${data.items[0].eventSlug}`
+    : "/embed/shop";
+
   return (
     <div className="space-y-4 text-sm">
       <div className="flex items-center justify-between gap-2">
@@ -104,7 +109,7 @@ export function EmbedCheckoutView() {
         <EmbedBackLink fallbackHref="/embed/warenkorb" label="Zurück zum Warenkorb" />
       </div>
 
-      {expiresAt ? <CartCountdownDisplay expiresAt={expiresAt} /> : null}
+      {expiresAt ? <CartCountdownDisplay expiresAt={expiresAt} eventHref={eventHref} /> : null}
 
       <div className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5">
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
@@ -143,6 +148,7 @@ export function EmbedCheckoutView() {
         paymentOptions={data.paymentOptions}
         customerTotalCents={data.customerTotalCents}
         embed
+        eventHref={eventHref}
       />
     </div>
   );

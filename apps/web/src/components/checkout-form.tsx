@@ -21,7 +21,6 @@ type Mode = "guest" | "register";
 type FieldKey =
   | "email"
   | "password"
-  | "gender"
   | "firstName"
   | "lastName"
   | "street"
@@ -29,9 +28,7 @@ type FieldKey =
   | "postalCode"
   | "city"
   | "paymentMethod"
-  | "acceptTerms"
-  | "acknowledgePrivacy"
-  | "acknowledgeNoWithdrawal"
+  | "acceptLegal"
   | "invoiceCompanyName";
 
 function checkoutErrorMessage(code: string) {
@@ -45,11 +42,11 @@ function checkoutErrorMessage(code: string) {
     case "CART_EXPIRED":
       return "Reservierung abgelaufen — bitte erneut in den Warenkorb legen.";
     case "HOLD_EXPIRED":
-      return "Deine Platzreservierung ist abgelaufen — bitte die Tickets erneut in den Warenkorb legen.";
+      return "Deine Platzreservierung ist abgelaufen — bitte die Plätze neu wählen.";
     case "TERMS_REQUIRED":
     case "PRIVACY_REQUIRED":
     case "WITHDRAWAL_ACK_REQUIRED":
-      return "Bitte alle Pflichtangaben bestätigen.";
+      return "Bitte AGB, Datenschutz und Widerruf bestätigen.";
     case "PAYMENT_METHOD_REQUIRED":
       return "Bitte eine Zahlungsart wählen.";
     case "PAYMENT_METHOD_UNAVAILABLE":
@@ -89,6 +86,7 @@ export function CheckoutForm({
   paymentOptions,
   customerTotalCents,
   embed = false,
+  eventHref,
 }: {
   isLoggedIn?: boolean;
   isStaff?: boolean;
@@ -97,6 +95,8 @@ export function CheckoutForm({
   customerTotalCents: number;
   /** Keep payment + tickets inside the embed iframe */
   embed?: boolean;
+  /** Used for HOLD_EXPIRED → back to event / saalplan */
+  eventHref?: string | null;
 }) {
   const router = useRouter();
   const { bump } = useCart();
@@ -104,6 +104,7 @@ export function CheckoutForm({
   const [mode, setMode] = useState<Mode>("guest");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, boolean>>>({});
   const [postalCode, setPostalCode] = useState("");
   const [city, setCity] = useState("");
@@ -119,7 +120,7 @@ export function CheckoutForm({
   const [streetHint, setStreetHint] = useState<string | null>(null);
 
   useEffect(() => {
-    if (postalCode.length !== 5) {
+    if (!invoiceRequested || postalCode.length !== 5) {
       setCityHint(null);
       return;
     }
@@ -144,7 +145,7 @@ export function CheckoutForm({
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [postalCode]);
+  }, [postalCode, invoiceRequested]);
 
   function clearFieldError(key: FieldKey) {
     setFieldErrors((prev) => {
@@ -164,30 +165,16 @@ export function CheckoutForm({
       const password = String(fd.get("password") ?? "");
       if (password.length < 8) errors.password = true;
     }
-    const gender = String(fd.get("gender") ?? "");
-    if (gender !== "female" && gender !== "male" && gender !== "diverse") {
-      errors.gender = true;
-    }
     if (!String(fd.get("firstName") ?? "").trim()) errors.firstName = true;
     if (!String(fd.get("lastName") ?? "").trim()) errors.lastName = true;
-    const streetValue = String(fd.get("street") ?? "").trim();
-    if (!streetValue) errors.street = true;
-    else if (streetContainsDigits(streetValue)) errors.street = true;
-    if (!String(fd.get("houseNumber") ?? "").trim()) errors.houseNumber = true;
-    if (!/^\d{5}$/.test(postalCode)) errors.postalCode = true;
-    if (!city.trim()) errors.city = true;
     if (!paymentMethod) errors.paymentMethod = true;
-    if (fd.get("acceptTerms") !== "on") errors.acceptTerms = true;
-    if (fd.get("acknowledgePrivacy") !== "on") errors.acknowledgePrivacy = true;
-    if (fd.get("acknowledgeNoWithdrawal") !== "on") errors.acknowledgeNoWithdrawal = true;
+    if (fd.get("acceptLegal") !== "on") errors.acceptLegal = true;
     if (invoiceRequested) {
-      // Rechnungsadresse = Kundenadresse — alle Adressfelder müssen stehen.
-      if (!streetValue || !String(fd.get("houseNumber") ?? "").trim() || !/^\d{5}$/.test(postalCode) || !city.trim()) {
-        errors.street = errors.street || !streetValue || streetContainsDigits(streetValue);
-        if (!String(fd.get("houseNumber") ?? "").trim()) errors.houseNumber = true;
-        if (!/^\d{5}$/.test(postalCode)) errors.postalCode = true;
-        if (!city.trim()) errors.city = true;
-      }
+      const streetValue = String(fd.get("street") ?? "").trim();
+      if (!streetValue || streetContainsDigits(streetValue)) errors.street = true;
+      if (!String(fd.get("houseNumber") ?? "").trim()) errors.houseNumber = true;
+      if (!/^\d{5}$/.test(postalCode)) errors.postalCode = true;
+      if (!city.trim()) errors.city = true;
       if (invoiceRecipientType === "company") {
         if (!String(fd.get("invoiceCompanyName") ?? "").trim()) errors.invoiceCompanyName = true;
       }
@@ -199,6 +186,7 @@ export function CheckoutForm({
     event.preventDefault();
     setLoading(true);
     setError(null);
+    setErrorCode(null);
     const form = event.currentTarget;
     const errors = validate(form);
     setFieldErrors(errors);
@@ -209,7 +197,10 @@ export function CheckoutForm({
         setStreetHint(STREET_NO_NUMBERS_MESSAGE);
       } else if (errors.invoiceCompanyName) {
         setError(checkoutErrorMessage("INVOICE_COMPANY_REQUIRED"));
-      } else if (invoiceRequested && (errors.street || errors.houseNumber || errors.postalCode || errors.city)) {
+      } else if (
+        invoiceRequested &&
+        (errors.street || errors.houseNumber || errors.postalCode || errors.city)
+      ) {
         setError(checkoutErrorMessage("INVOICE_FIELDS_REQUIRED"));
       } else {
         setError(checkoutErrorMessage("VALIDATION"));
@@ -239,15 +230,13 @@ export function CheckoutForm({
         !forceGuestStaff && effectiveMode === "register" && !(isLoggedIn && !isStaff)
           ? password
           : undefined,
-      salutation: String(fd.get("salutation") || "") || undefined,
-      gender: String(fd.get("gender")),
       firstName: String(fd.get("firstName")),
       lastName: String(fd.get("lastName")),
       birthDate: String(fd.get("birthDate") || "") || undefined,
-      street: String(fd.get("street")),
-      houseNumber: String(fd.get("houseNumber")),
-      postalCode,
-      city,
+      street: invoiceRequested ? String(fd.get("street") || "") : "",
+      houseNumber: invoiceRequested ? String(fd.get("houseNumber") || "") : "",
+      postalCode: invoiceRequested ? postalCode : "",
+      city: invoiceRequested ? city : "",
       country: "DE",
       phone: String(fd.get("phone") || "") || undefined,
       acceptTerms: true,
@@ -281,7 +270,9 @@ export function CheckoutForm({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(checkoutErrorMessage(String(data?.error?.code ?? "")));
+        const code = String(data?.error?.code ?? "");
+        setErrorCode(code);
+        setError(checkoutErrorMessage(code));
         return;
       }
 
@@ -304,10 +295,10 @@ export function CheckoutForm({
   }
 
   const showAccountChoice = !isLoggedIn || isStaff;
-  const legalError =
-    fieldErrors.acceptTerms ||
-    fieldErrors.acknowledgePrivacy ||
-    fieldErrors.acknowledgeNoWithdrawal;
+  const holdExpired = errorCode === "HOLD_EXPIRED" || errorCode === "CART_EXPIRED";
+  const reselectHref =
+    eventHref ??
+    (embed ? "/embed/shop" : "/events");
 
   return (
     <form
@@ -440,27 +431,6 @@ export function CheckoutForm({
         ) : null}
 
         <div>
-          <label className="tf-label" htmlFor="gender">
-            Geschlecht
-            <RequiredMark />
-          </label>
-          <select
-            id="gender"
-            name="gender"
-            required
-            className={inputClass(Boolean(fieldErrors.gender))}
-            defaultValue=""
-            onChange={() => clearFieldError("gender")}
-          >
-            <option value="" disabled>
-              Bitte wählen
-            </option>
-            <option value="female">weiblich</option>
-            <option value="male">männlich</option>
-            <option value="diverse">divers</option>
-          </select>
-        </div>
-        <div>
           <label className="tf-label" htmlFor="firstName">
             Vorname
             <RequiredMark />
@@ -489,97 +459,6 @@ export function CheckoutForm({
         <SmartDateInput name="birthDate" label="Geburtsdatum (optional)" />
         <div className="md:col-span-2">
           <PhoneInput name="phone" label="Telefon (optional)" />
-        </div>
-        <div>
-          <label className="tf-label" htmlFor="street">
-            Straße
-            <RequiredMark />
-          </label>
-          <input
-            id="street"
-            name="street"
-            className={inputClass(Boolean(fieldErrors.street))}
-            autoComplete="address-line1"
-            value={street}
-            onChange={(e) => {
-              const raw = e.target.value;
-              const filtered = filterStreetNameInput(raw);
-              setStreet(filtered);
-              if (raw !== filtered) {
-                setStreetHint(STREET_NO_NUMBERS_MESSAGE);
-              } else if (streetHint) {
-                setStreetHint(null);
-              }
-              clearFieldError("street");
-            }}
-          />
-          {streetHint || fieldErrors.street ? (
-            <p className="mt-1 text-xs text-[var(--danger)]">
-              {streetHint ||
-                (street.trim() && streetContainsDigits(street)
-                  ? STREET_NO_NUMBERS_MESSAGE
-                  : "Bitte Straße angeben.")}
-            </p>
-          ) : null}
-        </div>
-        <div>
-          <label className="tf-label" htmlFor="houseNumber">
-            Hausnummer
-            <RequiredMark />
-          </label>
-          <input
-            id="houseNumber"
-            name="houseNumber"
-            className={inputClass(Boolean(fieldErrors.houseNumber))}
-            onChange={() => clearFieldError("houseNumber")}
-          />
-        </div>
-        <div>
-          <label className="tf-label" htmlFor="postalCode">
-            PLZ
-            <RequiredMark />
-          </label>
-          <input
-            id="postalCode"
-            name="postalCode"
-            inputMode="numeric"
-            pattern="[0-9]{5}"
-            maxLength={5}
-            className={inputClass(Boolean(fieldErrors.postalCode))}
-            autoComplete="postal-code"
-            value={postalCode}
-            onChange={(e) => {
-              setPostalCode(e.target.value.replace(/\D/g, "").slice(0, 5));
-              setCityAuto(false);
-              clearFieldError("postalCode");
-            }}
-          />
-        </div>
-        <div>
-          <label className="tf-label" htmlFor="city">
-            Ort
-            <RequiredMark />
-          </label>
-          <input
-            id="city"
-            name="city"
-            className={inputClass(Boolean(fieldErrors.city))}
-            autoComplete="address-level2"
-            value={city}
-            onChange={(e) => {
-              setCity(e.target.value);
-              setCityAuto(false);
-              setCityHint(null);
-              clearFieldError("city");
-            }}
-          />
-          {cityHint ? (
-            <p
-              className={`mt-1 text-xs ${cityAuto ? "text-[var(--tf-teal-hover)]" : "text-[var(--tf-text-secondary)]"}`}
-            >
-              {cityHint}
-            </p>
-          ) : null}
         </div>
       </div>
 
@@ -623,9 +502,100 @@ export function CheckoutForm({
         {invoiceRequested ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)] sm:col-span-2">
-              Die Rechnung geht an die Adresse oben (Straße, Hausnummer, PLZ, Ort). Bitte alle
-              Pflichtfelder ausfüllen — nach dem Kauf schicken wir dir die Rechnung als PDF.
+              Für die Rechnung brauchen wir deine Adresse. Nach dem Kauf schicken wir dir die
+              Rechnung als PDF.
             </p>
+            <div>
+              <label className="tf-label" htmlFor="street">
+                Straße
+                <RequiredMark />
+              </label>
+              <input
+                id="street"
+                name="street"
+                className={inputClass(Boolean(fieldErrors.street))}
+                autoComplete="address-line1"
+                value={street}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  const filtered = filterStreetNameInput(raw);
+                  setStreet(filtered);
+                  if (raw !== filtered) {
+                    setStreetHint(STREET_NO_NUMBERS_MESSAGE);
+                  } else if (streetHint) {
+                    setStreetHint(null);
+                  }
+                  clearFieldError("street");
+                }}
+              />
+              {streetHint || fieldErrors.street ? (
+                <p className="mt-1 text-xs text-[var(--danger)]">
+                  {streetHint ||
+                    (street.trim() && streetContainsDigits(street)
+                      ? STREET_NO_NUMBERS_MESSAGE
+                      : "Bitte Straße angeben.")}
+                </p>
+              ) : null}
+            </div>
+            <div>
+              <label className="tf-label" htmlFor="houseNumber">
+                Hausnummer
+                <RequiredMark />
+              </label>
+              <input
+                id="houseNumber"
+                name="houseNumber"
+                className={inputClass(Boolean(fieldErrors.houseNumber))}
+                onChange={() => clearFieldError("houseNumber")}
+              />
+            </div>
+            <div>
+              <label className="tf-label" htmlFor="postalCode">
+                PLZ
+                <RequiredMark />
+              </label>
+              <input
+                id="postalCode"
+                name="postalCode"
+                inputMode="numeric"
+                pattern="[0-9]{5}"
+                maxLength={5}
+                className={inputClass(Boolean(fieldErrors.postalCode))}
+                autoComplete="postal-code"
+                value={postalCode}
+                onChange={(e) => {
+                  setPostalCode(e.target.value.replace(/\D/g, "").slice(0, 5));
+                  setCityAuto(false);
+                  clearFieldError("postalCode");
+                }}
+              />
+            </div>
+            <div>
+              <label className="tf-label" htmlFor="city">
+                Ort
+                <RequiredMark />
+              </label>
+              <input
+                id="city"
+                name="city"
+                className={inputClass(Boolean(fieldErrors.city))}
+                autoComplete="address-level2"
+                value={city}
+                onChange={(e) => {
+                  setCity(e.target.value);
+                  setCityAuto(false);
+                  setCityHint(null);
+                  clearFieldError("city");
+                }}
+              />
+              {cityHint ? (
+                <p
+                  className={`mt-1 text-xs ${cityAuto ? "text-[var(--tf-teal-hover)]" : "text-[var(--tf-text-secondary)]"}`}
+                >
+                  {cityHint}
+                </p>
+              ) : null}
+            </div>
             <label className="grid gap-1 text-sm sm:col-span-2">
               <span>
                 Empfänger
@@ -690,32 +660,32 @@ export function CheckoutForm({
 
       <div
         className={`mt-5 space-y-3 rounded-[16px] border-2 p-4 ${
-          legalError
+          fieldErrors.acceptLegal
             ? "border-[var(--danger)] bg-[rgba(220,38,38,0.04)]"
             : "border-[var(--tf-navy)]/15 bg-[rgba(15,39,71,0.03)]"
         }`}
-        data-field="acceptTerms"
+        data-field="acceptLegal"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tf-navy)]">
           Bitte lesen und bestätigen <span className="text-[var(--danger)]">*</span>
         </p>
-        {legalError ? (
+        {fieldErrors.acceptLegal ? (
           <p className="text-xs font-medium text-[var(--danger)]">
-            Bitte alle drei Punkte bestätigen.
+            Bitte bestätigen, um fortzufahren.
           </p>
         ) : null}
         <label
           className={`flex items-start gap-3 text-sm ${
-            fieldErrors.acceptTerms ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+            fieldErrors.acceptLegal ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
           }`}
         >
           <input
             type="checkbox"
-            name="acceptTerms"
+            name="acceptLegal"
             className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
-              fieldErrors.acceptTerms ? "outline outline-2 outline-[var(--danger)]" : ""
+              fieldErrors.acceptLegal ? "outline outline-2 outline-[var(--danger)]" : ""
             }`}
-            onChange={() => clearFieldError("acceptTerms")}
+            onChange={() => clearFieldError("acceptLegal")}
           />
           <span>
             Ich akzeptiere die{" "}
@@ -726,34 +696,8 @@ export function CheckoutForm({
               className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
             >
               AGB
-            </Link>{" "}
-            und die{" "}
-            <Link
-              href="/recht/veranstaltungsbedingungen"
-              target="_blank"
-              rel="noreferrer"
-              className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
-            >
-              Veranstaltungsbedingungen
             </Link>
-            .
-          </span>
-        </label>
-        <label
-          className={`flex items-start gap-3 text-sm ${
-            fieldErrors.acknowledgePrivacy ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
-          }`}
-        >
-          <input
-            type="checkbox"
-            name="acknowledgePrivacy"
-            className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
-              fieldErrors.acknowledgePrivacy ? "outline outline-2 outline-[var(--danger)]" : ""
-            }`}
-            onChange={() => clearFieldError("acknowledgePrivacy")}
-          />
-          <span>
-            Ich habe die{" "}
+            , die{" "}
             <Link
               href="/recht/datenschutz"
               target="_blank"
@@ -762,32 +706,30 @@ export function CheckoutForm({
             >
               Datenschutzerklärung
             </Link>{" "}
-            zur Kenntnis genommen.
-          </span>
-        </label>
-        <label
-          className={`flex items-start gap-3 text-sm ${
-            fieldErrors.acknowledgeNoWithdrawal ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
-          }`}
-        >
-          <input
-            type="checkbox"
-            name="acknowledgeNoWithdrawal"
-            className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
-              fieldErrors.acknowledgeNoWithdrawal
-                ? "outline outline-2 outline-[var(--danger)]"
-                : ""
-            }`}
-            onChange={() => clearFieldError("acknowledgeNoWithdrawal")}
-          />
-          <span>
-            Mir ist bekannt, dass für diese termingebundenen Eintrittskarten kein gesetzliches
-            Widerrufsrecht besteht.
+            und bestätige, dass für diese Tickets kein Widerrufsrecht besteht (
+            <Link
+              href="/recht/widerruf"
+              target="_blank"
+              rel="noreferrer"
+              className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
+            >
+              Widerruf
+            </Link>
+            ).
           </span>
         </label>
       </div>
 
-      {error ? <p className="mt-4 text-sm text-[var(--danger)]">{error}</p> : null}
+      {error ? (
+        <div className="mt-4 space-y-2">
+          <p className="text-sm text-[var(--danger)]">{error}</p>
+          {holdExpired ? (
+            <Link href={reselectHref} className="tf-btn tf-btn-primary inline-flex !min-h-10 text-sm">
+              Plätze neu wählen
+            </Link>
+          ) : null}
+        </div>
+      ) : null}
 
       <button
         type="submit"

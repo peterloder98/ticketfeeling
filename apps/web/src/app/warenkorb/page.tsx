@@ -31,7 +31,14 @@ export default async function CartPage() {
       </p>
       {items.length > 0 && cart ? (
         <div className="mt-5">
-          <CartCountdownDisplay expiresAt={cart.expiresAt.toISOString()} />
+          <CartCountdownDisplay
+            expiresAt={cart.expiresAt.toISOString()}
+            eventHref={
+              items[0]?.category.event.slug
+                ? `/event/${items[0].category.event.slug}`
+                : "/events"
+            }
+          />
         </div>
       ) : null}
 

@@ -26,7 +26,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
     include: {
       customer: true,
       items: { orderBy: { id: "asc" } },
-      invoices: true,
+      invoices: { select: { id: true, invoiceNumber: true, pdfFilename: true } },
       tickets: {
         include: {
           qrTokens: { where: { status: "active" }, take: 1 },
@@ -243,19 +243,23 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
                   : "keine Verwaltungsgebühr"}
               </p>
             </div>
-            {order.invoices[0] ? (
+            {order.invoices[0] && (order.invoiceRequested || order.invoices[0].pdfFilename) ? (
               <div className="mt-3 space-y-2">
                 <p className="text-xs text-[var(--tf-text-secondary)]">
                   Rechnung {order.invoices[0].invoiceNumber}
                   {order.invoiceRequested ? " · angefordert" : ""}
                 </p>
-                {(isOwner || isStaff) && paid ? (
+                {(isOwner || isStaff) && paid && order.invoices[0].pdfFilename ? (
                   <a
                     href={`/api/v1/invoices/${order.invoices[0].id}/pdf`}
                     className="tf-btn tf-btn-secondary inline-flex !py-2 text-xs"
                   >
                     Rechnung als PDF
                   </a>
+                ) : order.invoiceRequested && paid ? (
+                  <p className="text-xs text-[var(--tf-text-secondary)]">
+                    Die PDF wird vorbereitet und per E-Mail zugestellt.
+                  </p>
                 ) : null}
               </div>
             ) : null}

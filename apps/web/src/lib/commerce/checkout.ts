@@ -27,15 +27,16 @@ export type CheckoutCustomerInput = {
   checkoutMode: "guest" | "register";
   password?: string;
   salutation?: string;
-  /** Required for formal address (Herr/Frau). */
-  gender: string;
+  /** Optional — used for formal greeting when present. */
+  gender?: string | null;
   firstName: string;
   lastName: string;
   birthDate?: string;
-  street: string;
-  houseNumber: string;
-  postalCode: string;
-  city: string;
+  /** Address optional unless invoice is requested. */
+  street?: string | null;
+  houseNumber?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
   country?: string;
   phone?: string;
   acceptTerms: boolean;
@@ -181,12 +182,12 @@ export async function createOrderFromCart(input: {
             : input.customer.gender === "diverse"
               ? "divers"
               : null),
-      gender: input.customer.gender,
+      gender: input.customer.gender?.trim() || null,
       birthDate: input.customer.birthDate ? new Date(input.customer.birthDate) : null,
-      street: input.customer.street,
-      houseNumber: input.customer.houseNumber,
-      postalCode: input.customer.postalCode,
-      city: input.customer.city,
+      street: input.customer.street?.trim() || null,
+      houseNumber: input.customer.houseNumber?.trim() || null,
+      postalCode: input.customer.postalCode?.trim() || null,
+      city: input.customer.city?.trim() || null,
       country: input.customer.country ?? "DE",
       phone: input.customer.phone,
     },
@@ -206,12 +207,12 @@ export async function createOrderFromCart(input: {
             : input.customer.gender === "diverse"
               ? "divers"
               : null),
-      gender: input.customer.gender,
+      gender: input.customer.gender?.trim() || null,
       birthDate: input.customer.birthDate ? new Date(input.customer.birthDate) : null,
-      street: input.customer.street,
-      houseNumber: input.customer.houseNumber,
-      postalCode: input.customer.postalCode,
-      city: input.customer.city,
+      street: input.customer.street?.trim() || null,
+      houseNumber: input.customer.houseNumber?.trim() || null,
+      postalCode: input.customer.postalCode?.trim() || null,
+      city: input.customer.city?.trim() || null,
       country: input.customer.country ?? "DE",
       phone: input.customer.phone,
     },

@@ -56,6 +56,7 @@ export function EventSeatingAssignmentPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const seatingCategories = useMemo(
     () =>
@@ -170,9 +171,41 @@ export function EventSeatingAssignmentPanel({
     void applyPatch({ blockObjectId });
   }
 
+  async function assignAllToSingleCategory() {
+    if (!canWrite || seatingCategories.length !== 1) return;
+    const catId = seatingCategories[0]!.id;
+    const unassigned = seats.filter((s) => !s.categoryId).map((s) => s.id);
+    if (unassigned.length === 0) return;
+    setBusy(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/v1/admin/events/seating", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId,
+          categoryId: catId,
+          seatIds: unassigned,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data?.error?.code ?? "Speichern fehlgeschlagen");
+        return;
+      }
+      setMessage(`Alle ${data.updated ?? unassigned.length} Plätze der Kategorie „${seatingCategories[0]!.name}“ zugewiesen.`);
+      setSelectedCategoryId(catId);
+      await load();
+      router.refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (loading) {
     return (
-      <section className="tf-card !p-5">
+      <section id="zuordnung" className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">Wird geladen…</p>
       </section>
@@ -181,11 +214,11 @@ export function EventSeatingAssignmentPanel({
 
   if (!enabled) {
     return (
-      <section className="tf-card !p-5">
+      <section id="zuordnung" className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
           Zuerst einen Saalplan mit nummerierten Sitzblöcken zuweisen und den Sitzplatzmodus
-          aktivieren. Danach kannst du Kategorien und Sperren zuordnen.
+          aktivieren. Danach kannst du Kategorien zuordnen.
         </p>
       </section>
     );
@@ -193,7 +226,7 @@ export function EventSeatingAssignmentPanel({
 
   if (seatingCategories.length === 0) {
     return (
-      <section className="tf-card !p-5">
+      <section id="zuordnung" className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
           Lege zuerst Ticketkategorien mit fester Platzwahl an (nicht Stehplatz / freie Platzwahl).
@@ -202,6 +235,7 @@ export function EventSeatingAssignmentPanel({
     );
   }
 
+  const unassignedCount = seats.filter((s) => !s.categoryId).length;
   const pad = 40;
   const viewW = 920;
   const viewH = 560;
@@ -214,40 +248,65 @@ export function EventSeatingAssignmentPanel({
   const toS = (cm: number) => cm * scale;
 
   return (
-    <section className="tf-card !p-5">
+    <section id="zuordnung" className="tf-card !p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Kategorien farblich zuweisen (Block, Reihe oder einzelner Platz) und Bereiche für den
-            Verkauf sperren oder wieder freigeben.
+            Kategorie wählen, dann einen Block antippen — fertig.
           </p>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {(
-          [
-            { id: "assign", label: "Kategorie zuweisen", icon: Paintbrush },
-            { id: "lock", label: "Sperren", icon: Lock },
-            { id: "unlock", label: "Freigeben", icon: Unlock },
-          ] as const
-        ).map((m) => (
+      {canWrite && seatingCategories.length === 1 && unassignedCount > 0 ? (
+        <div className="mt-4 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--tf-navy)]">
+            Eine sitzende Kategorie — {unassignedCount} Plätze noch frei
+          </p>
+          <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+            Du kannst den ganzen Saalplan der Kategorie „{seatingCategories[0]!.name}“ zuweisen.
+          </p>
           <button
-            key={m.id}
             type="button"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold ${
-              mode === m.id
-                ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
-                : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)]"
-            }`}
-            onClick={() => setMode(m.id)}
+            className="tf-btn tf-btn-primary mt-3 !min-h-10 text-sm"
+            disabled={busy}
+            onClick={() => void assignAllToSingleCategory()}
           >
-            <m.icon className="h-3.5 w-3.5" />
-            {m.label}
+            Alle Plätze zuweisen
           </button>
-        ))}
-        <span className="mx-1 hidden h-8 w-px bg-[var(--tf-line)] sm:inline-block" />
+        </div>
+      ) : null}
+
+      {canWrite && seatingCategories.length > 1 && unassignedCount > 0 ? (
+        <p className="mt-4 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Noch {unassignedCount} Plätze ohne Kategorie — Kategorie wählen und Block antippen.
+        </p>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {seatingCategories.map((c, i) => {
+          const color = resolveCategoryColor(c.color, i);
+          const active = mode === "assign" && selectedCategoryId === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => {
+                setMode("assign");
+                setSelectedCategoryId(c.id);
+              }}
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                active ? "border-[var(--tf-navy)] ring-2 ring-[rgba(15,39,71,0.15)]" : "border-[var(--tf-line)]"
+              }`}
+            >
+              <span className="h-3 w-3 rounded-full" style={{ background: color }} />
+              {c.name}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
         {(
           [
             { id: "block", label: "Ganzer Block" },
@@ -270,27 +329,38 @@ export function EventSeatingAssignmentPanel({
         ))}
       </div>
 
-      {mode === "assign" ? (
+      <details
+        className="mt-3 rounded-xl border border-[var(--tf-line)] p-3"
+        open={showAdvanced || mode !== "assign"}
+        onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}
+      >
+        <summary className="cursor-pointer text-sm font-medium text-[var(--tf-navy)]">
+          Erweitert: Sperren / Freigeben
+        </summary>
         <div className="mt-3 flex flex-wrap gap-2">
-          {seatingCategories.map((c, i) => {
-            const color = resolveCategoryColor(c.color, i);
-            const active = selectedCategoryId === c.id;
-            return (
-              <button
-                key={c.id}
-                type="button"
-                onClick={() => setSelectedCategoryId(c.id)}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${
-                  active ? "border-[var(--tf-navy)] ring-2 ring-[rgba(15,39,71,0.15)]" : "border-[var(--tf-line)]"
-                }`}
-              >
-                <span className="h-3 w-3 rounded-full" style={{ background: color }} />
-                {c.name}
-              </button>
-            );
-          })}
+          {(
+            [
+              { id: "assign", label: "Kategorie zuweisen", icon: Paintbrush },
+              { id: "lock", label: "Sperren", icon: Lock },
+              { id: "unlock", label: "Freigeben", icon: Unlock },
+            ] as const
+          ).map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold ${
+                mode === m.id
+                  ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
+                  : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)]"
+              }`}
+              onClick={() => setMode(m.id)}
+            >
+              <m.icon className="h-3.5 w-3.5" />
+              {m.label}
+            </button>
+          ))}
         </div>
-      ) : null}
+      </details>
 
       {message ? <p className="mt-2 text-sm text-[var(--tf-teal)]">{message}</p> : null}
       {error ? <p className="mt-2 text-sm text-[var(--danger)]">{error}</p> : null}

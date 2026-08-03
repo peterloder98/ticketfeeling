@@ -125,6 +125,18 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     sizeLabel: `${cmToMetersLabel(p.widthCm)} × ${cmToMetersLabel(p.depthCm)}`,
   }));
 
+  const seatingEnabled =
+    Boolean(event.venuePlanId) && event.seatingBookingMode !== "none";
+  const seatingCategories = event.ticketCategories.filter(
+    (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
+  );
+  const unassignedSeatCount = seatingEnabled
+    ? await prisma.eventSeat.count({
+        where: { eventId: event.id, categoryId: null },
+      })
+    : 0;
+  const needsSeatAssignment = seatingEnabled && unassignedSeatCount > 0;
+
   const when = event.eventStartsAt
     ? event.eventStartsAt.toLocaleString("de-DE", {
         timeZone: "Europe/Berlin",
@@ -182,6 +194,13 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             >
               Öffentliche Seite
             </Link>
+            <EmbedCodeModalButton
+              buttonLabel="Auf meine Website"
+              title="Auf meine Website einbinden"
+              description="Nur Tickets für dieses Event. Code kopieren und auf der Event-Unterseite einbinden."
+              slug={event.slug}
+              eventTitle={event.name}
+            />
             <Link href="/admin/catalog" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
               Kategorie-Vorlagen
             </Link>
@@ -195,8 +214,26 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         </div>
         {saved ? (
           <p className="mt-3 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-            Änderungen gespeichert.
+            {needsSeatAssignment
+              ? "Event gespeichert — als Nächstes Plätze den Ticketkategorien zuordnen."
+              : "Änderungen gespeichert."}
           </p>
+        ) : null}
+        {needsSeatAssignment ? (
+          <div className="mt-3 rounded-xl border border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.12)] px-4 py-3">
+            <p className="text-sm font-semibold text-[var(--tf-navy)]">
+              Nächster Schritt: Saalplan zuordnen
+            </p>
+            <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+              {unassignedSeatCount} Plätze ohne Kategorie
+              {seatingCategories.length === 1
+                ? ` — du kannst alles der Kategorie „${seatingCategories[0]!.name}“ zuweisen.`
+                : " — Block antippen und Kategorie wählen."}
+            </p>
+            <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
+              Zur Zuordnung
+            </a>
+          </div>
         ) : null}
       </div>
 
@@ -376,15 +413,14 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       </section>
 
       <section className="tf-card !p-5">
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Website-Einbindung</h2>
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Auf meine Website</h2>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          Der iframe-Code nutzt automatisch die Domain aus deinem Browser (Vercel jetzt, eigene
-          Domain später).
+          Ticketverkauf direkt auf deiner Seite — Code kopieren und einbinden.
         </p>
         <div className="mt-4">
           <EmbedCodeModalButton
-            buttonLabel="iframe codes des Events anzeigen"
-            title="iframe-Code dieses Events"
+            buttonLabel="Einbettungs-Code anzeigen"
+            title="Auf meine Website einbinden"
             description="Nur Tickets für dieses Event. Code kopieren und auf der Event-Unterseite einbinden."
             slug={event.slug}
             eventTitle={event.name}

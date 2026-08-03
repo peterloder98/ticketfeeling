@@ -409,7 +409,11 @@ export async function createEventAction(formData: FormData) {
     revalidatePath("/admin/tours");
     redirect(`/admin/tours/${tourId}?termin=1`);
   }
-  redirect(`/admin/events/${event.id}?saved=1`);
+  redirect(
+    event.venuePlanId && event.seatingBookingMode !== "none"
+      ? `/admin/events/${event.id}?saved=1#zuordnung`
+      : `/admin/events/${event.id}?saved=1`,
+  );
 }
 
 export async function updateEventAction(formData: FormData) {

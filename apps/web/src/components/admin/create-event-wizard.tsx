@@ -768,54 +768,6 @@ export function CreateEventWizard({
                 </select>
               </label>
 
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                <label className="grid gap-1">
-                  <span className="font-medium">Ticket-Umsatzsteuer</span>
-                  <select
-                    name="ticketTaxPercent"
-                    className="tf-input"
-                    value={ticketTaxPercent}
-                    onChange={(e) => setTicketTaxPercent(e.target.value)}
-                  >
-                    <option value="0">0 %</option>
-                    <option value="7">7 %</option>
-                    <option value="19">19 %</option>
-                  </select>
-                </label>
-                <label className="grid gap-1">
-                  <span className="font-medium">USt Verwaltungsgebühr</span>
-                  <select
-                    name="administrationFeeTaxMode"
-                    className="tf-input"
-                    value={feeTaxMode}
-                    onChange={(e) => setFeeTaxMode(e.target.value)}
-                  >
-                    <option value="inherit">Steuersatz des Tickets übernehmen</option>
-                    <option value="custom">Eigener Steuersatz</option>
-                  </select>
-                </label>
-                {feeTaxMode === "custom" ? (
-                  <label className="grid gap-1 sm:col-span-2 xl:col-span-1">
-                    <span className="font-medium">Eigener Gebühren-Steuersatz (%)</span>
-                    <input
-                      name="administrationFeeCustomTaxPercent"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      className="tf-input"
-                      value={feeTaxPercent}
-                      onChange={(e) => setFeeTaxPercent(e.target.value)}
-                    />
-                  </label>
-                ) : (
-                  <input
-                    type="hidden"
-                    name="administrationFeeCustomTaxPercent"
-                    value={feeTaxPercent}
-                  />
-                )}
-              </div>
-
               <CoverImageField
                 name="coverImageUrl"
                 initialUrl={coverImageUrl || null}
@@ -828,24 +780,75 @@ export function CreateEventWizard({
 
               <details className="rounded-xl border border-[var(--tf-line)] p-3">
                 <summary className="cursor-pointer text-sm font-medium text-[var(--tf-navy)]">
-                  Erweitert: Link-Name
+                  Erweitert: Steuer & Link-Name
                 </summary>
-                <label className="mt-3 grid gap-1">
-                  <div className="flex items-center gap-2">
-                    <span className="shrink-0 text-xs text-[var(--tf-text-secondary)]">
-                      /event/
-                    </span>
-                    <input
-                      name="slug"
+                <div className="mt-3 grid gap-3">
+                  <label className="grid gap-1">
+                    <span className="font-medium">Ticket-Umsatzsteuer</span>
+                    <select
+                      name="ticketTaxPercent"
                       className="tf-input"
-                      value={webAddress}
-                      onChange={(e) => {
-                        setSlugManual(true);
-                        setSlug(slugify(e.target.value));
-                      }}
+                      value={ticketTaxPercent}
+                      onChange={(e) => setTicketTaxPercent(e.target.value)}
+                    >
+                      <option value="0">0 %</option>
+                      <option value="7">7 %</option>
+                      <option value="19">19 %</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="font-medium">USt Verwaltungsgebühr</span>
+                    <select
+                      name="administrationFeeTaxMode"
+                      className="tf-input"
+                      value={feeTaxMode}
+                      onChange={(e) => setFeeTaxMode(e.target.value)}
+                    >
+                      <option value="inherit">Steuersatz des Tickets übernehmen</option>
+                      <option value="custom">Eigener Steuersatz</option>
+                    </select>
+                  </label>
+                  {feeTaxMode === "custom" ? (
+                    <label className="grid gap-1">
+                      <span className="font-medium">Eigener Gebühren-Steuersatz (%)</span>
+                      <input
+                        name="administrationFeeCustomTaxPercent"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        className="tf-input"
+                        value={feeTaxPercent}
+                        onChange={(e) => setFeeTaxPercent(e.target.value)}
+                      />
+                    </label>
+                  ) : (
+                    <input
+                      type="hidden"
+                      name="administrationFeeCustomTaxPercent"
+                      value={feeTaxPercent}
                     />
-                  </div>
-                </label>
+                  )}
+                  <label className="grid gap-1">
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-xs text-[var(--tf-text-secondary)]">
+                        /event/
+                      </span>
+                      <input
+                        name="slug"
+                        className="tf-input"
+                        value={webAddress}
+                        onChange={(e) => {
+                          setSlugManual(true);
+                          setSlug(slugify(e.target.value));
+                        }}
+                        placeholder="automatisch aus Titel"
+                      />
+                    </div>
+                    <span className="text-xs text-[var(--tf-text-secondary)]">
+                      Leer lassen = aus dem Titel erzeugen
+                    </span>
+                  </label>
+                </div>
               </details>
             </div>
           </div>
@@ -1406,52 +1409,49 @@ export function CreateEventWizard({
             </label>
           </fieldset>
 
-          <fieldset className="grid gap-3 rounded-xl border border-[var(--tf-line)] p-4">
-            <legend className="px-1 font-semibold">Tracking</legend>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                name="trackingUseOrgDefaults"
-                defaultChecked
-              />
-              <span>Org-Tracking übernehmen</span>
-            </label>
-            <details className="rounded-lg border border-[var(--tf-line)] p-3">
-              <summary className="cursor-pointer text-sm font-medium text-[var(--tf-navy)]">
-                Erweitert: eigene Tracking-IDs
-              </summary>
-              <div className="mt-3 grid gap-3">
-                <label className="grid gap-1">
-                  <span>GA4</span>
-                  <input
-                    name="trackingGa4MeasurementId"
-                    className="tf-input"
-                    placeholder="G-…"
-                  />
-                </label>
-                <label className="grid gap-1">
-                  <span>GTM</span>
-                  <input
-                    name="trackingGtmContainerId"
-                    className="tf-input"
-                    placeholder="GTM-…"
-                  />
-                </label>
-                <label className="grid gap-1">
-                  <span>Meta Pixel</span>
-                  <input name="trackingMetaPixelId" className="tf-input" />
-                </label>
-                <label className="grid gap-1">
-                  <span>Google Ads</span>
-                  <input
-                    name="trackingGoogleAdsId"
-                    className="tf-input"
-                    placeholder="AW-…"
-                  />
-                </label>
-              </div>
-            </details>
-          </fieldset>
+          <details className="rounded-xl border border-[var(--tf-line)] p-4">
+            <summary className="cursor-pointer font-semibold text-[var(--tf-navy)]">
+              Erweitert: Tracking
+            </summary>
+            <fieldset className="mt-3 grid gap-3">
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  name="trackingUseOrgDefaults"
+                  defaultChecked
+                />
+                <span>Org-Tracking übernehmen</span>
+              </label>
+              <label className="grid gap-1">
+                <span>GA4</span>
+                <input
+                  name="trackingGa4MeasurementId"
+                  className="tf-input"
+                  placeholder="G-…"
+                />
+              </label>
+              <label className="grid gap-1">
+                <span>GTM</span>
+                <input
+                  name="trackingGtmContainerId"
+                  className="tf-input"
+                  placeholder="GTM-…"
+                />
+              </label>
+              <label className="grid gap-1">
+                <span>Meta Pixel</span>
+                <input name="trackingMetaPixelId" className="tf-input" />
+              </label>
+              <label className="grid gap-1">
+                <span>Google Ads</span>
+                <input
+                  name="trackingGoogleAdsId"
+                  className="tf-input"
+                  placeholder="AW-…"
+                />
+              </label>
+            </fieldset>
+          </details>
         </div>
       </section>
 
