@@ -4,7 +4,7 @@ import { prisma as defaultPrisma } from "@/lib/db";
 /**
  * Best-effort DDL when migrate deploy lags behind (common on Vercel/Neon).
  * Safe to call on every cart/checkout path that touches EventSeat.
- * Memoized once per process — subsequent calls are free.
+ * Memoized on success only — failed DDL clears the promise so the next request can retry.
  */
 const SEATING_SCHEMA_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seating_layout_config" JSONB NOT NULL DEFAULT '{}'`,
@@ -34,12 +34,14 @@ let ensurePromise: Promise<void> | null = null;
 export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPrisma) {
   if (ensurePromise) return ensurePromise;
   ensurePromise = (async () => {
+    let failed = false;
     // IF NOT EXISTS statements are independent — run in parallel on cold start.
     await Promise.all(
       SEATING_SCHEMA_STATEMENTS.map(async (sql) => {
         try {
           await db.$executeRawUnsafe(sql);
         } catch (error) {
+          failed = true;
           console.error("[seating] ensureSeatingAssignmentSchema failed", sql.slice(0, 80), error);
         }
       }),
@@ -47,7 +49,12 @@ export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPr
     try {
       await db.$executeRawUnsafe(SEATING_FK_SQL);
     } catch (error) {
+      failed = true;
       console.error("[seating] ensureSeatingAssignmentSchema FK failed", error);
+    }
+    if (failed) {
+      // Do not permanently memoize a failed/partial ensure — allow retry after transient Neon/pooler errors.
+      ensurePromise = null;
     }
   })().catch((error) => {
     ensurePromise = null;

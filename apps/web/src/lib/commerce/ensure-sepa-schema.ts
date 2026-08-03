@@ -22,19 +22,25 @@ const SEPA_SCHEMA_STATEMENTS = [
 
 let ensurePromise: Promise<void> | null = null;
 
-/** Best-effort column patch when migrate deploy has not run yet. Memoized per process. */
+/** Best-effort column patch when migrate deploy has not run yet. Memoized on success only. */
 export async function ensureSepaPaymentSchema(db: PrismaClient) {
   if (ensurePromise) return ensurePromise;
   ensurePromise = (async () => {
+    let failed = false;
     await Promise.all(
       SEPA_SCHEMA_STATEMENTS.map(async (sql) => {
         try {
           await db.$executeRawUnsafe(sql);
-        } catch {
-          /* ignore on unsupported envs / pooler DDL limits */
+        } catch (error) {
+          failed = true;
+          console.error("[sepa] ensureSepaPaymentSchema failed", sql.slice(0, 80), error);
         }
       }),
     );
+    if (failed) {
+      // Clear so the next request can recover after transient Neon/pooler DDL failures.
+      ensurePromise = null;
+    }
   })().catch((error) => {
     ensurePromise = null;
     throw error;

@@ -34,6 +34,10 @@ const FALLBACK_STATEMENTS = [
   `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false`,
   `CREATE INDEX IF NOT EXISTS "event_seats_event_id_category_id_status_idx" ON "event_seats"("event_id", "category_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "event_seats_event_id_locked_status_idx" ON "event_seats"("event_id", "locked", "status")`,
+  // Invoice PDF storage (migration 20260803093000)
+  `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_data" BYTEA`,
+  `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_filename" TEXT`,
+  `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_emailed_at" TIMESTAMP(3)`,
 ];
 
 function withTimeout(promise, ms, label) {

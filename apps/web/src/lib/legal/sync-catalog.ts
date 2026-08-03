@@ -63,17 +63,23 @@ export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
       `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "changelog" TEXT`,
       `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
     ];
+    let failed = false;
     await Promise.all(
       statements.map(async (sql) => {
         try {
           await ddlDb.$executeRawUnsafe(sql);
         } catch (error) {
+          failed = true;
           console.error("[legal] ensureLegalSchema statement failed", sql, error);
         }
       }),
     );
     if (owned) {
       await owned.$disconnect().catch(() => undefined);
+    }
+    if (failed) {
+      // Do not permanently memoize a failed ensure — allow retry after transient DDL failures.
+      legalEnsurePromise = null;
     }
   })().catch((error) => {
     legalEnsurePromise = null;
