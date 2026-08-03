@@ -23,7 +23,21 @@ export type PublicSeatBlock = {
   widthCm: number;
   heightCm: number;
   rotationDeg: number;
+  /** false = free-choice zone (no reservable seats) */
+  numberedSeats: boolean;
   seats: PublicSeat[];
+};
+
+export type PublicStandingArea = {
+  objectId: string;
+  label: string;
+  xCm: number;
+  yCm: number;
+  widthCm: number;
+  heightCm: number;
+  rotationDeg: number;
+  standingMode: "standing" | "standing_tables";
+  estimatedCapacity: number;
 };
 
 export type SeatMapPayload = {
@@ -41,6 +55,7 @@ export type SeatMapPayload = {
     label: string;
   } | null;
   blocks: PublicSeatBlock[];
+  standingAreas: PublicStandingArea[];
   availableCount: number;
 };
 

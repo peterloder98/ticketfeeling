@@ -123,12 +123,57 @@ export function SeatMap({ map, selectedIds, onToggle, maxSelect, hint }: Props) 
             </g>
           ) : null}
 
+          {map.standingAreas?.map((area) => {
+            const left = toX(area.xCm) - toS(area.widthCm) / 2;
+            const top = toY(area.yCm) - toS(area.heightCm) / 2;
+            const w = toS(area.widthCm);
+            const h = toS(area.heightCm);
+            return (
+              <g
+                key={area.objectId}
+                transform={`rotate(${area.rotationDeg} ${toX(area.xCm)} ${toY(area.yCm)})`}
+              >
+                <rect
+                  x={left}
+                  y={top}
+                  width={w}
+                  height={h}
+                  fill="rgba(15,39,71,0.06)"
+                  stroke="#0F2747"
+                  strokeWidth={1.25}
+                  strokeDasharray="6 4"
+                  rx={5}
+                />
+                <text
+                  x={toX(area.xCm)}
+                  y={top - 8}
+                  textAnchor="middle"
+                  style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
+                >
+                  {area.label}
+                  {area.estimatedCapacity > 0
+                    ? ` · ca. ${area.estimatedCapacity} Pers.`
+                    : ""}
+                </text>
+                <text
+                  x={toX(area.xCm)}
+                  y={toY(area.yCm) + 4}
+                  textAnchor="middle"
+                  style={{ fontSize: 11, fontWeight: 600, fill: "#64748B", pointerEvents: "none" }}
+                >
+                  {area.standingMode === "standing_tables" ? "Stehtische" : "Stehplatz"}
+                </text>
+              </g>
+            );
+          })}
+
           {map.blocks.map((block) => {
             const left = toX(block.xCm) - toS(block.widthCm) / 2;
             const top = toY(block.yCm) - toS(block.heightCm) / 2;
             const w = toS(block.widthCm);
             const h = toS(block.heightCm);
-            const padX = w * 0.1;
+            const numbered = block.numberedSeats !== false;
+            const padX = w * 0.12;
             const padY = h * 0.14;
             const cols = Math.max(1, block.seatsPerRow);
             const rows = Math.max(1, block.rows);
@@ -145,7 +190,7 @@ export function SeatMap({ map, selectedIds, onToggle, maxSelect, hint }: Props) 
                   y={top}
                   width={w}
                   height={h}
-                  fill="rgba(20,184,166,0.05)"
+                  fill={numbered ? "rgba(20,184,166,0.05)" : "rgba(20,184,166,0.12)"}
                   stroke="#0F2747"
                   strokeWidth={1}
                   rx={5}
@@ -157,78 +202,107 @@ export function SeatMap({ map, selectedIds, onToggle, maxSelect, hint }: Props) 
                   style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
                 >
                   {block.label}
+                  {!numbered ? " · freie Platzwahl" : ""}
                 </text>
-                {Array.from({ length: rows }, (_, ri) => {
-                  const rowNum = ri + 1;
-                  const cy = top + padY + cellH * (rowNum - 0.5);
-                  return (
+                {numbered
+                  ? Array.from({ length: rows }, (_, ri) => {
+                      const rowNum = ri + 1;
+                      const cy = top + padY + cellH * (rowNum - 0.5);
+                      const fontSize = Math.max(8, Math.min(11, cellH * 0.35));
+                      return (
+                        <g key={`row-${rowNum}`}>
+                          <text
+                            x={left + padX * 0.4}
+                            y={cy + 3}
+                            textAnchor="middle"
+                            style={{ fontSize, fontWeight: 600, fill: "#64748B" }}
+                          >
+                            {rowNum}
+                          </text>
+                          <text
+                            x={left + w - padX * 0.4}
+                            y={cy + 3}
+                            textAnchor="middle"
+                            style={{ fontSize, fontWeight: 600, fill: "#64748B" }}
+                          >
+                            {rowNum}
+                          </text>
+                        </g>
+                      );
+                    })
+                  : null}
+                {numbered
+                  ? block.seats.map((seat) => {
+                      const isSel = selected.has(seat.id);
+                      const taken = seat.status === "taken";
+                      const heldByYou = seat.status === "held_by_you";
+                      const cx = left + padX + cellW * (seat.seatIndex - 0.5);
+                      const cy = top + padY + cellH * (seat.rowIndex - 0.5);
+                      const r = Math.max(3.5, Math.min(cellW, cellH) * 0.34);
+                      let fill = "#E2E8F0";
+                      let stroke = "#0F2747";
+                      if (taken) {
+                        fill = "#94A3B8";
+                        stroke = "#64748B";
+                      } else if (isSel || heldByYou) {
+                        fill = "#14B8A6";
+                        stroke = "#0F766E";
+                      }
+                      return (
+                        <g key={seat.id}>
+                          <circle
+                            cx={cx}
+                            cy={cy}
+                            r={r}
+                            fill={fill}
+                            stroke={stroke}
+                            strokeWidth={isSel ? 2.25 : 1}
+                            style={{
+                              cursor: taken ? "not-allowed" : "pointer",
+                              transition: "fill 120ms ease",
+                            }}
+                            onClick={() => {
+                              if (!taken) onToggle(seat);
+                            }}
+                          >
+                            <title>
+                              {seat.blockLabel} · Reihe {seat.rowLabel} · Platz {seat.seatNumber}
+                              {taken ? " (belegt)" : heldByYou ? " (in deinem Warenkorb)" : ""}
+                            </title>
+                          </circle>
+                          {r >= 6 ? (
+                            <text
+                              x={cx}
+                              y={cy + 3}
+                              textAnchor="middle"
+                              style={{
+                                fontSize: Math.min(10, r * 0.95),
+                                fontWeight: 700,
+                                fill: taken || isSel || heldByYou ? "#fff" : "#0F2747",
+                                pointerEvents: "none",
+                              }}
+                            >
+                              {seat.seatNumber}
+                            </text>
+                          ) : null}
+                        </g>
+                      );
+                    })
+                  : (
                     <text
-                      key={`row-${rowNum}`}
-                      x={left + padX * 0.35}
-                      y={cy + 3}
+                      x={toX(block.xCm)}
+                      y={toY(block.yCm) + 4}
                       textAnchor="middle"
-                      style={{ fontSize: Math.max(8, Math.min(11, cellH * 0.35)), fontWeight: 600, fill: "#64748B" }}
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        fill: "#0F766E",
+                        pointerEvents: "none",
+                      }}
                     >
-                      {rowNum}
+                      Freie Platzwahl
                     </text>
-                  );
-                })}
-                {block.seats.map((seat) => {
-                  const isSel = selected.has(seat.id);
-                  const taken = seat.status === "taken";
-                  const heldByYou = seat.status === "held_by_you";
-                  const cx = left + padX + cellW * (seat.seatIndex - 0.5);
-                  const cy = top + padY + cellH * (seat.rowIndex - 0.5);
-                  const r = Math.max(3.5, Math.min(cellW, cellH) * 0.34);
-                  let fill = "#E2E8F0";
-                  let stroke = "#0F2747";
-                  if (taken) {
-                    fill = "#94A3B8";
-                    stroke = "#64748B";
-                  } else if (isSel || heldByYou) {
-                    fill = "#14B8A6";
-                    stroke = "#0F766E";
-                  }
-                  return (
-                    <g key={seat.id}>
-                      <circle
-                        cx={cx}
-                        cy={cy}
-                        r={r}
-                        fill={fill}
-                        stroke={stroke}
-                        strokeWidth={isSel ? 2.25 : 1}
-                        style={{
-                          cursor: taken ? "not-allowed" : "pointer",
-                          transition: "fill 120ms ease",
-                        }}
-                        onClick={() => {
-                          if (!taken) onToggle(seat);
-                        }}
-                      >
-                        <title>
-                          {seat.blockLabel} · Reihe {seat.rowLabel} · Platz {seat.seatNumber}
-                          {taken ? " (belegt)" : heldByYou ? " (in deinem Warenkorb)" : ""}
-                        </title>
-                      </circle>
-                      {r >= 7 ? (
-                        <text
-                          x={cx}
-                          y={cy + 3}
-                          textAnchor="middle"
-                          style={{
-                            fontSize: Math.min(10, r * 0.9),
-                            fontWeight: 600,
-                            fill: taken || isSel || heldByYou ? "#fff" : "#0F2747",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {seat.seatNumber}
-                        </text>
-                      ) : null}
-                    </g>
-                  );
-                })}
+                  )}
               </g>
             );
           })}

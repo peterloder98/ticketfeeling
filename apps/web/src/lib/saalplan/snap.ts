@@ -91,7 +91,12 @@ export function createStage(hallWidthCm: number, hallDepthCm: number): VenuePlan
 export function createSeatBlock(
   hallWidthCm: number,
   hallDepthCm: number,
-  opts?: { rows?: number; seatsPerRow?: number; label?: string },
+  opts?: {
+    rows?: number;
+    seatsPerRow?: number;
+    label?: string;
+    numberedSeats?: boolean;
+  },
 ): VenuePlanObject {
   const rows = Math.max(1, opts?.rows ?? 5);
   const seatsPerRow = Math.max(1, opts?.seatsPerRow ?? 10);
@@ -108,6 +113,28 @@ export function createSeatBlock(
     label: existingHint,
     rows,
     seatsPerRow,
+    numberedSeats: opts?.numberedSeats !== false,
+    zIndex: 2,
+  };
+}
+
+export function createStandingArea(
+  hallWidthCm: number,
+  hallDepthCm: number,
+  opts?: { label?: string; standingMode?: "standing" | "standing_tables" },
+): VenuePlanObject {
+  const widthCm = Math.min(800, Math.round(hallWidthCm * 0.55));
+  const heightCm = Math.min(400, Math.round(hallDepthCm * 0.22));
+  return {
+    id: newObjectId(),
+    type: "standing_area",
+    xCm: hallWidthCm / 2,
+    yCm: Math.min(hallDepthCm - heightCm / 2 - 30, hallDepthCm * 0.82),
+    widthCm,
+    heightCm,
+    rotationDeg: 0,
+    label: opts?.label ?? "Stehplatz",
+    standingMode: opts?.standingMode ?? "standing",
     zIndex: 2,
   };
 }
@@ -115,12 +142,12 @@ export function createSeatBlock(
 export function nextBlockLabel(existing: VenuePlanObject[]): string {
   const used = new Set(
     existing
-      .filter((o) => o.type === "seat_block")
+      .filter((o) => o.type === "seat_block" || o.type === "standing_area")
       .map((o) => (o.label ?? "").trim().toUpperCase()),
   );
   for (let i = 0; i < 26; i += 1) {
     const label = `Block ${String.fromCharCode(65 + i)}`;
     if (!used.has(label.toUpperCase())) return label;
   }
-  return `Block ${existing.filter((o) => o.type === "seat_block").length + 1}`;
+  return `Block ${existing.filter((o) => o.type === "seat_block" || o.type === "standing_area").length + 1}`;
 }

@@ -22,6 +22,8 @@ function buildDesiredSeats(
   const rows: DesiredSeat[] = [];
   for (const block of objects) {
     if (block.type !== "seat_block") continue;
+    // Free-choice / unnumbered blocks are geometry only — no EventSeat inventory.
+    if (block.numberedSeats === false) continue;
     const rowCount = Math.max(0, Math.round(block.rows ?? 0));
     const colCount = Math.max(0, Math.round(block.seatsPerRow ?? 0));
     const blockLabel = (block.label ?? "Block").trim() || "Block";

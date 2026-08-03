@@ -1,7 +1,14 @@
 import { prisma } from "@/lib/db";
-import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import {
+  estimateStandingCapacity,
+  parseVenuePlanObjects,
+} from "@/lib/saalplan/types";
 import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materialize";
-import type { PublicSeatBlock, SeatMapPayload } from "@/lib/seating/types";
+import type {
+  PublicSeatBlock,
+  PublicStandingArea,
+  SeatMapPayload,
+} from "@/lib/seating/types";
 
 export async function getSeatMapPayload(
   eventId: string,
@@ -32,10 +39,28 @@ export async function getSeatMapPayload(
 
   const stageObj = objects.find((o) => o.type === "stage");
   const blocks: PublicSeatBlock[] = [];
+  const standingAreas: PublicStandingArea[] = [];
 
   for (const obj of objects) {
+    if (obj.type === "standing_area") {
+      const mode = obj.standingMode === "standing_tables" ? "standing_tables" : "standing";
+      standingAreas.push({
+        objectId: obj.id,
+        label: obj.label ?? "Stehbereich",
+        xCm: obj.xCm,
+        yCm: obj.yCm,
+        widthCm: obj.widthCm,
+        heightCm: obj.heightCm,
+        rotationDeg: obj.rotationDeg,
+        standingMode: mode,
+        estimatedCapacity: estimateStandingCapacity(obj.widthCm, obj.heightCm, mode),
+      });
+      continue;
+    }
+
     if (obj.type !== "seat_block") continue;
-    const blockSeats = seats.filter((s) => s.blockObjectId === obj.id);
+    const numbered = obj.numberedSeats !== false;
+    const blockSeats = numbered ? seats.filter((s) => s.blockObjectId === obj.id) : [];
     blocks.push({
       objectId: obj.id,
       label: obj.label ?? "Block",
@@ -46,6 +71,7 @@ export async function getSeatMapPayload(
       widthCm: obj.widthCm,
       heightCm: obj.heightCm,
       rotationDeg: obj.rotationDeg,
+      numberedSeats: numbered,
       seats: blockSeats.map((s) => {
         let status: "available" | "taken" | "held_by_you" = "available";
         if (s.status === "sold") status = "taken";
@@ -85,6 +111,7 @@ export async function getSeatMapPayload(
         }
       : null,
     blocks,
+    standingAreas,
     availableCount: seats.filter((s) => s.status === "available").length,
   };
 }

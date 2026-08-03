@@ -12,14 +12,19 @@ import {
 import { Plus, Save, ZoomIn, ZoomOut } from "lucide-react";
 import type { VenuePlanObject } from "@/lib/saalplan/types";
 import {
+  areaSqm,
   cmToMetersLabel,
+  estimateStandingCapacity,
   objectTypeLabel,
   planSeatCapacity,
+  planStandingEstimate,
   seatCountOfObject,
+  visualSeatCountOfObject,
 } from "@/lib/saalplan/types";
 import {
   createSeatBlock,
   createStage,
+  createStandingArea,
   nextBlockLabel,
   seatBlockSizeCm,
   snapObjectCenter,
@@ -87,8 +92,9 @@ export function SaalplanEditor({
 
   const selected = objects.find((o) => o.id === selectedId) ?? null;
   const capacity = planSeatCapacity(objects);
+  const standingEstimate = planStandingEstimate(objects);
   const hasStage = objects.some((o) => o.type === "stage");
-  const hasSeats = capacity > 0;
+  const hasSeats = capacity > 0 || objects.some((o) => o.type === "seat_block" || o.type === "standing_area");
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -165,9 +171,19 @@ export function SaalplanEditor({
   function addSeatBlock() {
     const block = createSeatBlock(widthCm, depthCm, {
       label: nextBlockLabel(objects),
+      numberedSeats: true,
     });
     markDirty([...objects, block]);
     setSelectedId(block.id);
+  }
+
+  function addStandingArea() {
+    const area = createStandingArea(widthCm, depthCm, {
+      label: nextBlockLabel(objects),
+      standingMode: "standing",
+    });
+    markDirty([...objects, area]);
+    setSelectedId(area.id);
   }
 
   /** Screen pixels → SVG viewBox delta → cm */
@@ -388,9 +404,9 @@ export function SaalplanEditor({
           },
           {
             n: 3,
-            title: "Sitzblöcke",
+            title: "Blöcke",
             done: hasSeats,
-            text: "Reihen × Sitze — Kapazität zählt mit",
+            text: "Sitzend nummeriert oder Stehbereich",
           },
           {
             n: 4,
@@ -470,7 +486,8 @@ export function SaalplanEditor({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <p className="rounded-full bg-[rgba(15,39,71,0.06)] px-3 py-1.5 text-sm font-medium text-[var(--tf-navy)]">
-            Kapazität: {capacity} Sitze
+            {capacity} nummerierte Sitze
+            {standingEstimate > 0 ? ` · ca. ${standingEstimate} stehend` : ""}
           </p>
           <button
             type="button"
@@ -621,7 +638,16 @@ export function SaalplanEditor({
                   const isSel = obj.id === selectedId;
                   const cx = hallLeft + toPx(obj.xCm);
                   const cy = hallTop + toPx(obj.yCm);
-                  const seats = seatCountOfObject(obj);
+                  const seats = visualSeatCountOfObject(obj);
+                  const numbered = obj.type === "seat_block" && obj.numberedSeats !== false;
+                  const standingCap =
+                    obj.type === "standing_area"
+                      ? estimateStandingCapacity(
+                          obj.widthCm,
+                          obj.heightCm,
+                          obj.standingMode ?? "standing",
+                        )
+                      : 0;
                   return (
                     <g
                       key={obj.id}
@@ -638,10 +664,15 @@ export function SaalplanEditor({
                         fill={
                           obj.type === "stage"
                             ? "rgba(15,39,71,0.05)"
-                            : "rgba(20,184,166,0.1)"
+                            : obj.type === "standing_area"
+                              ? "rgba(15,39,71,0.07)"
+                              : numbered
+                                ? "rgba(20,184,166,0.1)"
+                                : "rgba(20,184,166,0.16)"
                         }
                         stroke={isSel ? "var(--tf-teal)" : "var(--tf-navy)"}
                         strokeWidth={isSel ? 2 : 1.25}
+                        strokeDasharray={obj.type === "standing_area" ? "7 4" : undefined}
                       />
 
                       {obj.type === "stage" ? (
@@ -659,23 +690,47 @@ export function SaalplanEditor({
                         ? renderSeatDots(obj, x, y, w, h)
                         : null}
 
+                      {obj.type === "standing_area" ? (
+                        <text
+                          x={cx}
+                          y={cy + 4}
+                          textAnchor="middle"
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            fill: "var(--tf-text-secondary)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {obj.standingMode === "standing_tables" ? "Stehtische" : "Stehend"}
+                          {standingCap > 0 ? ` · ca. ${standingCap}` : ""}
+                        </text>
+                      ) : null}
+
+                      {/* Label ABOVE the block so it stays readable over seats */}
                       <text
                         x={cx}
                         y={
                           obj.type === "stage"
                             ? cy + 22
-                            : cy + (obj.type === "seat_block" ? h * 0.05 + 4 : 4)
+                            : y - 8
                         }
                         textAnchor="middle"
                         style={{
-                          fontSize: 11,
-                          fontWeight: 600,
+                          fontSize: 12,
+                          fontWeight: 700,
                           fill: "var(--tf-navy)",
                           pointerEvents: "none",
                         }}
                       >
                         {obj.label || objectTypeLabel(obj.type)}
-                        {obj.type === "seat_block" ? ` · ${seats}` : ""}
+                        {obj.type === "seat_block"
+                          ? numbered
+                            ? ` · ${seats}`
+                            : " · freie Platzwahl"
+                          : obj.type === "standing_area" && standingCap > 0
+                            ? ` · ca. ${standingCap}`
+                            : ""}
                       </text>
 
                       {isSel
@@ -722,9 +777,16 @@ export function SaalplanEditor({
           >
             <Plus className="mr-1 inline h-4 w-4" /> Sitzblock einfügen
           </button>
+          <button
+            type="button"
+            className="tf-btn w-full justify-start text-sm"
+            onClick={addStandingArea}
+          >
+            <Plus className="mr-1 inline h-4 w-4" /> Stehbereich einfügen
+          </button>
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Nach dem Einfügen: Objekt auf dem Plan ziehen oder an den Ecken vergrößern.
-            Hilfslinien zeigen die Mitte.
+            Sitzblöcke können nummeriert oder freie Platzwahl sein. Stehbereiche nach Länge × Breite —
+            Kapazität nur als grobe Orientierung.
           </p>
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>
@@ -740,51 +802,107 @@ export function SaalplanEditor({
               </label>
 
               {selected.type === "seat_block" ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <label className="grid gap-1">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Reihen</span>
+                <div className="grid gap-2">
+                  <label className="flex items-start gap-2 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5">
                     <input
-                      type="number"
-                      min={1}
-                      max={80}
-                      className="tf-input !min-h-10"
-                      value={selected.rows ?? 1}
-                      onChange={(e) => {
-                        const rows = Math.max(1, Math.round(Number(e.target.value) || 1));
-                        const seatsPerRow = selected.seatsPerRow ?? 10;
-                        const size = seatBlockSizeCm(rows, seatsPerRow);
-                        updateSelected({
-                          rows,
-                          ...size,
-                          widthCm: Math.min(size.widthCm, widthCm * 0.95),
-                          heightCm: Math.min(size.heightCm, depthCm * 0.7),
-                        });
-                      }}
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={selected.numberedSeats !== false}
+                      onChange={(e) => updateSelected({ numberedSeats: e.target.checked })}
                     />
+                    <span>
+                      <span className="block text-sm font-semibold text-[var(--tf-navy)]">
+                        Plätze nummerieren
+                      </span>
+                      <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                        An: feste Sitze (Reihe + Platz). Aus: freie Platzwahl in diesem Block —
+                        unabhängig vom restlichen Event.
+                      </span>
+                    </span>
                   </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="grid gap-1">
+                      <span className="text-xs text-[var(--tf-text-secondary)]">Reihen</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={80}
+                        className="tf-input !min-h-10"
+                        value={selected.rows ?? 1}
+                        onChange={(e) => {
+                          const rows = Math.max(1, Math.round(Number(e.target.value) || 1));
+                          const seatsPerRow = selected.seatsPerRow ?? 10;
+                          const size = seatBlockSizeCm(rows, seatsPerRow);
+                          updateSelected({
+                            rows,
+                            ...size,
+                            widthCm: Math.min(size.widthCm, widthCm * 0.95),
+                            heightCm: Math.min(size.heightCm, depthCm * 0.7),
+                          });
+                        }}
+                      />
+                    </label>
+                    <label className="grid gap-1">
+                      <span className="text-xs text-[var(--tf-text-secondary)]">Sitze / Reihe</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={80}
+                        className="tf-input !min-h-10"
+                        value={selected.seatsPerRow ?? 1}
+                        onChange={(e) => {
+                          const seatsPerRow = Math.max(1, Math.round(Number(e.target.value) || 1));
+                          const rows = selected.rows ?? 5;
+                          const size = seatBlockSizeCm(rows, seatsPerRow);
+                          updateSelected({
+                            seatsPerRow,
+                            ...size,
+                            widthCm: Math.min(size.widthCm, widthCm * 0.95),
+                            heightCm: Math.min(size.heightCm, depthCm * 0.7),
+                          });
+                        }}
+                      />
+                    </label>
+                    <p className="col-span-2 text-xs text-[var(--tf-text-secondary)]">
+                      {selected.numberedSeats === false
+                        ? `${visualSeatCountOfObject(selected)} Plätze (freie Wahl, nicht reservierbar)`
+                        : `= ${seatCountOfObject(selected)} nummerierte Sitze in diesem Block`}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
+              {selected.type === "standing_area" ? (
+                <div className="grid gap-2">
                   <label className="grid gap-1">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Sitze / Reihe</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={80}
+                    <span className="text-xs text-[var(--tf-text-secondary)]">Art</span>
+                    <select
                       className="tf-input !min-h-10"
-                      value={selected.seatsPerRow ?? 1}
-                      onChange={(e) => {
-                        const seatsPerRow = Math.max(1, Math.round(Number(e.target.value) || 1));
-                        const rows = selected.rows ?? 5;
-                        const size = seatBlockSizeCm(rows, seatsPerRow);
+                      value={selected.standingMode ?? "standing"}
+                      onChange={(e) =>
                         updateSelected({
-                          seatsPerRow,
-                          ...size,
-                          widthCm: Math.min(size.widthCm, widthCm * 0.95),
-                          heightCm: Math.min(size.heightCm, depthCm * 0.7),
-                        });
-                      }}
-                    />
+                          standingMode:
+                            e.target.value === "standing_tables" ? "standing_tables" : "standing",
+                        })
+                      }
+                    >
+                      <option value="standing">Nur stehend</option>
+                      <option value="standing_tables">Mit Stehtischen</option>
+                    </select>
                   </label>
-                  <p className="col-span-2 text-xs text-[var(--tf-text-secondary)]">
-                    = {seatCountOfObject(selected)} Sitze in diesem Block
+                  <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-xs text-[var(--tf-text-secondary)]">
+                    Fläche ca. {areaSqm(selected.widthCm, selected.heightCm).toFixed(1).replace(".", ",")}{" "}
+                    m² · grobe Orientierung:{" "}
+                    <strong className="text-[var(--tf-navy)]">
+                      ca.{" "}
+                      {estimateStandingCapacity(
+                        selected.widthCm,
+                        selected.heightCm,
+                        selected.standingMode ?? "standing",
+                      )}{" "}
+                      Personen
+                    </strong>
+                    . Keine rechtliche Kapazitätsangabe — nur Schätzung für die Planung.
                   </p>
                 </div>
               ) : null}
@@ -841,7 +959,7 @@ export function SaalplanEditor({
             </div>
           ) : (
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              Klicke ein Objekt an — oder füge Bühne / Sitzblock ein.
+              Klicke ein Objekt an — oder füge Bühne, Sitzblock oder Stehbereich ein.
             </p>
           )}
 
@@ -859,7 +977,13 @@ export function SaalplanEditor({
                   onClick={() => setSelectedId(o.id)}
                 >
                   {o.label || objectTypeLabel(o.type)}
-                  {o.type === "seat_block" ? ` (${seatCountOfObject(o)})` : ""}
+                  {o.type === "seat_block"
+                    ? o.numberedSeats === false
+                      ? " (freie Wahl)"
+                      : ` (${seatCountOfObject(o)})`
+                    : o.type === "standing_area"
+                      ? ` (ca. ${estimateStandingCapacity(o.widthCm, o.heightCm, o.standingMode ?? "standing")})`
+                      : ""}
                 </button>
               </li>
             ))}
@@ -879,27 +1003,87 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
   const rows = Math.min(obj.rows ?? 0, 24);
   const cols = Math.min(obj.seatsPerRow ?? 0, 40);
   if (rows < 1 || cols < 1) return null;
-  const padX = w * 0.08;
+  const numbered = obj.numberedSeats !== false;
+  const padX = w * (numbered ? 0.12 : 0.08);
   const padY = h * 0.14;
   const innerW = w - padX * 2;
   const innerH = h - padY * 2;
   const cellW = innerW / cols;
   const cellH = innerH / rows;
-  const r = Math.max(1.2, Math.min(cellW, cellH) * 0.28);
+  const r = Math.max(1.2, Math.min(cellW, cellH) * (numbered ? 0.32 : 0.28));
   const nodes: ReactNode[] = [];
+
+  if (numbered) {
+    for (let row = 0; row < rows; row += 1) {
+      const cy = y + padY + cellH * (row + 0.5);
+      const rowLabel = String(row + 1);
+      const fontSize = Math.max(7, Math.min(11, cellH * 0.32));
+      nodes.push(
+        <text
+          key={`rl-${row}`}
+          x={x + padX * 0.4}
+          y={cy + fontSize * 0.35}
+          textAnchor="middle"
+          style={{
+            fontSize,
+            fontWeight: 600,
+            fill: "var(--tf-text-secondary)",
+            pointerEvents: "none",
+          }}
+        >
+          {rowLabel}
+        </text>,
+        <text
+          key={`rr-${row}`}
+          x={x + w - padX * 0.4}
+          y={cy + fontSize * 0.35}
+          textAnchor="middle"
+          style={{
+            fontSize,
+            fontWeight: 600,
+            fill: "var(--tf-text-secondary)",
+            pointerEvents: "none",
+          }}
+        >
+          {rowLabel}
+        </text>,
+      );
+    }
+  }
+
   for (let row = 0; row < rows; row += 1) {
     for (let col = 0; col < cols; col += 1) {
+      const cx = x + padX + cellW * (col + 0.5);
+      const cy = y + padY + cellH * (row + 0.5);
       nodes.push(
         <circle
           key={`${row}-${col}`}
-          cx={x + padX + cellW * (col + 0.5)}
-          cy={y + padY + cellH * (row + 0.5)}
+          cx={cx}
+          cy={cy}
           r={r}
           fill="var(--tf-navy)"
-          opacity={0.35}
+          opacity={numbered ? 0.45 : 0.28}
           style={{ pointerEvents: "none" }}
         />,
       );
+      if (numbered && r >= 5.5) {
+        nodes.push(
+          <text
+            key={`n-${row}-${col}`}
+            x={cx}
+            y={cy + r * 0.35}
+            textAnchor="middle"
+            style={{
+              fontSize: Math.min(9, r * 0.95),
+              fontWeight: 700,
+              fill: "#fff",
+              pointerEvents: "none",
+            }}
+          >
+            {col + 1}
+          </text>,
+        );
+      }
     }
   }
   if ((obj.rows ?? 0) > rows || (obj.seatsPerRow ?? 0) > cols) {

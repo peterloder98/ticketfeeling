@@ -1,4 +1,13 @@
-export type VenuePlanObjectType = "stage" | "seat_block" | "rect" | "ellipse" | "text";
+export type VenuePlanObjectType =
+  | "stage"
+  | "seat_block"
+  | "standing_area"
+  | "rect"
+  | "ellipse"
+  | "text";
+
+/** Rough orientation only — not a legal capacity certificate. */
+export type StandingMode = "standing" | "standing_tables";
 
 export type VenuePlanObject = {
   id: string;
@@ -16,6 +25,14 @@ export type VenuePlanObject = {
   /** seat_block only */
   rows?: number;
   seatsPerRow?: number;
+  /**
+   * seat_block: when true, seats get row/seat numbers and become reservable EventSeats.
+   * When false, the block is free-choice geometry only (no numbered inventory).
+   * Default true for backwards compatibility.
+   */
+  numberedSeats?: boolean;
+  /** standing_area only */
+  standingMode?: StandingMode;
 };
 
 export type VenuePlanData = {
@@ -27,7 +44,39 @@ export type VenuePlanData = {
   version: number;
 };
 
+/** Persons per m² — rough orientation, not legal advice. */
+export const STANDING_DENSITY_PER_M2: Record<StandingMode, number> = {
+  standing: 2.0,
+  standing_tables: 1.0,
+};
+
+export function areaSqm(widthCm: number, heightCm: number) {
+  return Math.max(0, (widthCm / 100) * (heightCm / 100));
+}
+
+/** Non-binding capacity estimate for standing areas. */
+export function estimateStandingCapacity(
+  widthCm: number,
+  heightCm: number,
+  mode: StandingMode = "standing",
+) {
+  const density = STANDING_DENSITY_PER_M2[mode] ?? STANDING_DENSITY_PER_M2.standing;
+  return Math.max(0, Math.floor(areaSqm(widthCm, heightCm) * density));
+}
+
+export function isNumberedSeatBlock(o: VenuePlanObject) {
+  return o.type === "seat_block" && o.numberedSeats !== false;
+}
+
 export function seatCountOfObject(o: VenuePlanObject): number {
+  if (!isNumberedSeatBlock(o)) return 0;
+  const rows = Math.max(0, Math.round(o.rows ?? 0));
+  const cols = Math.max(0, Math.round(o.seatsPerRow ?? 0));
+  return rows * cols;
+}
+
+/** Visual seat dots even for free-choice blocks (not counted as reserved capacity). */
+export function visualSeatCountOfObject(o: VenuePlanObject): number {
   if (o.type !== "seat_block") return 0;
   const rows = Math.max(0, Math.round(o.rows ?? 0));
   const cols = Math.max(0, Math.round(o.seatsPerRow ?? 0));
@@ -36,6 +85,13 @@ export function seatCountOfObject(o: VenuePlanObject): number {
 
 export function planSeatCapacity(objects: VenuePlanObject[]): number {
   return objects.reduce((sum, o) => sum + seatCountOfObject(o), 0);
+}
+
+export function planStandingEstimate(objects: VenuePlanObject[]): number {
+  return objects.reduce((sum, o) => {
+    if (o.type !== "standing_area") return sum;
+    return sum + estimateStandingCapacity(o.widthCm, o.heightCm, o.standingMode ?? "standing");
+  }, 0);
 }
 
 export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
@@ -48,6 +104,7 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
     if (
       type !== "stage" &&
       type !== "seat_block" &&
+      type !== "standing_area" &&
       type !== "rect" &&
       type !== "ellipse" &&
       type !== "text"
@@ -71,6 +128,10 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
     if (type === "seat_block") {
       obj.rows = Math.max(1, Math.round(Number(o.rows) || 1));
       obj.seatsPerRow = Math.max(1, Math.round(Number(o.seatsPerRow) || 1));
+      obj.numberedSeats = o.numberedSeats === false ? false : true;
+    }
+    if (type === "standing_area") {
+      obj.standingMode = o.standingMode === "standing_tables" ? "standing_tables" : "standing";
     }
     out.push(obj);
   }
@@ -93,6 +154,8 @@ export function objectTypeLabel(type: VenuePlanObjectType): string {
       return "Bühne";
     case "seat_block":
       return "Sitzblock";
+    case "standing_area":
+      return "Stehbereich";
     case "rect":
       return "Rechteck";
     case "ellipse":
