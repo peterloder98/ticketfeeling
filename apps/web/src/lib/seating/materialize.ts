@@ -152,6 +152,28 @@ export async function ensureEventSeats(eventId: string) {
   return { created, updated, removed, total };
 }
 
+/**
+ * Hot-path guard: only materialize when this event has no seats yet.
+ * Full sync stays on admin plan save via syncSeatsForVenuePlan.
+ */
+export async function ensureEventSeatsIfNeeded(eventId: string) {
+  const event = await prisma.event.findUnique({
+    where: { id: eventId },
+    select: { venuePlanId: true, seatingBookingMode: true },
+  });
+  if (!event?.venuePlanId || event.seatingBookingMode === "none") {
+    return { created: 0, updated: 0, removed: 0, total: 0, skipped: true as const };
+  }
+  const total = await prisma.eventSeat.count({
+    where: { eventId, venuePlanId: event.venuePlanId },
+  });
+  if (total > 0) {
+    return { created: 0, updated: 0, removed: 0, total, skipped: true as const };
+  }
+  const result = await ensureEventSeats(eventId);
+  return { ...result, skipped: false as const };
+}
+
 /** Sync all events that use a venue plan (after editor save). */
 export async function syncSeatsForVenuePlan(venuePlanId: string) {
   const events = await prisma.event.findMany({

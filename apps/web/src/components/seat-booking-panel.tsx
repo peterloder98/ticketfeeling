@@ -184,8 +184,25 @@ export function SeatBookingPanel({
         : [];
       setAddedSeatLabels(labels);
       setJustAdded(true);
+      const heldIds = new Set(selectedIds);
       setSelectedIds([]);
-      void loadMap();
+      // Mark seats held locally — avoid a second full seat-map round-trip.
+      if (heldIds.size > 0) {
+        setMap((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            blocks: prev.blocks.map((block) => ({
+              ...block,
+              seats: block.seats.map((seat) =>
+                heldIds.has(seat.id)
+                  ? { ...seat, status: "held_by_you" as const }
+                  : seat,
+              ),
+            })),
+          };
+        });
+      }
     } finally {
       setLoading(false);
     }

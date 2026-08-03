@@ -117,7 +117,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       // Invalidate in-flight peeks so they cannot overwrite this bump.
       requestIdRef.current += 1;
-      const bumpRequestId = requestIdRef.current;
 
       if (
         summary?.itemCount != null ||
@@ -145,11 +144,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
                   : prev.expiresAt,
           };
         });
+        // Trust the POST summary — avoid a second full cart GET after every add.
+        setLoading(false);
+        return;
       }
-      // Confirm totals; ignore if another bump already advanced the request id.
-      void refresh({ full: true }).then(() => {
-        void bumpRequestId;
-      });
+      void refresh({ full: true });
     },
     [refresh],
   );

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 const PAID = ["paid", "fulfilled"] as const;
 
@@ -62,36 +63,41 @@ export async function getEventListSales(
   const eventIds = events.map((e) => e.id);
   if (eventIds.length === 0) return [];
 
-  const items = await prisma.orderItem.findMany({
-    where: {
-      eventId: { in: eventIds },
-      order: { organizationId, status: { in: [...PAID] } },
-    },
-    select: {
-      eventId: true,
-      quantity: true,
-      grossCents: true,
-      order: { select: { channel: true } },
-    },
-  });
+  // Aggregate in SQL instead of pulling every order line into Node.
+  const sales = await prisma.$queryRaw<
+    Array<{
+      event_id: string;
+      sold: bigint | number;
+      revenue_cents: bigint | number;
+      online_sold: bigint | number;
+      box_office_sold: bigint | number;
+    }>
+  >`
+    SELECT oi.event_id,
+           COALESCE(SUM(oi.quantity), 0) AS sold,
+           COALESCE(SUM(oi.gross_cents), 0) AS revenue_cents,
+           COALESCE(SUM(CASE WHEN o.channel = 'box_office' THEN 0 ELSE oi.quantity END), 0) AS online_sold,
+           COALESCE(SUM(CASE WHEN o.channel = 'box_office' THEN oi.quantity ELSE 0 END), 0) AS box_office_sold
+    FROM order_items oi
+    INNER JOIN orders o ON o.id = oi.order_id
+    WHERE oi.event_id IN (${Prisma.join(eventIds)})
+      AND o.organization_id = ${organizationId}
+      AND o.status IN (${Prisma.join([...PAID])})
+    GROUP BY oi.event_id
+  `;
 
   const byEvent = new Map<
     string,
     { sold: number; revenueCents: number; online: number; boxOffice: number }
   >();
 
-  for (const item of items) {
-    const row = byEvent.get(item.eventId) ?? {
-      sold: 0,
-      revenueCents: 0,
-      online: 0,
-      boxOffice: 0,
-    };
-    row.sold += item.quantity;
-    row.revenueCents += item.grossCents;
-    if (item.order.channel === "box_office") row.boxOffice += item.quantity;
-    else row.online += item.quantity;
-    byEvent.set(item.eventId, row);
+  for (const row of sales) {
+    byEvent.set(row.event_id, {
+      sold: Number(row.sold),
+      revenueCents: Number(row.revenue_cents),
+      online: Number(row.online_sold),
+      boxOffice: Number(row.box_office_sold),
+    });
   }
 
   return events.map((event) => {

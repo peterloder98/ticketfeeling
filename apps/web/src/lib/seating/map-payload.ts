@@ -1,13 +1,13 @@
 import { prisma } from "@/lib/db";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
-import { ensureEventSeats, expireSeatHolds } from "@/lib/seating/materialize";
+import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materialize";
 import type { PublicSeatBlock, SeatMapPayload } from "@/lib/seating/types";
 
 export async function getSeatMapPayload(
   eventId: string,
   opts?: { viewerCartItemIds?: string[] },
 ): Promise<SeatMapPayload | null> {
-  await expireSeatHolds();
+  await expireSeatHolds().catch(() => undefined);
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     include: { venuePlan: true },
@@ -20,7 +20,7 @@ export async function getSeatMapPayload(
     return null;
   }
 
-  await ensureEventSeats(eventId);
+  await ensureEventSeatsIfNeeded(eventId);
 
   const seats = await prisma.eventSeat.findMany({
     where: { eventId },

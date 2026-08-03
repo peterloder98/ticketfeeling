@@ -82,6 +82,13 @@ async function expireHoldsThrottled() {
   await expireHolds();
 }
 
+/** Never block cart reads/writes on hold cleanup — run in background. */
+function scheduleExpireHolds() {
+  void expireHoldsThrottled().catch((error) => {
+    console.error("[cart] background expire failed", error);
+  });
+}
+
 const cartInclude = {
   items: {
     include: {
@@ -133,7 +140,7 @@ export async function peekCartItemCount(opts?: {
   userId?: string | null;
   sessionKey?: string | null;
 }): Promise<{ itemCount: number; expiresAt: Date | null; sessionKey: string | null }> {
-  await expireHoldsThrottled();
+  scheduleExpireHolds();
   const org = await getDefaultOrganization();
   if (!org) return { itemCount: 0, expiresAt: null, sessionKey: null };
 
@@ -175,7 +182,7 @@ export async function findOpenCart(opts?: {
   userId?: string | null;
   sessionKey?: string | null;
 }): Promise<OpenCart | null> {
-  await expireHoldsThrottled();
+  scheduleExpireHolds();
   const org = await getDefaultOrganization();
   if (!org) return null;
 
@@ -219,7 +226,7 @@ export async function getOpenCart(opts?: {
     return found;
   }
 
-  await expireHoldsThrottled();
+  scheduleExpireHolds();
   const org = await getDefaultOrganization();
   if (!org) throw new Error("NO_ORGANIZATION");
   const sessionKey = await resolveCartSessionKey(opts?.sessionKey);
@@ -365,7 +372,7 @@ export async function addToCart(input: {
   }
 
   const { categoryNeedsSeats, seatsPerTicket } = await import("@/lib/seating/types");
-  const { ensureEventSeats } = await import("@/lib/seating/materialize");
+  const { ensureEventSeatsIfNeeded } = await import("@/lib/seating/materialize");
   const {
     pickBestAvailableSeats,
     pickBestAvailablePairs,
@@ -391,7 +398,7 @@ export async function addToCart(input: {
     } else if (seatingMode === "free") {
       seatingMode = "best_available";
     }
-    await ensureEventSeats(category.eventId);
+    await ensureEventSeatsIfNeeded(category.eventId);
   } else {
     seatingMode = "free";
   }
@@ -416,6 +423,18 @@ export async function addToCart(input: {
 
   const expiresAt = new Date(Date.now() + HOLD_MINUTES * 60 * 1000);
 
+  const seatSelect = {
+    id: true,
+    seatKey: true,
+    blockObjectId: true,
+    blockLabel: true,
+    rowIndex: true,
+    seatIndex: true,
+    rowLabel: true,
+    seatNumber: true,
+    status: true,
+  } as const;
+
   await prisma.$transaction(async (tx) => {
     const locked = await tx.inventoryPool.findUniqueOrThrow({ where: { id: pool.id } });
     const available = locked.capacity - locked.soldQuantity - locked.heldQuantity;
@@ -430,13 +449,15 @@ export async function addToCart(input: {
             eventId: category.eventId,
             status: "available",
           },
+          select: seatSelect,
         });
         if (requested.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
         if (companionFree) {
-          const pool = await tx.eventSeat.findMany({
+          const poolSeats = await tx.eventSeat.findMany({
             where: { eventId: category.eventId, status: "available" },
+            select: seatSelect,
           });
-          const withCompanions = assignCompanionSeats(requested, pool);
+          const withCompanions = assignCompanionSeats(requested, poolSeats);
           if (!withCompanions || withCompanions.length !== seatSlots) {
             throw new Error("COMPANION_SEAT_UNAVAILABLE");
           }
@@ -447,6 +468,7 @@ export async function addToCart(input: {
       } else {
         const all = await tx.eventSeat.findMany({
           where: { eventId: category.eventId, status: "available" },
+          select: seatSelect,
         });
         if (companionFree) {
           const picked = pickBestAvailablePairs(all, input.quantity);
@@ -462,6 +484,7 @@ export async function addToCart(input: {
       // Lock seats — re-check status
       const lockedSeats = await tx.eventSeat.findMany({
         where: { id: { in: seatIdsToHold }, status: "available" },
+        select: { id: true },
       });
       if (lockedSeats.length !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
     }
@@ -512,6 +535,12 @@ export async function addToCart(input: {
     });
   });
 
+  // Prefer read-only reload — never mint a second empty cart after a successful add.
+  const reloaded = await findOpenCart({
+    userId: input.userId,
+    sessionKey: cart.sessionKey,
+  });
+  if (reloaded) return reloaded;
   return getOpenCart({ userId: input.userId, sessionKey: cart.sessionKey });
 }
 
