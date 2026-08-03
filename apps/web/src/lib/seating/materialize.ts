@@ -211,6 +211,7 @@ export async function syncSeatsForVenuePlan(venuePlanId: string) {
 
 /** Release expired seat holds. */
 export async function expireSeatHolds(now = new Date()) {
+  await ensureSeatingAssignmentSchema(prisma);
   const expired = await prisma.eventSeat.findMany({
     where: {
       status: "held",

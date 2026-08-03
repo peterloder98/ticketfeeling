@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { createSecureToken } from "@/lib/crypto-token";
 import { readCartSessionKey, resolveCartSessionKey } from "@/lib/commerce/cart-session";
+import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { Prisma } from "@prisma/client";
 
 const HOLD_MINUTES = 10;
@@ -183,6 +184,8 @@ export async function findOpenCart(opts?: {
   sessionKey?: string | null;
 }): Promise<OpenCart | null> {
   scheduleExpireHolds();
+  // EventSeat include selects category_id — patch DB before Prisma queries seats.
+  await ensureSeatingAssignmentSchema(prisma);
   const org = await getDefaultOrganization();
   if (!org) return null;
 
@@ -227,6 +230,8 @@ export async function getOpenCart(opts?: {
   }
 
   scheduleExpireHolds();
+  // EventSeat include selects category_id — patch DB before Prisma queries seats.
+  await ensureSeatingAssignmentSchema(prisma);
   const org = await getDefaultOrganization();
   if (!org) throw new Error("NO_ORGANIZATION");
   const sessionKey = await resolveCartSessionKey(opts?.sessionKey);

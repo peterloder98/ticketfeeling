@@ -7,6 +7,7 @@ import {
   formatEventDateForSubject,
 } from "@/lib/email/ticket-mail";
 import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
+import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import type { Prisma } from "@prisma/client";
 
 type SeatLike = {
@@ -139,6 +140,7 @@ function feeInvoiceLines(order: {
  * Safe against duplicate webhooks via fulfillmentLockedAt + payment status checks.
  */
 export async function fulfillPaidOrder(orderId: string) {
+  await ensureSeatingAssignmentSchema(prisma);
   return prisma
     .$transaction(
       async (tx) => {

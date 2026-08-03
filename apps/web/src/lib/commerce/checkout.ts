@@ -18,6 +18,7 @@ import {
 import { sepaReservationExpiresAt } from "@/lib/commerce/sepa-availability";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureLegalSchema } from "@/lib/legal/sync-catalog";
+import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 
 export type CheckoutCustomerInput = {
   email: string;
@@ -71,6 +72,8 @@ export async function createOrderFromCart(input: {
   if (!input.customer.acknowledgeNoWithdrawal) throw new Error("WITHDRAWAL_ACK_REQUIRED");
   await ensureSepaPaymentSchema(prisma);
   await ensureLegalSchema(prisma);
+  // Cart loads EventSeat (category_id) — recover if migrate deploy lagged.
+  await ensureSeatingAssignmentSchema(prisma);
   const paymentMethod =
     normalizePaymentMethodKey(String(input.paymentMethod)) ??
     (isPaymentMethodKey(String(input.paymentMethod))
