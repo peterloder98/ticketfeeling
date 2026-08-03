@@ -185,7 +185,12 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
       </div>
 
       {paid ? (
-        <OrderTicketsPanel positions={positions} canForward={Boolean(isOwner || isStaff)} />
+        <OrderTicketsPanel
+          positions={positions}
+          canForward={Boolean(isOwner || isStaff)}
+          ticketPathPrefix="/embed/ticket"
+          accessToken={hasAccessToken ? sp.t! : null}
+        />
       ) : (
         <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-4 text-xs text-[var(--tf-text-secondary)]">
           {processing

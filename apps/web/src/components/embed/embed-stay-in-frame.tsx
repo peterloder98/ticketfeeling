@@ -15,6 +15,7 @@ export function mapPathToEmbed(pathname: string): string | null {
   if (pathname.startsWith("/event/")) return `/embed${pathname}`;
   if (pathname.startsWith("/tour/")) return `/embed${pathname}`;
   if (pathname.startsWith("/bestellung/")) return `/embed${pathname}`;
+  if (pathname.startsWith("/ticket/")) return `/embed${pathname}`;
   if (pathname === "/shop" || pathname.startsWith("/shop/")) {
     return pathname === "/shop" ? "/embed/shop" : `/embed${pathname}`;
   }

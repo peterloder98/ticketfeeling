@@ -233,9 +233,15 @@ function TicketForwardForm({
 export function OrderTicketsPanel({
   positions,
   canForward,
+  /** e.g. "/embed/ticket" to stay inside the iframe shop */
+  ticketPathPrefix = "/ticket",
+  /** Guest order access token — appended as ?t= */
+  accessToken = null,
 }: {
   positions: OrderPositionView[];
   canForward: boolean;
+  ticketPathPrefix?: string;
+  accessToken?: string | null;
 }) {
   const [holders, setHolders] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -376,7 +382,11 @@ export function OrderTicketsPanel({
                       <div className="flex flex-wrap gap-2">
                         {showQr ? (
                           <a
-                            href={`/api/v1/tickets/${ticket.id}/pdf`}
+                            href={
+                              accessToken
+                                ? `/api/v1/tickets/${ticket.id}/pdf?t=${encodeURIComponent(accessToken)}`
+                                : `/api/v1/tickets/${ticket.id}/pdf`
+                            }
                             className="tf-btn tf-btn-primary !min-h-10 text-sm"
                             target="_blank"
                             rel="noreferrer"
@@ -385,7 +395,11 @@ export function OrderTicketsPanel({
                           </a>
                         ) : null}
                         <Link
-                          href={`/ticket/${ticket.id}`}
+                          href={
+                            accessToken
+                              ? `${ticketPathPrefix}/${ticket.id}?t=${encodeURIComponent(accessToken)}`
+                              : `${ticketPathPrefix}/${ticket.id}`
+                          }
                           className="tf-btn tf-btn-secondary !min-h-10 text-sm"
                         >
                           Ticket öffnen

@@ -5,16 +5,15 @@ import { prisma } from "@/lib/db";
 import { renderTicketPdf } from "@/lib/commerce/ticket-pdf";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketParty } from "@/lib/tickets/access";
+import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 
 type Params = { params: Promise<{ ticketId: string }> };
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
-  }
-
   const { ticketId } = await params;
+  const accessToken = new URL(request.url).searchParams.get("t");
+
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     include: { holder: true, order: { include: { customer: true } } },
@@ -24,31 +23,42 @@ export async function GET(_request: Request, { params }: Params) {
   }
 
   let isStaff = false;
-  const membership = await getDefaultOrganizationForUser(session.user.id);
-  if (membership?.organizationId === ticket.organizationId) {
-    isStaff =
-      (await userHasPermission(session.user.id, membership.organizationId, "events:read")) ||
-      (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell"));
+  if (session?.user) {
+    const membership = await getDefaultOrganizationForUser(session.user.id);
+    if (membership?.organizationId === ticket.organizationId) {
+      isStaff =
+        (await userHasPermission(session.user.id, membership.organizationId, "events:read")) ||
+        (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell"));
+    }
   }
 
-  const canViewOrder = isTicketParty({
-    sessionUserId: session.user.id,
-    sessionEmail: session.user.email,
-    holder: ticket.holder,
-    orderCustomer: ticket.order.customer,
-  });
-  if (!isStaff && !canViewOrder) {
+  const hasAccessToken = verifyOrderAccessToken(ticket.orderId, accessToken);
+  const canViewOrder =
+    Boolean(session?.user) &&
+    isTicketParty({
+      sessionUserId: session!.user!.id,
+      sessionEmail: session!.user!.email,
+      holder: ticket.holder,
+      orderCustomer: ticket.order.customer,
+    });
+  if (!isStaff && !canViewOrder && !hasAccessToken) {
     return NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 });
   }
 
+  const transferred =
+    ticket.holderCustomerId != null && ticket.holderCustomerId !== ticket.order.customerId;
+
   // After forwarding: only current holder (or staff) may download the entry PDF.
   const canEntry = canUseTicketEntry({
-    sessionUserId: session.user.id,
-    sessionEmail: session.user.email,
+    sessionUserId: session?.user?.id,
+    sessionEmail: session?.user?.email,
     holder: ticket.holder,
     isStaff,
   });
-  if (!canEntry) {
+  if (!isStaff && transferred && !canEntry) {
+    return NextResponse.json({ error: { code: "TICKET_TRANSFERRED" } }, { status: 403 });
+  }
+  if (!isStaff && !hasAccessToken && !canEntry) {
     return NextResponse.json({ error: { code: "TICKET_TRANSFERRED" } }, { status: 403 });
   }
 
