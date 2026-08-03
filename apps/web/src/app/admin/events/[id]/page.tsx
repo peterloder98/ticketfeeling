@@ -229,10 +229,10 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               Nächster Schritt: Saalplan zuordnen
             </p>
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-              {unassignedSeatCount} Plätze ohne Kategorie
+              {unassignedSeatCount} Plätze ohne Kategorie — weiter unten unter „Saalplan-Zuordnung“
               {seatingCategories.length === 1
-                ? ` — mit einer Kategorie wird der ganze Plan automatisch zugewiesen (oder per Klick unten).`
-                : " — Kategorie wählen und Block antippen."}
+                ? `. Mit einer Kategorie wird der ganze Plan automatisch zugewiesen.`
+                : ". Kategorie wählen und Block antippen."}
             </p>
             <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
               Jetzt zuordnen

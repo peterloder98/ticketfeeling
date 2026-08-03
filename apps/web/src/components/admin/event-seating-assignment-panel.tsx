@@ -230,7 +230,7 @@ export function EventSeatingAssignmentPanel({
 
   if (loading) {
     return (
-      <section id="zuordnung" className="tf-card !p-5">
+      <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">Wird geladen…</p>
       </section>
@@ -239,7 +239,7 @@ export function EventSeatingAssignmentPanel({
 
   if (!enabled) {
     return (
-      <section id="zuordnung" className="tf-card !p-5">
+      <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
           Zuerst einen Saalplan mit nummerierten Sitzblöcken zuweisen und den Sitzplatzmodus
@@ -251,7 +251,7 @@ export function EventSeatingAssignmentPanel({
 
   if (seatingCategories.length === 0) {
     return (
-      <section id="zuordnung" className="tf-card !p-5">
+      <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
           Lege zuerst Ticketkategorien mit fester Platzwahl an (nicht Stehplatz / freie Platzwahl).
@@ -273,13 +273,18 @@ export function EventSeatingAssignmentPanel({
   const toS = (cm: number) => cm * scale;
 
   return (
-    <section id="zuordnung" className="tf-card !p-5">
+    <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+            Nach den Ticketkategorien
+          </p>
+          <h2 className="mt-1 text-lg font-semibold text-[var(--tf-navy)]">
+            Saalplan-Zuordnung
+          </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             {unassignedCount > 0
-              ? "Damit der Verkauf startet: Plätze den Ticketkategorien zuordnen."
+              ? "Hier werden Plätze den Ticketkategorien zugeordnet — nicht im Saalplan-Editor."
               : "Alle Plätze sind zugeordnet — du kannst bei Bedarf nachjustieren."}
           </p>
         </div>
@@ -456,8 +461,9 @@ export function EventSeatingAssignmentPanel({
                   />
                   <text
                     x={toX(obj.xCm)}
-                    y={toY(obj.yCm) - toS(obj.heightCm) / 2 - 8}
+                    y={toY(obj.yCm) - toS(obj.heightCm) / 2 - 3}
                     textAnchor="middle"
+                    dominantBaseline="auto"
                     style={{ fontSize: 11, fontWeight: 700, fill: "#0F2747" }}
                   >
                     {obj.label || "Stehbereich"}
@@ -480,8 +486,9 @@ export function EventSeatingAssignmentPanel({
                     />
                     <text
                       x={toX(obj.xCm)}
-                      y={toY(obj.yCm) - toS(obj.heightCm) / 2 - 8}
+                      y={toY(obj.yCm) - toS(obj.heightCm) / 2 - 3}
                       textAnchor="middle"
+                      dominantBaseline="auto"
                       style={{ fontSize: 11, fontWeight: 700, fill: "#0F2747" }}
                     >
                       {obj.label || "Block"} · freie Platzwahl
@@ -519,8 +526,9 @@ export function EventSeatingAssignmentPanel({
                 />
                 <text
                   x={toX(obj.xCm)}
-                  y={top - 8}
+                  y={top - 3}
                   textAnchor="middle"
+                  dominantBaseline="auto"
                   style={{ fontSize: 11, fontWeight: 700, fill: "#0F2747", pointerEvents: "none" }}
                 >
                   {obj.label || "Block"}

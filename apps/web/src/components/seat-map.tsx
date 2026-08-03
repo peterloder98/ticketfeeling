@@ -251,8 +251,9 @@ export function SeatMap({
                 />
                 <text
                   x={toX(block.xCm)}
-                  y={top - 8}
+                  y={top - 3}
                   textAnchor="middle"
+                  dominantBaseline="auto"
                   style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
                 >
                   {block.label}

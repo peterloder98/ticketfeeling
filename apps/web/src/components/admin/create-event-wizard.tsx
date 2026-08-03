@@ -16,6 +16,12 @@ import {
 } from "@/app/admin/saalplan/actions";
 import { CREATE_EVENT_STATUSES, slugify } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  filterPostalCodeInput,
+  filterStreetNameInput,
+} from "@/lib/commerce/address";
 import { formatEuroFromCents } from "@/lib/money";
 import type { VenuePlanObject } from "@/lib/saalplan/types";
 
@@ -141,8 +147,10 @@ export function CreateEventWizard({
   const [seatingBookingMode, setSeatingBookingMode] = useState("none");
   const [newLocName, setNewLocName] = useState("");
   const [newLocStreet, setNewLocStreet] = useState("");
+  const [newLocStreetHint, setNewLocStreetHint] = useState<string | null>(null);
   const [newLocHouse, setNewLocHouse] = useState("");
   const [newLocZip, setNewLocZip] = useState("");
+  const [newLocZipHint, setNewLocZipHint] = useState<string | null>(null);
   const [newLocCity, setNewLocCity] = useState("");
   const [newLocCountry, setNewLocCountry] = useState("DE");
   const [newLocPhone, setNewLocPhone] = useState("");
@@ -1007,8 +1015,16 @@ export function CreateEventWizard({
                   name="newLocationStreet"
                   className="tf-input"
                   value={newLocStreet}
-                  onChange={(e) => setNewLocStreet(e.target.value)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const filtered = filterStreetNameInput(raw);
+                    setNewLocStreet(filtered);
+                    setNewLocStreetHint(raw !== filtered ? STREET_NO_NUMBERS_MESSAGE : null);
+                  }}
                 />
+                {newLocStreetHint ? (
+                  <span className="text-xs text-[var(--danger)]">{newLocStreetHint}</span>
+                ) : null}
               </label>
               <label className="grid gap-1 xl:col-span-4">
                 <span className="font-medium">Hausnr.</span>
@@ -1024,9 +1040,20 @@ export function CreateEventWizard({
                 <input
                   name="newLocationPostalCode"
                   className="tf-input"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={5}
                   value={newLocZip}
-                  onChange={(e) => setNewLocZip(e.target.value)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const filtered = filterPostalCodeInput(raw);
+                    setNewLocZip(filtered);
+                    setNewLocZipHint(raw !== filtered ? POSTAL_CODE_DIGITS_ONLY_MESSAGE : null);
+                  }}
                 />
+                {newLocZipHint ? (
+                  <span className="text-xs text-[var(--danger)]">{newLocZipHint}</span>
+                ) : null}
               </label>
               <label className="grid gap-1 xl:col-span-5">
                 <span className="font-medium">Stadt</span>
@@ -1501,8 +1528,10 @@ export function CreateEventWizard({
                 setSeatingBookingMode("none");
                 setNewLocName("");
                 setNewLocStreet("");
+                setNewLocStreetHint(null);
                 setNewLocHouse("");
                 setNewLocZip("");
+                setNewLocZipHint(null);
                 setNewLocCity("");
                 setNewLocCountry("DE");
                 setNewLocPhone("");

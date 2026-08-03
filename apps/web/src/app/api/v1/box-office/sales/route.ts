@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { createBoxOfficeSale } from "@/lib/commerce/box-office";
 import { assertCanSellBoxOfficeEvent } from "@/lib/commerce/box-office-access";
-import { STREET_NO_NUMBERS_MESSAGE, optionalStreetNameSchema } from "@/lib/commerce/address";
+import { STREET_NO_NUMBERS_MESSAGE, POSTAL_CODE_DIGITS_ONLY_MESSAGE, optionalStreetNameSchema, optionalPostalCodeSchema } from "@/lib/commerce/address";
 
 const itemSchema = z.object({
   categoryId: z.string().uuid(),
@@ -26,7 +26,7 @@ const schema = z
     customerLastName: z.string().max(80).optional(),
     customerStreet: optionalStreetNameSchema,
     customerHouseNumber: z.string().max(20).optional(),
-    customerPostalCode: z.string().max(20).optional(),
+    customerPostalCode: optionalPostalCodeSchema.or(z.literal("")),
     customerCity: z.string().max(80).optional(),
   })
   .superRefine((val, ctx) => {
@@ -97,6 +97,13 @@ export async function POST(request: Request) {
       if (streetIssue) {
         return NextResponse.json(
           { error: { code: "STREET_NO_NUMBERS", message: STREET_NO_NUMBERS_MESSAGE } },
+          { status: 400 },
+        );
+      }
+      const postalIssue = error.issues.find((i) => i.message === "POSTAL_CODE_INVALID");
+      if (postalIssue) {
+        return NextResponse.json(
+          { error: { code: "POSTAL_CODE_INVALID", message: POSTAL_CODE_DIGITS_ONLY_MESSAGE } },
           { status: 400 },
         );
       }

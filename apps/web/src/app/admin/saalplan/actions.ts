@@ -8,7 +8,14 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { parseVenuePlanObjects, metersToCm } from "@/lib/saalplan/types";
+import { parsePlanCategorySlots } from "@/lib/saalplan/category-slots";
 import { createStage } from "@/lib/saalplan/snap";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  streetContainsDigits,
+  postalCodeContainsNonDigits,
+} from "@/lib/commerce/address";
 
 async function requireLocationsWrite() {
   const session = await getServerSession(authOptions);
@@ -85,6 +92,7 @@ export type WizardPlanPrepareResult = {
   widthCm: number;
   depthCm: number;
   objects: ReturnType<typeof parseVenuePlanObjects>;
+  categorySlots: ReturnType<typeof parsePlanCategorySlots>;
   seatCapacity: number;
   sizeLabel: string;
 };
@@ -121,9 +129,21 @@ export async function prepareWizardLocationPlanAction(
         organizationId: membership.organizationId,
         name: locName,
         slug: locSlug,
-        street: String(formData.get("newLocationStreet") ?? "").trim() || null,
+        street: (() => {
+          const street = String(formData.get("newLocationStreet") ?? "").trim() || null;
+          if (street && streetContainsDigits(street)) {
+            throw new Error(STREET_NO_NUMBERS_MESSAGE);
+          }
+          return street;
+        })(),
         houseNumber: String(formData.get("newLocationHouseNumber") ?? "").trim() || null,
-        postalCode: String(formData.get("newLocationPostalCode") ?? "").trim() || null,
+        postalCode: (() => {
+          const postal = String(formData.get("newLocationPostalCode") ?? "").trim() || null;
+          if (postal && (postalCodeContainsNonDigits(postal) || !/^\d{4,5}$/.test(postal))) {
+            throw new Error(POSTAL_CODE_DIGITS_ONLY_MESSAGE);
+          }
+          return postal;
+        })(),
         city: String(formData.get("newLocationCity") ?? "").trim() || null,
         country: String(formData.get("newLocationCountry") ?? "DE").trim() || "DE",
         phone: String(formData.get("newLocationPhone") ?? "").trim() || null,
@@ -156,6 +176,9 @@ export async function prepareWizardLocationPlanAction(
   });
 
   const objects = parseVenuePlanObjects(plan.objects);
+  const categorySlots = parsePlanCategorySlots(
+    (plan as { categorySlots?: unknown }).categorySlots,
+  );
   revalidatePath(`/admin/locations/${locationId}`);
 
   return {
@@ -167,6 +190,7 @@ export async function prepareWizardLocationPlanAction(
     widthCm: plan.widthCm,
     depthCm: plan.depthCm,
     objects,
+    categorySlots,
     seatCapacity: planSeatCapacity(objects),
     sizeLabel: `${cmToMetersLabel(plan.widthCm)} × ${cmToMetersLabel(plan.depthCm)}`,
   };
@@ -187,6 +211,15 @@ export async function saveVenuePlanAction(formData: FormData) {
       }
     })(),
   );
+  const categorySlots = parsePlanCategorySlots(
+    (() => {
+      try {
+        return JSON.parse(String(formData.get("categorySlots") ?? "[]"));
+      } catch {
+        return [];
+      }
+    })(),
+  );
 
   const plan = await prisma.venuePlan.findFirst({
     where: { id: planId, organizationId: membership.organizationId },
@@ -200,16 +233,18 @@ export async function saveVenuePlanAction(formData: FormData) {
       widthCm,
       depthCm,
       objects: objects as Prisma.InputJsonValue,
+      categorySlots: categorySlots as Prisma.InputJsonValue,
       version: { increment: 1 },
     },
   });
 
-  // Keep event seat inventory in sync with the edited plan
+  // Keep event seat inventory + plan category mapping in sync
   const { syncSeatsForVenuePlan } = await import("@/lib/seating/materialize");
   await syncSeatsForVenuePlan(plan.id);
 
   revalidatePath(`/admin/saalplan/${plan.id}`);
   revalidatePath(`/admin/locations/${plan.locationId}`);
+  revalidatePath("/admin/events");
 }
 
 async function deleteVenuePlanRecord(input: {

@@ -6,8 +6,11 @@ import { createOrderFromCart } from "@/lib/commerce/checkout";
 import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
 import {
   STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  optionalPostalCodeSchema,
   optionalStreetNameSchema,
   streetNameSchema,
+  germanPostalCodeSchema,
 } from "@/lib/commerce/address";
 import {
   signOrderAccessToken,
@@ -39,7 +42,7 @@ const schema = z
     birthDate: z.string().optional(),
     street: optionalStreetNameSchema.or(z.literal("")),
     houseNumber: z.string().optional().default(""),
-    postalCode: z.string().optional().default(""),
+    postalCode: optionalPostalCodeSchema.or(z.literal("")),
     city: z.string().optional().default(""),
     country: z.string().optional(),
     phone: z.string().optional(),
@@ -72,7 +75,15 @@ const schema = z
           message: msg === "STREET_NO_NUMBERS" ? "STREET_NO_NUMBERS" : "INVOICE_FIELDS_REQUIRED",
         });
       }
-      if (!data.houseNumber?.trim() || !/^\d{4,5}$/.test(data.postalCode?.trim() ?? "") || !data.city?.trim()) {
+      const postalCheck = germanPostalCodeSchema.safeParse(data.postalCode ?? "");
+      if (!postalCheck.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["postalCode"],
+          message: "POSTAL_CODE_INVALID",
+        });
+      }
+      if (!data.houseNumber?.trim() || !data.city?.trim()) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["invoiceRequested"],
@@ -91,6 +102,12 @@ const schema = z
         code: z.ZodIssueCode.custom,
         path: ["street"],
         message: "STREET_NO_NUMBERS",
+      });
+    } else if (data.postalCode?.trim() && !/^\d{4,5}$/.test(data.postalCode.trim())) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["postalCode"],
+        message: "POSTAL_CODE_INVALID",
       });
     }
   });
@@ -183,6 +200,15 @@ export async function POST(request: Request) {
       if (streetIssue?.message === "STREET_NO_NUMBERS") {
         return NextResponse.json(
           { error: { code: "STREET_NO_NUMBERS", message: STREET_NO_NUMBERS_MESSAGE } },
+          { status: 400 },
+        );
+      }
+      const postalIssue = error.issues.find(
+        (i) => i.path[0] === "postalCode" || i.message === "POSTAL_CODE_INVALID",
+      );
+      if (postalIssue?.message === "POSTAL_CODE_INVALID") {
+        return NextResponse.json(
+          { error: { code: "POSTAL_CODE_INVALID", message: POSTAL_CODE_DIGITS_ONLY_MESSAGE } },
           { status: 400 },
         );
       }

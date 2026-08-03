@@ -7,6 +7,9 @@ import { computePlatformFeeGrossCents } from "@/lib/commerce/platform-fee";
 import { formatFeePercentageLabel } from "@/lib/commerce/public-price";
 import { Minus, Plus, ArrowLeft, Check } from "lucide-react";
 import {
+  STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  filterPostalCodeInput,
   filterStreetNameInput,
 } from "@/lib/commerce/address";
 
@@ -63,8 +66,10 @@ export function BoxOfficeForm({
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [street, setStreet] = useState("");
+  const [streetHint, setStreetHint] = useState<string | null>(null);
   const [houseNumber, setHouseNumber] = useState("");
   const [postalCode, setPostalCode] = useState("");
+  const [postalHint, setPostalHint] = useState<string | null>(null);
   const [city, setCity] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -407,7 +412,12 @@ export function BoxOfficeForm({
                   <input
                     className="tf-input"
                     value={street}
-                    onChange={(e) => setStreet(filterStreetNameInput(e.target.value))}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const filtered = filterStreetNameInput(raw);
+                      setStreet(filtered);
+                      setStreetHint(raw !== filtered ? STREET_NO_NUMBERS_MESSAGE : null);
+                    }}
                     placeholder="Straße ohne Hausnummer"
                   />
                   <input
@@ -417,14 +427,29 @@ export function BoxOfficeForm({
                     placeholder="Nr."
                   />
                 </div>
+                {streetHint ? (
+                  <span className="text-xs text-[var(--danger)]">{streetHint}</span>
+                ) : null}
               </label>
               <label className="grid gap-1 text-sm">
                 <span className="font-medium">PLZ</span>
                 <input
                   className="tf-input"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={5}
                   value={postalCode}
-                  onChange={(e) => setPostalCode(e.target.value)}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const filtered = filterPostalCodeInput(raw);
+                    setPostalCode(filtered);
+                    setPostalHint(raw !== filtered ? POSTAL_CODE_DIGITS_ONLY_MESSAGE : null);
+                  }}
+                  placeholder="12345"
                 />
+                {postalHint ? (
+                  <span className="text-xs text-[var(--danger)]">{postalHint}</span>
+                ) : null}
               </label>
               <label className="grid gap-1 text-sm">
                 <span className="font-medium">Ort</span>

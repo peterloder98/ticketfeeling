@@ -7,6 +7,8 @@ import { CountrySelect } from "@/components/country-select";
 import { PhoneInput } from "@/components/phone-input";
 import {
   STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  filterPostalCodeInput,
   filterStreetNameInput,
 } from "@/lib/commerce/address";
 
@@ -40,6 +42,8 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
   const [pending, startTransition] = useTransition();
   const [street, setStreet] = useState(customer.street ?? "");
   const [streetHint, setStreetHint] = useState<string | null>(null);
+  const [postalCode, setPostalCode] = useState(customer.postalCode ?? "");
+  const [postalHint, setPostalHint] = useState<string | null>(null);
 
   if (!canEdit) {
     return (
@@ -135,7 +139,21 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
       </label>
       <label className="grid gap-1">
         <span className="text-[var(--muted)]">PLZ</span>
-        <input name="postalCode" defaultValue={customer.postalCode ?? ""} className="tf-input" />
+        <input
+          name="postalCode"
+          inputMode="numeric"
+          pattern="[0-9]*"
+          maxLength={5}
+          value={postalCode}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const filtered = filterPostalCodeInput(raw);
+            setPostalCode(filtered);
+            setPostalHint(raw !== filtered ? POSTAL_CODE_DIGITS_ONLY_MESSAGE : null);
+          }}
+          className="tf-input"
+        />
+        {postalHint ? <p className="text-xs text-[var(--danger)]">{postalHint}</p> : null}
       </label>
       <label className="grid gap-1">
         <span className="text-[var(--muted)]">Ort</span>

@@ -7,7 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { STREET_NO_NUMBERS_MESSAGE, streetContainsDigits } from "@/lib/commerce/address";
+import { STREET_NO_NUMBERS_MESSAGE, POSTAL_CODE_DIGITS_ONLY_MESSAGE, streetContainsDigits, postalCodeContainsNonDigits } from "@/lib/commerce/address";
 
 async function requireCustomerWrite() {
   const session = await getServerSession(authOptions);
@@ -48,6 +48,9 @@ export async function updateCustomerAction(formData: FormData) {
   }
   const houseNumber = emptyToNull(formData.get("houseNumber"));
   const postalCode = emptyToNull(formData.get("postalCode"));
+  if (postalCode && (postalCodeContainsNonDigits(postalCode) || !/^\d{4,5}$/.test(postalCode))) {
+    throw new Error(POSTAL_CODE_DIGITS_ONLY_MESSAGE);
+  }
   const city = emptyToNull(formData.get("city"));
   const country = String(formData.get("country") ?? "").trim() || existing.country || "DE";
   const gender = emptyToNull(formData.get("gender"));

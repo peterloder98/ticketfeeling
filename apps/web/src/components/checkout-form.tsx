@@ -12,6 +12,8 @@ import { cartFetch } from "@/lib/commerce/cart-client";
 import type { CheckoutPaymentOption, PaymentMethodKey } from "@/lib/commerce/payment-fees";
 import {
   STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  filterPostalCodeInput,
   filterStreetNameInput,
   streetContainsDigits,
 } from "@/lib/commerce/address";
@@ -64,6 +66,8 @@ function checkoutErrorMessage(code: string) {
       return "Bitte die rot markierten Felder ausfüllen.";
     case "STREET_NO_NUMBERS":
       return STREET_NO_NUMBERS_MESSAGE;
+    case "POSTAL_CODE_INVALID":
+      return POSTAL_CODE_DIGITS_ONLY_MESSAGE;
     case "INVOICE_COMPANY_REQUIRED":
       return "Bitte den Firmennamen für die Rechnung angeben.";
     case "INVOICE_FIELDS_REQUIRED":
@@ -635,11 +639,16 @@ export function CheckoutForm({
                 autoComplete="postal-code"
                 value={postalCode}
                 onChange={(e) => {
-                  setPostalCode(e.target.value.replace(/\D/g, "").slice(0, 5));
+                  setPostalCode(filterPostalCodeInput(e.target.value));
                   setCityAuto(false);
                   clearFieldError("postalCode");
                 }}
               />
+              {fieldErrors.postalCode ? (
+                <p className="mt-1 text-xs text-[var(--danger)]">
+                  {POSTAL_CODE_DIGITS_ONLY_MESSAGE}
+                </p>
+              ) : null}
             </div>
             <div>
               <label className="tf-label" htmlFor="city">

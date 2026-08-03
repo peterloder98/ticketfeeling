@@ -16,6 +16,12 @@ import {
 import { allocateUniqueEventSlug } from "@/lib/admin/unique-event-slug";
 import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  POSTAL_CODE_DIGITS_ONLY_MESSAGE,
+  streetContainsDigits,
+  postalCodeContainsNonDigits,
+} from "@/lib/commerce/address";
 
 async function requireEventWrite() {
   const session = await getServerSession(authOptions);
@@ -233,9 +239,21 @@ export async function createEventAction(formData: FormData) {
           organizationId: membership.organizationId,
           name: locName,
           slug: locSlug,
-          street: String(formData.get("newLocationStreet") ?? "").trim() || null,
+          street: (() => {
+            const street = String(formData.get("newLocationStreet") ?? "").trim() || null;
+            if (street && streetContainsDigits(street)) {
+              throw new Error(STREET_NO_NUMBERS_MESSAGE);
+            }
+            return street;
+          })(),
           houseNumber: String(formData.get("newLocationHouseNumber") ?? "").trim() || null,
-          postalCode: String(formData.get("newLocationPostalCode") ?? "").trim() || null,
+          postalCode: (() => {
+            const postal = String(formData.get("newLocationPostalCode") ?? "").trim() || null;
+            if (postal && (postalCodeContainsNonDigits(postal) || !/^\d{4,5}$/.test(postal))) {
+              throw new Error(POSTAL_CODE_DIGITS_ONLY_MESSAGE);
+            }
+            return postal;
+          })(),
           city: String(formData.get("newLocationCity") ?? "").trim() || null,
           country: String(formData.get("newLocationCountry") ?? "DE").trim() || "DE",
           phone: String(formData.get("newLocationPhone") ?? "").trim() || null,

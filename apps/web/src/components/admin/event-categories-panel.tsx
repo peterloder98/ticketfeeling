@@ -509,6 +509,13 @@ export function EventCategoriesPanel({
           verkauft wurden).
         </p>
       ) : null}
+
+      <p className="text-sm text-[var(--tf-text-secondary)]">
+        Plätze den Kategorien zuweisen?{" "}
+        <a href="#zuordnung" className="font-semibold text-[var(--tf-teal)] hover:underline">
+          Zur Saalplan-Zuordnung
+        </a>
+      </p>
     </section>
   );
 }
