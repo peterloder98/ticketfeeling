@@ -137,26 +137,12 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
         />
       </div>
 
-      {!voided ? (
-        <div id="storno">
-          <BoxOfficeTicketVoidPanel
-            orderId={order.id}
-            voided={voided}
-            tickets={order.tickets.map((t) => ({
-              id: t.id,
-              ticketNumber: t.ticketNumber,
-              categorySnapshot: t.categorySnapshot,
-              status: t.status,
-              presence: t.presence,
-              seatLabel: t.seatLabel,
-            }))}
-          />
-        </div>
-      ) : null}
-
       <div
         className={`rounded-2xl border border-[var(--tf-line)] bg-white p-5 space-y-3 ${voided ? "line-through" : ""}`}
       >
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+          Zusammenfassung
+        </p>
         {order.items.map((item) => (
           <div key={item.id} className="flex justify-between gap-4 text-sm">
             <div>
@@ -203,39 +189,63 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
       </div>
 
       {!voided ? (
-        <div className="space-y-3">
-          <h2 className="text-xl font-semibold text-[var(--tf-navy)]">Tickets mit QR</h2>
-          {order.tickets
-            .filter((t) => t.status !== "voided")
-            .map((ticket) => (
-              <div key={ticket.id} className="tf-card space-y-3">
-                <div className="flex justify-between gap-2 text-sm">
-                  <span className="font-mono">{ticket.ticketNumber}</span>
-                  <span className="text-[var(--tf-text-secondary)]">
-                    {ticket.categorySnapshot}
-                    {ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""}
-                  </span>
-                </div>
-                <TicketQrImage
-                  key={ticket.qrTokens[0]?.token ?? ticket.id}
-                  token={ticket.qrTokens[0]?.token ?? ""}
-                  size={200}
-                />
-                <Link
-                  href={`/ticket/${ticket.id}`}
-                  className="text-sm text-[var(--tf-teal)] underline"
-                >
-                  Ticketansicht öffnen
-                </Link>
+        <>
+          {order.tickets.length === 0 ? (
+            <div className="rounded-2xl border border-[rgba(220,38,38,0.35)] bg-[rgba(220,38,38,0.06)] p-5 text-sm text-[var(--danger)]">
+              Keine Einzel-Tickets erzeugt — Einzelstorno ist erst möglich, wenn Tickets
+              vorhanden sind. Bitte den Verkauf erneut buchen oder Support prüfen.
+            </div>
+          ) : (
+            <div id="storno" className="space-y-3">
+              <h2 className="text-xl font-semibold text-[var(--tf-navy)]">
+                Einzelne Tickets ({order.tickets.filter((t) => t.status !== "voided").length})
+              </h2>
+              <p className="text-sm text-[var(--tf-text-secondary)]">
+                Jede Karte einzeln — stornieren Sie nur die, die zurückgehen sollen. Der Rest bleibt
+                gültig.
+              </p>
+              <BoxOfficeTicketVoidPanel
+                orderId={order.id}
+                voided={voided}
+                tickets={order.tickets.map((t) => ({
+                  id: t.id,
+                  ticketNumber: t.ticketNumber,
+                  categorySnapshot: t.categorySnapshot,
+                  status: t.status,
+                  presence: t.presence,
+                  seatLabel: t.seatLabel,
+                }))}
+              />
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold text-[var(--tf-navy)]">QR-Codes</h3>
+                {order.tickets
+                  .filter((t) => t.status !== "voided")
+                  .map((ticket) => (
+                    <div key={ticket.id} className="tf-card space-y-3">
+                      <div className="flex justify-between gap-2 text-sm">
+                        <span className="font-mono">{ticket.ticketNumber}</span>
+                        <span className="text-[var(--tf-text-secondary)]">
+                          {ticket.categorySnapshot}
+                          {ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""}
+                        </span>
+                      </div>
+                      <TicketQrImage
+                        key={ticket.qrTokens[0]?.token ?? ticket.id}
+                        token={ticket.qrTokens[0]?.token ?? ""}
+                        size={200}
+                      />
+                      <Link
+                        href={`/ticket/${ticket.id}`}
+                        className="text-sm text-[var(--tf-teal)] underline"
+                      >
+                        Ticketansicht öffnen
+                      </Link>
+                    </div>
+                  ))}
               </div>
-            ))}
-          {order.tickets.some((t) => t.status === "voided") ? (
-            <p className="text-sm text-[var(--tf-text-secondary)]">
-              {order.tickets.filter((t) => t.status === "voided").length} Ticket(s) bereits
-              storniert.
-            </p>
-          ) : null}
-        </div>
+            </div>
+          )}
+        </>
       ) : (
         <p className="text-sm text-[var(--danger)]">
           Tickets entwertet — QR-Codes widerrufen, kein Einlass möglich.
@@ -261,6 +271,11 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
         >
           Zur Übersicht
         </Link>
+        {!voided && order.tickets.length > 0 ? (
+          <Link href={`#storno`} className="tf-btn tf-btn-secondary">
+            Einzelstorno
+          </Link>
+        ) : null}
       </div>
     </div>
   );

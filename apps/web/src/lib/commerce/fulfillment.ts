@@ -605,6 +605,9 @@ export async function fulfillPaidOrder(orderId: string) {
 
         const mail = buildOrderPaidTicketsMail({
           firstName: fresh.customer.firstName,
+          lastName: fresh.customer.lastName,
+          gender: fresh.customer.gender,
+          salutation: fresh.customer.salutation,
           eventName,
           whenLabel,
           eventDateLabel,
@@ -639,17 +642,38 @@ export async function fulfillPaidOrder(orderId: string) {
         if (sendResult.attachments < 1) {
           console.error("[fulfillment] ticket mail sent without PDF attachments", fresh.id);
         }
-        await prisma.order.update({
-          where: { id: fresh.id },
-          data: {
-            ticketSentAt: new Date(),
-            deliveryEmailedAt: new Date(),
-            deliveryStatus:
-              fresh.deliveryStatus === "printed" || fresh.deliveryStatus === "both"
-                ? "both"
-                : "emailed",
-          },
-        });
+        // Only mark emailed when SMTP actually accepted the message (not stub).
+        if (sendResult.provider === "smtp") {
+          await prisma.order.update({
+            where: { id: fresh.id },
+            data: {
+              ticketSentAt: new Date(),
+              deliveryEmailedAt: new Date(),
+              deliveryStatus:
+                fresh.deliveryStatus === "printed" || fresh.deliveryStatus === "both"
+                  ? "both"
+                  : "emailed",
+            },
+          });
+        } else {
+          console.error(
+            "[fulfillment] ticket mail NOT delivered (smtp missing or skipped)",
+            fresh.id,
+            sendResult.provider,
+            "reason" in sendResult ? sendResult.reason : "",
+          );
+          await writeAudit({
+            organizationId: fresh.organizationId,
+            action: "email.ticket_not_delivered",
+            entityType: "order",
+            entityId: fresh.id,
+            after: {
+              to: fresh.customer.email,
+              provider: sendResult.provider,
+              reason: "reason" in sendResult ? sendResult.reason : null,
+            },
+          });
+        }
       }
       if (result.invoice?.id) {
         const sync = await lexwareStubProvider.createInvoice({ invoiceId: result.invoice.id });

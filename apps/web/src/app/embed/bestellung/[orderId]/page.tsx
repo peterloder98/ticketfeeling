@@ -8,6 +8,7 @@ import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-ti
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
+import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tickets" };
@@ -66,7 +67,10 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
     order.paymentStatus === "processing" ||
     (Boolean(hasAccessToken) && sp.processing === "1" && !reallyPaid);
   const paid = reallyPaid && !processing;
-  const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
+  const eventName = order.items[0]?.eventNameSnapshot ?? "dieses Event";
+  const greeting = formalGermanGreeting(order.customer);
+  const emailSent = Boolean(order.ticketSentAt);
+  const hasRealEmail = !order.customer.email.includes("@ticketfeeling.local");
 
   const ticketsByItem = new Map<string, typeof order.tickets>();
   for (const ticket of order.tickets) {
@@ -147,18 +151,37 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
         </p>
         <h1 className="mt-1 text-lg font-bold text-[var(--tf-navy)]">
           {paid
-            ? "Tickets bereit"
+            ? `${greeting},`
             : processing
               ? "Deine Zahlung wird verarbeitet"
               : `Bestellung ${order.orderNumber}`}
         </h1>
-        <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-          {paid
-            ? `${eventName} · ${formatEuroFromCents(order.customerTotalCents || order.grossCents)}`
-            : processing
+        {paid ? (
+          <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+            <p>
+              vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei{" "}
+              <strong className="text-[var(--tf-navy)]">{eventName}</strong> dabei sind.
+            </p>
+            <p>
+              Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass
+              {emailSent
+                ? " — zusätzlich senden wir Ihnen die Tickets per E-Mail als PDF."
+                : hasRealEmail
+                  ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (SMTP in den Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
+                  : "."}
+            </p>
+            <p className="text-[11px] text-[var(--tf-text-secondary)]">
+              Bestellung {order.orderNumber} ·{" "}
+              {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+            {processing
               ? "Lastschrift eingereicht — Ticket kommt nach Zahlungsbestätigung per E-Mail."
               : "Zahlung ausstehend."}
-        </p>
+          </p>
+        )}
       </div>
 
       {paid ? (
