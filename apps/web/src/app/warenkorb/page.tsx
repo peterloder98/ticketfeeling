@@ -7,6 +7,7 @@ import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
 import { CartRemoveButton } from "@/components/cart-remove-button";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
+import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Warenkorb" };
@@ -41,7 +42,14 @@ export default async function CartPage() {
               <p className="font-semibold text-[var(--tf-navy)]">
                 {item.quantity}× {item.category.name}
               </p>
-              <p className="text-sm text-[var(--tf-text-secondary)]">{item.category.event.name}</p>
+              <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
+                {item.category.event.name}
+              </p>
+              <CartItemEventMeta
+                eventStartsAt={item.category.event.eventStartsAt}
+                locationName={item.category.event.location?.name}
+                locationCity={item.category.event.location?.city}
+              />
               {item.category.categoryKind === "wheelchair" && item.category.companionFree ? (
                 <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
                   Inkl. Begleitperson kostenfrei

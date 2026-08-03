@@ -6,6 +6,7 @@ import { cartFetch } from "@/lib/commerce/cart-client";
 import { formatEuroFromCents } from "@/lib/money";
 import { CartRemoveButton } from "@/components/cart-remove-button";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
+import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { useCart } from "@/components/cart-context";
 
@@ -16,6 +17,9 @@ type CartItem = {
   categoryName: string;
   eventName: string;
   eventSlug: string;
+  eventStartsAt?: string | Date | null;
+  locationName?: string | null;
+  locationCity?: string | null;
   seats?: Array<{
     id: string;
     blockLabel: string | null;
@@ -136,7 +140,12 @@ export function EmbedCartView() {
                 <p className="font-semibold text-[var(--tf-navy)]">
                   {item.quantity}× {item.categoryName}
                 </p>
-                <p className="text-xs text-[var(--tf-text-secondary)]">{item.eventName}</p>
+                <p className="mt-0.5 text-xs font-medium text-[var(--tf-navy)]">{item.eventName}</p>
+                <CartItemEventMeta
+                  eventStartsAt={item.eventStartsAt}
+                  locationName={item.locationName}
+                  locationCity={item.locationCity}
+                />
                 {item.seats && item.seats.length > 0 ? (
                   <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--tf-teal-hover)]">
                     {item.seats.map((s) => (

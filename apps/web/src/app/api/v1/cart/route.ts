@@ -96,6 +96,9 @@ export async function GET(request: Request) {
         categoryName: item.category.name,
         eventName: item.category.event.name,
         eventSlug: item.category.event.slug,
+        eventStartsAt: item.category.event.eventStartsAt,
+        locationName: item.category.event.location?.name ?? null,
+        locationCity: item.category.event.location?.city ?? null,
         seats: item.seats.map((s) => ({
           id: s.id,
           blockLabel: s.blockLabel,

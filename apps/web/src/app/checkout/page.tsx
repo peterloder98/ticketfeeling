@@ -18,6 +18,7 @@ import {
 import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
+import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
@@ -119,19 +120,6 @@ export default async function CheckoutPage() {
             <ul className="mt-4 space-y-4">
               {cart.items.map((item) => {
                 const ev = item.category.event;
-                const when = ev.eventStartsAt
-                  ? ev.eventStartsAt.toLocaleString("de-DE", {
-                      timeZone: "Europe/Berlin",
-                      weekday: "short",
-                      day: "numeric",
-                      month: "long",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : null;
-                const venueName = ev.location?.name?.trim() || null;
-                const city = ev.location?.city?.trim() || null;
                 return (
                   <li
                     key={item.id}
@@ -145,24 +133,11 @@ export default async function CheckoutPage() {
                         <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
                           {ev.name}
                         </p>
-                        {when ? (
-                          <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                            <span className="font-medium text-[var(--tf-navy)]">Termin · </span>
-                            {when}
-                          </p>
-                        ) : null}
-                        {venueName ? (
-                          <p className="text-xs text-[var(--tf-text-secondary)]">
-                            <span className="font-medium text-[var(--tf-navy)]">Location · </span>
-                            {venueName}
-                          </p>
-                        ) : null}
-                        {city ? (
-                          <p className="text-xs text-[var(--tf-text-secondary)]">
-                            <span className="font-medium text-[var(--tf-navy)]">Ort · </span>
-                            {city}
-                          </p>
-                        ) : null}
+                        <CartItemEventMeta
+                          eventStartsAt={ev.eventStartsAt}
+                          locationName={ev.location?.name}
+                          locationCity={ev.location?.city}
+                        />
                         {item.category.categoryKind === "wheelchair" &&
                         item.category.companionFree ? (
                           <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
