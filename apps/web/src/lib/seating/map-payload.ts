@@ -18,7 +18,9 @@ export async function getSeatMapPayload(
   opts?: { viewerCartItemIds?: string[]; categoryId?: string | null },
 ): Promise<SeatMapPayload | null> {
   await ensureSeatingAssignmentSchema(prisma);
-  await expireSeatHolds().catch(() => undefined);
+  // Never block seat-map paint on hold cleanup.
+  void expireSeatHolds().catch(() => undefined);
+
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     include: {
@@ -43,6 +45,20 @@ export async function getSeatMapPayload(
   const seats = await prisma.eventSeat.findMany({
     where: { eventId },
     orderBy: [{ blockLabel: "asc" }, { rowIndex: "asc" }, { seatIndex: "asc" }],
+    select: {
+      id: true,
+      seatKey: true,
+      blockObjectId: true,
+      blockLabel: true,
+      rowIndex: true,
+      seatIndex: true,
+      rowLabel: true,
+      seatNumber: true,
+      status: true,
+      cartItemId: true,
+      categoryId: true,
+      locked: true,
+    },
   });
 
   const objects = parseVenuePlanObjects(event.venuePlan.objects);
@@ -57,6 +73,13 @@ export async function getSeatMapPayload(
   }));
 
   const stageObj = objects.find((o) => o.type === "stage");
+  const seatsByBlock = new Map<string, typeof seats>();
+  for (const seat of seats) {
+    const list = seatsByBlock.get(seat.blockObjectId);
+    if (list) list.push(seat);
+    else seatsByBlock.set(seat.blockObjectId, [seat]);
+  }
+
   const blocks: PublicSeatBlock[] = [];
   const standingAreas: PublicStandingArea[] = [];
 
@@ -79,7 +102,7 @@ export async function getSeatMapPayload(
 
     if (obj.type !== "seat_block") continue;
     const numbered = obj.numberedSeats !== false;
-    const blockSeats = numbered ? seats.filter((s) => s.blockObjectId === obj.id) : [];
+    const blockSeats = numbered ? (seatsByBlock.get(obj.id) ?? []) : [];
     blocks.push({
       objectId: obj.id,
       label: obj.label ?? "Block",

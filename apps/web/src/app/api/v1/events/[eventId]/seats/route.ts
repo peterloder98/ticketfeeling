@@ -1,26 +1,50 @@
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { findOpenCart } from "@/lib/commerce/cart";
+import { prisma } from "@/lib/db";
+import { getDefaultOrganization } from "@/lib/commerce/org";
 import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
 import { getSeatMapPayload } from "@/lib/seating/map-payload";
 
 type Props = { params: Promise<{ eventId: string }> };
 
+/** Light lookup — avoid full cart include just for held_by_you highlighting. */
+async function viewerCartItemIdsForEvent(
+  eventId: string,
+  sessionKey: string | null,
+): Promise<string[]> {
+  if (!sessionKey) return [];
+  const org = await getDefaultOrganization();
+  if (!org) return [];
+  const now = new Date();
+  const cart = await prisma.cart.findUnique({
+    where: {
+      organizationId_sessionKey: {
+        organizationId: org.id,
+        sessionKey,
+      },
+    },
+    select: {
+      status: true,
+      expiresAt: true,
+      items: {
+        where: { eventId },
+        select: { id: true },
+      },
+    },
+  });
+  if (!cart || cart.status !== "open" || cart.expiresAt < now) return [];
+  return cart.items.map((item) => item.id);
+}
+
 export async function GET(request: Request, { params }: Props) {
   try {
-    const { eventId } = await params;
+    const [{ eventId }, sessionKey] = await Promise.all([
+      params,
+      readCartSessionKeyFromRequest(request),
+    ]);
     const url = new URL(request.url);
     const categoryId = url.searchParams.get("categoryId");
-    const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKeyFromRequest(request);
-    const cart = sessionKey
-      ? await findOpenCart({ userId: session?.user?.id, sessionKey })
-      : null;
-    const viewerCartItemIds = (cart?.items ?? [])
-      .filter((i) => i.eventId === eventId)
-      .map((i) => i.id);
 
+    const viewerCartItemIds = await viewerCartItemIdsForEvent(eventId, sessionKey);
     const map = await getSeatMapPayload(eventId, {
       viewerCartItemIds,
       categoryId: categoryId || null,

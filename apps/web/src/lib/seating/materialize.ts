@@ -170,11 +170,17 @@ export async function ensureEventSeats(eventId: string) {
   return { created, updated, removed, total };
 }
 
+/** Process-local: skip count queries once we know seats exist for an event. */
+const eventsKnownToHaveSeats = new Set<string>();
+
 /**
  * Hot-path guard: only materialize when this event has no seats yet.
  * Full sync stays on admin plan save via syncSeatsForVenuePlan.
  */
 export async function ensureEventSeatsIfNeeded(eventId: string) {
+  if (eventsKnownToHaveSeats.has(eventId)) {
+    return { created: 0, updated: 0, removed: 0, total: 1, skipped: true as const };
+  }
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     select: { venuePlanId: true, seatingBookingMode: true },
@@ -186,9 +192,11 @@ export async function ensureEventSeatsIfNeeded(eventId: string) {
     where: { eventId, venuePlanId: event.venuePlanId },
   });
   if (total > 0) {
+    eventsKnownToHaveSeats.add(eventId);
     return { created: 0, updated: 0, removed: 0, total, skipped: true as const };
   }
   const result = await ensureEventSeats(eventId);
+  if (result.total > 0) eventsKnownToHaveSeats.add(eventId);
   return { ...result, skipped: false as const };
 }
 
@@ -209,8 +217,15 @@ export async function syncSeatsForVenuePlan(venuePlanId: string) {
   return synced;
 }
 
-/** Release expired seat holds. */
+let lastSeatExpireMs = 0;
+const SEAT_EXPIRE_THROTTLE_MS = 15_000;
+
+/** Release expired seat holds. Throttled — safe on every seat-map load. */
 export async function expireSeatHolds(now = new Date()) {
+  const t = Date.now();
+  if (t - lastSeatExpireMs < SEAT_EXPIRE_THROTTLE_MS) return 0;
+  lastSeatExpireMs = t;
+
   await ensureSeatingAssignmentSchema(prisma);
   const expired = await prisma.eventSeat.findMany({
     where: {

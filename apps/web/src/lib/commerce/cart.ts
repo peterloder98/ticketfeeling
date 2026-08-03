@@ -185,8 +185,11 @@ export async function findOpenCart(opts?: {
 }): Promise<OpenCart | null> {
   scheduleExpireHolds();
   // EventSeat include selects category_id — patch DB before Prisma queries seats.
-  await ensureSeatingAssignmentSchema(prisma);
-  const org = await getDefaultOrganization();
+  // Schema ensure is memoized; run in parallel with org lookup on cold paths.
+  const [, org] = await Promise.all([
+    ensureSeatingAssignmentSchema(prisma),
+    getDefaultOrganization(),
+  ]);
   if (!org) return null;
 
   const sessionKey = opts?.sessionKey?.trim() || (await readCartSessionKey());
@@ -231,8 +234,10 @@ export async function getOpenCart(opts?: {
 
   scheduleExpireHolds();
   // EventSeat include selects category_id — patch DB before Prisma queries seats.
-  await ensureSeatingAssignmentSchema(prisma);
-  const org = await getDefaultOrganization();
+  const [, org] = await Promise.all([
+    ensureSeatingAssignmentSchema(prisma),
+    getDefaultOrganization(),
+  ]);
   if (!org) throw new Error("NO_ORGANIZATION");
   const sessionKey = await resolveCartSessionKey(opts?.sessionKey);
   const now = new Date();
@@ -314,8 +319,10 @@ async function releaseCartHolds(cartId: string) {
     where: { cartId },
     include: { hold: true },
   });
-  for (const item of items) {
-    await prisma.$transaction(async (tx) => {
+  if (items.length === 0) return;
+  // One transaction — N separate txs used to cost one RTT each.
+  await prisma.$transaction(async (tx) => {
+    for (const item of items) {
       if (item.hold?.status === "held") {
         await tx.inventoryHold.update({
           where: { id: item.hold.id },
@@ -330,8 +337,8 @@ async function releaseCartHolds(cartId: string) {
         where: { cartItemId: item.id, status: "held" },
         data: { status: "available", holdExpiresAt: null, cartItemId: null },
       });
-    });
-  }
+    }
+  });
 }
 
 export async function addToCart(input: {
@@ -346,19 +353,21 @@ export async function addToCart(input: {
 }) {
   if (input.quantity < 1) throw new Error("INVALID_QUANTITY");
 
-  const cart = await getOpenCart({ userId: input.userId, sessionKey: input.sessionKey });
-  const category = await prisma.eventTicketCategory.findUnique({
-    where: { id: input.categoryId },
-    include: {
-      event: {
-        include: {
-          tour: { select: { coverImageUrl: true, visibility: true } },
+  const [cart, category] = await Promise.all([
+    getOpenCart({ userId: input.userId, sessionKey: input.sessionKey }),
+    prisma.eventTicketCategory.findUnique({
+      where: { id: input.categoryId },
+      include: {
+        event: {
+          include: {
+            tour: { select: { coverImageUrl: true, visibility: true } },
+          },
         },
+        taxRate: true,
+        pools: true,
       },
-      taxRate: true,
-      pools: true,
-    },
-  });
+    }),
+  ]);
   if (!category || category.status !== "active" || !category.onlineBookable) {
     throw new Error("CATEGORY_UNAVAILABLE");
   }

@@ -20,8 +20,10 @@ const schema = z.object({
 export async function POST(request: Request) {
   try {
     const body = schema.parse(await request.json());
-    const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKeyFromRequest(request);
+    const [session, sessionKey] = await Promise.all([
+      getServerSession(authOptions),
+      readCartSessionKeyFromRequest(request),
+    ]);
     const cart = await addToCart({
       categoryId: body.categoryId,
       quantity: body.quantity,

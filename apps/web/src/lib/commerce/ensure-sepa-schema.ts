@@ -20,13 +20,24 @@ const SEPA_SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "inventory_holds_order_id_idx" ON "inventory_holds"("order_id")`,
 ];
 
-/** Best-effort column patch when migrate deploy has not run yet. */
+let ensurePromise: Promise<void> | null = null;
+
+/** Best-effort column patch when migrate deploy has not run yet. Memoized per process. */
 export async function ensureSepaPaymentSchema(db: PrismaClient) {
-  for (const sql of SEPA_SCHEMA_STATEMENTS) {
-    try {
-      await db.$executeRawUnsafe(sql);
-    } catch {
-      /* ignore on unsupported envs / pooler DDL limits */
-    }
-  }
+  if (ensurePromise) return ensurePromise;
+  ensurePromise = (async () => {
+    await Promise.all(
+      SEPA_SCHEMA_STATEMENTS.map(async (sql) => {
+        try {
+          await db.$executeRawUnsafe(sql);
+        } catch {
+          /* ignore on unsupported envs / pooler DDL limits */
+        }
+      }),
+    );
+  })().catch((error) => {
+    ensurePromise = null;
+    throw error;
+  });
+  return ensurePromise;
 }

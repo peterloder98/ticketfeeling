@@ -186,27 +186,34 @@ export async function fulfillPaidOrder(orderId: string) {
       });
     }
 
-    // Convert holds → sold for cart items of this order's cart
-    if (order.cartId) {
-      const cartItems = await tx.cartItem.findMany({
-        where: { cartId: order.cartId },
-        include: { hold: true },
-      });
-      for (const item of cartItems) {
-        if (!item.hold || item.hold.status === "consumed") continue;
-        if (item.hold.status === "held") {
-          await tx.inventoryHold.update({
-            where: { id: item.hold.id },
-            data: { status: "consumed" },
-          });
-          await tx.inventoryPool.update({
-            where: { id: item.hold.poolId },
-            data: {
-              heldQuantity: { decrement: item.hold.quantity },
-              soldQuantity: { increment: item.hold.quantity },
+    // Holds + seats in one query — reused below when minting tickets.
+    const cartItems = order.cartId
+      ? await tx.cartItem.findMany({
+          where: { cartId: order.cartId },
+          include: {
+            hold: true,
+            seats: {
+              where: { status: "held" },
+              orderBy: [{ blockLabel: "asc" }, { rowIndex: "asc" }, { seatIndex: "asc" }],
             },
-          });
-        }
+          },
+        })
+      : [];
+
+    for (const item of cartItems) {
+      if (!item.hold || item.hold.status === "consumed") continue;
+      if (item.hold.status === "held") {
+        await tx.inventoryHold.update({
+          where: { id: item.hold.id },
+          data: { status: "consumed" },
+        });
+        await tx.inventoryPool.update({
+          where: { id: item.hold.poolId },
+          data: {
+            heldQuantity: { decrement: item.hold.quantity },
+            soldQuantity: { increment: item.hold.quantity },
+          },
+        });
       }
     }
 
@@ -309,17 +316,7 @@ export async function fulfillPaidOrder(orderId: string) {
         : 0;
       let seq = Number.isFinite(lastSeq) ? lastSeq : 0;
 
-      const cartItemsWithSeats = order.cartId
-        ? await tx.cartItem.findMany({
-            where: { cartId: order.cartId },
-            include: {
-              seats: {
-                where: { status: "held" },
-                orderBy: [{ blockLabel: "asc" }, { rowIndex: "asc" }, { seatIndex: "asc" }],
-              },
-            },
-          })
-        : [];
+      const cartItemsWithSeats = cartItems;
       const usedCartItemIds = new Set<string>();
 
       const categoryIds = [...new Set(order.items.map((i) => i.categoryId).filter(Boolean))];
@@ -522,6 +519,17 @@ export async function fulfillPaidOrder(orderId: string) {
           items: true,
         },
       });
+
+      // Always persist invoice PDF for customer/admin download (even without email).
+      if (fresh?.invoices[0]?.id) {
+        try {
+          const { getOrCreateInvoicePdf } = await import("@/lib/commerce/invoice-pdf");
+          await getOrCreateInvoicePdf(fresh.invoices[0].id, { persist: true });
+        } catch (error) {
+          console.error("[fulfillment] invoice pdf persist failed", fresh.invoices[0].id, error);
+        }
+      }
+
       // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand
       if (fresh?.customer.email && fresh.channel !== "box_office") {
         const event =
@@ -581,6 +589,28 @@ export async function fulfillPaidOrder(orderId: string) {
           console.error("[fulfillment] pdf module load failed", error);
         }
 
+        let invoiceAttachmentNumber: string | null = null;
+        const invoiceRow = fresh.invoices[0];
+        if (invoiceRow && fresh.invoiceRequested) {
+          try {
+            const { getOrCreateInvoicePdf } = await import("@/lib/commerce/invoice-pdf");
+            const invoicePdf = await getOrCreateInvoicePdf(invoiceRow.id, { persist: true });
+            if (invoicePdf.buffer.length > 0) {
+              pdfAttachments.push({
+                filename: invoicePdf.filename,
+                content: invoicePdf.buffer,
+              });
+              invoiceAttachmentNumber = invoicePdf.invoiceNumber;
+              await prisma.invoice.update({
+                where: { id: invoiceRow.id },
+                data: { pdfEmailedAt: new Date() },
+              });
+            }
+          } catch (error) {
+            console.error("[fulfillment] invoice pdf attach failed", invoiceRow.id, error);
+          }
+        }
+
         const mail = buildOrderPaidTicketsMail({
           firstName: fresh.customer.firstName,
           eventName,
@@ -591,6 +621,7 @@ export async function fulfillPaidOrder(orderId: string) {
           orderNumber: fresh.orderNumber,
           ticketCount: fresh.tickets.length,
           hasAttachment: pdfAttachments.length > 0,
+          invoiceNumber: invoiceAttachmentNumber,
         });
         const sendResult = await enqueueTransactionalEmail({
           organizationId: fresh.organizationId,
@@ -601,6 +632,7 @@ export async function fulfillPaidOrder(orderId: string) {
             orderNumber: fresh.orderNumber,
             ticketCount: fresh.tickets.length,
             invoiceNumber: fresh.invoices[0]?.invoiceNumber,
+            invoiceRequested: fresh.invoiceRequested,
             eventName,
             eventDate: eventDateLabel,
           },

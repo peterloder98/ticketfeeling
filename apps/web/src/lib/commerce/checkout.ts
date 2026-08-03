@@ -70,10 +70,12 @@ export async function createOrderFromCart(input: {
   if (!input.customer.acceptTerms) throw new Error("TERMS_REQUIRED");
   if (!input.customer.acknowledgePrivacy) throw new Error("PRIVACY_REQUIRED");
   if (!input.customer.acknowledgeNoWithdrawal) throw new Error("WITHDRAWAL_ACK_REQUIRED");
-  await ensureSepaPaymentSchema(prisma);
-  await ensureLegalSchema(prisma);
-  // Cart loads EventSeat (category_id) — recover if migrate deploy lagged.
-  await ensureSeatingAssignmentSchema(prisma);
+  // Schema ensures are memoized; first checkout still parallelizes cold DDL.
+  await Promise.all([
+    ensureSepaPaymentSchema(prisma),
+    ensureLegalSchema(prisma),
+    ensureSeatingAssignmentSchema(prisma),
+  ]);
   const paymentMethod =
     normalizePaymentMethodKey(String(input.paymentMethod)) ??
     (isPaymentMethodKey(String(input.paymentMethod))
@@ -87,10 +89,34 @@ export async function createOrderFromCart(input: {
   if (cart.items.length === 0) throw new Error("CART_EMPTY");
   if (cart.expiresAt < new Date()) throw new Error("CART_EXPIRED");
 
-  const org = await prisma.organization.findUniqueOrThrow({
-    where: { id: cart.organizationId },
-    include: { settings: true },
-  });
+  const emailNormalized = normalizeEmail(input.customer.email);
+  const mode = input.customer.checkoutMode;
+
+  if (mode === "register") {
+    const password = input.customer.password?.trim() ?? "";
+    if (password.length < 8) throw new Error("PASSWORD_REQUIRED");
+  }
+
+  const [org, existingUser, legalVersions, priced] = await Promise.all([
+    prisma.organization.findUniqueOrThrow({
+      where: { id: cart.organizationId },
+      include: { settings: true },
+    }),
+    prisma.user.findUnique({ where: { email: emailNormalized } }),
+    prisma.legalDocumentVersion.findMany({
+      where: {
+        status: "published",
+        legalDocument: {
+          organizationId: cart.organizationId,
+          enabled: true,
+          type: { in: ["terms", "event_terms", "privacy", "withdrawal", "refund"] },
+        },
+      },
+      include: { legalDocument: true },
+    }),
+    priceCart(cart),
+  ]);
+
   const seller = buildSellerIdentity(org, org.settings);
   const feeConfig = parsePaymentFeeConfig(org.settings?.paymentFeeConfig);
   const methodConfig = feeConfig[paymentMethod];
@@ -101,7 +127,6 @@ export async function createOrderFromCart(input: {
     (methodConfig.testMode && allowDevTest);
   if (!canUseMethod) throw new Error("PAYMENT_METHOD_UNAVAILABLE");
 
-  const priced = await priceCart(cart);
   const customerTotalCents = priced.grossCents;
   const estimatedPaymentFeeCents = estimatePaymentFeeCents(
     paymentMethod,
@@ -110,15 +135,6 @@ export async function createOrderFromCart(input: {
   );
   const netPayoutCents = estimateNetPayoutCents(customerTotalCents, estimatedPaymentFeeCents);
   const paymentProvider = providerForMethod(paymentMethod);
-  const emailNormalized = normalizeEmail(input.customer.email);
-  const mode = input.customer.checkoutMode;
-
-  if (mode === "register") {
-    const password = input.customer.password?.trim() ?? "";
-    if (password.length < 8) throw new Error("PASSWORD_REQUIRED");
-  }
-
-  const existingUser = await prisma.user.findUnique({ where: { email: emailNormalized } });
 
   let userId = input.userId ?? null;
 
@@ -200,26 +216,26 @@ export async function createOrderFromCart(input: {
     },
   });
 
-  const legalVersions = await prisma.legalDocumentVersion.findMany({
-    where: {
-      status: "published",
-      legalDocument: {
-        organizationId: cart.organizationId,
-        enabled: true,
-        type: { in: ["terms", "event_terms", "privacy", "withdrawal", "refund"] },
-      },
-    },
-    include: { legalDocument: true },
-  });
-
   const order = await prisma.$transaction(async (tx) => {
+    const poolIds = [
+      ...new Set(
+        cart.items
+          .map((item) => item.hold?.poolId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const pools =
+      poolIds.length > 0
+        ? await tx.inventoryPool.findMany({ where: { id: { in: poolIds } } })
+        : [];
+    const poolById = new Map(pools.map((p) => [p.id, p]));
+
     for (const item of cart.items) {
       if (!item.hold || item.hold.status !== "held" || item.hold.expiresAt < new Date()) {
         throw new Error("HOLD_EXPIRED");
       }
-      const pool = await tx.inventoryPool.findUniqueOrThrow({
-        where: { id: item.hold.poolId },
-      });
+      const pool = poolById.get(item.hold.poolId);
+      if (!pool) throw new Error("INVENTORY_INVALID");
       if (pool.soldQuantity + pool.heldQuantity > pool.capacity) {
         throw new Error("INVENTORY_INVALID");
       }

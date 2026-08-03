@@ -21,8 +21,10 @@ import { formatEuroFromCents } from "@/lib/money";
 /** Embed checkout bootstrap: cart + payment options using x-cart-session backup. */
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKeyFromRequest(request);
+    const [session, sessionKey] = await Promise.all([
+      getServerSession(authOptions),
+      readCartSessionKeyFromRequest(request),
+    ]);
     const cart = sessionKey
       ? await findOpenCart({ userId: session?.user?.id, sessionKey })
       : null;
@@ -41,8 +43,22 @@ export async function GET(request: Request) {
       });
     }
 
-    const summary = await priceCart(cart);
-    const org = await getDefaultOrganization();
+    const [summary, org, isStaff] = await Promise.all([
+      priceCart(cart),
+      getDefaultOrganization(),
+      (async () => {
+        if (!session?.user?.id) return false;
+        const membership = await getDefaultOrganizationForUser(session.user.id);
+        if (!membership) return false;
+        const checks = await Promise.all([
+          userHasPermission(session.user.id, membership.organizationId, "events:write"),
+          userHasPermission(session.user.id, membership.organizationId, "org:write"),
+          userHasPermission(session.user.id, membership.organizationId, "box_office:sell"),
+        ]);
+        return checks.some(Boolean);
+      })(),
+    ]);
+
     const feeConfig = parsePaymentFeeConfig(org?.settings?.paymentFeeConfig);
     const uiConfig = parsePaymentUiConfig(org?.settings?.paymentUiConfig);
     const sepaDisabled = isSepaDisabledForCheckout({
@@ -65,17 +81,6 @@ export async function GET(request: Request) {
       allowDevTestCheckout: getPaymentProvider().key === "dev",
       sepaDisabled,
     });
-
-    let isStaff = false;
-    if (session?.user?.id) {
-      const membership = await getDefaultOrganizationForUser(session.user.id);
-      if (membership) {
-        isStaff =
-          (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
-          (await userHasPermission(session.user.id, membership.organizationId, "org:write")) ||
-          (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell"));
-      }
-    }
 
     const response = NextResponse.json({
       empty: false,

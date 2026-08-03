@@ -33,42 +33,53 @@ async function columnExists(
   }
 }
 
-/** Best-effort schema patch when migrate deploy has not run yet. */
+let legalEnsurePromise: Promise<void> | null = null;
+
+/** Best-effort schema patch when migrate deploy has not run yet. Memoized per process. */
 export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
-  // Prefer direct/unpooled URL for DDL (Neon pooler can reject ALTER).
-  const directUrl =
-    process.env.DIRECT_URL ||
-    process.env.DATABASE_URL_UNPOOLED ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    null;
+  if (legalEnsurePromise) return legalEnsurePromise;
+  legalEnsurePromise = (async () => {
+    // Prefer direct/unpooled URL for DDL (Neon pooler can reject ALTER).
+    const directUrl =
+      process.env.DIRECT_URL ||
+      process.env.DATABASE_URL_UNPOOLED ||
+      process.env.POSTGRES_URL_NON_POOLING ||
+      null;
 
-  let ddlDb: PrismaClient = db;
-  let owned: PrismaClient | null = null;
-  if (directUrl && directUrl !== process.env.DATABASE_URL) {
-    try {
-      const { PrismaClient: PrismaClientCtor } = await import("@prisma/client");
-      owned = new PrismaClientCtor({ datasources: { db: { url: directUrl } } });
-      ddlDb = owned;
-    } catch (error) {
-      console.error("[legal] direct DDL client unavailable", error);
+    let ddlDb: PrismaClient = db;
+    let owned: PrismaClient | null = null;
+    if (directUrl && directUrl !== process.env.DATABASE_URL) {
+      try {
+        const { PrismaClient: PrismaClientCtor } = await import("@prisma/client");
+        owned = new PrismaClientCtor({ datasources: { db: { url: directUrl } } });
+        ddlDb = owned;
+      } catch (error) {
+        console.error("[legal] direct DDL client unavailable", error);
+      }
     }
-  }
 
-  const statements = [
-    `ALTER TABLE "legal_documents" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN NOT NULL DEFAULT true`,
-    `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "changelog" TEXT`,
-    `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
-  ];
-  for (const sql of statements) {
-    try {
-      await ddlDb.$executeRawUnsafe(sql);
-    } catch (error) {
-      console.error("[legal] ensureLegalSchema statement failed", sql, error);
+    const statements = [
+      `ALTER TABLE "legal_documents" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN NOT NULL DEFAULT true`,
+      `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "changelog" TEXT`,
+      `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
+    ];
+    await Promise.all(
+      statements.map(async (sql) => {
+        try {
+          await ddlDb.$executeRawUnsafe(sql);
+        } catch (error) {
+          console.error("[legal] ensureLegalSchema statement failed", sql, error);
+        }
+      }),
+    );
+    if (owned) {
+      await owned.$disconnect().catch(() => undefined);
     }
-  }
-  if (owned) {
-    await owned.$disconnect().catch(() => undefined);
-  }
+  })().catch((error) => {
+    legalEnsurePromise = null;
+    throw error;
+  });
+  return legalEnsurePromise;
 }
 
 async function findPublishedViaRaw(

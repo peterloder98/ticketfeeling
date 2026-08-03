@@ -11,8 +11,10 @@ import { formatEuroFromCents } from "@/lib/money";
 
 export async function GET(request: Request) {
   try {
-    const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKeyFromRequest(request);
+    const [session, sessionKey] = await Promise.all([
+      getServerSession(authOptions),
+      readCartSessionKeyFromRequest(request),
+    ]);
     const url = new URL(request.url);
     const summaryOnly = url.searchParams.get("summary") === "1";
 

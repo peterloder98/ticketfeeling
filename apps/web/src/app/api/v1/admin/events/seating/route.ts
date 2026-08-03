@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
-import { ensureEventSeats } from "@/lib/seating/materialize";
+import { ensureEventSeatsIfNeeded } from "@/lib/seating/materialize";
 import {
   parseSeatingLayoutConfig,
   type SeatingLayoutConfig,
@@ -80,7 +80,8 @@ export async function GET(request: Request) {
     });
   }
 
-  await ensureEventSeats(event.id);
+  // Hot path: only materialize when empty — full sync runs on plan save.
+  await ensureEventSeatsIfNeeded(event.id);
   const seats = await prisma.eventSeat.findMany({
     where: { eventId: event.id },
     orderBy: [{ blockLabel: "asc" }, { rowIndex: "asc" }, { seatIndex: "asc" }],
