@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 
 const EMBED_HISTORY_KEY = "tf_embed_history";
@@ -30,9 +30,36 @@ function writeHistory(paths: string[]) {
   }
 }
 
+function priorEmbedPath(pathname: string): string | null {
+  const stack = [...readHistory()];
+  while (stack.length > 0 && stack[stack.length - 1] === pathname) {
+    stack.pop();
+  }
+  const previous = stack[stack.length - 1] ?? null;
+  if (previous && previous !== pathname && isEmbedPath(previous)) {
+    return previous;
+  }
+  return null;
+}
+
+/** Records /embed/* visits so Zurück can stay inside the iframe. */
+export function EmbedHistoryTracker() {
+  const pathname = usePathname() ?? "";
+
+  useEffect(() => {
+    if (!isEmbedPath(pathname)) return;
+    const history = readHistory();
+    if (history[history.length - 1] === pathname) return;
+    writeHistory([...history, pathname]);
+  }, [pathname]);
+
+  return null;
+}
+
 /**
- * In-iframe back control. Tracks /embed/* visits in sessionStorage so Zurück
- * works even when document.referrer is the partner parent page.
+ * In-iframe back control. Only shown after the user has navigated within the
+ * embed (sessionStorage stack has a prior /embed path). Hidden on the initial
+ * landing page of the session.
  */
 export function EmbedBackLink({
   fallbackHref = "/embed/shop",
@@ -44,17 +71,16 @@ export function EmbedBackLink({
   fallbackHref?: string | null;
   label?: string;
   className?: string;
-  variant?: "text" | "button" | "header";
+  variant?: "text" | "button";
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!isEmbedPath(pathname)) return;
-    const history = readHistory();
-    const last = history[history.length - 1];
-    if (last === pathname) return;
-    writeHistory([...history, pathname]);
+    // Parent EmbedHistoryTracker may not have written yet (effects run child→parent).
+    // Prefer existing prior paths; also treat a non-current top as prior.
+    setVisible(priorEmbedPath(pathname) != null);
   }, [pathname]);
 
   function goBack() {
@@ -76,21 +102,15 @@ export function EmbedBackLink({
       return;
     }
 
-    // Last resort: never leave the embed shell empty-handed.
     router.push("/embed/shop");
   }
 
-  const base =
-    variant === "header"
-      ? "inline-flex items-center gap-1 rounded-lg border border-[#e2e8f0] bg-white px-2 py-1.5 text-xs font-semibold text-[var(--tf-navy)] hover:border-[var(--tf-teal)]"
-      : variant === "button"
-        ? "tf-btn tf-btn-secondary !min-h-10 text-sm"
-        : "inline-flex items-center gap-1 text-xs font-medium text-[var(--tf-teal)] underline underline-offset-2";
+  if (!visible) return null;
 
-  // Hide only on shop home when that is also the fallback (nothing useful to do).
-  if (pathname === "/embed/shop" && (fallbackHref === "/embed/shop" || !fallbackHref)) {
-    return null;
-  }
+  const base =
+    variant === "button"
+      ? "tf-btn tf-btn-secondary !min-h-10 text-sm"
+      : "inline-flex items-center gap-1 text-xs font-medium text-[var(--tf-teal)] underline underline-offset-2";
 
   return (
     <button type="button" onClick={goBack} className={className ? `${base} ${className}` : base}>
