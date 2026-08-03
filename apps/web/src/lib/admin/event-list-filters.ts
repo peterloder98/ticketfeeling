@@ -23,8 +23,8 @@ export const EVENT_LIST_FILTERS = [
 
 export type EventListFilterKey = (typeof EVENT_LIST_FILTERS)[number]["key"];
 
-/** Default: aktive / geplante / bevorstehende — ohne Entwurf & Absagen. */
-export const DEFAULT_EVENT_LIST_FILTERS: EventListFilterKey[] = ["onsale", "paused"];
+/** Default: nur Im Verkauf — Pausiert, Entwurf und Abgesagt über die Filter. */
+export const DEFAULT_EVENT_LIST_FILTERS: EventListFilterKey[] = ["onsale"];
 
 export function parseEventListFilters(raw: string | undefined | null): EventListFilterKey[] {
   if (!raw?.trim()) return [...DEFAULT_EVENT_LIST_FILTERS];

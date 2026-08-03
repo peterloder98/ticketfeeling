@@ -91,9 +91,6 @@ export function AdminEventsList({
           </button>
         ) : null}
       </div>
-      <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
-        Standard: Im Verkauf + Pausiert. Entwurf und Abgesagt nur über die Filter.
-      </p>
 
       <div className="mt-6 space-y-3">
         {visible.map((event) => {
