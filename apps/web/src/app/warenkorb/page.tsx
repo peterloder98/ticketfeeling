@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getOpenCart } from "@/lib/commerce/cart";
+import { findOpenCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
@@ -14,8 +14,11 @@ export const metadata = { title: "Warenkorb" };
 export default async function CartPage() {
   const session = await getServerSession(authOptions);
   const sessionKey = await readCartSessionKey();
-  const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
-  const summary = await priceCart(cart);
+  const cart = sessionKey
+    ? await findOpenCart({ userId: session?.user?.id, sessionKey })
+    : null;
+  const items = cart?.items ?? [];
+  const summary = cart ? await priceCart(cart) : null;
 
   return (
     <div className="tf-container py-12">
@@ -25,14 +28,14 @@ export default async function CartPage() {
       <p className="mt-2 text-sm text-[var(--muted)]">
         Tickets sind 10 Minuten für dich reserviert.
       </p>
-      {cart.items.length > 0 ? (
+      {items.length > 0 && cart ? (
         <div className="mt-5">
           <CartCountdownDisplay expiresAt={cart.expiresAt.toISOString()} />
         </div>
       ) : null}
 
       <div className="mt-8 space-y-3">
-        {cart.items.map((item) => (
+        {items.map((item) => (
           <div key={item.id} className="tf-card flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-[var(--tf-navy)]">
@@ -69,14 +72,17 @@ export default async function CartPage() {
             </div>
           </div>
         ))}
-        {cart.items.length === 0 ? (
+        {items.length === 0 ? (
           <p className="text-[var(--muted)]">
-            Warenkorb ist leer. <Link href="/events" className="text-[var(--gold-soft)] underline">Events ansehen</Link>
+            Warenkorb ist leer.{" "}
+            <Link href="/events" className="text-[var(--gold-soft)] underline">
+              Events ansehen
+            </Link>
           </p>
         ) : null}
       </div>
 
-      {cart.items.length > 0 ? (
+      {items.length > 0 && summary ? (
         <div className="tf-card mt-6 flex flex-wrap items-center justify-between gap-3">
           <div className="space-y-1 text-sm">
             <p>Tickets: {formatEuroFromCents(summary.ticketsGrossCents)}</p>

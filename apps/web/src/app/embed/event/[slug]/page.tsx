@@ -137,7 +137,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
         {event.tour?.slug ? (
           <EmbedBackLink fallbackHref={`/embed/tour/${event.tour.slug}`} label="Zurück zur Tour" />
         ) : (
-          <EmbedBackLink label="Zurück" />
+          <EmbedBackLink fallbackHref="/embed/shop" label="Zurück" />
         )}
         <div className="overflow-hidden rounded-xl border border-[var(--tf-line)]">
           <div className="relative aspect-square w-full bg-[var(--tf-navy)]">

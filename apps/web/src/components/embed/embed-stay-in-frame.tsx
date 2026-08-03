@@ -29,6 +29,13 @@ export function EmbedStayInFrame() {
   const router = useRouter();
 
   useEffect(() => {
+    try {
+      // Same-origin navigations inside the iframe; Lax is enough to keep /tour → /embed/tour.
+      document.cookie = "tf_embed=1; Path=/; SameSite=Lax; Max-Age=86400";
+    } catch {
+      /* ignore */
+    }
+
     function rewrite(anchor: HTMLAnchorElement) {
       const raw = anchor.getAttribute("href");
       if (!raw || raw.startsWith("#") || raw.startsWith("mailto:") || raw.startsWith("tel:")) {

@@ -5,7 +5,13 @@ import { useState } from "react";
 import { useCart } from "@/components/cart-context";
 import { cartFetch } from "@/lib/commerce/cart-client";
 
-export function CartRemoveButton({ itemId }: { itemId: string }) {
+export function CartRemoveButton({
+  itemId,
+  onRemoved,
+}: {
+  itemId: string;
+  onRemoved?: () => void;
+}) {
   const router = useRouter();
   const { refresh, bump } = useCart();
   const [loading, setLoading] = useState(false);
@@ -23,6 +29,7 @@ export function CartRemoveButton({ itemId }: { itemId: string }) {
       } else {
         await refresh({ full: true });
       }
+      onRemoved?.();
       router.refresh();
     } finally {
       setLoading(false);

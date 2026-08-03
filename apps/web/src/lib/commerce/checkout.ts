@@ -47,6 +47,8 @@ function normalizeEmail(email: string) {
 
 export async function createOrderFromCart(input: {
   userId?: string | null;
+  /** Prefer explicit session (iframe header) over cookie alone. */
+  sessionKey?: string | null;
   customer: CheckoutCustomerInput;
   /** Selected payment method — never changes customer total */
   paymentMethod: PaymentMethodKey | string;
@@ -76,7 +78,8 @@ export async function createOrderFromCart(input: {
       : null);
   if (!paymentMethod) throw new Error("PAYMENT_METHOD_REQUIRED");
 
-  const sessionKey = await readCartSessionKey();
+  const sessionKey = input.sessionKey?.trim() || (await readCartSessionKey());
+  if (!sessionKey) throw new Error("CART_EMPTY");
   const cart = await getOpenCart({ userId: input.userId, sessionKey });
   if (cart.items.length === 0) throw new Error("CART_EMPTY");
   if (cart.expiresAt < new Date()) throw new Error("CART_EXPIRED");

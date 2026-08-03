@@ -60,7 +60,7 @@ export default async function EmbedTourPage({ params }: Props) {
     <>
       <OrgTracking embedMode />
       <div className="space-y-5">
-        <EmbedBackLink label="Zurück" />
+        <EmbedBackLink label="Zurück" fallbackHref="/embed/shop" />
 
         <div className="flex gap-3">
           <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl bg-[var(--tf-navy)] sm:h-32 sm:w-32">

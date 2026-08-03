@@ -170,10 +170,55 @@ export async function peekCartItemCount(opts?: {
   };
 }
 
+/** Read-only: never mint a session or create an empty cart. */
+export async function findOpenCart(opts?: {
+  userId?: string | null;
+  sessionKey?: string | null;
+}): Promise<OpenCart | null> {
+  await expireHoldsThrottled();
+  const org = await getDefaultOrganization();
+  if (!org) return null;
+
+  const sessionKey = opts?.sessionKey?.trim() || (await readCartSessionKey());
+  if (!sessionKey) return null;
+
+  const now = new Date();
+  const cart = await prisma.cart.findUnique({
+    where: {
+      organizationId_sessionKey: {
+        organizationId: org.id,
+        sessionKey,
+      },
+    },
+    include: cartInclude,
+  });
+
+  if (!cart || cart.status !== "open" || cart.expiresAt < now) {
+    return null;
+  }
+
+  if (opts?.userId && !cart.userId) {
+    return prisma.cart.update({
+      where: { id: cart.id },
+      data: { userId: opts.userId },
+      include: cartInclude,
+    });
+  }
+  return cart;
+}
+
 export async function getOpenCart(opts?: {
   userId?: string | null;
   sessionKey?: string | null;
+  /** When false, never mint/create — returns null instead (SSR read paths). */
+  createIfMissing?: boolean;
 }): Promise<OpenCart> {
+  if (opts?.createIfMissing === false) {
+    const found = await findOpenCart(opts);
+    if (!found) throw new Error("CART_NOT_FOUND");
+    return found;
+  }
+
   await expireHoldsThrottled();
   const org = await getDefaultOrganization();
   if (!org) throw new Error("NO_ORGANIZATION");

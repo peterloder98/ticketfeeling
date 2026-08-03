@@ -8,6 +8,7 @@ import { PhoneInput } from "@/components/phone-input";
 import { CheckoutPaymentMethods } from "@/components/checkout-payment-methods";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { useCart } from "@/components/cart-context";
+import { cartFetch } from "@/lib/commerce/cart-client";
 import type { CheckoutPaymentOption, PaymentMethodKey } from "@/lib/commerce/payment-fees";
 
 type Mode = "guest" | "register";
@@ -233,7 +234,7 @@ export function CheckoutForm({
     };
 
     try {
-      const response = await fetch("/api/v1/checkout/confirm", {
+      const response = await cartFetch("/api/v1/checkout/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

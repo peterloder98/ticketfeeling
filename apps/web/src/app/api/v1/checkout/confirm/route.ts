@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createOrderFromCart } from "@/lib/commerce/checkout";
+import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
 
 const schema = z
   .object({
@@ -56,8 +57,10 @@ export async function POST(request: Request) {
     const session = await getServerSession(authOptions);
     const asGuest = body.preferGuest === true || body.checkoutMode === "guest";
     const checkoutMode = asGuest ? "guest" : "register";
+    const sessionKey = await readCartSessionKeyFromRequest(request);
     const result = await createOrderFromCart({
       userId: asGuest ? null : session?.user?.id,
+      sessionKey,
       paymentMethod: body.paymentMethod,
       invoice: {
         requested: Boolean(body.invoiceRequested),

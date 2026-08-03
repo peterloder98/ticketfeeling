@@ -9,15 +9,18 @@ export async function readCartSessionKey() {
   return jar.get(CART_COOKIE)?.value ?? null;
 }
 
-/** Prefer cookie, then client backup header (iframe). Never invent a key here. */
+/**
+ * Resolve cart session for API routes.
+ * Prefer the client backup header over the cookie: in third-party iframes the
+ * Partitioned cookie is often missing or replaced by an empty mint, while
+ * sessionStorage + x-cart-session still holds the real cart.
+ */
 export async function readCartSessionKeyFromRequest(request?: Request | null) {
-  const fromCookie = await readCartSessionKey();
-  if (fromCookie) return fromCookie;
   const fromHeader = request?.headers.get(CART_SESSION_HEADER)?.trim();
   if (fromHeader && /^[A-Za-z0-9_-]{8,128}$/.test(fromHeader)) {
     return fromHeader;
   }
-  return null;
+  return readCartSessionKey();
 }
 
 /** Mint only on write paths (add-to-cart / getOpenCart creating a cart). */

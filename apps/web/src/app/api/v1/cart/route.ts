@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getOpenCart, peekCartItemCount } from "@/lib/commerce/cart";
+import { findOpenCart, peekCartItemCount } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import {
   cartCookieHeader,
@@ -46,13 +46,34 @@ export async function GET(request: Request) {
         sessionKey: null,
         summary: {
           itemCount: 0,
+          ticketsGrossCents: 0,
+          feeGrossCents: 0,
+          feeLabel: null,
+          grossCents: 0,
           grossFormatted: null,
         },
         items: [],
       });
     }
 
-    const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
+    const cart = await findOpenCart({ userId: session?.user?.id, sessionKey });
+    if (!cart) {
+      return NextResponse.json({
+        id: null,
+        expiresAt: null,
+        sessionKey,
+        summary: {
+          itemCount: 0,
+          ticketsGrossCents: 0,
+          feeGrossCents: 0,
+          feeLabel: null,
+          grossCents: 0,
+          grossFormatted: null,
+        },
+        items: [],
+      });
+    }
+
     const priced = await priceCart(cart);
     const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
     const response = NextResponse.json({
@@ -73,6 +94,12 @@ export async function GET(request: Request) {
         categoryName: item.category.name,
         eventName: item.category.event.name,
         eventSlug: item.category.event.slug,
+        seats: item.seats.map((s) => ({
+          id: s.id,
+          blockLabel: s.blockLabel,
+          rowLabel: s.rowLabel,
+          seatNumber: s.seatNumber,
+        })),
         holdExpiresAt: item.hold?.expiresAt,
       })),
     });

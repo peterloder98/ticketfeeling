@@ -43,7 +43,7 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
             <div className="px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
-                  <EmbedBackLink variant="header" label="Zurück" />
+                  <EmbedBackLink variant="header" label="Zurück" fallbackHref="/embed/shop" />
                   <BrandLogo href="/embed/shop" variant="full" className="!w-[72px]" />
                 </div>
                 <EmbedCartBar />

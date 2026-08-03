@@ -43,8 +43,9 @@ function applyEmbedFrameHeaders(response: NextResponse) {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isIframe = request.headers.get("sec-fetch-dest") === "iframe";
+  const embedShell = request.cookies.get("tf_embed")?.value === "1";
 
-  if (isIframe) {
+  if (isIframe || embedShell) {
     const embedPath = embedPathForIframe(pathname);
     if (embedPath) {
       const url = request.nextUrl.clone();

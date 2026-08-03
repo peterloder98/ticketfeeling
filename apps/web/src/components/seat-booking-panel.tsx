@@ -98,7 +98,7 @@ export function SeatBookingPanel({
   const loadMap = useCallback(async () => {
     setMapLoading(true);
     try {
-      const res = await fetch(`/api/v1/events/${eventId}/seats`);
+      const res = await cartFetch(`/api/v1/events/${eventId}/seats`);
       const data = await res.json();
       if (res.ok) setMap(data.map as SeatMapPayload);
     } finally {

@@ -1,19 +1,21 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getOpenCart } from "@/lib/commerce/cart";
-import { readCartSessionKey } from "@/lib/commerce/cart-session";
+import { findOpenCart } from "@/lib/commerce/cart";
+import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
 import { getSeatMapPayload } from "@/lib/seating/map-payload";
 
 type Props = { params: Promise<{ eventId: string }> };
 
-export async function GET(_request: Request, { params }: Props) {
+export async function GET(request: Request, { params }: Props) {
   try {
     const { eventId } = await params;
     const session = await getServerSession(authOptions);
-    const sessionKey = await readCartSessionKey();
-    const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
-    const viewerCartItemIds = cart.items
+    const sessionKey = await readCartSessionKeyFromRequest(request);
+    const cart = sessionKey
+      ? await findOpenCart({ userId: session?.user?.id, sessionKey })
+      : null;
+    const viewerCartItemIds = (cart?.items ?? [])
       .filter((i) => i.eventId === eventId)
       .map((i) => i.id);
 
