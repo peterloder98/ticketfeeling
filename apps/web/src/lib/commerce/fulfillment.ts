@@ -520,16 +520,6 @@ export async function fulfillPaidOrder(orderId: string) {
         },
       });
 
-      // Always persist invoice PDF for customer/admin download (even without email).
-      if (fresh?.invoices[0]?.id) {
-        try {
-          const { getOrCreateInvoicePdf } = await import("@/lib/commerce/invoice-pdf");
-          await getOrCreateInvoicePdf(fresh.invoices[0].id, { persist: true });
-        } catch (error) {
-          console.error("[fulfillment] invoice pdf persist failed", fresh.invoices[0].id, error);
-        }
-      }
-
       // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand
       if (fresh?.customer.email && fresh.channel !== "box_office") {
         const event =
@@ -589,28 +579,6 @@ export async function fulfillPaidOrder(orderId: string) {
           console.error("[fulfillment] pdf module load failed", error);
         }
 
-        let invoiceAttachmentNumber: string | null = null;
-        const invoiceRow = fresh.invoices[0];
-        if (invoiceRow && fresh.invoiceRequested) {
-          try {
-            const { getOrCreateInvoicePdf } = await import("@/lib/commerce/invoice-pdf");
-            const invoicePdf = await getOrCreateInvoicePdf(invoiceRow.id, { persist: true });
-            if (invoicePdf.buffer.length > 0) {
-              pdfAttachments.push({
-                filename: invoicePdf.filename,
-                content: invoicePdf.buffer,
-              });
-              invoiceAttachmentNumber = invoicePdf.invoiceNumber;
-              await prisma.invoice.update({
-                where: { id: invoiceRow.id },
-                data: { pdfEmailedAt: new Date() },
-              });
-            }
-          } catch (error) {
-            console.error("[fulfillment] invoice pdf attach failed", invoiceRow.id, error);
-          }
-        }
-
         const mail = buildOrderPaidTicketsMail({
           firstName: fresh.customer.firstName,
           eventName,
@@ -621,7 +589,6 @@ export async function fulfillPaidOrder(orderId: string) {
           orderNumber: fresh.orderNumber,
           ticketCount: fresh.tickets.length,
           hasAttachment: pdfAttachments.length > 0,
-          invoiceNumber: invoiceAttachmentNumber,
         });
         const sendResult = await enqueueTransactionalEmail({
           organizationId: fresh.organizationId,
@@ -632,7 +599,6 @@ export async function fulfillPaidOrder(orderId: string) {
             orderNumber: fresh.orderNumber,
             ticketCount: fresh.tickets.length,
             invoiceNumber: fresh.invoices[0]?.invoiceNumber,
-            invoiceRequested: fresh.invoiceRequested,
             eventName,
             eventDate: eventDateLabel,
           },
