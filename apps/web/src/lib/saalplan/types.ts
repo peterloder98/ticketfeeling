@@ -181,6 +181,25 @@ export function cmToMetersLabel(cm: number) {
   return `${m.toFixed(2).replace(".", ",")} m`;
 }
 
+/** Compact tick text — unit only on the origin so dense rulers stay readable. */
+export function cmToMetersTickLabel(cm: number, withUnit = false) {
+  const m = cm / 100;
+  const num = Number.isInteger(m) ? String(m) : m.toFixed(2).replace(".", ",");
+  return withUnit ? `${num} m` : num;
+}
+
+/**
+ * Pick a major tick step (cm) so labels stay ~minLabelPx apart at the given scale (px/cm).
+ * Candidates are nice meter intervals.
+ */
+export function adaptiveMeterTickStepCm(scalePxPerCm: number, minLabelPx = 52): number {
+  const pxPerMeter = Math.max(0.001, scalePxPerCm * 100);
+  const minMeters = minLabelPx / pxPerMeter;
+  const candidatesM = [0.5, 1, 2, 5, 10, 20, 50, 100];
+  const meters = candidatesM.find((m) => m >= minMeters) ?? Math.ceil(minMeters / 50) * 50;
+  return Math.max(50, Math.round(meters * 100));
+}
+
 export function objectTypeLabel(type: VenuePlanObjectType): string {
   switch (type) {
     case "stage":

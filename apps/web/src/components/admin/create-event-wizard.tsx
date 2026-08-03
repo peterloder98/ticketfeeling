@@ -23,8 +23,73 @@ import {
 import { formatEuroFromCents } from "@/lib/money";
 
 const DRAFT_KEY = "tf-create-event-wizard-v1";
+/** Legacy per-tab key — migrated to localStorage so saalplan new-tab return works. */
+const DRAFT_KEY_SESSION = "tf-create-event-wizard-v1";
 
 type DraftGate = "checking" | "offer" | "ready";
+
+function readDraftRaw(): string | null {
+  try {
+    const fromLocal = localStorage.getItem(DRAFT_KEY);
+    if (fromLocal) return fromLocal;
+  } catch {
+    /* ignore */
+  }
+  try {
+    return sessionStorage.getItem(DRAFT_KEY_SESSION);
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftRaw(json: string) {
+  try {
+    localStorage.setItem(DRAFT_KEY, json);
+  } catch {
+    /* quota / private mode */
+  }
+  try {
+    sessionStorage.setItem(DRAFT_KEY_SESSION, json);
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearDraftRaw() {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* ignore */
+  }
+  try {
+    sessionStorage.removeItem(DRAFT_KEY_SESSION);
+  } catch {
+    /* ignore */
+  }
+}
+
+function shouldAutoResumeWizard(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const sp = new URLSearchParams(window.location.search);
+    return sp.get("resume") === "1" || sp.get("from") === "saalplan";
+  } catch {
+    return false;
+  }
+}
+
+function stripResumeParamsFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has("resume") && !url.searchParams.has("from")) return;
+    url.searchParams.delete("resume");
+    url.searchParams.delete("from");
+    const qs = url.searchParams.toString();
+    window.history.replaceState(null, "", `${url.pathname}${qs ? `?${qs}` : ""}${url.hash}`);
+  } catch {
+    /* ignore */
+  }
+}
 
 export type WizardVenuePlan = {
   id: string;
@@ -86,7 +151,8 @@ function newCategoryRow(partial?: Partial<CategoryRow>): CategoryRow {
 }
 
 function saalplanEditorUrl(planId: string) {
-  const returnTo = encodeURIComponent("/admin/events/neu");
+  // resume=1 → wizard auto-restores draft after return from the editor tab.
+  const returnTo = encodeURIComponent("/admin/events/neu?resume=1");
   const returnLabel = encodeURIComponent("Zurück zum Wizard");
   return `/admin/saalplan/${planId}?returnTo=${returnTo}&returnLabel=${returnLabel}`;
 }
@@ -172,11 +238,7 @@ export function CreateEventWizard({
   const [stepError, setStepError] = useState<string | null>(null);
 
   function clearDraftStorage() {
-    try {
-      sessionStorage.removeItem(DRAFT_KEY);
-    } catch {
-      /* ignore */
-    }
+    clearDraftRaw();
   }
 
   function applyDraft(draft: Record<string, unknown>) {
@@ -215,7 +277,7 @@ export function CreateEventWizard({
     if (typeof draft.seatingBookingMode === "string") {
       setSeatingBookingMode(draft.seatingBookingMode);
     }
-    // Restore plan from draft — sessionStorage keeps wizard alive while editor is in another tab.
+    // Restore plan from draft — localStorage survives the editor tab round-trip.
     if (typeof draft.venuePlanId === "string" && draft.venuePlanId) {
       const locId =
         typeof draft.locationId === "string" ? draft.locationId : locationId;
@@ -330,10 +392,10 @@ export function CreateEventWizard({
     });
   }
 
-  // Offer resume/discard for session drafts — never silently reopen unfinished saalplans.
+  // Restore drafts: auto-resume after saalplan return; otherwise offer resume/discard.
   useEffect(() => {
     try {
-      const raw = sessionStorage.getItem(DRAFT_KEY);
+      const raw = readDraftRaw();
       if (raw) {
         const draft = JSON.parse(raw) as Record<string, unknown>;
         const meaningful = Boolean(
@@ -344,6 +406,12 @@ export function CreateEventWizard({
             (typeof draft.newLocName === "string" && draft.newLocName.trim()),
         );
         if (meaningful) {
+          if (shouldAutoResumeWizard()) {
+            applyDraft(draft);
+            stripResumeParamsFromUrl();
+            setDraftGate("ready");
+            return;
+          }
           setPendingDraft(draft);
           setDraftGate("offer");
           return;
@@ -354,6 +422,7 @@ export function CreateEventWizard({
       clearDraftStorage();
     }
     setDraftGate("ready");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / tour change only
   }, [initialTourId]);
 
   useEffect(() => {
@@ -395,11 +464,7 @@ export function CreateEventWizard({
       newLocCapacity,
       categories,
     };
-    try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
-    } catch {
-      /* quota */
-    }
+    writeDraftRaw(JSON.stringify(draft));
   }, [
     step,
     name,
@@ -548,20 +613,48 @@ export function CreateEventWizard({
       return;
     }
 
-    // Persist draft before opening a new tab so state survives the round-trip.
+    // Persist draft before opening a new tab (localStorage — shared across tabs).
     try {
-      const raw = sessionStorage.getItem(DRAFT_KEY);
+      const raw = readDraftRaw();
       const current = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      sessionStorage.setItem(
-        DRAFT_KEY,
+      writeDraftRaw(
         JSON.stringify({
           ...current,
           step,
+          name,
+          slug,
+          slugManual,
+          subtitle,
+          shortDescription,
+          description,
+          status,
+          eventStartsAt,
+          eventEndsAt,
+          doorsOpenAt,
+          presaleStartsAt,
+          endsManual,
+          doorsManual,
+          ticketTaxPercent,
+          feeTaxMode,
+          feeTaxPercent,
+          coverImageUrl,
+          tourId,
           locationMode,
           locationId,
+          locationQuery,
           wantSaalplan: true,
           seatingBookingMode:
             seatingBookingMode === "none" ? "seat_map_and_best" : seatingBookingMode,
+          newLocName,
+          newLocStreet,
+          newLocHouse,
+          newLocZip,
+          newLocCity,
+          newLocCountry,
+          newLocPhone,
+          newLocHomepage,
+          newLocCapacity,
+          categories,
         }),
       );
     } catch {
@@ -630,50 +723,45 @@ export function CreateEventWizard({
         setVenuePlanId(result.venuePlanId);
         setSeatingBookingMode("seat_map_and_best");
         setWantSaalplan(true);
-        try {
-          sessionStorage.setItem(
-            DRAFT_KEY,
-            JSON.stringify({
-              step,
-              name,
-              slug,
-              slugManual,
-              subtitle,
-              shortDescription,
-              description,
-              status,
-              eventStartsAt,
-              eventEndsAt,
-              doorsOpenAt,
-              presaleStartsAt,
-              endsManual,
-              doorsManual,
-              ticketTaxPercent,
-              feeTaxMode,
-              feeTaxPercent,
-              coverImageUrl,
-              tourId,
-              locationMode: "existing",
-              locationId: result.locationId,
-              locationQuery,
-              venuePlanId: result.venuePlanId,
-              wantSaalplan: true,
-              seatingBookingMode: "seat_map_and_best",
-              newLocName,
-              newLocStreet,
-              newLocHouse,
-              newLocZip,
-              newLocCity,
-              newLocCountry,
-              newLocPhone,
-              newLocHomepage,
-              newLocCapacity,
-              categories,
-            }),
-          );
-        } catch {
-          /* ignore */
-        }
+        writeDraftRaw(
+          JSON.stringify({
+            step,
+            name,
+            slug,
+            slugManual,
+            subtitle,
+            shortDescription,
+            description,
+            status,
+            eventStartsAt,
+            eventEndsAt,
+            doorsOpenAt,
+            presaleStartsAt,
+            endsManual,
+            doorsManual,
+            ticketTaxPercent,
+            feeTaxMode,
+            feeTaxPercent,
+            coverImageUrl,
+            tourId,
+            locationMode: "existing",
+            locationId: result.locationId,
+            locationQuery,
+            venuePlanId: result.venuePlanId,
+            wantSaalplan: true,
+            seatingBookingMode: "seat_map_and_best",
+            newLocName,
+            newLocStreet,
+            newLocHouse,
+            newLocZip,
+            newLocCity,
+            newLocCountry,
+            newLocPhone,
+            newLocHomepage,
+            newLocCapacity,
+            categories,
+          }),
+        );
         window.open(saalplanEditorUrl(result.venuePlanId), "_blank", "noopener,noreferrer");
       } catch (e) {
         setStepError(

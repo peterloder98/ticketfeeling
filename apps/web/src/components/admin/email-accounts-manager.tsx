@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import {
   createEmailAccountAction,
   deleteEmailAccountAction,
@@ -242,6 +242,11 @@ export function EmailAccountsManager({ accounts }: { accounts: EmailAccountRow[]
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showNew, setShowNew] = useState(accounts.length === 0);
 
+  // Keep list visible after soft navigation / server revalidate restores accounts.
+  useEffect(() => {
+    if (accounts.length > 0) setShowNew(false);
+  }, [accounts.length]);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -333,7 +338,15 @@ export function EmailAccountsManager({ accounts }: { accounts: EmailAccountRow[]
       ))}
 
       {accounts.length === 0 && !showNew ? (
-        <p className="text-sm text-[var(--tf-text-secondary)]">Noch keine E-Mail-Konten.</p>
+        <div className="tf-card space-y-2">
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Noch keine E-Mail-Konten. Wenn früher SMTP unter den Unternehmensdaten hinterlegt war,
+            wird es beim nächsten Laden automatisch wiederhergestellt.
+          </p>
+          <button type="button" className="tf-btn tf-btn-primary" onClick={() => setShowNew(true)}>
+            Konto anlegen
+          </button>
+        </div>
       ) : null}
     </div>
   );

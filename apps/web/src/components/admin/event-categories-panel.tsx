@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatEuroFromCents } from "@/lib/money";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
 
-type Category = {
+export type EventCategoryRow = {
   id: string;
   name: string;
   description: string | null;
@@ -15,8 +15,11 @@ type Category = {
   categoryKind?: string;
   companionFree?: boolean;
   color?: string | null;
+  freeSeating?: boolean;
   pools: { channel: string; soldQuantity: number; heldQuantity: number; capacity: number }[];
 };
+
+type Category = EventCategoryRow;
 
 const KIND_OPTIONS = [
   { value: "standard", label: "Normalpreis / Kategorie" },
@@ -142,23 +145,36 @@ function CategoryKindFields({
 export function EventCategoriesPanel({
   eventId,
   categories: initialCategories,
+  onCategoriesChange,
   templates,
   canWrite,
   salesReleased = false,
 }: {
   eventId: string;
   categories: Category[];
+  /** When set, category list is shared with Saalplan assignment above. */
+  onCategoriesChange?: (categories: Category[]) => void;
   templates: Template[];
   canWrite: boolean;
   /** True when event is freigegeben — no new categories allowed */
   salesReleased?: boolean;
 }) {
   const router = useRouter();
-  const [categories, setCategories] = useState(initialCategories);
+  const [localCategories, setLocalCategories] = useState(initialCategories);
+  const categories = onCategoriesChange ? initialCategories : localCategories;
+  const setCategories = (next: Category[] | ((prev: Category[]) => Category[])) => {
+    const resolved = typeof next === "function" ? next(categories) : next;
+    if (onCategoriesChange) onCategoriesChange(resolved);
+    else setLocalCategories(resolved);
+  };
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [newFormKey, setNewFormKey] = useState(0);
+
+  useEffect(() => {
+    if (!onCategoriesChange) setLocalCategories(initialCategories);
+  }, [initialCategories, onCategoriesChange]);
 
   async function saveCategory(form: HTMLFormElement, categoryId?: string) {
     if (!categoryId && salesReleased) {

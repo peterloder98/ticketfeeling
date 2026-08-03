@@ -12,8 +12,9 @@ import {
 import { Plus, Save, ZoomIn, ZoomOut } from "lucide-react";
 import type { VenuePlanObject } from "@/lib/saalplan/types";
 import {
+  adaptiveMeterTickStepCm,
   areaSqm,
-  cmToMetersLabel,
+  cmToMetersTickLabel,
   estimateStandingCapacity,
   objectTypeLabel,
   planSeatCapacity,
@@ -356,45 +357,57 @@ export function SaalplanEditor({
     });
   }
 
+  const majorTickCm = useMemo(
+    () => adaptiveMeterTickStepCm(scale, 56),
+    [scale],
+  );
+  // Minor grid: half the major step, but never denser than 50 cm.
+  const minorTickCm = Math.max(50, majorTickCm / 2);
+
   const gridLines = useMemo(() => {
     const lines: { x1: number; y1: number; x2: number; y2: number; major: boolean }[] = [];
-    const step = 50;
-    for (let x = 0; x <= widthCm; x += step) {
+    for (let x = 0; x <= widthCm; x += minorTickCm) {
       lines.push({
         x1: hallLeft + toPx(x),
         y1: hallTop,
         x2: hallLeft + toPx(x),
         y2: hallTop + hallH,
-        major: x % 100 === 0,
+        major: x % majorTickCm === 0,
       });
     }
-    for (let y = 0; y <= depthCm; y += step) {
+    for (let y = 0; y <= depthCm; y += minorTickCm) {
       lines.push({
         x1: hallLeft,
         y1: hallTop + toPx(y),
         x2: hallLeft + hallW,
         y2: hallTop + toPx(y),
-        major: y % 100 === 0,
+        major: y % majorTickCm === 0,
       });
     }
     return lines;
-  }, [widthCm, depthCm, hallLeft, hallTop, hallW, hallH, toPx]);
+  }, [widthCm, depthCm, hallLeft, hallTop, hallW, hallH, toPx, minorTickCm, majorTickCm]);
 
   const meterLabelsX = useMemo(() => {
     const labels: { x: number; text: string }[] = [];
-    for (let x = 0; x <= widthCm; x += 100) {
-      labels.push({ x: hallLeft + toPx(x), text: cmToMetersLabel(x) });
+    for (let x = 0; x <= widthCm; x += majorTickCm) {
+      labels.push({
+        x: hallLeft + toPx(x),
+        text: cmToMetersTickLabel(x, x === 0),
+      });
     }
     return labels;
-  }, [widthCm, hallLeft, toPx]);
+  }, [widthCm, hallLeft, toPx, majorTickCm]);
 
   const meterLabelsY = useMemo(() => {
     const labels: { y: number; text: string }[] = [];
-    for (let y = 0; y <= depthCm; y += 100) {
-      labels.push({ y: hallTop + toPx(y), text: cmToMetersLabel(y) });
+    for (let y = 0; y <= depthCm; y += majorTickCm) {
+      labels.push({
+        y: hallTop + toPx(y),
+        text: cmToMetersTickLabel(y, y === 0),
+      });
     }
     return labels;
-  }, [depthCm, hallTop, toPx]);
+  }, [depthCm, hallTop, toPx, majorTickCm]);
 
   return (
     <div className="space-y-4">
@@ -668,6 +681,14 @@ export function SaalplanEditor({
                           obj.standingMode ?? "standing",
                         )
                       : 0;
+                  const labelFont = Math.max(
+                    9,
+                    Math.min(13, Math.min(w, h) * (obj.type === "stage" ? 0.22 : 0.14)),
+                  );
+                  const showStageIcon = obj.type === "stage" && h >= 36 && w >= 48;
+                  const stageLabelY = showStageIcon
+                    ? cy + Math.min(h * 0.28, labelFont + 10)
+                    : cy + labelFont * 0.35;
 
                   return (
                     <g
@@ -696,7 +717,7 @@ export function SaalplanEditor({
                         strokeDasharray={obj.type === "standing_area" ? "7 4" : undefined}
                       />
 
-                      {obj.type === "stage" ? (
+                      {showStageIcon ? (
                         <path
                           d={`M ${cx - 10} ${cy + 4} L ${cx - 10} ${cy - 2} L ${cx - 5} ${cy + 2} L ${cx} ${cy - 6} L ${cx + 5} ${cy + 2} L ${cx + 10} ${cy - 2} L ${cx + 10} ${cy + 4} Z`}
                           fill="var(--tf-navy)"
@@ -711,13 +732,13 @@ export function SaalplanEditor({
                         ? renderSeatDots(obj, x, y, w, h)
                         : null}
 
-                      {obj.type === "standing_area" ? (
+                      {obj.type === "standing_area" && Math.min(w, h) >= 28 ? (
                         <text
                           x={cx}
                           y={cy + 4}
                           textAnchor="middle"
                           style={{
-                            fontSize: 11,
+                            fontSize: labelFont,
                             fontWeight: 600,
                             fill: "var(--tf-text-secondary)",
                             pointerEvents: "none",
@@ -728,32 +749,32 @@ export function SaalplanEditor({
                         </text>
                       ) : null}
 
-                      {/* Label tight above the block border (readable, no seat overlap) */}
-                      <text
-                        x={cx}
-                        y={
-                          obj.type === "stage"
-                            ? cy + 22
-                            : y - 3
-                        }
-                        textAnchor="middle"
-                        dominantBaseline="auto"
-                        style={{
-                          fontSize: 12,
-                          fontWeight: 700,
-                          fill: "var(--tf-navy)",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {obj.label || objectTypeLabel(obj.type)}
-                        {obj.type === "seat_block"
-                          ? numbered
-                            ? ` · ${seats}`
-                            : " · freie Platzwahl"
-                          : obj.type === "standing_area" && standingCap > 0
-                            ? ` · ca. ${standingCap}`
-                            : ""}
-                      </text>
+                      {/* Stage: label inside, scaled. Blocks: above border so seats stay clear. */}
+                      {obj.type === "stage" || Math.min(w, h) >= 24 ? (
+                        <text
+                          x={cx}
+                          y={obj.type === "stage" ? stageLabelY : y - 3}
+                          textAnchor="middle"
+                          dominantBaseline="auto"
+                          style={{
+                            fontSize: labelFont,
+                            fontWeight: 700,
+                            fill: "var(--tf-navy)",
+                            pointerEvents: "none",
+                          }}
+                        >
+                          {obj.label || objectTypeLabel(obj.type)}
+                          {obj.type === "seat_block"
+                            ? numbered
+                              ? ` · ${seats}`
+                              : w >= 90
+                                ? " · freie Platzwahl"
+                                : ""
+                            : obj.type === "standing_area" && standingCap > 0
+                              ? ` · ca. ${standingCap}`
+                              : ""}
+                        </text>
+                      ) : null}
                     </g>
                   );
                 })}

@@ -14,34 +14,59 @@ export type ResolvedSmtp = {
   label: string;
 };
 
-/** Migrate legacy OrganizationSettings.smtp* into EmailAccount once. */
+/**
+ * Ensure at least one OrganizationEmailAccount exists when legacy
+ * OrganizationSettings.smtp* is configured. Safe to call on every page load:
+ * no-op when accounts already exist; re-imports from settings when count is 0.
+ * Copies passwordEnc as-is (never invents a new password).
+ */
 export async function ensureEmailAccountsMigrated(organizationId: string) {
-  const existing = await getPrisma().organizationEmailAccount.count({
+  const db = getPrisma();
+  const existing = await db.organizationEmailAccount.count({
     where: { organizationId },
   });
   if (existing > 0) return;
 
-  const settings = await getPrisma().organizationSettings.findUnique({
+  const settings = await db.organizationSettings.findUnique({
     where: { organizationId },
   });
-  if (!settings?.smtpHost?.trim() || !settings.smtpUser?.trim() || !settings.smtpPasswordEnc) {
-    return;
-  }
+  const host = settings?.smtpHost?.trim();
+  const username = settings?.smtpUser?.trim();
+  const passwordEnc = settings?.smtpPasswordEnc;
+  if (!host || !username || !passwordEnc) return;
 
-  await getPrisma().organizationEmailAccount.create({
-    data: {
-      organizationId,
-      label: "Standard (migriert)",
-      host: settings.smtpHost.trim(),
-      port: settings.smtpPort || 465,
-      secure: settings.smtpSecure ?? true,
-      username: settings.smtpUser.trim(),
-      passwordEnc: settings.smtpPasswordEnc,
-      fromEmail: (settings.smtpFromEmail ?? settings.smtpUser).trim(),
-      fromName: settings.smtpFromName?.trim() || "Ticketfeeling",
-      isDefault: true,
-    },
+  const fromEmail = (settings.smtpFromEmail?.trim() || username).trim();
+
+  // Idempotent restore: same org + fromEmail may already exist after a race.
+  const byFrom = await db.organizationEmailAccount.findFirst({
+    where: { organizationId, fromEmail },
   });
+  if (byFrom) return;
+
+  try {
+    await db.organizationEmailAccount.create({
+      data: {
+        organizationId,
+        label: "Standard (migriert)",
+        host,
+        port: settings.smtpPort || 465,
+        secure: settings.smtpSecure ?? true,
+        username,
+        passwordEnc,
+        fromEmail,
+        fromName: settings.smtpFromName?.trim() || "Ticketfeeling",
+        isDefault: true,
+      },
+    });
+  } catch {
+    // Concurrent migrate — another request may have created the row.
+    const again = await db.organizationEmailAccount.count({
+      where: { organizationId },
+    });
+    if (again === 0) {
+      throw new Error("EMAIL_ACCOUNT_MIGRATE_FAILED");
+    }
+  }
 }
 
 export async function resolveOutboundSmtp(

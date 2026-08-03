@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { getPrisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ensureEmailAccountsMigrated } from "@/lib/email/accounts";
 import { EmailAccountsManager } from "@/components/admin/email-accounts-manager";
@@ -23,6 +23,7 @@ export default async function EmailAccountsPage() {
     return <p className="text-[var(--danger)]">Zum Verwalten der E-Mail-Konten fehlt org:write.</p>;
   }
 
+  const prisma = getPrisma();
   await ensureEmailAccountsMigrated(membership.organizationId);
   const accounts = await prisma.organizationEmailAccount.findMany({
     where: { organizationId: membership.organizationId },

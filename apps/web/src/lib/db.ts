@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 /** Bump after Prisma schema changes so HMR drops a stale global client. */
-const PRISMA_CLIENT_EPOCH = 10;
+const PRISMA_CLIENT_EPOCH = 11;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -52,4 +52,15 @@ export function getPrisma() {
   return client;
 }
 
-export const prisma = getPrisma();
+/**
+ * Live delegate to getPrisma() — never cache a disconnected/stale client in importers.
+ * `export const prisma = getPrisma()` used to leave callers on a dead client after HMR
+ * refreshed the global singleton (e.g. OrganizationEmailAccount queries failing/empty).
+ */
+export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop, _receiver) {
+    const client = getPrisma();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(client) : value;
+  },
+});
