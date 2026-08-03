@@ -64,6 +64,7 @@ export async function getEventListSales(
   if (eventIds.length === 0) return [];
 
   // Aggregate in SQL instead of pulling every order line into Node.
+  // Cast params to uuid — Postgres rejects uuid = text (Prisma binds strings as text).
   const sales = await prisma.$queryRaw<
     Array<{
       event_id: string;
@@ -80,8 +81,8 @@ export async function getEventListSales(
            COALESCE(SUM(CASE WHEN o.channel = 'box_office' THEN oi.quantity ELSE 0 END), 0) AS box_office_sold
     FROM order_items oi
     INNER JOIN orders o ON o.id = oi.order_id
-    WHERE oi.event_id IN (${Prisma.join(eventIds)})
-      AND o.organization_id = ${organizationId}
+    WHERE oi.event_id IN (${Prisma.join(eventIds.map((id) => Prisma.sql`${id}::uuid`))})
+      AND o.organization_id = ${organizationId}::uuid
       AND o.status IN (${Prisma.join([...PAID])})
     GROUP BY oi.event_id
   `;

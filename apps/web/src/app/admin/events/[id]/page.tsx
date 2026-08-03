@@ -22,6 +22,7 @@ import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
+import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +63,9 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       membership.organizationId,
       "tours:write",
     ));
+
+  // Event include selects seatingLayoutConfig; seat count filters category_id.
+  await ensureSeatingAssignmentSchema(prisma);
 
   const event = await prisma.event.findFirst({
     where: { id, organizationId: membership.organizationId },
