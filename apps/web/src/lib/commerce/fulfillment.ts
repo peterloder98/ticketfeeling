@@ -579,6 +579,28 @@ export async function fulfillPaidOrder(orderId: string) {
           console.error("[fulfillment] pdf module load failed", error);
         }
 
+        let invoiceAttachmentNumber: string | null = null;
+        const invoiceRow = fresh.invoices[0];
+        if (invoiceRow && fresh.invoiceRequested) {
+          try {
+            const { getOrCreateInvoicePdf } = await import("@/lib/commerce/invoice-pdf");
+            const invoicePdf = await getOrCreateInvoicePdf(invoiceRow.id, { persist: true });
+            if (invoicePdf.buffer.length > 0) {
+              pdfAttachments.push({
+                filename: invoicePdf.filename,
+                content: invoicePdf.buffer,
+              });
+              invoiceAttachmentNumber = invoicePdf.invoiceNumber;
+              await prisma.invoice.update({
+                where: { id: invoiceRow.id },
+                data: { pdfEmailedAt: new Date() },
+              });
+            }
+          } catch (error) {
+            console.error("[fulfillment] invoice pdf attach failed", invoiceRow.id, error);
+          }
+        }
+
         const mail = buildOrderPaidTicketsMail({
           firstName: fresh.customer.firstName,
           eventName,
@@ -589,6 +611,7 @@ export async function fulfillPaidOrder(orderId: string) {
           orderNumber: fresh.orderNumber,
           ticketCount: fresh.tickets.length,
           hasAttachment: pdfAttachments.length > 0,
+          invoiceNumber: invoiceAttachmentNumber,
         });
         const sendResult = await enqueueTransactionalEmail({
           organizationId: fresh.organizationId,
@@ -599,6 +622,7 @@ export async function fulfillPaidOrder(orderId: string) {
             orderNumber: fresh.orderNumber,
             ticketCount: fresh.tickets.length,
             invoiceNumber: fresh.invoices[0]?.invoiceNumber,
+            invoiceRequested: fresh.invoiceRequested,
             eventName,
             eventDate: eventDateLabel,
           },
