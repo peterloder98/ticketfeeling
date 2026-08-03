@@ -512,12 +512,6 @@ export async function addToCart(input: {
         }
       }
 
-      // Lock seats — re-check status + unlock
-      const lockedSeats = await tx.eventSeat.findMany({
-        where: { id: { in: seatIdsToHold }, status: "available", locked: false },
-        select: { id: true },
-      });
-      if (lockedSeats.length !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
     }
 
     await tx.inventoryPool.update({
@@ -550,14 +544,20 @@ export async function addToCart(input: {
     });
 
     if (seatIdsToHold.length > 0) {
-      await tx.eventSeat.updateMany({
-        where: { id: { in: seatIdsToHold } },
+      // Atomic claim — require still-available + unlocked so concurrent carts cannot steal.
+      const claimed = await tx.eventSeat.updateMany({
+        where: {
+          id: { in: seatIdsToHold },
+          status: "available",
+          locked: false,
+        },
         data: {
           status: "held",
           holdExpiresAt: expiresAt,
           cartItemId: item.id,
         },
       });
+      if (claimed.count !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
     }
 
     await tx.cart.update({
