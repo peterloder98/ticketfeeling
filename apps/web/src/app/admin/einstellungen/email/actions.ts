@@ -7,12 +7,10 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { decryptSecret } from "@/lib/crypto-fields";
 import {
   encryptSmtpPassword,
   ensureEmailAccountsMigrated,
   testEmailAccount,
-  testSmtpConnection,
 } from "@/lib/email/accounts";
 
 async function requireOrgWrite() {
@@ -66,7 +64,7 @@ async function setOnlyDefault(organizationId: string, accountId: string) {
   ]);
 }
 
-export async function createEmailAccountAction(formData: FormData) {
+export async function createEmailAccountAction(formData: FormData): Promise<string> {
   const { session, membership } = await requireOrgWrite();
   const parsed = parseAccountForm(formData);
   if (!parsed.password.trim()) throw new Error("PASSWORD_REQUIRED");
@@ -113,9 +111,10 @@ export async function createEmailAccountAction(formData: FormData) {
   revalidatePath("/admin/einstellungen");
   revalidatePath("/admin/einstellungen/email");
   revalidatePath("/admin/stammdaten");
+  return account.id;
 }
 
-export async function updateEmailAccountAction(formData: FormData) {
+export async function updateEmailAccountAction(formData: FormData): Promise<string> {
   const { session, membership } = await requireOrgWrite();
   const id = String(formData.get("id") ?? "");
   const existing = await prisma.organizationEmailAccount.findFirst({
@@ -172,6 +171,7 @@ export async function updateEmailAccountAction(formData: FormData) {
 
   revalidatePath("/admin/einstellungen");
   revalidatePath("/admin/einstellungen/email");
+  return id;
 }
 
 export async function deleteEmailAccountAction(formData: FormData) {
@@ -232,70 +232,82 @@ export async function setDefaultEmailAccountAction(formData: FormData) {
 export type SmtpTestState = {
   ok: boolean | null;
   message: string;
+  /** Account was persisted before the SMTP check (save-and-test flow). */
+  saved?: boolean;
 };
 
+function saveFailureMessage(error: unknown): string {
+  const code = error instanceof Error ? error.message : "";
+  if (code === "PASSWORD_REQUIRED") {
+    return "Speichern fehlgeschlagen: Passwort ist erforderlich.";
+  }
+  if (code === "REQUIRED_FIELDS") {
+    return "Speichern fehlgeschlagen: Host, Benutzer und From-E-Mail sind nötig.";
+  }
+  if (code === "NOT_FOUND") {
+    return "Speichern fehlgeschlagen: Konto nicht gefunden.";
+  }
+  if (code === "FORBIDDEN") {
+    return "Speichern fehlgeschlagen: Keine Berechtigung.";
+  }
+  return error instanceof Error
+    ? `Speichern fehlgeschlagen: ${error.message}`
+    : "Speichern fehlgeschlagen.";
+}
+
+/** Persist form (create or update), then test the saved account. */
+export async function saveAndTestEmailAccountAction(
+  _prev: SmtpTestState,
+  formData: FormData,
+): Promise<SmtpTestState> {
+  try {
+    const existingId = String(formData.get("id") ?? "").trim();
+    let accountId: string;
+    try {
+      accountId = existingId
+        ? await updateEmailAccountAction(formData)
+        : await createEmailAccountAction(formData);
+    } catch (error) {
+      return { ok: false, message: saveFailureMessage(error), saved: false };
+    }
+
+    const { membership } = await requireOrgWrite();
+    const result = await testEmailAccount({
+      organizationId: membership.organizationId,
+      accountId,
+    });
+    revalidatePath("/admin/einstellungen");
+    revalidatePath("/admin/einstellungen/email");
+    return {
+      ok: result.ok,
+      saved: true,
+      message: `Gespeichert. ${result.message}`,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      saved: true,
+      message:
+        error instanceof Error
+          ? `Gespeichert, aber Prüfung fehlgeschlagen: ${error.message}`
+          : "Gespeichert, aber Prüfung fehlgeschlagen.",
+    };
+  }
+}
+
+/** Test an already-saved account by id (no form-only / unsaved path). */
 export async function testEmailAccountAction(
   _prev: SmtpTestState,
   formData: FormData,
 ): Promise<SmtpTestState> {
   try {
     const { membership } = await requireOrgWrite();
-    const id = String(formData.get("id") ?? "");
-
-    const host = String(formData.get("host") ?? "").trim();
-    const port = Math.max(1, Number(formData.get("port") ?? 465) || 465);
-    let secure = formData.get("secure") === "on" || formData.get("secure") === "true";
-    if (port === 465) secure = true;
-    if (port === 587) secure = false;
-    const username = String(formData.get("username") ?? "").trim();
-    const fromEmail = String(formData.get("fromEmail") ?? "").trim();
-    const fromName = String(formData.get("fromName") ?? "").trim();
-    let password = String(formData.get("password") ?? "")
-      .replace(/^\uFEFF/, "")
-      .trim();
-
-    // Form fields present (new account or edit) → test what's typed
-    if (host && username && fromEmail) {
-      if (!password && id) {
-        const existing = await prisma.organizationEmailAccount.findFirst({
-          where: { id, organizationId: membership.organizationId },
-        });
-        if (!existing) {
-          return { ok: false, message: "Der Test ist fehlgeschlagen: Konto nicht gefunden." };
-        }
-        try {
-          password = decryptSecret(existing.passwordEnc);
-        } catch {
-          return {
-            ok: false,
-            message:
-              "Der Test ist fehlgeschlagen: Gespeichertes Passwort nicht lesbar — bitte neu eingeben.",
-          };
-        }
-      }
-      if (!password) {
-        return {
-          ok: false,
-          message:
-            "Der Test ist fehlgeschlagen: Host, Benutzer, From-E-Mail und Passwort sind nötig.",
-        };
-      }
-      return testSmtpConnection({
-        host,
-        port,
-        secure,
-        user: username,
-        password,
-        fromEmail,
-        fromName,
-      });
-    }
+    const id = String(formData.get("id") ?? "").trim();
 
     if (!id) {
       return {
         ok: false,
-        message:
-          "Der Test ist fehlgeschlagen: Host, Benutzer, From-E-Mail und Passwort sind nötig.",
+        message: "Der Test ist fehlgeschlagen: Kein gespeichertes Konto ausgewählt.",
       };
     }
 

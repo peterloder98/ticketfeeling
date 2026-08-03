@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState } from "react";
 import {
   createEmailAccountAction,
   deleteEmailAccountAction,
+  saveAndTestEmailAccountAction,
   setDefaultEmailAccountAction,
   testEmailAccountAction,
   updateEmailAccountAction,
@@ -67,7 +68,10 @@ function AccountEditor({
   account: EmailAccountRow;
   onClose: () => void;
 }) {
-  const [testState, testAction, testing] = useActionState(testEmailAccountAction, testInitial);
+  const [testState, saveAndTestAction, testing] = useActionState(
+    saveAndTestEmailAccountAction,
+    testInitial,
+  );
 
   return (
     <form
@@ -134,11 +138,11 @@ function AccountEditor({
       <div className="flex flex-wrap gap-2 border-t border-[var(--tf-line)] pt-3">
         <button
           type="submit"
-          formAction={testAction}
+          formAction={saveAndTestAction}
           className="tf-btn tf-btn-secondary"
           disabled={testing}
         >
-          {testing ? "Prüfe…" : "Daten prüfen"}
+          {testing ? "Speichere & prüfe…" : "Daten prüfen"}
         </button>
         <button type="submit" className="tf-btn tf-btn-primary">
           Speichern
@@ -152,7 +156,15 @@ function AccountEditor({
 }
 
 function NewAccountForm({ onDone }: { onDone: () => void }) {
-  const [testState, testAction, testing] = useActionState(testEmailAccountAction, testInitial);
+  const [testState, saveAndTestAction, testing] = useActionState(
+    saveAndTestEmailAccountAction,
+    testInitial,
+  );
+
+  // After successful save (create), close the form — test result lives on the account card.
+  useEffect(() => {
+    if (testState.saved) onDone();
+  }, [testState.saved, onDone]);
 
   return (
     <div className="tf-card space-y-4">
@@ -220,11 +232,11 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
         <div className="flex flex-wrap gap-2 border-t border-[var(--tf-line)] pt-3">
           <button
             type="submit"
-            formAction={testAction}
+            formAction={saveAndTestAction}
             className="tf-btn tf-btn-secondary"
             disabled={testing}
           >
-            {testing ? "Prüfe…" : "Daten prüfen"}
+            {testing ? "Speichere & prüfe…" : "Daten prüfen"}
           </button>
           <button type="submit" className="tf-btn tf-btn-primary">
             Speichern

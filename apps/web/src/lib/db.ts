@@ -58,7 +58,7 @@ export function getPrisma() {
  * refreshed the global singleton (e.g. OrganizationEmailAccount queries failing/empty).
  */
 export const prisma: PrismaClient = new Proxy({} as PrismaClient, {
-  get(_target, prop, _receiver) {
+  get(_target, prop) {
     const client = getPrisma();
     const value = Reflect.get(client, prop, client);
     return typeof value === "function" ? (value as (...args: unknown[]) => unknown).bind(client) : value;
