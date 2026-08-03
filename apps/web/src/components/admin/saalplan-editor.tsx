@@ -40,27 +40,21 @@ type Props = {
   saveAction: (formData: FormData) => Promise<void>;
 };
 
-type DragState =
-  | {
-      kind: "move";
-      objectId: string;
-      startClientX: number;
-      startClientY: number;
-      origX: number;
-      origY: number;
-    }
-  | {
-      kind: "resize";
-      objectId: string;
-      corner: "nw" | "ne" | "sw" | "se";
-      startClientX: number;
-      startClientY: number;
-      orig: VenuePlanObject;
-    };
+type DragState = {
+  kind: "move";
+  objectId: string;
+  startClientX: number;
+  startClientY: number;
+  origX: number;
+  origY: number;
+};
 
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
+/** Hard caps for block layout — real halls need more than the old silent max of 80. */
+const MAX_ROWS = 200;
+const MAX_SEATS_PER_ROW = 200;
 
 export function SaalplanEditor({
   planId,
@@ -114,7 +108,7 @@ export function SaalplanEditor({
 
   hallRef.current = { widthCm, depthCm };
 
-  const pad = Math.max(28, Math.min(48, Math.round(Math.min(viewport.w, viewport.h) * 0.06)));
+  const pad = Math.max(12, Math.min(24, Math.round(Math.min(viewport.w, viewport.h) * 0.03)));
   const fitScale = Math.min(
     (viewport.w - pad * 2) / Math.max(1, widthCm),
     (viewport.h - pad * 2) / Math.max(1, depthCm),
@@ -138,14 +132,44 @@ export function SaalplanEditor({
     setMessage(null);
   }
 
-  function updateSelected(patch: Partial<VenuePlanObject>) {
+  function updateSelected(patch: Partial<VenuePlanObject>, notice?: string | null) {
     if (!selectedId) return;
     setObjects((prev) => {
       const next = prev.map((o) => (o.id === selectedId ? { ...o, ...patch } : o));
       return next;
     });
     setDirty(true);
-    setMessage(null);
+    setMessage(notice ?? null);
+  }
+
+  /** Grow block from row/seat counts; clamp physical size to hall and surface feedback. */
+  function applySeatLayout(rawRows: number, rawSeatsPerRow: number) {
+    const rows = Math.min(MAX_ROWS, Math.max(1, Math.round(rawRows) || 1));
+    const seatsPerRow = Math.min(
+      MAX_SEATS_PER_ROW,
+      Math.max(1, Math.round(rawSeatsPerRow) || 1),
+    );
+    const size = seatBlockSizeCm(rows, seatsPerRow);
+    const maxW = widthCm;
+    const maxH = depthCm;
+    const nextW = Math.min(size.widthCm, maxW);
+    const nextH = Math.min(size.heightCm, maxH);
+    let notice: string | null = null;
+    if (rows !== Math.round(rawRows) || seatsPerRow !== Math.round(rawSeatsPerRow)) {
+      notice = `Maximum erreicht: bis zu ${MAX_ROWS} Reihen und ${MAX_SEATS_PER_ROW} Sitze pro Reihe.`;
+    } else if (size.widthCm > maxW || size.heightCm > maxH) {
+      notice =
+        "So groß wie der Saal hergibt — bei noch mehr Sitzen bleiben die Abmessungen gleich (Sitze rücken enger).";
+    }
+    updateSelected(
+      {
+        rows,
+        seatsPerRow,
+        widthCm: nextW,
+        heightCm: nextH,
+      },
+      notice,
+    );
   }
 
   function deleteSelected() {
@@ -218,48 +242,24 @@ export function SaalplanEditor({
       const { widthCm: hallWCm, depthCm: hallDCm } = hallRef.current;
       const { dxCm, dyCm } = clientDeltaToCm(e, drag.startClientX, drag.startClientY);
 
-      if (drag.kind === "move") {
-        setObjects((prev) => {
-          const current = prev.find((o) => o.id === drag.objectId);
-          if (!current) return prev;
-          const snapped = snapObjectCenter({
-            xCm: drag.origX + dxCm,
-            yCm: drag.origY + dyCm,
-            widthCm: current.widthCm,
-            heightCm: current.heightCm,
-            hallWidthCm: hallWCm,
-            hallDepthCm: hallDCm,
-          });
-          setGuides(snapped.guides);
-          return prev.map((o) =>
-            o.id === drag.objectId ? { ...o, xCm: snapped.xCm, yCm: snapped.yCm } : o,
-          );
+      setObjects((prev) => {
+        const current = prev.find((o) => o.id === drag.objectId);
+        if (!current) return prev;
+        const snapped = snapObjectCenter({
+          xCm: drag.origX + dxCm,
+          yCm: drag.origY + dyCm,
+          widthCm: current.widthCm,
+          heightCm: current.heightCm,
+          hallWidthCm: hallWCm,
+          hallDepthCm: hallDCm,
         });
-        setDirty(true);
-        setMessage(null);
-      } else {
-        const o = drag.orig;
-        const signX = drag.corner.includes("e") ? 1 : -1;
-        const signY = drag.corner.includes("s") ? 1 : -1;
-        const w = Math.max(40, o.widthCm + signX * dxCm * 2);
-        const h = Math.max(40, o.heightCm + signY * dyCm * 2);
-        let cx = o.xCm + (signX * (w - o.widthCm)) / 2;
-        let cy = o.yCm + (signY * (h - o.heightCm)) / 2;
-        const halfW = w / 2;
-        const halfH = h / 2;
-        cx = Math.min(hallWCm - halfW, Math.max(halfW, cx));
-        cy = Math.min(hallDCm - halfH, Math.max(halfH, cy));
-        setGuides([]);
-        setObjects((prev) =>
-          prev.map((obj) =>
-            obj.id === drag.objectId
-              ? { ...obj, widthCm: w, heightCm: h, xCm: cx, yCm: cy }
-              : obj,
-          ),
+        setGuides(snapped.guides);
+        return prev.map((o) =>
+          o.id === drag.objectId ? { ...o, xCm: snapped.xCm, yCm: snapped.yCm } : o,
         );
-        setDirty(true);
-        setMessage(null);
-      }
+      });
+      setDirty(true);
+      setMessage(null);
     }
 
     function onUp() {
@@ -307,24 +307,6 @@ export function SaalplanEditor({
       startClientY: e.clientY,
       origX: obj.xCm,
       origY: obj.yCm,
-    };
-  }
-
-  function onPointerDownResize(
-    e: React.PointerEvent,
-    corner: "nw" | "ne" | "sw" | "se",
-    obj: VenuePlanObject,
-  ) {
-    e.stopPropagation();
-    e.preventDefault();
-    setSelectedId(obj.id);
-    dragRef.current = {
-      kind: "resize",
-      objectId: obj.id,
-      corner,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      orig: { ...obj },
     };
   }
 
@@ -400,13 +382,13 @@ export function SaalplanEditor({
             n: 2,
             title: "Bühne",
             done: hasStage,
-            text: "Einfügen, ziehen, Größe anpassen",
+            text: "Einfügen und auf dem Plan platzieren",
           },
           {
             n: 3,
             title: "Blöcke",
             done: hasSeats,
-            text: "Sitzend nummeriert oder Stehbereich",
+            text: "Reihen und Sitze rechts einstellen",
           },
           {
             n: 4,
@@ -507,7 +489,7 @@ export function SaalplanEditor({
         <div className="overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              Ziehen = verschieben · Ecken = Größe · Entf = löschen
+              Ziehen = verschieben · Größe über Maße / Reihen rechts · Entf = löschen
               {dirty ? " · ungespeichert" : ""}
             </p>
             <div className="flex items-center gap-1">
@@ -732,26 +714,6 @@ export function SaalplanEditor({
                             ? ` · ca. ${standingCap}`
                             : ""}
                       </text>
-
-                      {isSel
-                        ? (["nw", "ne", "sw", "se"] as const).map((corner) => {
-                            const hx = corner.includes("w") ? x : x + w;
-                            const hy = corner.includes("n") ? y : y + h;
-                            return (
-                              <circle
-                                key={corner}
-                                cx={hx}
-                                cy={hy}
-                                r={6}
-                                fill="var(--tf-teal)"
-                                stroke="white"
-                                strokeWidth={1.5}
-                                style={{ cursor: `${corner}-resize` }}
-                                onPointerDown={(e) => onPointerDownResize(e, corner, obj)}
-                              />
-                            );
-                          })
-                        : null}
                     </g>
                   );
                 })}
@@ -826,19 +788,13 @@ export function SaalplanEditor({
                       <input
                         type="number"
                         min={1}
-                        max={80}
                         className="tf-input !min-h-10"
                         value={selected.rows ?? 1}
                         onChange={(e) => {
-                          const rows = Math.max(1, Math.round(Number(e.target.value) || 1));
-                          const seatsPerRow = selected.seatsPerRow ?? 10;
-                          const size = seatBlockSizeCm(rows, seatsPerRow);
-                          updateSelected({
-                            rows,
-                            ...size,
-                            widthCm: Math.min(size.widthCm, widthCm * 0.95),
-                            heightCm: Math.min(size.heightCm, depthCm * 0.7),
-                          });
+                          applySeatLayout(
+                            Number(e.target.value) || 1,
+                            selected.seatsPerRow ?? 10,
+                          );
                         }}
                       />
                     </label>
@@ -847,19 +803,13 @@ export function SaalplanEditor({
                       <input
                         type="number"
                         min={1}
-                        max={80}
                         className="tf-input !min-h-10"
                         value={selected.seatsPerRow ?? 1}
                         onChange={(e) => {
-                          const seatsPerRow = Math.max(1, Math.round(Number(e.target.value) || 1));
-                          const rows = selected.rows ?? 5;
-                          const size = seatBlockSizeCm(rows, seatsPerRow);
-                          updateSelected({
-                            seatsPerRow,
-                            ...size,
-                            widthCm: Math.min(size.widthCm, widthCm * 0.95),
-                            heightCm: Math.min(size.heightCm, depthCm * 0.7),
-                          });
+                          applySeatLayout(
+                            selected.rows ?? 5,
+                            Number(e.target.value) || 1,
+                          );
                         }}
                       />
                     </label>
@@ -1004,8 +954,9 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
   const cols = Math.min(obj.seatsPerRow ?? 0, 40);
   if (rows < 1 || cols < 1) return null;
   const numbered = obj.numberedSeats !== false;
-  const padX = w * (numbered ? 0.12 : 0.08);
-  const padY = h * 0.14;
+  // Tight inset — users place blocks themselves; don't waste space on empty margins.
+  const padX = w * (numbered ? 0.05 : 0.03);
+  const padY = h * 0.05;
   const innerW = w - padX * 2;
   const innerH = h - padY * 2;
   const cellW = innerW / cols;
@@ -1017,11 +968,11 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
     for (let row = 0; row < rows; row += 1) {
       const cy = y + padY + cellH * (row + 0.5);
       const rowLabel = String(row + 1);
-      const fontSize = Math.max(7, Math.min(11, cellH * 0.32));
+      const fontSize = Math.max(6, Math.min(10, cellH * 0.28));
       nodes.push(
         <text
           key={`rl-${row}`}
-          x={x + padX * 0.4}
+          x={x + Math.max(6, padX * 0.55)}
           y={cy + fontSize * 0.35}
           textAnchor="middle"
           style={{
@@ -1035,7 +986,7 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
         </text>,
         <text
           key={`rr-${row}`}
-          x={x + w - padX * 0.4}
+          x={x + w - Math.max(6, padX * 0.55)}
           y={cy + fontSize * 0.35}
           textAnchor="middle"
           style={{
