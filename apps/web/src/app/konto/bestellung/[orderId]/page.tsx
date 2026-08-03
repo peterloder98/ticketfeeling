@@ -8,12 +8,13 @@ import { BrandLogo } from "@/components/brand-logo";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
+import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 
 export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ paid?: string; processing?: string }>;
+  searchParams: Promise<{ paid?: string; processing?: string; t?: string }>;
 };
 
 export default async function OrderDetailPage({ params, searchParams }: Props) {
@@ -54,7 +55,8 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
     Boolean(session?.user) &&
     (order.customer.userId === session!.user!.id ||
       order.customer.emailNormalized === session!.user!.email?.toLowerCase());
-  if (!isOwner && !isStaff && sp.paid !== "1" && sp.processing !== "1") {
+  const hasAccessToken = verifyOrderAccessToken(order.id, sp.t);
+  if (!isOwner && !isStaff && !hasAccessToken) {
     redirect("/login");
   }
 
@@ -66,10 +68,10 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
     order.status === "paid" ||
     order.status === "fulfilled" ||
     order.paymentStatus === "paid";
-  // Never treat ?paid=1 as paid while SEPA is still processing
+  // UI hint only — never grant access via ?paid=1 / ?processing=1
   const processing =
     order.paymentStatus === "processing" ||
-    (sp.processing === "1" && !reallyPaid);
+    (Boolean(hasAccessToken) && sp.processing === "1" && !reallyPaid);
   const paid = reallyPaid && !processing;
   const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
   const taxRateBps = order.items[0]?.taxRateBps ?? 700;

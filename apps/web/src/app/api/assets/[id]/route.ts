@@ -13,9 +13,13 @@ export async function GET(_request: Request, { params }: Props) {
 
   const asset = await prisma.uploadedAsset.findUnique({
     where: { id },
-    select: { data: true, mimeType: true, byteSize: true },
+    select: { data: true, mimeType: true, byteSize: true, kind: true },
   });
   if (!asset) {
+    return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
+  }
+  // Public bytes endpoint — only cover/public media kinds.
+  if (asset.kind !== "cover" && asset.kind !== "image") {
     return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
   }
 

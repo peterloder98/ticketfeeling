@@ -7,13 +7,14 @@ import { formatEuroFromCents } from "@/lib/money";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
+import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tickets" };
 
 type Props = {
   params: Promise<{ orderId: string }>;
-  searchParams: Promise<{ paid?: string; processing?: string }>;
+  searchParams: Promise<{ paid?: string; processing?: string; t?: string }>;
 };
 
 export default async function EmbedOrderTicketsPage({ params, searchParams }: Props) {
@@ -52,7 +53,8 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
     Boolean(session?.user) &&
     (order.customer.userId === session!.user!.id ||
       order.customer.emailNormalized === session!.user!.email?.toLowerCase());
-  if (!isOwner && !isStaff && sp.paid !== "1" && sp.processing !== "1") {
+  const hasAccessToken = verifyOrderAccessToken(order.id, sp.t);
+  if (!isOwner && !isStaff && !hasAccessToken) {
     redirect(`/embed/shop`);
   }
 
@@ -61,7 +63,8 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
     order.status === "fulfilled" ||
     order.paymentStatus === "paid";
   const processing =
-    order.paymentStatus === "processing" || (sp.processing === "1" && !reallyPaid);
+    order.paymentStatus === "processing" ||
+    (Boolean(hasAccessToken) && sp.processing === "1" && !reallyPaid);
   const paid = reallyPaid && !processing;
   const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
 

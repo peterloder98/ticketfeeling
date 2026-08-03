@@ -99,9 +99,8 @@ export function StripePayForm({
   const isSepa =
     paymentMethod === "sepa_debit" ||
     paymentMethod === "stripe_sepa";
-  const resolvedSuccess = successPath ?? `/konto/bestellung/${orderId}?paid=1`;
-  const resolvedProcessing =
-    processingPath ?? `/konto/bestellung/${orderId}?processing=1`;
+  const resolvedSuccess = successPath ?? `/konto/bestellung/${orderId}`;
+  const resolvedProcessing = processingPath ?? `/konto/bestellung/${orderId}`;
   const stripePromise = loadStripe(publishableKey);
   return (
     <Elements stripe={stripePromise} options={{ clientSecret, locale: "de" }}>

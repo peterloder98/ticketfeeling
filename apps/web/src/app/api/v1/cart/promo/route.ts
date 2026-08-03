@@ -10,6 +10,8 @@ import {
 } from "@/lib/commerce/cart-session";
 import { prisma } from "@/lib/db";
 import { resolveDiscountCode, resolveGiftCard } from "@/lib/commerce/discounts";
+import { assertMutationAllowed } from "@/lib/security/mutation-guard";
+import { clientIpFromRequest, takeRateLimit } from "@/lib/security/rate-limit";
 
 const PLACEHOLDER = new Set(["KEINEN", "KEIN", "NONE", "NULL", "-", "N/A"]);
 
@@ -27,6 +29,19 @@ function cleanCode(raw?: string | null) {
 }
 
 export async function POST(request: Request) {
+  const guard = assertMutationAllowed(request);
+  if (!guard.ok) {
+    return NextResponse.json({ error: { code: guard.code } }, { status: 403 });
+  }
+  const ip = clientIpFromRequest(request);
+  const limited = takeRateLimit({ key: `promo:${ip}`, limit: 20, windowMs: 60 * 1000 });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED" } },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } },
+    );
+  }
+
   try {
     const session = await getServerSession(authOptions);
     const sessionKey = await readCartSessionKeyFromRequest(request);

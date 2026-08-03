@@ -9,11 +9,22 @@ import { paymentMethodLabel } from "@/lib/commerce/channels";
 import { getStripe, isStripeConfigured } from "@/lib/payments/stripe-client";
 import { ClearCartBadge } from "@/components/clear-cart-badge";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
+import {
+  verifyOrderAccessToken,
+  withOrderAccessQuery,
+} from "@/lib/commerce/order-access";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zahlung" };
 
-type Props = { params: Promise<{ orderId: string }> };
+type Props = {
+  params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ t?: string }>;
+};
 
 function formatAddress(location: {
   name: string;
@@ -32,8 +43,10 @@ function formatAddress(location: {
   };
 }
 
-export default async function EmbedPayPage({ params }: Props) {
+export default async function EmbedPayPage({ params, searchParams }: Props) {
   const { orderId } = await params;
+  const sp = await searchParams;
+  const session = await getServerSession(authOptions);
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -48,6 +61,25 @@ export default async function EmbedPayPage({ params }: Props) {
   });
   if (!order) notFound();
 
+  const hasAccessToken = verifyOrderAccessToken(order.id, sp.t);
+  let isStaff = false;
+  if (session?.user) {
+    const membership = await getDefaultOrganizationForUser(session.user.id);
+    if (membership?.organizationId === order.organizationId) {
+      isStaff =
+        (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
+        (await userHasPermission(session.user.id, membership.organizationId, "events:read"));
+    }
+  }
+  const isOwner =
+    Boolean(session?.user) &&
+    (order.customer.userId === session!.user!.id ||
+      order.customer.emailNormalized === session!.user!.email?.toLowerCase());
+  if (!hasAccessToken && !isOwner && !isStaff) {
+    redirect("/embed/shop");
+  }
+  const accessToken = hasAccessToken ? sp.t! : null;
+
   const payment = order.payments[0];
   if (!payment) notFound();
   const amountLabel = formatEuroFromCents(
@@ -55,8 +87,11 @@ export default async function EmbedPayPage({ params }: Props) {
     order.currency,
   );
   const isDev = getPaymentProvider().key === "dev";
-  const successPath = `/embed/bestellung/${order.id}?paid=1`;
-  const processingPath = `/embed/bestellung/${order.id}?processing=1`;
+  const successPath = withOrderAccessQuery(`/embed/bestellung/${order.id}?paid=1`, accessToken);
+  const processingPath = withOrderAccessQuery(
+    `/embed/bestellung/${order.id}?processing=1`,
+    accessToken,
+  );
 
   let clientSecret: string | null = null;
   if (!isDev && isStripeConfigured() && order.stripePaymentIntentId) {
@@ -176,6 +211,7 @@ export default async function EmbedPayPage({ params }: Props) {
             providerPaymentId={payment.providerPaymentId ?? `dev_${order.id}`}
             amountLabel={amountLabel}
             successPath={successPath}
+          webhookSecret={process.env.DEV_PAYMENT_WEBHOOK_SECRET}
           />
         ) : clientSecret ? (
           <StripePayForm

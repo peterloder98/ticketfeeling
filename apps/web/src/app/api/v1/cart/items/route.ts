@@ -9,6 +9,8 @@ import {
   readCartSessionKeyFromRequest,
 } from "@/lib/commerce/cart-session";
 import { formatEuroFromCents } from "@/lib/money";
+import { assertMutationAllowed } from "@/lib/security/mutation-guard";
+import { clientIpFromRequest, takeRateLimit } from "@/lib/security/rate-limit";
 
 const schema = z.object({
   categoryId: z.string().uuid(),
@@ -18,6 +20,19 @@ const schema = z.object({
 });
 
 export async function POST(request: Request) {
+  const guard = assertMutationAllowed(request);
+  if (!guard.ok) {
+    return NextResponse.json({ error: { code: guard.code } }, { status: 403 });
+  }
+  const ip = clientIpFromRequest(request);
+  const limited = takeRateLimit({ key: `cart-add:${ip}`, limit: 60, windowMs: 60 * 1000 });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED" } },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } },
+    );
+  }
+
   try {
     const body = schema.parse(await request.json());
     const [session, sessionKey] = await Promise.all([

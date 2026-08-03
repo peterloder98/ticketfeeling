@@ -14,11 +14,22 @@ import {
 import { getStripe, isStripeConfigured } from "@/lib/payments/stripe-client";
 import { ClearCartBadge } from "@/components/clear-cart-badge";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
+import {
+  verifyOrderAccessToken,
+  withOrderAccessQuery,
+} from "@/lib/commerce/order-access";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zahlung" };
 
-type Props = { params: Promise<{ orderId: string }> };
+type Props = {
+  params: Promise<{ orderId: string }>;
+  searchParams: Promise<{ t?: string }>;
+};
 
 function formatAddress(location: {
   name: string;
@@ -37,8 +48,10 @@ function formatAddress(location: {
   };
 }
 
-export default async function PayPage({ params }: Props) {
+export default async function PayPage({ params, searchParams }: Props) {
   const { orderId } = await params;
+  const sp = await searchParams;
+  const session = await getServerSession(authOptions);
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -52,6 +65,38 @@ export default async function PayPage({ params }: Props) {
     },
   });
   if (!order) notFound();
+
+  const hasAccessToken = verifyOrderAccessToken(order.id, sp.t);
+  let isStaff = false;
+  if (session?.user) {
+    const membership = await getDefaultOrganizationForUser(session.user.id);
+    if (membership?.organizationId === order.organizationId) {
+      isStaff =
+        (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
+        (await userHasPermission(session.user.id, membership.organizationId, "events:read"));
+    }
+  }
+  const isOwner =
+    Boolean(session?.user) &&
+    (order.customer.userId === session!.user!.id ||
+      order.customer.emailNormalized === session!.user!.email?.toLowerCase());
+  if (!hasAccessToken && !isOwner && !isStaff) {
+    redirect("/login");
+  }
+
+  const accessToken = hasAccessToken ? sp.t! : null;
+  const ticketsHref = withOrderAccessQuery(
+    `/konto/bestellung/${order.id}`,
+    accessToken,
+  );
+  const paidHref = withOrderAccessQuery(
+    `/konto/bestellung/${order.id}?paid=1`,
+    accessToken,
+  );
+  const processingHref = withOrderAccessQuery(
+    `/konto/bestellung/${order.id}?processing=1`,
+    accessToken,
+  );
 
   const payment = order.payments[0];
   if (!payment) notFound();
@@ -90,10 +135,7 @@ export default async function PayPage({ params }: Props) {
             </p>
             <h1 className="mt-2 text-3xl font-bold text-[var(--tf-navy)]">Schon bezahlt</h1>
             <p className="mt-3 text-[var(--tf-text-secondary)]">Ihre Tickets liegen bereit.</p>
-            <Link
-              href={`/konto/bestellung/${order.id}?paid=1`}
-              className="tf-btn tf-btn-primary mt-6 inline-flex"
-            >
+            <Link href={paidHref || ticketsHref} className="tf-btn tf-btn-primary mt-6 inline-flex">
               Tickets anzeigen
             </Link>
           </div>
@@ -118,10 +160,7 @@ export default async function PayPage({ params }: Props) {
               die Zahlung bestätigt wurde, erhältst du deine endgültige Zahlungsbestätigung und dein
               Ticket per E-Mail.
             </p>
-            <Link
-              href={`/konto/bestellung/${order.id}?processing=1`}
-              className="tf-btn tf-btn-primary mt-6 inline-flex"
-            >
+            <Link href={processingHref} className="tf-btn tf-btn-primary mt-6 inline-flex">
               Bestellung ansehen
             </Link>
           </div>
@@ -261,6 +300,8 @@ export default async function PayPage({ params }: Props) {
                       orderId={order.id}
                       providerPaymentId={payment.providerPaymentId ?? `dev_${order.id}`}
                       amountLabel={amountLabel}
+                      successPath={paidHref}
+                      webhookSecret={process.env.DEV_PAYMENT_WEBHOOK_SECRET}
                     />
                   </>
                 ) : clientSecret ? (
@@ -273,8 +314,8 @@ export default async function PayPage({ params }: Props) {
                       ""
                     }
                     paymentMethod={order.paymentMethod}
-                    successPath={`/konto/bestellung/${order.id}?paid=1`}
-                    processingPath={`/konto/bestellung/${order.id}?processing=1`}
+                    successPath={paidHref}
+                    processingPath={processingHref}
                   />
                 ) : (
                   <p className="text-sm text-[var(--tf-text-secondary)]">

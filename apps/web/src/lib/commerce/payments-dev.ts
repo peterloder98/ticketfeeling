@@ -12,8 +12,8 @@ export async function processDevPaymentWebhook(input: {
   providerPaymentId: string;
   secret: string;
 }) {
-  const expected = process.env.DEV_PAYMENT_WEBHOOK_SECRET ?? "dev-webhook-secret";
-  if (input.secret !== expected) {
+  const expected = process.env.DEV_PAYMENT_WEBHOOK_SECRET?.trim();
+  if (!expected || input.secret !== expected) {
     throw new Error("INVALID_SIGNATURE");
   }
 

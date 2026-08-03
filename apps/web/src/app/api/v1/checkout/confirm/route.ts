@@ -9,6 +9,12 @@ import {
   optionalStreetNameSchema,
   streetNameSchema,
 } from "@/lib/commerce/address";
+import {
+  signOrderAccessToken,
+  withOrderAccessQuery,
+} from "@/lib/commerce/order-access";
+import { assertMutationAllowed } from "@/lib/security/mutation-guard";
+import { clientIpFromRequest, takeRateLimit } from "@/lib/security/rate-limit";
 
 const schema = z
   .object({
@@ -92,6 +98,19 @@ function streetContainsDigitsSafe(value: string) {
 }
 
 export async function POST(request: Request) {
+  const guard = assertMutationAllowed(request);
+  if (!guard.ok) {
+    return NextResponse.json({ error: { code: guard.code } }, { status: 403 });
+  }
+  const ip = clientIpFromRequest(request);
+  const limited = takeRateLimit({ key: `checkout:${ip}`, limit: 15, windowMs: 10 * 60 * 1000 });
+  if (!limited.ok) {
+    return NextResponse.json(
+      { error: { code: "RATE_LIMITED" } },
+      { status: 429, headers: { "Retry-After": String(limited.retryAfterSec) } },
+    );
+  }
+
   try {
     const body = schema.parse(await request.json());
     const session = await getServerSession(authOptions);
@@ -135,6 +154,10 @@ export async function POST(request: Request) {
         acknowledgeNoWithdrawal: body.acknowledgeNoWithdrawal,
       },
     });
+    const accessToken = signOrderAccessToken(result.order.id);
+    const payBase = body.embed
+      ? `/embed/checkout/pay/${result.order.id}`
+      : `/checkout/pay/${result.order.id}`;
     return NextResponse.json({
       orderId: result.order.id,
       orderNumber: result.order.orderNumber,
@@ -144,9 +167,8 @@ export async function POST(request: Request) {
       customerTotalCents: result.order.customerTotalCents,
       paymentMethod: result.order.paymentMethod,
       clientSecret: result.clientSecret ?? null,
-      payUrl: body.embed
-        ? `/embed/checkout/pay/${result.order.id}`
-        : `/checkout/pay/${result.order.id}`,
+      accessToken,
+      payUrl: withOrderAccessQuery(payBase, accessToken),
       createdAccount: checkoutMode === "register" && !session?.user?.id,
     });
   } catch (error) {

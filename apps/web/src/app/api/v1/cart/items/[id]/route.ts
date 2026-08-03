@@ -7,10 +7,15 @@ import {
   cartCookieHeader,
   readCartSessionKeyFromRequest,
 } from "@/lib/commerce/cart-session";
+import { assertMutationAllowed } from "@/lib/security/mutation-guard";
 
 type Props = { params: Promise<{ id: string }> };
 
 export async function DELETE(request: Request, { params }: Props) {
+  const guard = assertMutationAllowed(request);
+  if (!guard.ok) {
+    return NextResponse.json({ error: { code: guard.code } }, { status: 403 });
+  }
   try {
     const { id } = await params;
     const session = await getServerSession(authOptions);

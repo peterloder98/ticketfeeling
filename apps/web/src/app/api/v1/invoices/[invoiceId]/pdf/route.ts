@@ -27,11 +27,11 @@ export async function GET(_request: Request, { params }: Params) {
   let isStaff = false;
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (membership?.organizationId === invoice.organizationId) {
+    // Least privilege: sell-only / events:read is not enough for any invoice PDF.
     isStaff =
-      (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
-      (await userHasPermission(session.user.id, membership.organizationId, "events:read")) ||
-      (await userHasPermission(session.user.id, membership.organizationId, "audit:read")) ||
-      (await userHasPermission(session.user.id, membership.organizationId, "reports:read"));
+      (await userHasPermission(session.user.id, membership.organizationId, "org:write")) ||
+      (await userHasPermission(session.user.id, membership.organizationId, "reports:read")) ||
+      (await userHasPermission(session.user.id, membership.organizationId, "audit:read"));
   }
 
   const email = session.user.email?.toLowerCase() ?? "";

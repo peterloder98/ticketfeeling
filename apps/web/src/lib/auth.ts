@@ -4,6 +4,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
+import { takeRateLimit } from "@/lib/security/rate-limit";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -12,7 +13,11 @@ const credentialsSchema = z.object({
 
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as NextAuthOptions["adapter"],
-  session: { strategy: "jwt" },
+  session: {
+    strategy: "jwt",
+    maxAge: 60 * 60 * 24 * 14,
+  },
+  useSecureCookies: process.env.NODE_ENV === "production",
   pages: {
     signIn: "/login",
   },
@@ -28,6 +33,13 @@ export const authOptions: NextAuthOptions = {
         if (!parsed.success) return null;
 
         const email = parsed.data.email.toLowerCase().trim();
+        const limited = takeRateLimit({
+          key: `login:${email}`,
+          limit: 10,
+          windowMs: 15 * 60 * 1000,
+        });
+        if (!limited.ok) return null;
+
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user?.passwordHash || user.status !== "active") return null;
 
