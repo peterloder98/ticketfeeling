@@ -53,8 +53,8 @@ export async function createOrderFromCart(input: {
   /** Prefer explicit session (iframe header) over cookie alone. */
   sessionKey?: string | null;
   customer: CheckoutCustomerInput;
-  /** Selected payment method — never changes customer total */
-  paymentMethod: PaymentMethodKey | string;
+  /** Selected payment method — never changes customer total. Defaults to SEPA. */
+  paymentMethod?: PaymentMethodKey | string | null;
   invoice?: {
     requested: boolean;
     recipientType?: "private" | "company" | null;
@@ -78,12 +78,11 @@ export async function createOrderFromCart(input: {
     ensureLegalSchema(prisma),
     ensureSeatingAssignmentSchema(prisma),
   ]);
-  const paymentMethod =
-    normalizePaymentMethodKey(String(input.paymentMethod)) ??
+  const paymentMethod: PaymentMethodKey =
+    normalizePaymentMethodKey(String(input.paymentMethod ?? "sepa_debit")) ??
     (isPaymentMethodKey(String(input.paymentMethod))
       ? (input.paymentMethod as PaymentMethodKey)
-      : null);
-  if (!paymentMethod) throw new Error("PAYMENT_METHOD_REQUIRED");
+      : "sepa_debit");
 
   const sessionKey = input.sessionKey?.trim() || (await readCartSessionKey());
   if (!sessionKey) throw new Error("CART_EMPTY");

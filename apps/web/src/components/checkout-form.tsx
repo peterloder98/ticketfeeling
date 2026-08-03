@@ -113,8 +113,13 @@ export function CheckoutForm({
   const [city, setCity] = useState("");
   const [cityAuto, setCityAuto] = useState(false);
   const [cityHint, setCityHint] = useState<string | null>(null);
-  // Never auto-select — customer must choose a payment method consciously.
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(null);
+  // Default to SEPA Lastschrift when available (public + embed share this form).
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(() => {
+    const sepa = paymentOptions.find(
+      (o) => o.key === "sepa_debit" && o.visible && o.selectable,
+    );
+    return sepa ? "sepa_debit" : null;
+  });
   const [invoiceRequested, setInvoiceRequested] = useState(false);
   const [invoiceRecipientType, setInvoiceRecipientType] = useState<"private" | "company">(
     "private",

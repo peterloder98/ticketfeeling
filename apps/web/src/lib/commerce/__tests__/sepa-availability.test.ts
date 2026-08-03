@@ -42,7 +42,7 @@ describe("sepa availability", () => {
 });
 
 describe("checkout payment options", () => {
-  it("puts SEPA first with Empfohlen badge and no auto-implied selection", () => {
+  it("puts SEPA first with Empfohlen badge as the default recommended method", () => {
     const options = buildCheckoutPaymentOptions({
       customerTotalCents: 6077,
       config: {

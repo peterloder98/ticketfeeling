@@ -20,14 +20,16 @@ const schema = z
   .object({
     checkoutMode: z.enum(["guest", "register"]).default("guest"),
     preferGuest: z.boolean().optional(),
-    paymentMethod: z.enum([
-      "card",
-      "sepa_debit",
-      "apple_pay",
-      "google_pay",
-      "stripe_sepa",
-      "stripe_card",
-    ]),
+    paymentMethod: z
+      .enum([
+        "card",
+        "sepa_debit",
+        "apple_pay",
+        "google_pay",
+        "stripe_sepa",
+        "stripe_card",
+      ])
+      .default("sepa_debit"),
     email: z.string().email(),
     password: z.string().min(8).optional(),
     salutation: z.string().optional(),
