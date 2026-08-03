@@ -14,8 +14,7 @@ import {
 } from "@/components/admin/category-sales-table";
 import { SalesPieChart, SalesTimelineChart } from "@/components/admin/sales-charts";
 import { CoverImageField } from "@/components/admin/cover-image-field";
-import { EventCategoriesPanel } from "@/components/admin/event-categories-panel";
-import { EventSeatingAssignmentPanel } from "@/components/admin/event-seating-assignment-panel";
+import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
@@ -229,11 +228,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               Nächster Schritt: Saalplan zuordnen
             </p>
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-              {unassignedSeatCount} Plätze ohne Kategorie — unter „Saalplan-Zuordnung“ Bereich oder
-              Plätze antippen
-              {seatingCategories.length === 1
-                ? `. Mit einer Kategorie wird der ganze Plan automatisch zugewiesen.`
-                : ". Preiskategorie wählen und Block antippen — bei Bedarf neue Kategorie anlegen."}
+              {unassignedSeatCount} Plätze ohne Kategorie — unter „Saalplan-Zuordnung“ Kategorie
+              wählen und Bereich oder Plätze antippen
+              {seatingCategories.length === 0
+                ? " — bei Bedarf dort eine Preiskategorie anlegen."
+                : ". Preise und Kontingente bearbeitest du direkt unter dem Plan."}
             </p>
             <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
               Jetzt zuordnen
@@ -407,11 +406,9 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         )}
       </section>
 
-      <EventSeatingAssignmentPanel eventId={event.id} canWrite={canWrite} />
-
-      <EventCategoriesPanel
+      <EventSeatingSetup
         eventId={event.id}
-        categories={event.ticketCategories}
+        initialCategories={event.ticketCategories}
         templates={templates}
         canWrite={canWrite}
         salesReleased={isEventSalesReleased(event.status)}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { formatEuroFromCents } from "@/lib/money";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
@@ -153,7 +153,7 @@ export function EventCategoriesPanel({
   eventId: string;
   categories: Category[];
   /** When set, category list is shared with Saalplan assignment above. */
-  onCategoriesChange?: (categories: Category[]) => void;
+  onCategoriesChange?: Dispatch<SetStateAction<Category[]>>;
   templates: Template[];
   canWrite: boolean;
   /** True when event is freigegeben — no new categories allowed */
@@ -162,11 +162,7 @@ export function EventCategoriesPanel({
   const router = useRouter();
   const [localCategories, setLocalCategories] = useState(initialCategories);
   const categories = onCategoriesChange ? initialCategories : localCategories;
-  const setCategories = (next: Category[] | ((prev: Category[]) => Category[])) => {
-    const resolved = typeof next === "function" ? next(categories) : next;
-    if (onCategoriesChange) onCategoriesChange(resolved);
-    else setLocalCategories(resolved);
-  };
+  const setCategories: Dispatch<SetStateAction<Category[]>> = onCategoriesChange ?? setLocalCategories;
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);

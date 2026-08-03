@@ -42,17 +42,29 @@ const ZOOM_STEP = 0.25;
  * Assign ticket categories on the event plan (block / row / seat),
  * create categories on the fly, lock/unlock for gradual seat release.
  */
+export type CreatedEventCategory = AssignmentCategory & {
+  description?: string | null;
+  priceGrossCents?: number;
+  capacity?: number;
+  maxPerOrder?: number;
+  companionFree?: boolean;
+  pools?: { channel: string; soldQuantity: number; heldQuantity: number; capacity: number }[];
+};
+
 export function EventSeatingAssignmentPanel({
   eventId,
   canWrite,
   /** Shared categories from parent — keeps edit section below in sync. */
   categories: controlledCategories,
   onCategoriesChange,
+  onCategoryCreated,
 }: {
   eventId: string;
   canWrite: boolean;
   categories?: AssignmentCategory[];
   onCategoriesChange?: (categories: AssignmentCategory[]) => void;
+  /** Full API category after quick-create — populates the edit section below. */
+  onCategoryCreated?: (category: CreatedEventCategory) => void;
 }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
@@ -176,7 +188,7 @@ export function EventSeatingAssignmentPanel({
   );
 
   const load = useCallback(
-    async (opts?: { silent?: boolean }) => {
+    async (opts?: { silent?: boolean; seatsOnly?: boolean }) => {
       const silent = opts?.silent ?? initialLoadDone.current;
       if (!silent) {
         setLoading(true);
@@ -189,12 +201,17 @@ export function EventSeatingAssignmentPanel({
           setError(data?.error?.code ?? "Laden fehlgeschlagen");
           return;
         }
-        applySeatingPayload({
-          enabled: data.enabled,
-          seats: data.seats ?? [],
-          categories: data.categories ?? [],
-          venuePlan: data.venuePlan ?? null,
-        });
+        if (opts?.seatsOnly) {
+          setEnabled(Boolean(data.enabled));
+          setSeats(data.seats ?? []);
+        } else {
+          applySeatingPayload({
+            enabled: data.enabled,
+            seats: data.seats ?? [],
+            categories: data.categories ?? [],
+            venuePlan: data.venuePlan ?? null,
+          });
+        }
         initialLoadDone.current = true;
       } finally {
         if (!silent) setLoading(false);
@@ -315,8 +332,8 @@ export function EventSeatingAssignmentPanel({
       } else {
         setMessage(`${n} Plätze aktualisiert.`);
       }
-      // Soft sync — keep canvas mounted; never full loading remount.
-      void load({ silent: true });
+      // Soft sync seats — keep canvas mounted; never full loading remount.
+      void load({ silent: true, seatsOnly: true });
     } catch {
       setSeats(prevSeats);
       setError("Speichern fehlgeschlagen");
@@ -455,10 +472,7 @@ export function EventSeatingAssignmentPanel({
         setError(data?.error?.code ?? "Kategorie konnte nicht angelegt werden");
         return;
       }
-      const created = data.category as AssignmentCategory & {
-        freeSeating?: boolean;
-        categoryKind?: string;
-      };
+      const created = data.category as CreatedEventCategory;
       const nextCat: AssignmentCategory = {
         id: created.id,
         name: created.name,
@@ -466,17 +480,25 @@ export function EventSeatingAssignmentPanel({
         freeSeating: Boolean(created.freeSeating),
         categoryKind: created.categoryKind ?? "standard",
       };
-      setCategories((prev) => {
-        if (prev.some((c) => c.id === nextCat.id)) return prev;
-        return [...prev, nextCat];
-      });
+      if (onCategoryCreated) {
+        onCategoryCreated({
+          ...created,
+          ...nextCat,
+          color: nextCat.color,
+        });
+      } else {
+        setCategories((prev) => {
+          if (prev.some((c) => c.id === nextCat.id)) return prev;
+          return [...prev, nextCat];
+        });
+      }
       setShowAddCategory(false);
       setNewCatName("");
       setSelectedCategoryId(nextCat.id);
       setMode("assign");
       setMessage(`Preiskategorie „${nextCat.name}“ ist da — jetzt Bereiche auf dem Plan zuweisen.`);
-      // Soft sync seats/categories; keep viewport on plan (no router.refresh / remount).
-      void load({ silent: true });
+      // Soft sync seats only; keep viewport on plan (no router.refresh / remount).
+      void load({ silent: true, seatsOnly: true });
     } finally {
       setBusy(false);
     }

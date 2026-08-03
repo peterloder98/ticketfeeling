@@ -1448,7 +1448,8 @@ export function CreateEventWizard({
               </p>
               <p className="mt-1 text-[var(--tf-text-secondary)]">
                 Nach dem Anlegen landest du bei der Saalplan-Zuordnung — dort Preiskategorien
-                anlegen, Bereiche zuweisen und danach die Preise setzen.
+                anlegen und Bereiche zuweisen. Preise und Kontingente bearbeitest du direkt unter
+                dem Plan.
               </p>
             </div>
           ) : (

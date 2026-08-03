@@ -8,6 +8,7 @@ import {
 import {
   EventSeatingAssignmentPanel,
   type AssignmentCategory,
+  type CreatedEventCategory,
 } from "@/components/admin/event-seating-assignment-panel";
 
 type Template = {
@@ -23,13 +24,32 @@ function toAssignmentCategories(rows: EventCategoryRow[]): AssignmentCategory[] 
     name: c.name,
     color: c.color ?? null,
     freeSeating: Boolean(
-      c.categoryKind === "standing" ||
-        c.categoryKind === "free_choice" ||
-        // freeSeating may be absent on SSR rows; infer from kind when needed
-        (c as { freeSeating?: boolean }).freeSeating,
+      c.freeSeating || c.categoryKind === "standing" || c.categoryKind === "free_choice",
     ),
     categoryKind: c.categoryKind ?? "standard",
   }));
+}
+
+function toEventCategoryRow(created: CreatedEventCategory): EventCategoryRow {
+  const capacity = created.capacity ?? 0;
+  return {
+    id: created.id,
+    name: created.name,
+    description: created.description ?? null,
+    priceGrossCents: created.priceGrossCents ?? 0,
+    capacity,
+    maxPerOrder: created.maxPerOrder ?? 10,
+    categoryKind: created.categoryKind ?? "standard",
+    companionFree: Boolean(created.companionFree),
+    color: created.color,
+    freeSeating: Boolean(created.freeSeating),
+    pools: created.pools?.length
+      ? created.pools
+      : [
+          { channel: "online", soldQuantity: 0, heldQuantity: 0, capacity },
+          { channel: "box_office", soldQuantity: 0, heldQuantity: 0, capacity },
+        ],
+  };
 }
 
 /**
@@ -60,7 +80,9 @@ export function EventSeatingSetup({
     setCategories((prev) => {
       const byId = new Map(prev.map((c) => [c.id, c]));
       const merged: EventCategoryRow[] = [];
+      const seen = new Set<string>();
       for (const a of next) {
+        seen.add(a.id);
         const existing = byId.get(a.id);
         if (existing) {
           merged.push({
@@ -68,32 +90,26 @@ export function EventSeatingSetup({
             name: a.name,
             color: a.color,
             categoryKind: a.categoryKind,
+            freeSeating: a.freeSeating,
           });
-          byId.delete(a.id);
         } else {
-          // Newly created on the plan — stub until full fields are edited below.
-          merged.push({
-            id: a.id,
-            name: a.name,
-            description: null,
-            priceGrossCents: 0,
-            capacity: 0,
-            maxPerOrder: 10,
-            categoryKind: a.categoryKind,
-            companionFree: false,
-            color: a.color,
-            pools: [
-              { channel: "online", soldQuantity: 0, heldQuantity: 0, capacity: 0 },
-              { channel: "box_office", soldQuantity: 0, heldQuantity: 0, capacity: 0 },
-            ],
-          });
+          merged.push(toEventCategoryRow(a));
         }
       }
-      // Keep free-seating / standing categories that aren't in assignment paint list.
-      for (const leftover of byId.values()) {
-        merged.push(leftover);
+      for (const leftover of prev) {
+        if (!seen.has(leftover.id)) merged.push(leftover);
       }
       return merged;
+    });
+  }, []);
+
+  const onCategoryCreated = useCallback((created: CreatedEventCategory) => {
+    const row = toEventCategoryRow(created);
+    setCategories((prev) => {
+      if (prev.some((c) => c.id === row.id)) {
+        return prev.map((c) => (c.id === row.id ? { ...c, ...row, pools: row.pools } : c));
+      }
+      return [...prev, row];
     });
   }, []);
 
@@ -104,6 +120,7 @@ export function EventSeatingSetup({
         canWrite={canWrite}
         categories={toAssignmentCategories(categories)}
         onCategoriesChange={onAssignmentCategoriesChange}
+        onCategoryCreated={onCategoryCreated}
       />
       <EventCategoriesPanel
         eventId={eventId}
