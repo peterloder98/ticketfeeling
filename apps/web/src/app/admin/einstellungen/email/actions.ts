@@ -234,6 +234,8 @@ export type SmtpTestState = {
   message: string;
   /** Account was persisted before the SMTP check (save-and-test flow). */
   saved?: boolean;
+  /** Id of the account that was saved / tested. */
+  accountId?: string;
 };
 
 function saveFailureMessage(error: unknown): string {
@@ -260,9 +262,9 @@ export async function saveAndTestEmailAccountAction(
   _prev: SmtpTestState,
   formData: FormData,
 ): Promise<SmtpTestState> {
+  let accountId: string | undefined;
   try {
     const existingId = String(formData.get("id") ?? "").trim();
-    let accountId: string;
     try {
       accountId = existingId
         ? await updateEmailAccountAction(formData)
@@ -281,16 +283,21 @@ export async function saveAndTestEmailAccountAction(
     return {
       ok: result.ok,
       saved: true,
+      accountId,
       message: `Gespeichert. ${result.message}`,
     };
   } catch (error) {
     return {
       ok: false,
-      saved: true,
-      message:
-        error instanceof Error
+      saved: Boolean(accountId),
+      accountId,
+      message: accountId
+        ? error instanceof Error
           ? `Gespeichert, aber Prüfung fehlgeschlagen: ${error.message}`
-          : "Gespeichert, aber Prüfung fehlgeschlagen.",
+          : "Gespeichert, aber Prüfung fehlgeschlagen."
+        : error instanceof Error
+          ? error.message
+          : "Prüfung fehlgeschlagen",
     };
   }
 }

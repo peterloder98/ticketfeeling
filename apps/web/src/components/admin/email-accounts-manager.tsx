@@ -161,11 +161,6 @@ function NewAccountForm({ onDone }: { onDone: () => void }) {
     testInitial,
   );
 
-  // After successful save (create), close the form — test result lives on the account card.
-  useEffect(() => {
-    if (testState.saved) onDone();
-  }, [testState.saved, onDone]);
-
   return (
     <div className="tf-card space-y-4">
       <h3 className="font-semibold text-[var(--tf-navy)]">Neues E-Mail-Konto</h3>
