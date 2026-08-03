@@ -567,6 +567,7 @@ export async function addToCart(input: {
   });
 
   // Prefer read-only reload — never mint a second empty cart after a successful add.
+  // Skip seating schema ensure on reload: transaction already touched seats if needed.
   const reloaded = await findOpenCart({
     userId: input.userId,
     sessionKey: cart.sessionKey,

@@ -241,6 +241,26 @@ export default async function EventPage({ params }: Props) {
             </p>
           </div>
 
+          {infoItems.length > 0 ? (
+            <div>
+              <h2 className="tf-display text-2xl md:text-3xl">Wichtige Infos</h2>
+              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                {infoItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-[16px] border border-[var(--tf-line)] bg-white p-4"
+                  >
+                    <dt className="flex items-center gap-2 text-sm font-semibold text-[var(--tf-navy)]">
+                      <item.icon className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
+                      {item.label}
+                    </dt>
+                    <dd className="mt-1 text-base text-[var(--tf-text-secondary)]">{item.value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
+
           <div>
             <h2 className="tf-display text-2xl md:text-3xl">Line-up</h2>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -282,26 +302,6 @@ export default async function EventPage({ params }: Props) {
               ) : null}
             </div>
           </div>
-
-          {infoItems.length > 0 ? (
-            <div>
-              <h2 className="tf-display text-2xl md:text-3xl">Wichtige Infos</h2>
-              <dl className="mt-4 grid gap-3 sm:grid-cols-2">
-                {infoItems.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-[16px] border border-[var(--tf-line)] bg-white p-4"
-                  >
-                    <dt className="flex items-center gap-2 text-sm font-semibold text-[var(--tf-navy)]">
-                      <item.icon className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
-                      {item.label}
-                    </dt>
-                    <dd className="mt-1 text-base text-[var(--tf-text-secondary)]">{item.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </div>
-          ) : null}
 
           <div className="rounded-[20px] border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] p-5">
             <p className="text-base font-semibold text-[var(--tf-navy)]">

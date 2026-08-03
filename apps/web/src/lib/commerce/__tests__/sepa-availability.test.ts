@@ -62,6 +62,21 @@ describe("checkout payment options", () => {
     expect(new Set(options.map(() => 6077)).size).toBe(1);
   });
 
+  it("puts SEPA first even when org methodOrder starts with card", () => {
+    const options = buildCheckoutPaymentOptions({
+      customerTotalCents: 5000,
+      config: DEFAULT_PAYMENT_FEE_CONFIG,
+      ui: {
+        ...DEFAULT_PAYMENT_UI_CONFIG,
+        methodOrder: ["card", "sepa_debit", "apple_pay", "google_pay"],
+        sepaRecommended: true,
+      },
+      stripeLiveConfigured: true,
+    });
+    expect(options[0]?.key).toBe("sepa_debit");
+    expect(options[0]?.recommended).toBe(true);
+  });
+
   it("keeps SEPA visible but not selectable when near event", () => {
     const options = buildCheckoutPaymentOptions({
       customerTotalCents: 6077,

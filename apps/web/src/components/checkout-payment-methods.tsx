@@ -99,14 +99,21 @@ export function CheckoutPaymentMethods({
     };
   }, []);
 
-  const visibleOptions = options.filter((option) => {
-    if (!option.visible) return false;
-    if (option.key === "apple_pay" && wallets && !wallets.apple_pay) return false;
-    if (option.key === "google_pay" && wallets && !wallets.google_pay) return false;
-    // Until detection finishes, hide wallets to avoid flash of unavailable options
-    if (option.wallet && wallets === null) return false;
-    return true;
-  });
+  const visibleOptions = options
+    .filter((option) => {
+      if (!option.visible) return false;
+      if (option.key === "apple_pay" && wallets && !wallets.apple_pay) return false;
+      if (option.key === "google_pay" && wallets && !wallets.google_pay) return false;
+      // Until detection finishes, hide wallets to avoid flash of unavailable options
+      if (option.wallet && wallets === null) return false;
+      return true;
+    })
+    // SEPA first so the default selection is immediately visible at the top.
+    .sort((a, b) => {
+      if (a.key === "sepa_debit") return -1;
+      if (b.key === "sepa_debit") return 1;
+      return 0;
+    });
 
   return (
     <fieldset className="space-y-3">

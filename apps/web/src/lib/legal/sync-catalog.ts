@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
 import { LEGAL_SEED_CATALOG } from "@/lib/legal/content/catalog";
 import { LEGAL_DOCUMENT_TYPES } from "@/lib/legal/document-types";
+import { withTimeoutFallback } from "@/lib/async-timeout";
 
 type PublishedLegalVersion = {
   id: string;
@@ -34,58 +35,73 @@ async function columnExists(
 }
 
 let legalEnsurePromise: Promise<void> | null = null;
+let legalSchemaReady = false;
+const LEGAL_ENSURE_BUDGET_MS = 4_000;
 
 /** Best-effort schema patch when migrate deploy has not run yet. Memoized per process. */
 export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
-  if (legalEnsurePromise) return legalEnsurePromise;
-  legalEnsurePromise = (async () => {
-    // Prefer direct/unpooled URL for DDL (Neon pooler can reject ALTER).
-    const directUrl =
-      process.env.DIRECT_URL ||
-      process.env.DATABASE_URL_UNPOOLED ||
-      process.env.POSTGRES_URL_NON_POOLING ||
-      null;
-
-    let ddlDb: PrismaClient = db;
-    let owned: PrismaClient | null = null;
-    if (directUrl && directUrl !== process.env.DATABASE_URL) {
-      try {
-        const { PrismaClient: PrismaClientCtor } = await import("@prisma/client");
-        owned = new PrismaClientCtor({ datasources: { db: { url: directUrl } } });
-        ddlDb = owned;
-      } catch (error) {
-        console.error("[legal] direct DDL client unavailable", error);
+  if (legalSchemaReady) return;
+  if (!legalEnsurePromise) {
+    legalEnsurePromise = (async () => {
+      if (await columnExists(db, "legal_documents", "enabled")) {
+        legalSchemaReady = true;
+        return;
       }
-    }
 
-    const statements = [
-      `ALTER TABLE "legal_documents" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN NOT NULL DEFAULT true`,
-      `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "changelog" TEXT`,
-      `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
-    ];
-    let failed = false;
-    await Promise.all(
-      statements.map(async (sql) => {
+      // Prefer direct/unpooled URL for DDL (Neon pooler can reject ALTER).
+      const directUrl =
+        process.env.DIRECT_URL ||
+        process.env.DATABASE_URL_UNPOOLED ||
+        process.env.POSTGRES_URL_NON_POOLING ||
+        null;
+
+      let ddlDb: PrismaClient = db;
+      let owned: PrismaClient | null = null;
+      if (directUrl && directUrl !== process.env.DATABASE_URL) {
+        try {
+          const { PrismaClient: PrismaClientCtor } = await import("@prisma/client");
+          owned = new PrismaClientCtor({ datasources: { db: { url: directUrl } } });
+          ddlDb = owned;
+        } catch (error) {
+          console.error("[legal] direct DDL client unavailable", error);
+        }
+      }
+
+      const statements = [
+        `ALTER TABLE "legal_documents" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN NOT NULL DEFAULT true`,
+        `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "changelog" TEXT`,
+        `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
+      ];
+      let failed = false;
+      // Sequential — avoid exclusive-lock contention on Neon.
+      for (const sql of statements) {
         try {
           await ddlDb.$executeRawUnsafe(sql);
         } catch (error) {
           failed = true;
           console.error("[legal] ensureLegalSchema statement failed", sql, error);
         }
-      }),
-    );
-    if (owned) {
-      await owned.$disconnect().catch(() => undefined);
-    }
-    if (failed) {
-      // Do not permanently memoize a failed ensure — allow retry after transient DDL failures.
+      }
+      if (owned) {
+        await owned.$disconnect().catch(() => undefined);
+      }
+      if (failed) {
+        legalEnsurePromise = null;
+        return;
+      }
+      legalSchemaReady = true;
+    })().catch((error) => {
       legalEnsurePromise = null;
-    }
-  })().catch((error) => {
-    legalEnsurePromise = null;
-    throw error;
-  });
-  return legalEnsurePromise;
+      throw error;
+    });
+  }
+
+  await withTimeoutFallback(
+    legalEnsurePromise,
+    LEGAL_ENSURE_BUDGET_MS,
+    undefined,
+    "ensureLegalSchema",
+  );
 }
 
 async function findPublishedViaRaw(

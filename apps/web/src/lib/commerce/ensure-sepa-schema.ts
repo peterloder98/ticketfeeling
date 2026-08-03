@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { withTimeoutFallback } from "@/lib/async-timeout";
 
 const SEPA_SCHEMA_STATEMENTS = [
   `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "payment_ui_config" JSONB NOT NULL DEFAULT '{}'`,
@@ -20,30 +21,62 @@ const SEPA_SCHEMA_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "inventory_holds_order_id_idx" ON "inventory_holds"("order_id")`,
 ];
 
-let ensurePromise: Promise<void> | null = null;
+const ENSURE_BUDGET_MS = 4_000;
 
-/** Best-effort column patch when migrate deploy has not run yet. Memoized on success only. */
+let ensurePromise: Promise<void> | null = null;
+let schemaReady = false;
+
+async function probeSepaSchemaReady(db: PrismaClient): Promise<boolean> {
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ ok: number }>>(
+      `SELECT 1 AS ok FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'orders'
+         AND column_name = 'reservation_status'
+       LIMIT 1`,
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Best-effort column patch when migrate deploy has not run yet.
+ * Sequential DDL only — parallel ALTER on the same table deadlocks/hangs on Neon.
+ * Memoized on success; bounded so checkout never waits minutes on DDL.
+ */
 export async function ensureSepaPaymentSchema(db: PrismaClient) {
-  if (ensurePromise) return ensurePromise;
-  ensurePromise = (async () => {
-    let failed = false;
-    await Promise.all(
-      SEPA_SCHEMA_STATEMENTS.map(async (sql) => {
+  if (schemaReady) return;
+  if (!ensurePromise) {
+    ensurePromise = (async () => {
+      if (await probeSepaSchemaReady(db)) {
+        schemaReady = true;
+        return;
+      }
+
+      let failed = false;
+      // CRITICAL: run sequentially. Parallel ALTER TABLE on "orders" caused
+      // production checkout hangs (exclusive locks + Neon pooler).
+      for (const sql of SEPA_SCHEMA_STATEMENTS) {
         try {
           await db.$executeRawUnsafe(sql);
         } catch (error) {
           failed = true;
           console.error("[sepa] ensureSepaPaymentSchema failed", sql.slice(0, 80), error);
         }
-      }),
-    );
-    if (failed) {
-      // Clear so the next request can recover after transient Neon/pooler DDL failures.
+      }
+      if (failed) {
+        ensurePromise = null;
+        return;
+      }
+      schemaReady = true;
+    })().catch((error) => {
       ensurePromise = null;
-    }
-  })().catch((error) => {
-    ensurePromise = null;
-    throw error;
-  });
-  return ensurePromise;
+      throw error;
+    });
+  }
+
+  // Caller never waits more than the budget — background DDL may still finish.
+  await withTimeoutFallback(ensurePromise, ENSURE_BUDGET_MS, undefined, "ensureSepaPaymentSchema");
 }

@@ -56,6 +56,7 @@ export function AddToCartPanel({
       const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 25_000,
         body: JSON.stringify({ categoryId, quantity: qty[categoryId] ?? 1 }),
       });
       const data = await response.json();
@@ -84,6 +85,12 @@ export function AddToCartPanel({
           : undefined,
       });
       setJustAdded(true);
+    } catch (err) {
+      const code =
+        err instanceof Error && err.message === "REQUEST_TIMEOUT"
+          ? "REQUEST_TIMEOUT"
+          : "";
+      setError(cartErrorMessage(code));
     } finally {
       setLoadingId(null);
     }

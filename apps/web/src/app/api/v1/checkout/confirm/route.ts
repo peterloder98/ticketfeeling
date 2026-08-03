@@ -99,6 +99,10 @@ function streetContainsDigitsSafe(value: string) {
   return /[0-9]/.test(value);
 }
 
+export const dynamic = "force-dynamic";
+/** Allow cold-start schema probe + Stripe PI without Vercel cutting mid-flight. */
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const guard = assertMutationAllowed(request);
   if (!guard.ok) {
@@ -192,6 +196,13 @@ export async function POST(request: Request) {
       }
     }
     const message = error instanceof Error ? error.message : "ERROR";
+    if (
+      message === "PAYMENT_PROVIDER_TIMEOUT" ||
+      message === "PAYMENT_PROVIDER_ERROR" ||
+      message === "STRIPE_NOT_CONFIGURED"
+    ) {
+      return NextResponse.json({ error: { code: message } }, { status: 503 });
+    }
     return NextResponse.json({ error: { code: message } }, { status: 400 });
   }
 }

@@ -254,8 +254,12 @@ export function buildCheckoutPaymentOptions(input: {
   } = input;
 
   const order = ui.methodOrder?.length ? ui.methodOrder : DEFAULT_PAYMENT_METHOD_ORDER;
+  // Always surface SEPA first when recommended — DB methodOrder must not bury it.
+  const orderedKeys = ui.sepaRecommended
+    ? (["sepa_debit", ...order.filter((k) => k !== "sepa_debit")] as PaymentMethodKey[])
+    : order;
 
-  return order.map((key) => {
+  return orderedKeys.map((key) => {
     const meta = PAYMENT_METHOD_META[key];
     const row = config[key];
     const estimatedFeeCents = estimatePaymentFeeCents(key, customerTotalCents, config);

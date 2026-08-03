@@ -27,6 +27,10 @@ export function cartErrorMessage(code: string): string {
       return "Ungültige Anzahl.";
     case "MAX_PER_ORDER":
       return "Maximale Anzahl pro Bestellung überschritten.";
+    case "REQUEST_TIMEOUT":
+      return "Das dauert zu lange — bitte kurz warten und erneut versuchen.";
+    case "RATE_LIMITED":
+      return "Zu viele Anfragen — bitte einen Moment warten.";
     default:
       return code?.trim() ? code : "Fehler beim Hinzufügen";
   }

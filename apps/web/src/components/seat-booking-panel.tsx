@@ -144,6 +144,7 @@ export function SeatBookingPanel({
       const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 25_000,
         body: JSON.stringify(body),
       });
       const data = await response.json();
@@ -205,6 +206,7 @@ export function SeatBookingPanel({
       const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        timeoutMs: 25_000,
         body: JSON.stringify({
           categoryId: catId,
           quantity: freeQty[catId] ?? 1,

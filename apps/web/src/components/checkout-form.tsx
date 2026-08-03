@@ -54,6 +54,12 @@ function checkoutErrorMessage(code: string) {
       return "Bitte eine Zahlungsart wählen.";
     case "PAYMENT_METHOD_UNAVAILABLE":
       return "Diese Zahlungsart ist gerade nicht verfügbar.";
+    case "PAYMENT_PROVIDER_TIMEOUT":
+    case "REQUEST_TIMEOUT":
+      return "Die Bestellung dauert zu lange — bitte in wenigen Sekunden erneut versuchen.";
+    case "PAYMENT_PROVIDER_ERROR":
+    case "STRIPE_NOT_CONFIGURED":
+      return "Zahlung konnte nicht gestartet werden. Bitte kurz warten und erneut versuchen.";
     case "VALIDATION":
       return "Bitte die rot markierten Felder ausfüllen.";
     case "STREET_NO_NUMBERS":
@@ -80,6 +86,17 @@ function RequiredMark() {
       *
     </span>
   );
+}
+
+function pickDefaultPaymentMethod(
+  options: CheckoutPaymentOption[],
+): PaymentMethodKey | null {
+  const sepa = options.find(
+    (o) => o.key === "sepa_debit" && o.visible && o.selectable,
+  );
+  if (sepa) return "sepa_debit";
+  const first = options.find((o) => o.visible && o.selectable);
+  return first?.key ?? null;
 }
 
 export function CheckoutForm({
@@ -114,18 +131,26 @@ export function CheckoutForm({
   const [cityAuto, setCityAuto] = useState(false);
   const [cityHint, setCityHint] = useState<string | null>(null);
   // Default to SEPA Lastschrift when available (public + embed share this form).
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(() => {
-    const sepa = paymentOptions.find(
-      (o) => o.key === "sepa_debit" && o.visible && o.selectable,
-    );
-    return sepa ? "sepa_debit" : null;
-  });
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethodKey | null>(() =>
+    pickDefaultPaymentMethod(paymentOptions),
+  );
   const [invoiceRequested, setInvoiceRequested] = useState(false);
   const [invoiceRecipientType, setInvoiceRecipientType] = useState<"private" | "company">(
     "private",
   );
   const [street, setStreet] = useState("");
   const [streetHint, setStreetHint] = useState<string | null>(null);
+
+  // Keep SEPA (or first selectable method) selected when options arrive / change.
+  useEffect(() => {
+    setPaymentMethod((current) => {
+      const stillValid =
+        current &&
+        paymentOptions.some((o) => o.key === current && o.visible && o.selectable);
+      if (stillValid) return current;
+      return pickDefaultPaymentMethod(paymentOptions);
+    });
+  }, [paymentOptions]);
 
   useEffect(() => {
     if (!invoiceRequested || postalCode.length !== 5) {
@@ -276,6 +301,8 @@ export function CheckoutForm({
       const response = await cartFetch("/api/v1/checkout/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        // Fail visibly instead of spinning forever if the API hangs (DDL/Stripe).
+        timeoutMs: 35_000,
         body: JSON.stringify({
           ...payload,
           preferGuest: forceGuestStaff,
@@ -303,6 +330,13 @@ export function CheckoutForm({
             ? `/embed/checkout/pay/${data.orderId}`
             : `/checkout/pay/${data.orderId}`;
       router.push(payUrl);
+    } catch (err) {
+      const code =
+        err instanceof Error && err.message === "REQUEST_TIMEOUT"
+          ? "REQUEST_TIMEOUT"
+          : "PAYMENT_PROVIDER_ERROR";
+      setErrorCode(code);
+      setError(checkoutErrorMessage(code));
     } finally {
       setLoading(false);
     }
@@ -444,7 +478,7 @@ export function CheckoutForm({
           </div>
         ) : null}
 
-        <div>
+        <div className="md:col-span-2">
           <label className="tf-label" htmlFor="gender">
             Geschlecht
             <RequiredMark />
@@ -465,31 +499,33 @@ export function CheckoutForm({
             <option value="diverse">divers</option>
           </select>
         </div>
-        <div>
-          <label className="tf-label" htmlFor="firstName">
-            Vorname
-            <RequiredMark />
-          </label>
-          <input
-            id="firstName"
-            name="firstName"
-            className={inputClass(Boolean(fieldErrors.firstName))}
-            autoComplete="given-name"
-            onChange={() => clearFieldError("firstName")}
-          />
-        </div>
-        <div>
-          <label className="tf-label" htmlFor="lastName">
-            Nachname
-            <RequiredMark />
-          </label>
-          <input
-            id="lastName"
-            name="lastName"
-            className={inputClass(Boolean(fieldErrors.lastName))}
-            autoComplete="family-name"
-            onChange={() => clearFieldError("lastName")}
-          />
+        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:col-span-2">
+          <div>
+            <label className="tf-label" htmlFor="firstName">
+              Vorname
+              <RequiredMark />
+            </label>
+            <input
+              id="firstName"
+              name="firstName"
+              className={inputClass(Boolean(fieldErrors.firstName))}
+              autoComplete="given-name"
+              onChange={() => clearFieldError("firstName")}
+            />
+          </div>
+          <div>
+            <label className="tf-label" htmlFor="lastName">
+              Nachname
+              <RequiredMark />
+            </label>
+            <input
+              id="lastName"
+              name="lastName"
+              className={inputClass(Boolean(fieldErrors.lastName))}
+              autoComplete="family-name"
+              onChange={() => clearFieldError("lastName")}
+            />
+          </div>
         </div>
         <SmartDateInput name="birthDate" label="Geburtsdatum (optional)" />
         <div className="md:col-span-2">

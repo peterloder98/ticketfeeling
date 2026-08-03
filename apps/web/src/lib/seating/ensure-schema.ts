@@ -1,10 +1,12 @@
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
+import { withTimeoutFallback } from "@/lib/async-timeout";
 
 /**
  * Best-effort DDL when migrate deploy lags behind (common on Vercel/Neon).
  * Safe to call on every cart/checkout path that touches EventSeat.
- * Memoized on success only — failed DDL clears the promise so the next request can retry.
+ * Sequential only — parallel ALTER on event_seats hung cart/checkout in production.
+ * Memoized on success; budget-capped so hot paths never wait minutes.
  */
 const SEATING_SCHEMA_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seating_layout_config" JSONB NOT NULL DEFAULT '{}'`,
@@ -29,36 +31,65 @@ BEGIN
 END $$;
 `;
 
+const ENSURE_BUDGET_MS = 4_000;
+
 let ensurePromise: Promise<void> | null = null;
+let schemaReady = false;
+
+async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ ok: number }>>(
+      `SELECT 1 AS ok FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'event_seats'
+         AND column_name = 'category_id'
+       LIMIT 1`,
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
 
 export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPrisma) {
-  if (ensurePromise) return ensurePromise;
-  ensurePromise = (async () => {
-    let failed = false;
-    // IF NOT EXISTS statements are independent — run in parallel on cold start.
-    await Promise.all(
-      SEATING_SCHEMA_STATEMENTS.map(async (sql) => {
+  if (schemaReady) return;
+  if (!ensurePromise) {
+    ensurePromise = (async () => {
+      if (await probeSeatingSchemaReady(db)) {
+        schemaReady = true;
+        return;
+      }
+
+      let failed = false;
+      for (const sql of SEATING_SCHEMA_STATEMENTS) {
         try {
           await db.$executeRawUnsafe(sql);
         } catch (error) {
           failed = true;
           console.error("[seating] ensureSeatingAssignmentSchema failed", sql.slice(0, 80), error);
         }
-      }),
-    );
-    try {
-      await db.$executeRawUnsafe(SEATING_FK_SQL);
-    } catch (error) {
-      failed = true;
-      console.error("[seating] ensureSeatingAssignmentSchema FK failed", error);
-    }
-    if (failed) {
-      // Do not permanently memoize a failed/partial ensure — allow retry after transient Neon/pooler errors.
+      }
+      try {
+        await db.$executeRawUnsafe(SEATING_FK_SQL);
+      } catch (error) {
+        failed = true;
+        console.error("[seating] ensureSeatingAssignmentSchema FK failed", error);
+      }
+      if (failed) {
+        ensurePromise = null;
+        return;
+      }
+      schemaReady = true;
+    })().catch((error) => {
       ensurePromise = null;
-    }
-  })().catch((error) => {
-    ensurePromise = null;
-    throw error;
-  });
-  return ensurePromise;
+      throw error;
+    });
+  }
+
+  await withTimeoutFallback(
+    ensurePromise,
+    ENSURE_BUDGET_MS,
+    undefined,
+    "ensureSeatingAssignmentSchema",
+  );
 }

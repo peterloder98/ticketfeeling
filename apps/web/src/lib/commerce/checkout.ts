@@ -20,6 +20,10 @@ import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureLegalSchema } from "@/lib/legal/sync-catalog";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { categoryNeedsSeats, seatsPerTicket } from "@/lib/seating/types";
+import { withTimeout } from "@/lib/async-timeout";
+
+const STRIPE_CREATE_TIMEOUT_MS = 20_000;
+const CHECKOUT_ENSURE_BUDGET_MS = 5_000;
 
 export type CheckoutCustomerInput = {
   email: string;
@@ -72,11 +76,14 @@ export async function createOrderFromCart(input: {
   if (!input.customer.acceptTerms) throw new Error("TERMS_REQUIRED");
   if (!input.customer.acknowledgePrivacy) throw new Error("PRIVACY_REQUIRED");
   if (!input.customer.acknowledgeNoWithdrawal) throw new Error("WITHDRAWAL_ACK_REQUIRED");
-  // Schema ensures are memoized; first checkout still parallelizes cold DDL.
-  await Promise.all([
-    ensureSepaPaymentSchema(prisma),
-    ensureLegalSchema(prisma),
-    ensureSeatingAssignmentSchema(prisma),
+  // Schema ensures are probe-first + budget-capped — never block checkout for minutes on DDL.
+  await Promise.race([
+    Promise.all([
+      ensureSepaPaymentSchema(prisma),
+      ensureLegalSchema(prisma),
+      ensureSeatingAssignmentSchema(prisma),
+    ]),
+    new Promise<void>((resolve) => setTimeout(resolve, CHECKOUT_ENSURE_BUDGET_MS)),
   ]);
   const paymentMethod: PaymentMethodKey =
     normalizePaymentMethodKey(String(input.paymentMethod ?? "sepa_debit")) ??
@@ -148,7 +155,8 @@ export async function createOrderFromCart(input: {
       data: {
         email: emailNormalized,
         name: `${input.customer.firstName} ${input.customer.lastName}`,
-        passwordHash: await bcrypt.hash(password, 12),
+        // Cost 10 ≈ fast enough for checkout; 12 added noticeable latency on serverless.
+        passwordHash: await bcrypt.hash(password, 10),
         emailVerified: null,
         status: "active",
       },
@@ -446,13 +454,35 @@ export async function createOrderFromCart(input: {
   });
 
   const provider = getPaymentProvider();
-  const createdPayment = await provider.createPayment({
-    organizationId: cart.organizationId,
-    orderId: order.id,
-    amountCents: order.customerTotalCents || order.grossCents,
-    currency: order.currency,
-    customerEmail: emailNormalized,
-  });
+  let createdPayment;
+  try {
+    createdPayment = await withTimeout(
+      provider.createPayment({
+        organizationId: cart.organizationId,
+        orderId: order.id,
+        amountCents: order.customerTotalCents || order.grossCents,
+        currency: order.currency,
+        customerEmail: emailNormalized,
+      }),
+      STRIPE_CREATE_TIMEOUT_MS,
+      "PAYMENT_PROVIDER_TIMEOUT",
+    );
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "PAYMENT_PROVIDER_ERROR";
+    console.error("[checkout] createPayment failed", {
+      orderId: order.id,
+      paymentMethod,
+      code,
+    });
+    // Order exists pending — surface a clear retryable error instead of hanging.
+    throw new Error(
+      code === "PAYMENT_PROVIDER_TIMEOUT" || code === "TIMEOUT"
+        ? "PAYMENT_PROVIDER_TIMEOUT"
+        : code === "STRIPE_NOT_CONFIGURED"
+          ? "STRIPE_NOT_CONFIGURED"
+          : "PAYMENT_PROVIDER_ERROR",
+    );
+  }
 
   const payment = await prisma.payment.create({
     data: {

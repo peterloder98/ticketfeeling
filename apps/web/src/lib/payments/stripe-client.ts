@@ -9,6 +9,9 @@ export function getStripe(): Stripe {
     cached = new Stripe(key, {
       apiVersion: "2025-08-27.basil",
       typescript: true,
+      // Fail fast — never leave checkout spinning for minutes on a stuck Stripe call.
+      timeout: 18_000,
+      maxNetworkRetries: 1,
     });
   }
   return cached;

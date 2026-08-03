@@ -33,17 +33,44 @@ export function clearStoredCartSession() {
 }
 
 /** Fetch cart APIs with credentials + optional session backup header. */
-export async function cartFetch(input: string, init?: RequestInit) {
+export async function cartFetch(
+  input: string,
+  init?: RequestInit & { timeoutMs?: number },
+) {
   const headers = new Headers(init?.headers);
   const stored = readStoredCartSession();
   if (stored && !headers.has(CART_SESSION_HEADER)) {
     headers.set(CART_SESSION_HEADER, stored);
   }
-  const response = await fetch(input, {
-    ...init,
-    credentials: "same-origin",
-    headers,
-  });
+
+  const { timeoutMs, ...rest } = init ?? {};
+  const controller = typeof timeoutMs === "number" ? new AbortController() : null;
+  const timer =
+    controller && timeoutMs
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+
+  let response: Response;
+  try {
+    response = await fetch(input, {
+      ...rest,
+      credentials: "same-origin",
+      headers,
+      signal: controller?.signal ?? rest.signal,
+    });
+  } catch (error) {
+    if (timer) clearTimeout(timer);
+    if (
+      controller &&
+      error instanceof DOMException &&
+      error.name === "AbortError"
+    ) {
+      throw new Error("REQUEST_TIMEOUT");
+    }
+    throw error;
+  }
+  if (timer) clearTimeout(timer);
+
   try {
     const clone = response.clone();
     const data = (await clone.json()) as { sessionKey?: string | null };

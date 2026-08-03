@@ -58,7 +58,10 @@ function PayInner({
       <PaymentElement
         options={{
           layout: "tabs",
-          wallets: { applePay: "auto", googlePay: "auto" },
+          paymentMethodOrder: isSepa ? ["sepa_debit"] : ["card", "apple_pay", "google_pay"],
+          wallets: isSepa
+            ? { applePay: "never", googlePay: "never" }
+            : { applePay: "auto", googlePay: "auto" },
         }}
       />
       {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}

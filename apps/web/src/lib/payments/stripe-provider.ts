@@ -29,25 +29,35 @@ export const stripePaymentProvider: PaymentProvider = {
     const methodTypes = paymentMethodTypesFor(order.paymentMethod);
     const eventId = order.items[0]?.eventId ?? "";
 
-    const intent = await stripe.paymentIntents.create(
-      {
-        amount: input.amountCents,
-        currency: input.currency.toLowerCase(),
-        payment_method_types: methodTypes,
-        receipt_email: input.customerEmail,
-        metadata: {
-          orderId: order.id,
-          eventId,
-          feePercentage: String(order.administrationFeePercentageBasisPoints),
-          ticketSubtotalCents: String(order.ticketSubtotalCents),
-          administrationFeeCents: String(order.administrationFeeGrossCents || order.feeGrossCents),
-          totalGrossCents: String(order.customerTotalCents || order.grossCents),
-          environment: process.env.NODE_ENV ?? "development",
+    let intent;
+    try {
+      intent = await stripe.paymentIntents.create(
+        {
+          amount: input.amountCents,
+          currency: input.currency.toLowerCase(),
+          payment_method_types: methodTypes,
+          receipt_email: input.customerEmail,
+          metadata: {
+            orderId: order.id,
+            eventId,
+            feePercentage: String(order.administrationFeePercentageBasisPoints),
+            ticketSubtotalCents: String(order.ticketSubtotalCents),
+            administrationFeeCents: String(order.administrationFeeGrossCents || order.feeGrossCents),
+            totalGrossCents: String(order.customerTotalCents || order.grossCents),
+            environment: process.env.NODE_ENV ?? "development",
+          },
+          description: `Ticketfeeling ${order.orderNumber}`,
         },
-        description: `Ticketfeeling ${order.orderNumber}`,
-      },
-      { idempotencyKey: `pi_order_${order.id}` },
-    );
+        { idempotencyKey: `pi_order_${order.id}` },
+      );
+    } catch (error) {
+      console.error("[stripe] paymentIntents.create failed", {
+        orderId: order.id,
+        methodTypes,
+        message: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
 
     await prisma.order.update({
       where: { id: order.id },
