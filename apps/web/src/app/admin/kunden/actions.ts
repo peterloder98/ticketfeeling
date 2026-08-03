@@ -7,6 +7,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { STREET_NO_NUMBERS_MESSAGE, streetContainsDigits } from "@/lib/commerce/address";
 
 async function requireCustomerWrite() {
   const session = await getServerSession(authOptions);
@@ -42,6 +43,9 @@ export async function updateCustomerAction(formData: FormData) {
   const salutation = emptyToNull(formData.get("salutation"));
   const phone = emptyToNull(formData.get("phone"));
   const street = emptyToNull(formData.get("street"));
+  if (street && streetContainsDigits(street)) {
+    throw new Error(STREET_NO_NUMBERS_MESSAGE);
+  }
   const houseNumber = emptyToNull(formData.get("houseNumber"));
   const postalCode = emptyToNull(formData.get("postalCode"));
   const city = emptyToNull(formData.get("city"));

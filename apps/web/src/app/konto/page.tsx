@@ -40,7 +40,14 @@ export default async function AccountPage() {
             </div>
             <p className="mt-1 text-sm text-[var(--muted)]">
               {formatEuroFromCents(order.grossCents)} · {order.tickets.length} Ticket(s) ·{" "}
-              {order.invoices[0]?.invoiceNumber ?? "Rechnung folgt"}
+              {order.invoices[0] ? (
+                <>
+                  {order.invoices[0].invoiceNumber}
+                  {order.invoiceRequested ? " (angefordert)" : ""}
+                </>
+              ) : (
+                "Rechnung folgt"
+              )}
             </p>
           </Link>
         ))}

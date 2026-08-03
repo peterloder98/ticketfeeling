@@ -1,10 +1,14 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { updateCustomerAction } from "@/app/admin/kunden/actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { CountrySelect } from "@/components/country-select";
 import { PhoneInput } from "@/components/phone-input";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  filterStreetNameInput,
+} from "@/lib/commerce/address";
 
 type CustomerEditFormProps = {
   customer: {
@@ -34,6 +38,8 @@ function birthDateValue(value: Date | string | null): string {
 
 export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
   const [pending, startTransition] = useTransition();
+  const [street, setStreet] = useState(customer.street ?? "");
+  const [streetHint, setStreetHint] = useState<string | null>(null);
 
   if (!canEdit) {
     return (
@@ -110,7 +116,18 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
       />
       <label className="grid gap-1">
         <span className="text-[var(--muted)]">Straße</span>
-        <input name="street" defaultValue={customer.street ?? ""} className="tf-input" />
+        <input
+          name="street"
+          value={street}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const filtered = filterStreetNameInput(raw);
+            setStreet(filtered);
+            setStreetHint(raw !== filtered ? STREET_NO_NUMBERS_MESSAGE : null);
+          }}
+          className="tf-input"
+        />
+        {streetHint ? <p className="text-xs text-[var(--danger)]">{streetHint}</p> : null}
       </label>
       <label className="grid gap-1">
         <span className="text-[var(--muted)]">Hausnummer</span>

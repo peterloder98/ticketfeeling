@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { createBoxOfficeSale } from "@/lib/commerce/box-office";
 import { assertCanSellBoxOfficeEvent } from "@/lib/commerce/box-office-access";
+import { STREET_NO_NUMBERS_MESSAGE, optionalStreetNameSchema } from "@/lib/commerce/address";
 
 const itemSchema = z.object({
   categoryId: z.string().uuid(),
@@ -23,7 +24,7 @@ const schema = z
     customerEmail: z.string().email().optional().or(z.literal("")),
     customerFirstName: z.string().max(80).optional(),
     customerLastName: z.string().max(80).optional(),
-    customerStreet: z.string().max(120).optional(),
+    customerStreet: optionalStreetNameSchema,
     customerHouseNumber: z.string().max(20).optional(),
     customerPostalCode: z.string().max(20).optional(),
     customerCity: z.string().max(80).optional(),
@@ -91,6 +92,15 @@ export async function POST(request: Request) {
       listPath: "/kasse#verkaeufe",
     });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      const streetIssue = error.issues.find((i) => i.message === "STREET_NO_NUMBERS");
+      if (streetIssue) {
+        return NextResponse.json(
+          { error: { code: "STREET_NO_NUMBERS", message: STREET_NO_NUMBERS_MESSAGE } },
+          { status: 400 },
+        );
+      }
+    }
     const message = error instanceof Error ? error.message : "ERROR";
     return NextResponse.json({ error: { code: message } }, { status: 400 });
   }

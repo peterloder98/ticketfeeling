@@ -111,16 +111,23 @@ export function buildOrderPaidTicketsMail(input: {
   orderNumber: string;
   ticketCount: number;
   hasAttachment?: boolean;
+  /** When set, mail mentions the attached invoice PDF */
+  invoiceNumber?: string | null;
 }): TicketMailContent {
   const name = input.firstName?.trim();
   const greeting = name ? `Hallo ${name},` : "Hallo,";
   const orderUrl = `${appBaseUrl()}/konto/bestellung/${input.orderId}`;
   const place = input.locationLabel?.trim();
   const hasAttachment = input.hasAttachment !== false;
+  const invoiceNumber = input.invoiceNumber?.trim() || null;
   const attachLine = hasAttachment
     ? `Deine ${
         input.ticketCount === 1 ? "Ticket-PDF ist" : `${input.ticketCount} Tickets sind als PDF`
-      } im Anhang — am besten speichern oder ausdrucken.`
+      } im Anhang — am besten speichern oder ausdrucken.${
+        invoiceNumber
+          ? ` Dazu liegt Rechnung ${invoiceNumber} als PDF bei.`
+          : ""
+      }`
     : `Deine Tickets findest du über den Link unten (PDF-Anhang konnte nicht erzeugt werden).`;
   const datePart = input.eventDateLabel?.trim();
   const subject = datePart
@@ -138,6 +145,7 @@ export function buildOrderPaidTicketsMail(input: {
     `Termin: ${input.whenLabel}`,
     ...(place ? [`Ort: ${place}`] : []),
     `Bestellung: ${input.orderNumber}`,
+    ...(invoiceNumber ? [`Rechnung: ${invoiceNumber}`] : []),
     "",
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
     "",
@@ -154,12 +162,18 @@ export function buildOrderPaidTicketsMail(input: {
           input.ticketCount === 1
             ? "Ticket-PDF ist"
             : `<strong>${input.ticketCount} Tickets</strong> sind als PDF`
-        } <strong>im Anhang</strong> — am besten speichern oder ausdrucken.`
+        } <strong>im Anhang</strong> — am besten speichern oder ausdrucken.${
+          invoiceNumber
+            ? ` Dazu liegt <strong>Rechnung ${escapeHtml(invoiceNumber)}</strong> als PDF bei.`
+            : ""
+        }`
       : "Öffne deine Tickets über den Link unten.",
     `<strong style="font-size:18px">${escapeHtml(input.eventName)}</strong><br/>
      <span style="color:#334155">${escapeHtml(input.whenLabel)}</span>${
        place ? `<br/><span style="color:#334155">${escapeHtml(place)}</span>` : ""
-     }<br/><span style="color:#64748B;font-size:14px">Bestellung ${escapeHtml(input.orderNumber)}</span>`,
+     }<br/><span style="color:#64748B;font-size:14px">Bestellung ${escapeHtml(input.orderNumber)}${
+       invoiceNumber ? ` · Rechnung ${escapeHtml(invoiceNumber)}` : ""
+     }</span>`,
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
     `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung & Tickets öffnen</a>`,
     "Bis bald — dein Ticketfeeling-Team",

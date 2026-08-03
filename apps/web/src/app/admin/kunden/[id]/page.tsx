@@ -62,6 +62,7 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
         include: {
           items: true,
           tickets: { select: { id: true } },
+          invoices: { take: 1, orderBy: { createdAt: "desc" } },
         },
       },
       user: { select: { id: true, email: true } },
@@ -198,12 +199,19 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
                   {order.tickets.length} Tickets
                 </p>
                 <p className="text-xs text-[var(--muted)]">{berlin(order.createdAt)}</p>
-                <Link
-                  href={detailHref}
-                  className="mt-2 inline-block text-[var(--gold-soft)] underline"
-                >
-                  Details
-                </Link>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <Link href={detailHref} className="text-[var(--gold-soft)] underline">
+                    Details
+                  </Link>
+                  {order.invoices[0] ? (
+                    <a
+                      href={`/api/v1/invoices/${order.invoices[0].id}/pdf`}
+                      className="text-[var(--tf-teal-hover,#0D9488)] underline"
+                    >
+                      Rechnung {order.invoices[0].invoiceNumber}
+                    </a>
+                  ) : null}
+                </div>
               </div>
             );
           })}

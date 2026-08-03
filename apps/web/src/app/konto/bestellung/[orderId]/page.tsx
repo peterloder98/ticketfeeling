@@ -244,9 +244,20 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
               </p>
             </div>
             {order.invoices[0] ? (
-              <p className="mt-3 text-xs text-[var(--tf-text-secondary)]">
-                Rechnung {order.invoices[0].invoiceNumber}
-              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-xs text-[var(--tf-text-secondary)]">
+                  Rechnung {order.invoices[0].invoiceNumber}
+                  {order.invoiceRequested ? " · angefordert" : ""}
+                </p>
+                {(isOwner || isStaff) && paid ? (
+                  <a
+                    href={`/api/v1/invoices/${order.invoices[0].id}/pdf`}
+                    className="tf-btn tf-btn-secondary inline-flex !py-2 text-xs"
+                  >
+                    Rechnung als PDF
+                  </a>
+                ) : null}
+              </div>
             ) : null}
             {paid && (isOwner || isStaff) ? (
               <p className="mt-4 rounded-xl bg-[rgba(20,184,166,0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--tf-navy)]">

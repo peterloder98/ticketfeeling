@@ -6,6 +6,10 @@ import { formatEuroFromCents } from "@/lib/money";
 import { computePlatformFeeGrossCents } from "@/lib/commerce/platform-fee";
 import { formatFeePercentageLabel } from "@/lib/commerce/public-price";
 import { Minus, Plus, ArrowLeft, Check } from "lucide-react";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  filterStreetNameInput,
+} from "@/lib/commerce/address";
 
 type Category = {
   id: string;
@@ -384,7 +388,8 @@ export function BoxOfficeForm({
                 <input
                   className="tf-input"
                   value={street}
-                  onChange={(e) => setStreet(e.target.value)}
+                  onChange={(e) => setStreet(filterStreetNameInput(e.target.value))}
+                  placeholder="Straße ohne Hausnummer"
                 />
                 <input
                   className="tf-input"

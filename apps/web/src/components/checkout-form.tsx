@@ -10,6 +10,11 @@ import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { useCart } from "@/components/cart-context";
 import { cartFetch } from "@/lib/commerce/cart-client";
 import type { CheckoutPaymentOption, PaymentMethodKey } from "@/lib/commerce/payment-fees";
+import {
+  STREET_NO_NUMBERS_MESSAGE,
+  filterStreetNameInput,
+  streetContainsDigits,
+} from "@/lib/commerce/address";
 
 type Mode = "guest" | "register";
 
@@ -49,6 +54,12 @@ function checkoutErrorMessage(code: string) {
       return "Diese Zahlungsart ist gerade nicht verfügbar.";
     case "VALIDATION":
       return "Bitte die rot markierten Felder ausfüllen.";
+    case "STREET_NO_NUMBERS":
+      return STREET_NO_NUMBERS_MESSAGE;
+    case "INVOICE_COMPANY_REQUIRED":
+      return "Bitte den Firmennamen für die Rechnung angeben.";
+    case "INVOICE_FIELDS_REQUIRED":
+      return "Für die Rechnung bitte Adresse und alle Pflichtfelder ausfüllen.";
     default:
       return code || "Checkout fehlgeschlagen";
   }
@@ -102,6 +113,8 @@ export function CheckoutForm({
   const [invoiceRecipientType, setInvoiceRecipientType] = useState<"private" | "company">(
     "private",
   );
+  const [street, setStreet] = useState("");
+  const [streetHint, setStreetHint] = useState<string | null>(null);
 
   useEffect(() => {
     if (postalCode.length !== 5) {
@@ -155,7 +168,9 @@ export function CheckoutForm({
     }
     if (!String(fd.get("firstName") ?? "").trim()) errors.firstName = true;
     if (!String(fd.get("lastName") ?? "").trim()) errors.lastName = true;
-    if (!String(fd.get("street") ?? "").trim()) errors.street = true;
+    const streetValue = String(fd.get("street") ?? "").trim();
+    if (!streetValue) errors.street = true;
+    else if (streetContainsDigits(streetValue)) errors.street = true;
     if (!String(fd.get("houseNumber") ?? "").trim()) errors.houseNumber = true;
     if (!/^\d{5}$/.test(postalCode)) errors.postalCode = true;
     if (!city.trim()) errors.city = true;
@@ -163,8 +178,17 @@ export function CheckoutForm({
     if (fd.get("acceptTerms") !== "on") errors.acceptTerms = true;
     if (fd.get("acknowledgePrivacy") !== "on") errors.acknowledgePrivacy = true;
     if (fd.get("acknowledgeNoWithdrawal") !== "on") errors.acknowledgeNoWithdrawal = true;
-    if (invoiceRequested && invoiceRecipientType === "company") {
-      if (!String(fd.get("invoiceCompanyName") ?? "").trim()) errors.invoiceCompanyName = true;
+    if (invoiceRequested) {
+      // Rechnungsadresse = Kundenadresse — alle Adressfelder müssen stehen.
+      if (!streetValue || !String(fd.get("houseNumber") ?? "").trim() || !/^\d{5}$/.test(postalCode) || !city.trim()) {
+        errors.street = errors.street || !streetValue || streetContainsDigits(streetValue);
+        if (!String(fd.get("houseNumber") ?? "").trim()) errors.houseNumber = true;
+        if (!/^\d{5}$/.test(postalCode)) errors.postalCode = true;
+        if (!city.trim()) errors.city = true;
+      }
+      if (invoiceRecipientType === "company") {
+        if (!String(fd.get("invoiceCompanyName") ?? "").trim()) errors.invoiceCompanyName = true;
+      }
     }
     return errors;
   }
@@ -177,7 +201,17 @@ export function CheckoutForm({
     const errors = validate(form);
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) {
-      setError(checkoutErrorMessage("VALIDATION"));
+      const streetValue = String(new FormData(form).get("street") ?? "").trim();
+      if (errors.street && streetValue && streetContainsDigits(streetValue)) {
+        setError(checkoutErrorMessage("STREET_NO_NUMBERS"));
+        setStreetHint(STREET_NO_NUMBERS_MESSAGE);
+      } else if (errors.invoiceCompanyName) {
+        setError(checkoutErrorMessage("INVOICE_COMPANY_REQUIRED"));
+      } else if (invoiceRequested && (errors.street || errors.houseNumber || errors.postalCode || errors.city)) {
+        setError(checkoutErrorMessage("INVOICE_FIELDS_REQUIRED"));
+      } else {
+        setError(checkoutErrorMessage("VALIDATION"));
+      }
       setLoading(false);
       const firstKey = Object.keys(errors)[0];
       const el =
@@ -464,8 +498,27 @@ export function CheckoutForm({
             name="street"
             className={inputClass(Boolean(fieldErrors.street))}
             autoComplete="address-line1"
-            onChange={() => clearFieldError("street")}
+            value={street}
+            onChange={(e) => {
+              const raw = e.target.value;
+              const filtered = filterStreetNameInput(raw);
+              setStreet(filtered);
+              if (raw !== filtered) {
+                setStreetHint(STREET_NO_NUMBERS_MESSAGE);
+              } else if (streetHint) {
+                setStreetHint(null);
+              }
+              clearFieldError("street");
+            }}
           />
+          {streetHint || fieldErrors.street ? (
+            <p className="mt-1 text-xs text-[var(--danger)]">
+              {streetHint ||
+                (street.trim() && streetContainsDigits(street)
+                  ? STREET_NO_NUMBERS_MESSAGE
+                  : "Bitte Straße angeben.")}
+            </p>
+          ) : null}
         </div>
         <div>
           <label className="tf-label" htmlFor="houseNumber">
@@ -567,8 +620,15 @@ export function CheckoutForm({
         </label>
         {invoiceRequested ? (
           <div className="grid gap-3 sm:grid-cols-2">
+            <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)] sm:col-span-2">
+              Die Rechnung geht an die Adresse oben (Straße, Hausnummer, PLZ, Ort). Bitte alle
+              Pflichtfelder ausfüllen — nach dem Kauf schicken wir dir die Rechnung als PDF.
+            </p>
             <label className="grid gap-1 text-sm sm:col-span-2">
-              <span>Empfänger</span>
+              <span>
+                Empfänger
+                <RequiredMark />
+              </span>
               <select
                 className="tf-input"
                 value={invoiceRecipientType}
@@ -599,7 +659,7 @@ export function CheckoutForm({
                 </label>
                 <label className="grid gap-1 text-sm">
                   <span>USt-IdNr. (optional)</span>
-                  <input name="invoiceVatId" className="tf-input" />
+                  <input name="invoiceVatId" className="tf-input" placeholder="DE123456789" />
                 </label>
                 <label className="grid gap-1 text-sm sm:col-span-2">
                   <span>Bestellreferenz (optional)</span>

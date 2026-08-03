@@ -1266,19 +1266,23 @@ model InvoiceNumberSequence {
 }
 
 model Invoice {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  orderId        String   @map("order_id") @db.Uuid
-  invoiceNumber  String   @map("invoice_number")
-  status         String   @default("final")
-  currency       String   @default("EUR")
-  netCents       Int      @map("net_cents")
-  taxCents       Int      @map("tax_cents")
-  grossCents     Int      @map("gross_cents")
-  issuedAt       DateTime @default(now()) @map("issued_at")
-  sellerSnapshot Json     @map("seller_snapshot")
-  buyerSnapshot  Json     @map("buyer_snapshot")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  orderId        String    @map("order_id") @db.Uuid
+  invoiceNumber  String    @map("invoice_number")
+  status         String    @default("final")
+  currency       String    @default("EUR")
+  netCents       Int       @map("net_cents")
+  taxCents       Int       @map("tax_cents")
+  grossCents     Int       @map("gross_cents")
+  issuedAt       DateTime  @default(now()) @map("issued_at")
+  sellerSnapshot Json      @map("seller_snapshot")
+  buyerSnapshot  Json      @map("buyer_snapshot")
+  /// Stored PDF bytes for download / re-send (generated at fulfillment)
+  pdfData        Bytes?    @map("pdf_data")
+  pdfFilename    String?   @map("pdf_filename")
+  pdfEmailedAt   DateTime? @map("pdf_emailed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   order        Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)

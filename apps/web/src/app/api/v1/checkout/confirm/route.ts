@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { createOrderFromCart } from "@/lib/commerce/checkout";
 import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
+import { STREET_NO_NUMBERS_MESSAGE, streetNameSchema } from "@/lib/commerce/address";
 
 const schema = z
   .object({
@@ -24,7 +25,7 @@ const schema = z
     firstName: z.string().min(1),
     lastName: z.string().min(1),
     birthDate: z.string().optional(),
-    street: z.string().min(1),
+    street: streetNameSchema,
     houseNumber: z.string().min(1),
     postalCode: z.string().regex(/^\d{4,5}$/),
     city: z.string().min(1),
@@ -48,6 +49,27 @@ const schema = z
         path: ["password"],
         message: "PASSWORD_REQUIRED",
       });
+    }
+    if (data.invoiceRequested) {
+      if (
+        !data.street?.trim() ||
+        !data.houseNumber?.trim() ||
+        !data.postalCode?.trim() ||
+        !data.city?.trim()
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["invoiceRequested"],
+          message: "INVOICE_FIELDS_REQUIRED",
+        });
+      }
+      if (data.invoiceRecipientType === "company" && !data.invoiceCompanyName?.trim()) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["invoiceCompanyName"],
+          message: "INVOICE_COMPANY_REQUIRED",
+        });
+      }
     }
   });
 
@@ -95,6 +117,23 @@ export async function POST(request: Request) {
       createdAccount: checkoutMode === "register" && !session?.user?.id,
     });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      const streetIssue = error.issues.find((i) => i.path[0] === "street");
+      if (streetIssue?.message === "STREET_NO_NUMBERS") {
+        return NextResponse.json(
+          { error: { code: "STREET_NO_NUMBERS", message: STREET_NO_NUMBERS_MESSAGE } },
+          { status: 400 },
+        );
+      }
+      const invoiceCompany = error.issues.find((i) => i.message === "INVOICE_COMPANY_REQUIRED");
+      if (invoiceCompany) {
+        return NextResponse.json({ error: { code: "INVOICE_COMPANY_REQUIRED" } }, { status: 400 });
+      }
+      const invoiceFields = error.issues.find((i) => i.message === "INVOICE_FIELDS_REQUIRED");
+      if (invoiceFields) {
+        return NextResponse.json({ error: { code: "INVOICE_FIELDS_REQUIRED" } }, { status: 400 });
+      }
+    }
     const message = error instanceof Error ? error.message : "ERROR";
     return NextResponse.json({ error: { code: message } }, { status: 400 });
   }

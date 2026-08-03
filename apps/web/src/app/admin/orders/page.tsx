@@ -49,6 +49,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
       customer: true,
       tickets: true,
       items: true,
+      invoices: { take: 1, orderBy: { createdAt: "desc" } },
       payments: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
@@ -148,6 +149,14 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                 >
                   Kunde
                 </Link>
+                {order.invoices[0] ? (
+                  <a
+                    href={`/api/v1/invoices/${order.invoices[0].id}/pdf`}
+                    className="text-[var(--tf-teal-hover,#0D9488)] underline"
+                  >
+                    Rechnung {order.invoices[0].invoiceNumber}
+                  </a>
+                ) : null}
               </div>
             </div>
           );
