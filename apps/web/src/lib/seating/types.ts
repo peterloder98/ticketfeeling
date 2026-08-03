@@ -9,8 +9,10 @@ export type PublicSeat = {
   seatIndex: number;
   rowLabel: string;
   seatNumber: string;
-  /** available for this viewer; held by others looks sold */
-  status: "available" | "taken" | "held_by_you";
+  categoryId: string | null;
+  locked: boolean;
+  /** available for this viewer; held by others looks sold; locked withheld */
+  status: "available" | "taken" | "held_by_you" | "locked";
 };
 
 export type PublicSeatBlock = {
@@ -26,6 +28,12 @@ export type PublicSeatBlock = {
   /** false = free-choice zone (no reservable seats) */
   numberedSeats: boolean;
   seats: PublicSeat[];
+};
+
+export type SeatMapCategoryLegend = {
+  id: string;
+  name: string;
+  color: string;
 };
 
 export type PublicStandingArea = {
@@ -56,6 +64,7 @@ export type SeatMapPayload = {
   } | null;
   blocks: PublicSeatBlock[];
   standingAreas: PublicStandingArea[];
+  categories: SeatMapCategoryLegend[];
   availableCount: number;
 };
 

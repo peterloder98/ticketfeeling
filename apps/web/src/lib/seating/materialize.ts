@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import { parseSeatingLayoutConfig } from "@/lib/seating/layout-config";
+import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 
 type DesiredSeat = {
   eventId: string;
@@ -55,6 +57,7 @@ function buildDesiredSeats(
  * - Never deletes held/sold seats
  */
 export async function ensureEventSeats(eventId: string) {
+  await ensureSeatingAssignmentSchema(prisma);
   const event = await prisma.event.findUnique({
     where: { id: eventId },
     include: { venuePlan: true },
@@ -97,16 +100,28 @@ export async function ensureEventSeats(eventId: string) {
       blockObjectId: true,
       rowIndex: true,
       seatIndex: true,
+      categoryId: true,
+      locked: true,
     },
   });
   const existingByKey = new Map(existing.map((s) => [s.seatKey, s]));
 
+  const layout = parseSeatingLayoutConfig(event.seatingLayoutConfig);
   const toCreate = desired.filter((s) => !existingByKey.has(s.seatKey));
   let created = 0;
   const chunk = 500;
   for (let i = 0; i < toCreate.length; i += chunk) {
+    const slice = toCreate.slice(i, i + chunk).map((s) => {
+      const blockCfg = layout.blocks?.[s.blockObjectId];
+      const rowLocked = blockCfg?.lockedRowIndexes?.includes(s.rowIndex) ?? false;
+      return {
+        ...s,
+        categoryId: blockCfg?.categoryId ?? null,
+        locked: Boolean(blockCfg?.locked) || rowLocked,
+      };
+    });
     const result = await prisma.eventSeat.createMany({
-      data: toCreate.slice(i, i + chunk),
+      data: slice,
       skipDuplicates: true,
     });
     created += result.count;
@@ -133,6 +148,7 @@ export async function ensureEventSeats(eventId: string) {
           blockObjectId: next.blockObjectId,
           rowIndex: next.rowIndex,
           seatIndex: next.seatIndex,
+          // Preserve categoryId + locked — never wipe admin assignments.
         },
       });
       updated += 1;

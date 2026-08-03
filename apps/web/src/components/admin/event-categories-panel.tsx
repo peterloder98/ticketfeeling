@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatEuroFromCents } from "@/lib/money";
+import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
 
 type Category = {
   id: string;
@@ -13,6 +14,7 @@ type Category = {
   maxPerOrder: number;
   categoryKind?: string;
   companionFree?: boolean;
+  color?: string | null;
   pools: { channel: string; soldQuantity: number; heldQuantity: number; capacity: number }[];
 };
 
@@ -23,6 +25,70 @@ const KIND_OPTIONS = [
   { value: "free_choice", label: "Sitzplatz (freie Platzwahl)" },
   { value: "wheelchair", label: "Rollstuhlfahrer" },
 ] as const;
+
+/** Brand-first presets for saalplan coloring (Gold = VIP only). */
+const COLOR_PRESETS = [
+  "#14B8A6",
+  "#0F2747",
+  "#D6A642",
+  ...DEFAULT_CATEGORY_COLORS.filter((c) => !["#14B8A6", "#0F2747", "#D6A642"].includes(c)),
+];
+
+function CategoryColorField({
+  defaultColor,
+  compact = false,
+}: {
+  defaultColor?: string | null;
+  compact?: boolean;
+}) {
+  const initial = defaultColor?.trim() || "";
+  const [color, setColor] = useState(initial);
+  return (
+    <label className={`grid gap-1 ${compact ? "" : "md:col-span-2"}`}>
+      <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
+        Farbe im Saalplan
+      </span>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          type="color"
+          className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--tf-line)] bg-white p-1"
+          value={/^#([0-9A-Fa-f]{6})$/.test(color) ? color : "#14B8A6"}
+          onChange={(e) => setColor(e.target.value)}
+          aria-label="Farbe wählen"
+        />
+        <input
+          name="color"
+          className="tf-input max-w-[9rem] font-mono text-sm"
+          value={color}
+          onChange={(e) => setColor(e.target.value)}
+          placeholder="#14B8A6"
+          pattern="^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {COLOR_PRESETS.slice(0, 6).map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              title={preset}
+              className="h-7 w-7 rounded-full border border-[var(--tf-line)]"
+              style={{ background: preset }}
+              onClick={() => setColor(preset)}
+            />
+          ))}
+          {color ? (
+            <button
+              type="button"
+              className="text-xs text-[var(--tf-text-secondary)] underline"
+              onClick={() => setColor("")}
+            >
+              Zurücksetzen
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </label>
+  );
+}
 
 type Template = {
   id: string;
@@ -117,6 +183,7 @@ export function EventCategoriesPanel({
           maxPerOrder: Number(fd.get("maxPerOrder") ?? 10),
           categoryKind: String(fd.get("categoryKind") ?? "standard"),
           companionFree: fd.get("companionFree") === "on",
+          color: String(fd.get("color") ?? "").trim() || null,
         }),
       });
       const data = await response.json();
@@ -242,6 +309,18 @@ export function EventCategoriesPanel({
                     void saveCategory(e.currentTarget, cat.id);
                   }}
                 >
+                  <div className="flex items-center gap-2 md:col-span-4">
+                    <span
+                      className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--tf-line)]"
+                      style={{
+                        background: resolveCategoryColor(cat.color, categories.indexOf(cat)),
+                      }}
+                      title="Farbe im Saalplan"
+                    />
+                    <span className="text-xs text-[var(--tf-text-secondary)]">
+                      Farbe im Saalplan
+                    </span>
+                  </div>
                   <label className="grid gap-1 md:col-span-2">
                     <span className="text-xs text-[var(--tf-text-secondary)]">Name</span>
                     <input name="name" className="tf-input" defaultValue={cat.name} required />
@@ -281,6 +360,7 @@ export function EventCategoriesPanel({
                     defaultKind={cat.categoryKind ?? "standard"}
                     defaultCompanionFree={Boolean(cat.companionFree)}
                   />
+                  <CategoryColorField defaultColor={cat.color} />
                   <label className="grid gap-1 md:col-span-2">
                     <span className="text-xs text-[var(--tf-text-secondary)]">Beschreibung</span>
                     <input
@@ -313,15 +393,23 @@ export function EventCategoriesPanel({
                   </div>
                 </form>
               ) : (
-                <div>
-                  <p className="font-semibold">{cat.name}</p>
-                  <p className="text-sm text-[var(--tf-text-secondary)]">
-                    {KIND_OPTIONS.find((k) => k.value === (cat.categoryKind ?? "standard"))?.label ??
-                      "Kategorie"}
-                    {cat.companionFree ? " · Begleitung frei" : ""}
-                    {" · "}
-                    {formatEuroFromCents(cat.priceGrossCents)} · {sold}/{cat.capacity} verkauft
-                  </p>
+                <div className="flex items-start gap-3">
+                  <span
+                    className="mt-1 inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--tf-line)]"
+                    style={{
+                      background: resolveCategoryColor(cat.color, categories.indexOf(cat)),
+                    }}
+                  />
+                  <div>
+                    <p className="font-semibold">{cat.name}</p>
+                    <p className="text-sm text-[var(--tf-text-secondary)]">
+                      {KIND_OPTIONS.find((k) => k.value === (cat.categoryKind ?? "standard"))
+                        ?.label ?? "Kategorie"}
+                      {cat.companionFree ? " · Begleitung frei" : ""}
+                      {" · "}
+                      {formatEuroFromCents(cat.priceGrossCents)} · {sold}/{cat.capacity} verkauft
+                    </p>
+                  </div>
                 </div>
               )}
             </div>
@@ -355,6 +443,7 @@ export function EventCategoriesPanel({
               />
             </label>
             <CategoryKindFields key={newFormKey} compact />
+            <CategoryColorField key={`color-${newFormKey}`} compact />
             <div className="grid grid-cols-2 gap-3">
               <label className="grid gap-1">
                 <span>Preis €</span>

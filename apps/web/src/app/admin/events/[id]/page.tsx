@@ -15,6 +15,7 @@ import {
 import { SalesPieChart, SalesTimelineChart } from "@/components/admin/sales-charts";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import { EventCategoriesPanel } from "@/components/admin/event-categories-panel";
+import { EventSeatingAssignmentPanel } from "@/components/admin/event-seating-assignment-panel";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
@@ -338,6 +339,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         canWrite={canWrite}
         salesReleased={isEventSalesReleased(event.status)}
       />
+
+      <EventSeatingAssignmentPanel eventId={event.id} canWrite={canWrite} />
 
       {/* Event data / edit */}
       <section className="tf-card !p-5">

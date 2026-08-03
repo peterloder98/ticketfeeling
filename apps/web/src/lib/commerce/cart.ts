@@ -433,6 +433,8 @@ export async function addToCart(input: {
     rowLabel: true,
     seatNumber: true,
     status: true,
+    categoryId: true,
+    locked: true,
   } as const;
 
   await prisma.$transaction(async (tx) => {
@@ -442,19 +444,34 @@ export async function addToCart(input: {
 
     let seatIdsToHold: string[] = [];
     if (needsSeats) {
+      // Once any seat is category-assigned, only that category's unlocked seats sell.
+      const assignedCount = await tx.eventSeat.count({
+        where: { eventId: category.eventId, categoryId: { not: null } },
+      });
+      const categoryFilter =
+        assignedCount > 0
+          ? { categoryId: category.id }
+          : ({} as { categoryId?: string });
+
+      const sellableWhere = {
+        eventId: category.eventId,
+        status: "available" as const,
+        locked: false,
+        ...categoryFilter,
+      };
+
       if (seatingMode === "seat_map") {
         const requested = await tx.eventSeat.findMany({
           where: {
             id: { in: input.seatIds! },
-            eventId: category.eventId,
-            status: "available",
+            ...sellableWhere,
           },
           select: seatSelect,
         });
         if (requested.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
         if (companionFree) {
           const poolSeats = await tx.eventSeat.findMany({
-            where: { eventId: category.eventId, status: "available" },
+            where: sellableWhere,
             select: seatSelect,
           });
           const withCompanions = assignCompanionSeats(requested, poolSeats);
@@ -467,7 +484,7 @@ export async function addToCart(input: {
         }
       } else {
         const all = await tx.eventSeat.findMany({
-          where: { eventId: category.eventId, status: "available" },
+          where: sellableWhere,
           select: seatSelect,
         });
         if (companionFree) {
@@ -481,9 +498,9 @@ export async function addToCart(input: {
         }
       }
 
-      // Lock seats — re-check status
+      // Lock seats — re-check status + unlock
       const lockedSeats = await tx.eventSeat.findMany({
-        where: { id: { in: seatIdsToHold }, status: "available" },
+        where: { id: { in: seatIdsToHold }, status: "available", locked: false },
         select: { id: true },
       });
       if (lockedSeats.length !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");

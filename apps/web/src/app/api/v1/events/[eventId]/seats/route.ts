@@ -10,6 +10,8 @@ type Props = { params: Promise<{ eventId: string }> };
 export async function GET(request: Request, { params }: Props) {
   try {
     const { eventId } = await params;
+    const url = new URL(request.url);
+    const categoryId = url.searchParams.get("categoryId");
     const session = await getServerSession(authOptions);
     const sessionKey = await readCartSessionKeyFromRequest(request);
     const cart = sessionKey
@@ -19,7 +21,10 @@ export async function GET(request: Request, { params }: Props) {
       .filter((i) => i.eventId === eventId)
       .map((i) => i.id);
 
-    const map = await getSeatMapPayload(eventId, { viewerCartItemIds });
+    const map = await getSeatMapPayload(eventId, {
+      viewerCartItemIds,
+      categoryId: categoryId || null,
+    });
     if (!map) {
       return NextResponse.json({ error: { code: "NO_SEAT_MAP" } }, { status: 404 });
     }

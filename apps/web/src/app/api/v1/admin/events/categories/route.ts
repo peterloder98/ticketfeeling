@@ -25,6 +25,11 @@ const upsertSchema = z.object({
   maxPerOrder: z.number().int().min(1).max(50),
   categoryKind: z.enum(CATEGORY_KINDS).optional(),
   companionFree: z.boolean().optional(),
+  color: z
+    .string()
+    .regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/)
+    .optional()
+    .nullable(),
 });
 
 async function requireWrite() {
@@ -85,6 +90,7 @@ export async function PUT(request: Request) {
             categoryKind,
             companionFree,
             freeSeating,
+            color: body.color === undefined ? undefined : body.color,
           },
         });
         for (const pool of category.pools) {
@@ -137,6 +143,7 @@ export async function PUT(request: Request) {
           freeSeating,
           categoryKind,
           companionFree,
+          color: body.color ?? null,
           sortOrder,
           status: "active",
         },

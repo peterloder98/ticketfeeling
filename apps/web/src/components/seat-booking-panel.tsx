@@ -98,19 +98,24 @@ export function SeatBookingPanel({
   const loadMap = useCallback(async () => {
     setMapLoading(true);
     try {
-      const res = await cartFetch(`/api/v1/events/${eventId}/seats`);
+      const qs = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
+      const res = await cartFetch(`/api/v1/events/${eventId}/seats${qs}`);
       const data = await res.json();
       if (res.ok) setMap(data.map as SeatMapPayload);
     } finally {
       setMapLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, categoryId]);
 
   useEffect(() => {
     if (bookingMode !== "none" && seatCategories.length > 0) {
       void loadMap();
     }
   }, [bookingMode, seatCategories.length, loadMap]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [categoryId]);
 
   useEffect(() => {
     setSelectedIds((prev) => prev.slice(0, qty));
@@ -125,6 +130,9 @@ export function SeatBookingPanel({
   }, [map, selectedIds]);
 
   function toggleSeat(seat: PublicSeat) {
+    if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
+    const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
+    if (hasAssignments && seat.categoryId && seat.categoryId !== categoryId) return;
     setSelectedIds((prev) => {
       if (prev.includes(seat.id)) return prev.filter((id) => id !== seat.id);
       if (prev.length >= qty) {
@@ -308,10 +316,7 @@ export function SeatBookingPanel({
             <select
               className="tf-input"
               value={categoryId}
-              onChange={(e) => {
-                setCategoryId(e.target.value);
-                setSelectedIds([]);
-              }}
+              onChange={(e) => setCategoryId(e.target.value)}
             >
               {seatCategories.map((c) => (
                 <option key={c.id} value={c.id} disabled={c.available < 1}>
@@ -373,10 +378,11 @@ export function SeatBookingPanel({
                   selectedIds={selectedIds}
                   onToggle={toggleSeat}
                   maxSelect={qty}
+                  activeCategoryId={categoryId}
                   hint={
                     companionFree
                       ? "Wähle den Rollstuhlplatz — der Begleitplatz daneben wird automatisch mitreserviert."
-                      : "Tippe auf freie Plätze. Türkis = deine Auswahl."
+                      : "Tippe auf freie Plätze deiner Kategorie. Türkis = deine Auswahl."
                   }
                 />
               ) : (
