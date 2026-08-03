@@ -226,6 +226,7 @@ export function EventCategoriesPanel({
         form.reset();
         setNewFormKey((k) => k + 1);
       }
+      // Soft refresh for KPIs / sales table — do not scroll.
       router.refresh();
     } finally {
       setSavingId(null);
@@ -294,13 +295,13 @@ export function EventCategoriesPanel({
   }
 
   return (
-    <section id="kategorien" className="space-y-4">
+    <section id="kategorien" className="space-y-4 scroll-mt-24">
       <div>
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Preiskategorien</h2>
         <p className="text-sm text-[var(--tf-text-secondary)]">
           {salesReleased
             ? "Verkauf ist freigegeben — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
-            : "Preise und Kontingente für die Kategorien, die du am Plan zugeordnet hast (Stehplatz & Co. auch hier)."}
+            : "Direkt unter dem Saalplan: Preis, Kontingent, Name, Farbe und Art bearbeiten — Zuordnung bleibt oben am Plan."}
         </p>
       </div>
 
