@@ -21,6 +21,7 @@ type Mode = "guest" | "register";
 type FieldKey =
   | "email"
   | "password"
+  | "gender"
   | "firstName"
   | "lastName"
   | "street"
@@ -28,7 +29,8 @@ type FieldKey =
   | "postalCode"
   | "city"
   | "paymentMethod"
-  | "acceptLegal"
+  | "acceptTermsPrivacy"
+  | "acknowledgeNoWithdrawal"
   | "invoiceCompanyName";
 
 function checkoutErrorMessage(code: string) {
@@ -45,8 +47,9 @@ function checkoutErrorMessage(code: string) {
       return "Deine Platzreservierung ist abgelaufen — bitte die Plätze neu wählen.";
     case "TERMS_REQUIRED":
     case "PRIVACY_REQUIRED":
+      return "Bitte AGB und Datenschutz bestätigen.";
     case "WITHDRAWAL_ACK_REQUIRED":
-      return "Bitte AGB, Datenschutz und Widerruf bestätigen.";
+      return "Bitte die Widerrufsbelehrung bestätigen.";
     case "PAYMENT_METHOD_REQUIRED":
       return "Bitte eine Zahlungsart wählen.";
     case "PAYMENT_METHOD_UNAVAILABLE":
@@ -165,10 +168,15 @@ export function CheckoutForm({
       const password = String(fd.get("password") ?? "");
       if (password.length < 8) errors.password = true;
     }
+    const gender = String(fd.get("gender") ?? "");
+    if (gender !== "female" && gender !== "male" && gender !== "diverse") {
+      errors.gender = true;
+    }
     if (!String(fd.get("firstName") ?? "").trim()) errors.firstName = true;
     if (!String(fd.get("lastName") ?? "").trim()) errors.lastName = true;
     if (!paymentMethod) errors.paymentMethod = true;
-    if (fd.get("acceptLegal") !== "on") errors.acceptLegal = true;
+    if (fd.get("acceptTermsPrivacy") !== "on") errors.acceptTermsPrivacy = true;
+    if (fd.get("acknowledgeNoWithdrawal") !== "on") errors.acknowledgeNoWithdrawal = true;
     if (invoiceRequested) {
       const streetValue = String(fd.get("street") ?? "").trim();
       if (!streetValue || streetContainsDigits(streetValue)) errors.street = true;
@@ -230,6 +238,7 @@ export function CheckoutForm({
         !forceGuestStaff && effectiveMode === "register" && !(isLoggedIn && !isStaff)
           ? password
           : undefined,
+      gender: String(fd.get("gender")),
       firstName: String(fd.get("firstName")),
       lastName: String(fd.get("lastName")),
       birthDate: String(fd.get("birthDate") || "") || undefined,
@@ -239,9 +248,9 @@ export function CheckoutForm({
       city: invoiceRequested ? city : "",
       country: "DE",
       phone: String(fd.get("phone") || "") || undefined,
-      acceptTerms: true,
-      acknowledgePrivacy: true,
-      acknowledgeNoWithdrawal: true,
+      acceptTerms: fd.get("acceptTermsPrivacy") === "on",
+      acknowledgePrivacy: fd.get("acceptTermsPrivacy") === "on",
+      acknowledgeNoWithdrawal: fd.get("acknowledgeNoWithdrawal") === "on",
       invoiceRequested,
       invoiceRecipientType: invoiceRequested ? invoiceRecipientType : undefined,
       invoiceCompanyName: invoiceRequested
@@ -430,6 +439,27 @@ export function CheckoutForm({
           </div>
         ) : null}
 
+        <div>
+          <label className="tf-label" htmlFor="gender">
+            Geschlecht
+            <RequiredMark />
+          </label>
+          <select
+            id="gender"
+            name="gender"
+            required
+            className={inputClass(Boolean(fieldErrors.gender))}
+            defaultValue=""
+            onChange={() => clearFieldError("gender")}
+          >
+            <option value="" disabled>
+              Bitte wählen
+            </option>
+            <option value="female">weiblich</option>
+            <option value="male">männlich</option>
+            <option value="diverse">divers</option>
+          </select>
+        </div>
         <div>
           <label className="tf-label" htmlFor="firstName">
             Vorname
@@ -643,49 +673,34 @@ export function CheckoutForm({
         ) : null}
       </div>
 
-      <div className="mt-6 rounded-[16px] border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] p-4 text-sm text-[var(--tf-text-secondary)]">
-        <p className="font-semibold text-[var(--tf-navy)]">Hinweis zum Widerruf</p>
-        <p className="mt-1.5 leading-relaxed">
-          Für termingebundene Eintrittskarten besteht kein gesetzliches Widerrufsrecht. Details in
-          der{" "}
-          <Link
-            href="/recht/rueckerstattung"
-            className="font-medium text-[var(--tf-teal-hover)] underline"
-          >
-            Rückerstattungsrichtlinie
-          </Link>
-          .
-        </p>
-      </div>
-
       <div
-        className={`mt-5 space-y-3 rounded-[16px] border-2 p-4 ${
-          fieldErrors.acceptLegal
+        className={`mt-6 space-y-3 rounded-[16px] border-2 p-4 ${
+          fieldErrors.acceptTermsPrivacy || fieldErrors.acknowledgeNoWithdrawal
             ? "border-[var(--danger)] bg-[rgba(220,38,38,0.04)]"
             : "border-[var(--tf-navy)]/15 bg-[rgba(15,39,71,0.03)]"
         }`}
-        data-field="acceptLegal"
+        data-field="acceptTermsPrivacy"
       >
         <p className="text-xs font-semibold uppercase tracking-wide text-[var(--tf-navy)]">
           Bitte lesen und bestätigen <span className="text-[var(--danger)]">*</span>
         </p>
-        {fieldErrors.acceptLegal ? (
+        {fieldErrors.acceptTermsPrivacy || fieldErrors.acknowledgeNoWithdrawal ? (
           <p className="text-xs font-medium text-[var(--danger)]">
-            Bitte bestätigen, um fortzufahren.
+            Bitte beide Punkte bestätigen, um fortzufahren.
           </p>
         ) : null}
         <label
           className={`flex items-start gap-3 text-sm ${
-            fieldErrors.acceptLegal ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+            fieldErrors.acceptTermsPrivacy ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
           }`}
         >
           <input
             type="checkbox"
-            name="acceptLegal"
+            name="acceptTermsPrivacy"
             className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
-              fieldErrors.acceptLegal ? "outline outline-2 outline-[var(--danger)]" : ""
+              fieldErrors.acceptTermsPrivacy ? "outline outline-2 outline-[var(--danger)]" : ""
             }`}
-            onChange={() => clearFieldError("acceptLegal")}
+            onChange={() => clearFieldError("acceptTermsPrivacy")}
           />
           <span>
             Ich akzeptiere die{" "}
@@ -696,8 +711,8 @@ export function CheckoutForm({
               className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
             >
               AGB
-            </Link>
-            , die{" "}
+            </Link>{" "}
+            und die{" "}
             <Link
               href="/recht/datenschutz"
               target="_blank"
@@ -705,17 +720,37 @@ export function CheckoutForm({
               className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
             >
               Datenschutzerklärung
-            </Link>{" "}
-            und bestätige, dass für diese Tickets kein Widerrufsrecht besteht (
+            </Link>
+            .
+          </span>
+        </label>
+        <label
+          className={`flex items-start gap-3 text-sm ${
+            fieldErrors.acknowledgeNoWithdrawal ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+          }`}
+          data-field="acknowledgeNoWithdrawal"
+        >
+          <input
+            type="checkbox"
+            name="acknowledgeNoWithdrawal"
+            className={`mt-1 h-4 w-4 accent-[var(--tf-teal)] ${
+              fieldErrors.acknowledgeNoWithdrawal
+                ? "outline outline-2 outline-[var(--danger)]"
+                : ""
+            }`}
+            onChange={() => clearFieldError("acknowledgeNoWithdrawal")}
+          />
+          <span>
+            Ich habe die{" "}
             <Link
               href="/recht/widerruf"
               target="_blank"
               rel="noreferrer"
               className="font-bold text-[var(--tf-teal-hover)] underline decoration-2 underline-offset-2 hover:text-[var(--tf-navy)]"
             >
-              Widerruf
-            </Link>
-            ).
+              Widerrufsbelehrung
+            </Link>{" "}
+            gelesen und bestätige, dass für diese Tickets kein Widerrufsrecht besteht.
           </span>
         </label>
       </div>

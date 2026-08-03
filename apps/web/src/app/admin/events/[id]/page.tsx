@@ -227,11 +227,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
               {unassignedSeatCount} Plätze ohne Kategorie
               {seatingCategories.length === 1
-                ? ` — du kannst alles der Kategorie „${seatingCategories[0]!.name}“ zuweisen.`
-                : " — Block antippen und Kategorie wählen."}
+                ? ` — mit einer Kategorie wird der ganze Plan automatisch zugewiesen (oder per Klick unten).`
+                : " — Kategorie wählen und Block antippen."}
             </p>
             <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
-              Zur Zuordnung
+              Jetzt zuordnen
             </a>
           </div>
         ) : null}

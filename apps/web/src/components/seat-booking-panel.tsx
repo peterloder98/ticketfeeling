@@ -251,23 +251,6 @@ export function SeatBookingPanel({
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => setMode("seat_map")}
-                className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
-                  mode === "seat_map"
-                    ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.2)]"
-                    : "border-[var(--tf-line)] bg-white hover:border-[var(--tf-teal)]"
-                }`}
-              >
-                <Map className="mt-0.5 h-5 w-5 shrink-0 text-[var(--tf-navy)]" />
-                <span>
-                  <span className="font-semibold text-[var(--tf-navy)]">Saalplan wählen</span>
-                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Reihe und Platz selbst aussuchen
-                  </span>
-                </span>
-              </button>
-              <button
-                type="button"
                 onClick={() => {
                   setMode("best_available");
                   setSelectedIds([]);
@@ -282,7 +265,24 @@ export function SeatBookingPanel({
                 <span>
                   <span className="font-semibold text-[var(--tf-navy)]">Bestplatzbuchung</span>
                   <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Wir finden die besten Plätze — möglichst nebeneinander
+                    Standard — wir finden die besten Plätze, möglichst nebeneinander
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("seat_map")}
+                className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                  mode === "seat_map"
+                    ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.2)]"
+                    : "border-[var(--tf-line)] bg-white hover:border-[var(--tf-teal)]"
+                }`}
+              >
+                <Map className="mt-0.5 h-5 w-5 shrink-0 text-[var(--tf-navy)]" />
+                <span>
+                  <span className="font-semibold text-[var(--tf-navy)]">Saalplan wählen</span>
+                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                    Reihe und Platz selbst aussuchen
                   </span>
                 </span>
               </button>

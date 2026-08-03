@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Unlock, Paintbrush } from "lucide-react";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
@@ -57,6 +57,7 @@ export function EventSeatingAssignmentPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const autoAssignedRef = useRef(false);
 
   const seatingCategories = useMemo(
     () =>
@@ -171,37 +172,61 @@ export function EventSeatingAssignmentPanel({
     void applyPatch({ blockObjectId });
   }
 
-  async function assignAllToSingleCategory() {
-    if (!canWrite || seatingCategories.length !== 1) return;
-    const catId = seatingCategories[0]!.id;
-    const unassigned = seats.filter((s) => !s.categoryId).map((s) => s.id);
-    if (unassigned.length === 0) return;
-    setBusy(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/v1/admin/events/seating", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId,
-          categoryId: catId,
-          seatIds: unassigned,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data?.error?.code ?? "Speichern fehlgeschlagen");
-        return;
+  const assignAllToSingleCategory = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      if (!canWrite || seatingCategories.length !== 1) return false;
+      const catId = seatingCategories[0]!.id;
+      const unassigned = seats.filter((s) => !s.categoryId).map((s) => s.id);
+      if (unassigned.length === 0) return false;
+      setBusy(true);
+      setError(null);
+      if (!opts?.silent) setMessage(null);
+      try {
+        const res = await fetch("/api/v1/admin/events/seating", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId,
+            categoryId: catId,
+            seatIds: unassigned,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data?.error?.code ?? "Speichern fehlgeschlagen");
+          return false;
+        }
+        setMessage(
+          `Geschafft — ${data.updated ?? unassigned.length} Plätze sind der Kategorie „${seatingCategories[0]!.name}“ zugewiesen. Verkauf kann starten.`,
+        );
+        setSelectedCategoryId(catId);
+        await load();
+        router.refresh();
+        return true;
+      } finally {
+        setBusy(false);
       }
-      setMessage(`Alle ${data.updated ?? unassigned.length} Plätze der Kategorie „${seatingCategories[0]!.name}“ zugewiesen.`);
-      setSelectedCategoryId(catId);
-      await load();
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
+    },
+    [canWrite, seatingCategories, seats, eventId, load, router],
+  );
+
+  // Happy path: one seated category → assign the whole plan automatically once.
+  useEffect(() => {
+    if (loading || !enabled || !canWrite || busy || autoAssignedRef.current) return;
+    if (seatingCategories.length !== 1) return;
+    const unassigned = seats.filter((s) => !s.categoryId);
+    if (unassigned.length === 0) return;
+    autoAssignedRef.current = true;
+    void assignAllToSingleCategory({ silent: true });
+  }, [
+    loading,
+    enabled,
+    canWrite,
+    busy,
+    seatingCategories.length,
+    seats,
+    assignAllToSingleCategory,
+  ]);
 
   if (loading) {
     return (
@@ -253,18 +278,21 @@ export function EventSeatingAssignmentPanel({
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Kategorie wählen, dann einen Block antippen — fertig.
+            {unassignedCount > 0
+              ? "Damit der Verkauf startet: Plätze den Ticketkategorien zuordnen."
+              : "Alle Plätze sind zugeordnet — du kannst bei Bedarf nachjustieren."}
           </p>
         </div>
       </div>
 
       {canWrite && seatingCategories.length === 1 && unassignedCount > 0 ? (
-        <div className="mt-4 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-4 py-3">
+        <div className="mt-4 rounded-xl border border-[rgba(20,184,166,0.45)] bg-[rgba(20,184,166,0.1)] px-4 py-3">
           <p className="text-sm font-semibold text-[var(--tf-navy)]">
-            Eine sitzende Kategorie — {unassignedCount} Plätze noch frei
+            Fast fertig — {unassignedCount} Plätze noch zuweisen
           </p>
-          <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-            Du kannst den ganzen Saalplan der Kategorie „{seatingCategories[0]!.name}“ zuweisen.
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Du hast eine sitzende Kategorie („{seatingCategories[0]!.name}“). Ein Klick reicht für den
+            ganzen Saalplan.
           </p>
           <button
             type="button"
@@ -272,14 +300,26 @@ export function EventSeatingAssignmentPanel({
             disabled={busy}
             onClick={() => void assignAllToSingleCategory()}
           >
-            Alle Plätze zuweisen
+            {busy ? "Wird zugewiesen…" : "Ganzen Saalplan zuweisen"}
           </button>
         </div>
       ) : null}
 
       {canWrite && seatingCategories.length > 1 && unassignedCount > 0 ? (
-        <p className="mt-4 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-sm text-[var(--tf-navy)]">
-          Noch {unassignedCount} Plätze ohne Kategorie — Kategorie wählen und Block antippen.
+        <div className="mt-4 rounded-xl border border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.12)] px-4 py-3">
+          <p className="text-sm font-semibold text-[var(--tf-navy)]">
+            Nächster Schritt: Kategorien zuordnen
+          </p>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Noch {unassignedCount} Plätze ohne Kategorie. Unten eine Kategorie wählen, dann einen
+            Block antippen — fertig. Sperren brauchst du nur später unter „Erweitert“.
+          </p>
+        </div>
+      ) : null}
+
+      {unassignedCount === 0 && seats.length > 0 ? (
+        <p className="mt-4 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Alles zugeordnet — Bestplatz und Saalplan sind verkaufsbereit.
         </p>
       ) : null}
 
