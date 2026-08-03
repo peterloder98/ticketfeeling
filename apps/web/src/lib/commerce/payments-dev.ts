@@ -1,69 +1,53 @@
 import { prisma } from "@/lib/db";
 import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 import { writeAudit } from "@/lib/audit";
+import { getPaymentProvider } from "@/lib/payments";
 
 /**
- * Dev payment provider — NOT for production.
- * Simulates a signed, idempotent webhook confirmation.
- * Replace with Stripe Direct webhooks before go-live.
+ * Mark a pending dev payment as paid and fulfill tickets.
+ * Used by the authenticated test-checkout button (no client secret).
  */
-export async function processDevPaymentWebhook(input: {
-  providerEventId: string;
-  providerPaymentId: string;
-  secret: string;
-}) {
-  const expected = process.env.DEV_PAYMENT_WEBHOOK_SECRET?.trim();
-  if (!expected || input.secret !== expected) {
-    throw new Error("INVALID_SIGNATURE");
+export async function completeDevPaymentForOrder(orderId: string) {
+  if (getPaymentProvider().key !== "dev") {
+    throw new Error("NOT_DEV_PROVIDER");
   }
 
+  const payment = await prisma.payment.findFirst({
+    where: { orderId, provider: "dev" },
+    include: { order: true },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!payment) throw new Error("PAYMENT_NOT_FOUND");
+
+  const providerEventId = `evt_complete_${orderId}_${payment.id}`;
   const existing = await prisma.webhookInbox.findUnique({
     where: {
       provider_providerEventId: {
         provider: "dev",
-        providerEventId: input.providerEventId,
+        providerEventId,
       },
     },
   });
   if (existing?.status === "processed") {
-    return { duplicate: true, status: "processed" as const };
+    return { duplicate: true, status: "processed" as const, orderId };
   }
 
-  const inbox = existing
-    ? existing
-    : await prisma.webhookInbox.create({
-        data: {
-          provider: "dev",
-          providerEventId: input.providerEventId,
-          payload: input,
-          status: "received",
-        },
-      });
-
-  const payment = await prisma.payment.findFirst({
-    where: {
-      provider: "dev",
-      providerPaymentId: input.providerPaymentId,
-    },
-    include: { order: true },
-  });
-
-  if (!payment) {
-    await prisma.webhookInbox.update({
-      where: { id: inbox.id },
-      data: { status: "failed", errorMessage: "payment_not_found" },
-    });
-    throw new Error("PAYMENT_NOT_FOUND");
-  }
+  const inbox =
+    existing ??
+    (await prisma.webhookInbox.create({
+      data: {
+        provider: "dev",
+        providerEventId,
+        payload: { orderId, providerPaymentId: payment.providerPaymentId, source: "dev_complete" },
+        status: "received",
+      },
+    }));
 
   if (payment.status !== "paid") {
     const order = payment.order;
     const customerTotal = order.customerTotalCents || order.grossCents;
-    // Dev simulates provider fee = estimate (live webhooks overwrite with actual)
     const actualFee =
-      order.actualPaymentFeeCents ??
-      order.estimatedPaymentFeeCents ??
-      0;
+      order.actualPaymentFeeCents ?? order.estimatedPaymentFeeCents ?? 0;
     const netPayout = Math.max(0, customerTotal - actualFee);
 
     await prisma.payment.update({
@@ -90,7 +74,6 @@ export async function processDevPaymentWebhook(input: {
     });
   }
 
-  // Tickets only after confirmed paid — never treat raw "processing" as paid for SEPA live
   const fulfillment = await fulfillPaidOrder(payment.orderId);
 
   await prisma.webhookInbox.update({
@@ -104,14 +87,10 @@ export async function processDevPaymentWebhook(input: {
 
   await writeAudit({
     organizationId: payment.organizationId,
-    action: "payment.webhook.processed",
+    action: "payment.dev.completed",
     entityType: "payment",
     entityId: payment.id,
-    after: {
-      provider: "dev",
-      providerEventId: input.providerEventId,
-      duplicate: Boolean(existing),
-    },
+    after: { provider: "dev", orderId, source: "dev_complete" },
   });
 
   return {
@@ -120,4 +99,29 @@ export async function processDevPaymentWebhook(input: {
     orderId: payment.orderId,
     fulfillment,
   };
+}
+
+/**
+ * Dev payment provider webhook — requires DEV_PAYMENT_WEBHOOK_SECRET.
+ * Prefer `/api/v1/payments/dev/complete` for UI test checkout.
+ */
+export async function processDevPaymentWebhook(input: {
+  providerEventId: string;
+  providerPaymentId: string;
+  secret: string;
+}) {
+  const expected = process.env.DEV_PAYMENT_WEBHOOK_SECRET?.trim();
+  if (!expected || input.secret !== expected) {
+    throw new Error("INVALID_SIGNATURE");
+  }
+
+  const payment = await prisma.payment.findFirst({
+    where: {
+      provider: "dev",
+      providerPaymentId: input.providerPaymentId,
+    },
+    select: { orderId: true },
+  });
+  if (!payment) throw new Error("PAYMENT_NOT_FOUND");
+  return completeDevPaymentForOrder(payment.orderId);
 }

@@ -208,10 +208,9 @@ export default async function EmbedPayPage({ params, searchParams }: Props) {
         {isDev ? (
           <DevPayButton
             orderId={order.id}
-            providerPaymentId={payment.providerPaymentId ?? `dev_${order.id}`}
             amountLabel={amountLabel}
             successPath={successPath}
-          webhookSecret={process.env.DEV_PAYMENT_WEBHOOK_SECRET}
+            accessToken={accessToken ?? undefined}
           />
         ) : clientSecret ? (
           <StripePayForm

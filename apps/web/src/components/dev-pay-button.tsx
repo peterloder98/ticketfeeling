@@ -5,17 +5,15 @@ import { useRouter } from "next/navigation";
 
 export function DevPayButton({
   orderId,
-  providerPaymentId,
   amountLabel,
   successPath,
-  webhookSecret,
+  accessToken,
 }: {
   orderId: string;
-  providerPaymentId: string;
   amountLabel: string;
   successPath?: string;
-  /** Server-injected; never hardcode a default secret in the client bundle. */
-  webhookSecret?: string;
+  /** Order access token from pay URL (`?t=`) — required for guest checkout. */
+  accessToken?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -25,27 +23,32 @@ export function DevPayButton({
     setLoading(true);
     setError(null);
     try {
-      if (!webhookSecret) {
-        setError("Testzahlung nicht konfiguriert (DEV_PAYMENT_WEBHOOK_SECRET).");
-        return;
-      }
-      const eventId = `evt_${orderId}_${Date.now()}`;
-      const response = await fetch("/api/v1/payments/webhooks/dev", {
+      const response = await fetch("/api/v1/payments/dev/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          providerEventId: eventId,
-          providerPaymentId,
-          secret: webhookSecret,
+          orderId,
+          ...(accessToken ? { t: accessToken } : {}),
         }),
       });
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        setError(data?.error?.code ?? "Zahlung fehlgeschlagen");
+        const code = data?.error?.code ?? "Zahlung fehlgeschlagen";
+        setError(
+          code === "FORBIDDEN"
+            ? "Sitzung abgelaufen — bitte den Kauf noch einmal starten."
+            : code === "GONE"
+              ? "Testzahlung ist hier nicht aktiv (PAYMENT_PROVIDER)."
+              : code === "PAYMENT_NOT_FOUND"
+                ? "Zahlung nicht gefunden — bitte Support oder neu bestellen."
+                : String(code),
+        );
         return;
       }
       router.push(successPath ?? `/konto/bestellung/${orderId}`);
       router.refresh();
+    } catch {
+      setError("Netzwerkfehler — bitte noch einmal versuchen.");
     } finally {
       setLoading(false);
     }
@@ -68,7 +71,7 @@ export function DevPayButton({
         type="button"
         className="tf-btn tf-btn-primary w-full !min-h-12 text-base"
         onClick={() => void pay()}
-        disabled={loading || !webhookSecret}
+        disabled={loading}
       >
         {loading ? "Einen Moment…" : `Jetzt ${amountLabel} bezahlen`}
       </button>

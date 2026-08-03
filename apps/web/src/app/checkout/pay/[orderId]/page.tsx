@@ -298,10 +298,9 @@ export default async function PayPage({ params, searchParams }: Props) {
                     </p>
                     <DevPayButton
                       orderId={order.id}
-                      providerPaymentId={payment.providerPaymentId ?? `dev_${order.id}`}
                       amountLabel={amountLabel}
                       successPath={paidHref}
-                      webhookSecret={process.env.DEV_PAYMENT_WEBHOOK_SECRET}
+                      accessToken={accessToken ?? undefined}
                     />
                   </>
                 ) : clientSecret ? (
