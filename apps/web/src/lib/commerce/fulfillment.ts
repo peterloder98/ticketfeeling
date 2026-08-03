@@ -159,16 +159,18 @@ export async function fulfillPaidOrder(orderId: string) {
 
     const paidPayment = order.payments.find((p) => p.status === "paid");
     if (!paidPayment) throw new Error("PAYMENT_NOT_PAID");
-    // Never fulfill on SEPA "processing" / early-release — only after confirmed paid.
-    if (
-      order.paymentStatus !== "paid" &&
-      order.status !== "paid" &&
-      order.status !== "fulfilled"
-    ) {
-      throw new Error("PAYMENT_NOT_CONFIRMED");
-    }
+    // Never fulfill on SEPA early-release — only after confirmed paid.
     if (String(paidPayment.rawStatus ?? "").includes("early_release")) {
       throw new Error("PAYMENT_EARLY_RELEASE_FORBIDDEN");
+    }
+    // Trust a settled payment row. Box-office/cash creates payment=paid while
+    // older paths left order.paymentStatus unset → false PAYMENT_NOT_CONFIRMED.
+    if (
+      order.paymentStatus === "processing" &&
+      paidPayment.provider !== "box_office" &&
+      paidPayment.provider !== "dev"
+    ) {
+      throw new Error("PAYMENT_NOT_CONFIRMED");
     }
 
     if (order.fulfillmentLockedAt && order.status === "fulfilled" && order.tickets.length > 0) {
