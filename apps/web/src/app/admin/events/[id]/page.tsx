@@ -373,17 +373,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         <CategorySalesTable rows={report.categories} />
       </section>
 
-      <EventCategoriesPanel
-        eventId={event.id}
-        categories={event.ticketCategories}
-        templates={templates}
-        canWrite={canWrite}
-        salesReleased={isEventSalesReleased(event.status)}
-      />
-
-      <EventSeatingAssignmentPanel eventId={event.id} canWrite={canWrite} />
-
-      {/* Event data / edit */}
+      {/* Event data / edit — before categories to create */}
       <section className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Eventdaten</h2>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
@@ -415,6 +405,16 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           </dl>
         )}
       </section>
+
+      <EventCategoriesPanel
+        eventId={event.id}
+        categories={event.ticketCategories}
+        templates={templates}
+        canWrite={canWrite}
+        salesReleased={isEventSalesReleased(event.status)}
+      />
+
+      <EventSeatingAssignmentPanel eventId={event.id} canWrite={canWrite} />
 
       <section className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Auf meine Website</h2>
