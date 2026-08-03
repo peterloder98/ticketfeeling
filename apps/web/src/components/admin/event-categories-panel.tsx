@@ -280,11 +280,11 @@ export function EventCategoriesPanel({
   return (
     <section id="kategorien" className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Ticket-Kategorien</h2>
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Preiskategorien</h2>
         <p className="text-sm text-[var(--tf-text-secondary)]">
           {salesReleased
-            ? "Verkauf ist freigegeben — bestehende Kategorien kannst du anpassen, neue nicht mehr anlegen."
-            : "Speichern bleibt auf dieser Stelle — die Seite springt nicht neu."}
+            ? "Verkauf ist freigegeben — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
+            : "Preise und Kontingente für die Kategorien, die du am Plan zugeordnet hast (Stehplatz & Co. auch hier)."}
         </p>
       </div>
 
@@ -511,7 +511,7 @@ export function EventCategoriesPanel({
       ) : null}
 
       <p className="text-sm text-[var(--tf-text-secondary)]">
-        Plätze den Kategorien zuweisen?{" "}
+        Noch Plätze ohne Kategorie?{" "}
         <a href="#zuordnung" className="font-semibold text-[var(--tf-teal)] hover:underline">
           Zur Saalplan-Zuordnung
         </a>

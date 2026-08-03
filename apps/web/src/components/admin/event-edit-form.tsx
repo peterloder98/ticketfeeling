@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { updateEventAction } from "@/app/admin/events/actions";
 import { EVENT_STATUSES, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
@@ -138,16 +137,19 @@ export function EventEditForm({
         initialLocationId={event.locationId ?? ""}
         initialVenuePlanId={event.venuePlanId ?? ""}
         initialSeatingBookingMode={event.seatingBookingMode}
+        eventId={event.id}
       />
       {venuePlan ? (
         <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
           Aktuell:{" "}
-          <Link
-            href={`/admin/saalplan/${venuePlan.id}`}
+          <a
+            href={`/admin/saalplan/${venuePlan.id}?returnTo=${encodeURIComponent(`/admin/events/${event.id}#saalplan`)}&returnLabel=${encodeURIComponent("Zurück zum Event")}`}
+            target="_blank"
+            rel="noreferrer"
             className="font-medium text-[var(--tf-navy)] underline"
           >
             {venuePlan.name} bearbeiten
-          </Link>
+          </a>
         </p>
       ) : null}
 

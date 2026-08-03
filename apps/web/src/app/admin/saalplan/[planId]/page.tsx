@@ -11,7 +11,25 @@ import { saveVenuePlanAction } from "@/app/admin/saalplan/actions";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ planId: string }> };
+type Props = {
+  params: Promise<{ planId: string }>;
+  searchParams: Promise<{ returnTo?: string; returnLabel?: string }>;
+};
+
+function safeReturnTo(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const decoded = (() => {
+    try {
+      return decodeURIComponent(raw);
+    } catch {
+      return raw;
+    }
+  })();
+  // Only allow relative admin paths — no open redirects.
+  if (!decoded.startsWith("/admin/")) return null;
+  if (decoded.startsWith("//")) return null;
+  return decoded;
+}
 
 export async function generateMetadata({ params }: Props) {
   const { planId } = await params;
@@ -22,8 +40,12 @@ export async function generateMetadata({ params }: Props) {
   return { title: plan?.name ? `${plan.name} · Saalplan` : "Saalplan" };
 }
 
-export default async function VenuePlanEditorPage({ params }: Props) {
+export default async function VenuePlanEditorPage({ params, searchParams }: Props) {
   const { planId } = await params;
+  const sp = await searchParams;
+  const returnTo = safeReturnTo(sp.returnTo);
+  const returnLabel = sp.returnLabel?.trim() || null;
+
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
@@ -41,22 +63,44 @@ export default async function VenuePlanEditorPage({ params }: Props) {
   });
   if (!plan) notFound();
 
+  const fallbackHref = `/admin/locations/${plan.locationId}`;
+  const backHref = returnTo ?? fallbackHref;
+  const backLabel =
+    returnLabel ||
+    (returnTo?.includes("/events/neu")
+      ? "Zurück zum Wizard"
+      : returnTo?.includes("/events/")
+        ? "Zurück zum Event"
+        : `← ${plan.location.name}`);
+
   return (
-    <div className="space-y-4">
-      <div>
-        <Link
-          href={`/admin/locations/${plan.locationId}`}
-          className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
-        >
-          ← {plan.location.name}
-        </Link>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--tf-navy)] md:text-3xl">
-          Saalplan bearbeiten
-        </h1>
-        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          {plan.location.name} — Maße, Blöcke und Kategorien (Block/Reihe/Platz) hier setzen. Beim
-          Event werden Ticketkategorien mit gleichem Namen verknüpft.
-        </p>
+    <div className="-mx-4 space-y-4 px-2 sm:-mx-6 sm:px-4 lg:-mx-8 lg:px-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Link
+            href={backHref}
+            className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
+          >
+            {backLabel.startsWith("←") || backLabel.startsWith("Zurück")
+              ? backLabel
+              : `← ${backLabel}`}
+          </Link>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--tf-navy)] md:text-3xl">
+            Saalplan zeichnen
+          </h1>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            {plan.location.name} — nur Geometrie: Maße, Bühne und Blöcke. Preiskategorien kommen am
+            Event.
+          </p>
+        </div>
+        {returnTo ? (
+          <Link href={returnTo} className="tf-btn tf-btn-secondary !min-h-10 shrink-0 text-sm">
+            {returnLabel ||
+              (returnTo.includes("/events/neu")
+                ? "Zurück zum Wizard"
+                : "Zurück zum Event")}
+          </Link>
+        ) : null}
       </div>
 
       <SaalplanEditor
@@ -67,6 +111,15 @@ export default async function VenuePlanEditorPage({ params }: Props) {
         initialObjects={parseVenuePlanObjects(plan.objects)}
         initialCategorySlots={parsePlanCategorySlots(plan.categorySlots)}
         saveAction={saveVenuePlanAction}
+        returnTo={returnTo}
+        returnLabel={
+          returnLabel ||
+          (returnTo?.includes("/events/neu")
+            ? "Zurück zum Wizard"
+            : returnTo
+              ? "Zurück zum Event"
+              : null)
+        }
       />
     </div>
   );

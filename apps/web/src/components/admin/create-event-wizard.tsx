@@ -6,13 +6,11 @@ import {
   shiftDateTimeLocal,
   SmartDateTimeInput,
 } from "@/components/admin/smart-datetime-input";
-import { SaalplanEditor } from "@/components/admin/saalplan-editor";
 import { CountrySelect } from "@/components/country-select";
 import { PhoneInput } from "@/components/phone-input";
 import {
   discardVenuePlanQuietAction,
   prepareWizardLocationPlanAction,
-  saveVenuePlanAction,
 } from "@/app/admin/saalplan/actions";
 import { CREATE_EVENT_STATUSES, slugify } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
@@ -23,7 +21,6 @@ import {
   filterStreetNameInput,
 } from "@/lib/commerce/address";
 import { formatEuroFromCents } from "@/lib/money";
-import type { VenuePlanObject } from "@/lib/saalplan/types";
 
 const DRAFT_KEY = "tf-create-event-wizard-v1";
 
@@ -79,13 +76,19 @@ function newCategoryRow(partial?: Partial<CategoryRow>): CategoryRow {
   return {
     key: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     name: "Kategorie 1",
-    priceEuro: "29.90",
+    priceEuro: "0",
     capacity: "100",
     maxPerOrder: "10",
     saleStartsAt: "",
     saleEndsAt: "",
     ...partial,
   };
+}
+
+function saalplanEditorUrl(planId: string) {
+  const returnTo = encodeURIComponent("/admin/events/neu");
+  const returnLabel = encodeURIComponent("Zurück zum Wizard");
+  return `/admin/saalplan/${planId}?returnTo=${returnTo}&returnLabel=${returnLabel}`;
 }
 
 type Props = {
@@ -143,6 +146,7 @@ export function CreateEventWizard({
   );
   // Never auto-attach a saalplan — unfinished shells used to hijack every new event.
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
+  const [locationQuery, setLocationQuery] = useState("");
   const [venuePlanId, setVenuePlanId] = useState("");
   const [seatingBookingMode, setSeatingBookingMode] = useState("none");
   const [newLocName, setNewLocName] = useState("");
@@ -162,17 +166,9 @@ export function CreateEventWizard({
   const [planWidthM, setPlanWidthM] = useState("20");
   const [planDepthM, setPlanDepthM] = useState("15");
   const [planWithStage, setPlanWithStage] = useState(true);
-  const [editorPlan, setEditorPlan] = useState<null | {
-    id: string;
-    name: string;
-    widthCm: number;
-    depthCm: number;
-    objects: VenuePlanObject[];
-    categorySlots?: import("@/lib/saalplan/category-slots").PlanCategorySlot[];
-  }>(null);
   const [planBusy, startPlanBusy] = useTransition();
 
-  const [categories, setCategories] = useState<CategoryRow[]>([newCategoryRow()]);
+  const [categories, setCategories] = useState<CategoryRow[]>([]);
   const [stepError, setStepError] = useState<string | null>(null);
 
   function clearDraftStorage() {
@@ -214,19 +210,37 @@ export function CreateEventWizard({
       setLocationMode(draft.locationMode);
     }
     if (typeof draft.locationId === "string") setLocationId(draft.locationId);
-    // Only restore a finished saalplan (with seats). Empty shells must not hijack new events.
+    if (typeof draft.locationQuery === "string") setLocationQuery(draft.locationQuery);
+    if (typeof draft.wantSaalplan === "boolean") setWantSaalplan(draft.wantSaalplan);
+    if (typeof draft.seatingBookingMode === "string") {
+      setSeatingBookingMode(draft.seatingBookingMode);
+    }
+    // Restore plan from draft — sessionStorage keeps wizard alive while editor is in another tab.
     if (typeof draft.venuePlanId === "string" && draft.venuePlanId) {
       const locId =
         typeof draft.locationId === "string" ? draft.locationId : locationId;
       const plan = locations
         .find((l) => l.id === locId)
         ?.venuePlans.find((p) => p.id === draft.venuePlanId);
-      if (plan && plan.seatCapacity > 0) {
+      if (plan) {
         setVenuePlanId(plan.id);
-        setSeatingBookingMode("seat_map_and_best");
+        setWantSaalplan(true);
+        if (
+          draft.seatingBookingMode !== "best_available" &&
+          draft.seatingBookingMode !== "seat_map_and_best"
+        ) {
+          setSeatingBookingMode("seat_map_and_best");
+        }
       } else {
-        setVenuePlanId("");
-        setSeatingBookingMode("none");
+        // Plan may be newly created — still restore id so form submits it.
+        setVenuePlanId(String(draft.venuePlanId));
+        setWantSaalplan(true);
+        if (
+          draft.seatingBookingMode !== "best_available" &&
+          draft.seatingBookingMode !== "seat_map_and_best"
+        ) {
+          setSeatingBookingMode("seat_map_and_best");
+        }
       }
     }
     if (typeof draft.newLocName === "string") setNewLocName(draft.newLocName);
@@ -254,7 +268,6 @@ export function CreateEventWizard({
       typeof pendingDraft?.venuePlanId === "string" ? pendingDraft.venuePlanId : "";
     clearDraftStorage();
     setPendingDraft(null);
-    setEditorPlan(null);
     setVenuePlanId("");
     setSeatingBookingMode("none");
     setWantSaalplan(false);
@@ -280,9 +293,8 @@ export function CreateEventWizard({
   }
 
   function discardCurrentSaalplan() {
-    const id = editorPlan?.id || venuePlanId;
+    const id = venuePlanId;
     if (!id) {
-      setEditorPlan(null);
       setVenuePlanId("");
       setSeatingBookingMode("none");
       setWantSaalplan(false);
@@ -311,7 +323,6 @@ export function CreateEventWizard({
           return;
         }
       }
-      setEditorPlan(null);
       setVenuePlanId("");
       setSeatingBookingMode("none");
       setWantSaalplan(false);
@@ -369,7 +380,10 @@ export function CreateEventWizard({
       tourId,
       locationMode,
       locationId,
+      locationQuery,
       venuePlanId,
+      wantSaalplan,
+      seatingBookingMode,
       newLocName,
       newLocStreet,
       newLocHouse,
@@ -408,7 +422,10 @@ export function CreateEventWizard({
     tourId,
     locationMode,
     locationId,
+    locationQuery,
     venuePlanId,
+    wantSaalplan,
+    seatingBookingMode,
     newLocName,
     newLocStreet,
     newLocHouse,
@@ -438,6 +455,15 @@ export function CreateEventWizard({
     () => selectedLocation?.venuePlans.find((p) => p.id === venuePlanId) ?? null,
     [selectedLocation, venuePlanId],
   );
+  const filteredLocations = useMemo(() => {
+    const q = locationQuery.trim().toLowerCase();
+    if (!q) return locList;
+    return locList.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        (l.city?.toLowerCase().includes(q) ?? false),
+    );
+  }, [locList, locationQuery]);
 
   const showSaalplanSection =
     locationMode === "new" || (locationMode === "existing" && Boolean(locationId));
@@ -459,7 +485,7 @@ export function CreateEventWizard({
             }
           : {
               name: `Kategorie ${prev.length + 1}`,
-              priceEuro: "39.90",
+              priceEuro: "0",
             },
       ),
     ]);
@@ -479,7 +505,11 @@ export function CreateEventWizard({
       }
     }
     if (index === 2) {
-      if (categories.length === 0) return "Mindestens eine Ticketkategorie ist nötig.";
+      // Mit Saalplan: Kategorien später am Event — ohne Saalplan mind. eine Kategorie.
+      if (venuePlanId && seatingBookingMode !== "none") return null;
+      if (categories.length === 0) {
+        return "Mindestens eine Ticketkategorie — oder Saalplan nutzen und später zuordnen.";
+      }
       if (categories.some((c) => !c.name.trim())) {
         return "Jede Ticketkategorie braucht einen Namen.";
       }
@@ -516,6 +546,26 @@ export function CreateEventWizard({
     if (locationMode === "existing" && !locationId) {
       setStepError("Bitte einen Ort wählen oder einen neuen anlegen.");
       return;
+    }
+
+    // Persist draft before opening a new tab so state survives the round-trip.
+    try {
+      const raw = sessionStorage.getItem(DRAFT_KEY);
+      const current = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+      sessionStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          ...current,
+          step,
+          locationMode,
+          locationId,
+          wantSaalplan: true,
+          seatingBookingMode:
+            seatingBookingMode === "none" ? "seat_map_and_best" : seatingBookingMode,
+        }),
+      );
+    } catch {
+      /* ignore */
     }
 
     startPlanBusy(async () => {
@@ -579,15 +629,52 @@ export function CreateEventWizard({
         setLocationId(result.locationId);
         setVenuePlanId(result.venuePlanId);
         setSeatingBookingMode("seat_map_and_best");
-        setEditorPlan({
-          id: result.venuePlanId,
-          name: result.planName,
-          widthCm: result.widthCm,
-          depthCm: result.depthCm,
-          objects: result.objects,
-          categorySlots: result.categorySlots,
-        });
-        setWantSaalplan(false);
+        setWantSaalplan(true);
+        try {
+          sessionStorage.setItem(
+            DRAFT_KEY,
+            JSON.stringify({
+              step,
+              name,
+              slug,
+              slugManual,
+              subtitle,
+              shortDescription,
+              description,
+              status,
+              eventStartsAt,
+              eventEndsAt,
+              doorsOpenAt,
+              presaleStartsAt,
+              endsManual,
+              doorsManual,
+              ticketTaxPercent,
+              feeTaxMode,
+              feeTaxPercent,
+              coverImageUrl,
+              tourId,
+              locationMode: "existing",
+              locationId: result.locationId,
+              locationQuery,
+              venuePlanId: result.venuePlanId,
+              wantSaalplan: true,
+              seatingBookingMode: "seat_map_and_best",
+              newLocName,
+              newLocStreet,
+              newLocHouse,
+              newLocZip,
+              newLocCity,
+              newLocCountry,
+              newLocPhone,
+              newLocHomepage,
+              newLocCapacity,
+              categories,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
+        window.open(saalplanEditorUrl(result.venuePlanId), "_blank", "noopener,noreferrer");
       } catch (e) {
         setStepError(
           e instanceof Error && e.message === "LOCATION_NAME_REQUIRED"
@@ -608,8 +695,12 @@ export function CreateEventWizard({
       label: "Ort",
     },
     {
-      ok: categories.length > 0 && categories.every((c) => c.name.trim()),
-      label: "Mindestens 1 Ticketkategorie",
+      ok:
+        (Boolean(venuePlanId) && seatingBookingMode !== "none") ||
+        (categories.length > 0 && categories.every((c) => c.name.trim())),
+      label: venuePlanId
+        ? "Saalplan (Kategorien am Event)"
+        : "Mindestens 1 Ticketkategorie",
     },
     { ok: true, label: "Cover (empfohlen)", soft: true },
   ];
@@ -902,105 +993,90 @@ export function CreateEventWizard({
       <section className={step === 1 ? "space-y-4" : "hidden"}>
         <div className="tf-card !p-6 md:!p-8 grid gap-6 text-sm">
           <input type="hidden" name="locationMode" value={locationMode} />
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={`tf-btn ${locationMode === "existing" ? "tf-btn-primary" : ""}`}
-              onClick={() => setLocationMode("existing")}
-              disabled={locList.length === 0}
-            >
-              Bestehenden Ort wählen
-            </button>
-            <button
-              type="button"
-              className={`tf-btn ${locationMode === "new" ? "tf-btn-primary" : ""}`}
-              onClick={() => setLocationMode("new")}
-            >
-              Neuen Ort anlegen
-            </button>
-          </div>
+          <input type="hidden" name="locationId" value={locationMode === "existing" ? locationId : ""} />
+          <input type="hidden" name="venuePlanId" value={venuePlanId} />
 
           {locationMode === "existing" ? (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="space-y-4">
               <label className="grid gap-1">
-                <span className="font-medium">Ort</span>
-                <select
-                  name="locationId"
+                <span className="font-medium">Location suchen</span>
+                <input
                   className="tf-input"
-                  value={locationId}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setLocationId(next);
-                    // Never auto-attach a plan when switching location.
-                    setVenuePlanId("");
-                    setSeatingBookingMode("none");
-                    setEditorPlan(null);
-                    setWantSaalplan(false);
-                  }}
-                >
-                  <option value="">— bitte wählen —</option>
-                  {locList.map((loc) => (
-                    <option key={loc.id} value={loc.id}>
-                      {loc.name}
-                      {loc.city ? ` (${loc.city})` : ""}
-                      {loc.venuePlans.length > 0
-                        ? ` · ${loc.venuePlans.length} Saalplan${loc.venuePlans.length === 1 ? "" : "e"}`
-                        : ""}
-                    </option>
-                  ))}
-                </select>
+                  value={locationQuery}
+                  onChange={(e) => setLocationQuery(e.target.value)}
+                  placeholder="Name oder Stadt…"
+                  autoComplete="off"
+                />
               </label>
-              <label className="grid gap-1">
-                <span className="font-medium">Saalplan (optional)</span>
-                <select
-                  name="venuePlanId"
-                  className="tf-input"
-                  value={venuePlanId}
-                  onChange={(e) => {
-                    const next = e.target.value;
-                    setVenuePlanId(next);
-                    if (!next) setSeatingBookingMode("none");
-                    else if (seatingBookingMode === "none") {
-                      setSeatingBookingMode("seat_map_and_best");
-                    }
-                    if (!next || next !== editorPlan?.id) setEditorPlan(null);
-                  }}
-                  disabled={!selectedLocation}
-                >
-                  <option value="">— keiner (Steh / freie Platzwahl) —</option>
-                  {(selectedLocation?.venuePlans ?? [])
-                    .filter(
-                      (p) =>
-                        p.seatCapacity > 0 ||
-                        p.id === venuePlanId ||
-                        p.id === editorPlan?.id,
-                    )
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                        {p.seatCapacity > 0
-                          ? ` · ${p.seatCapacity} Sitze`
-                          : " · noch unfertig"}{" "}
-                        · {p.sizeLabel}
-                      </option>
-                    ))}
-                </select>
-                {venuePlanId && !editorPlan ? (
-                  <button
-                    type="button"
-                    className="mt-1 justify-self-start text-sm text-[var(--danger)]"
-                    disabled={planBusy}
-                    onClick={discardCurrentSaalplan}
-                  >
-                    Saalplan verwerfen
-                  </button>
-                ) : null}
-              </label>
+              <div className="max-h-56 overflow-auto rounded-xl border border-[var(--tf-line)]">
+                {filteredLocations.length === 0 ? (
+                  <p className="px-3 py-3 text-sm text-[var(--tf-text-secondary)]">
+                    Keine Treffer — lege unten eine neue Location an.
+                  </p>
+                ) : (
+                  <ul className="divide-y divide-[var(--tf-line)]">
+                    {filteredLocations.map((loc) => {
+                      const active = loc.id === locationId;
+                      return (
+                        <li key={loc.id}>
+                          <button
+                            type="button"
+                            className={`flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm ${
+                              active
+                                ? "bg-[rgba(20,184,166,0.12)] font-semibold text-[var(--tf-navy)]"
+                                : "hover:bg-[rgba(15,39,71,0.04)]"
+                            }`}
+                            onClick={() => {
+                              setLocationId(loc.id);
+                              setVenuePlanId("");
+                              setSeatingBookingMode("none");
+                              setWantSaalplan(false);
+                            }}
+                          >
+                            <span>
+                              {loc.name}
+                              {loc.city ? (
+                                <span className="font-normal text-[var(--tf-text-secondary)]">
+                                  {" "}
+                                  · {loc.city}
+                                </span>
+                              ) : null}
+                            </span>
+                            {loc.venuePlans.length > 0 ? (
+                              <span className="text-xs text-[var(--tf-text-secondary)]">
+                                {loc.venuePlans.length} Saalplan
+                                {loc.venuePlans.length === 1 ? "" : "e"}
+                              </span>
+                            ) : null}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+              <button
+                type="button"
+                className="text-sm font-semibold text-[var(--tf-teal)] hover:underline"
+                onClick={() => setLocationMode("new")}
+              >
+                Location nicht dabei? Neu anlegen
+              </button>
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-12">
-              <input type="hidden" name="locationId" value="" />
-              <input type="hidden" name="venuePlanId" value="" />
+              <div className="xl:col-span-12">
+                {locList.length > 0 ? (
+                  <button
+                    type="button"
+                    className="mb-2 text-sm font-semibold text-[var(--tf-teal)] hover:underline"
+                    onClick={() => setLocationMode("existing")}
+                  >
+                    ← Bestehende Location suchen
+                  </button>
+                ) : null}
+                <p className="font-medium text-[var(--tf-navy)]">Neue Location anlegen</p>
+              </div>
               <label className="grid gap-1 xl:col-span-12">
                 <span className="font-medium">Name des Orts</span>
                 <input
@@ -1109,251 +1185,274 @@ export function CreateEventWizard({
             </div>
           )}
 
-          {locationMode === "existing" && venuePlanId ? (
-            <fieldset className="space-y-2 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
-              <legend className="px-1 text-sm font-semibold text-[var(--tf-navy)]">
-                Onlineshop-Verkauf
-              </legend>
-              <input type="hidden" name="seatingBookingMode" value={seatingBookingMode} />
-              <label className="flex items-center gap-2 text-sm">
+          {showSaalplanSection ? (
+            <div className="space-y-4 rounded-xl border border-[var(--tf-line)] p-4">
+              <label className="flex cursor-pointer items-center gap-3">
                 <input
-                  type="radio"
-                  checked={seatingBookingMode === "seat_map_and_best"}
-                  onChange={() => setSeatingBookingMode("seat_map_and_best")}
+                  type="checkbox"
+                  checked={wantSaalplan}
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setWantSaalplan(on);
+                    if (!on) {
+                      setVenuePlanId("");
+                      setSeatingBookingMode("none");
+                    }
+                  }}
                 />
-                <span className="font-medium">Saalplan + Bestplatzbuchung</span>
+                <span className="font-medium text-[var(--tf-navy)]">Saalplan verwenden</span>
               </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="radio"
-                  checked={seatingBookingMode === "best_available"}
-                  onChange={() => setSeatingBookingMode("best_available")}
-                />
-                <span className="font-medium">Nur Bestplatzbuchung</span>
-              </label>
-            </fieldset>
+
+              {wantSaalplan ? (
+                <div className="space-y-4">
+                  {locationMode === "existing" &&
+                  (selectedLocation?.venuePlans.length ?? 0) > 0 ? (
+                    <label className="grid gap-1">
+                      <span className="font-medium">Bestehenden Saalplan wählen</span>
+                      <select
+                        className="tf-input"
+                        value={venuePlanId}
+                        onChange={(e) => {
+                          const next = e.target.value;
+                          setVenuePlanId(next);
+                          if (!next) setSeatingBookingMode("none");
+                          else if (seatingBookingMode === "none") {
+                            setSeatingBookingMode("seat_map_and_best");
+                          }
+                        }}
+                      >
+                        <option value="">— neuen zeichnen —</option>
+                        {(selectedLocation?.venuePlans ?? []).map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                            {p.seatCapacity > 0
+                              ? ` · ${p.seatCapacity} Sitze`
+                              : " · noch unfertig"}{" "}
+                            · {p.sizeLabel}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
+
+                  {!venuePlanId ? (
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <label className="grid gap-1 md:col-span-2 xl:col-span-2">
+                        <span className="font-medium">Name</span>
+                        <input
+                          name="newVenuePlanName"
+                          className="tf-input"
+                          value={planName}
+                          onChange={(e) => setPlanName(e.target.value)}
+                          placeholder="z. B. Großer Saal"
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <span className="font-medium">Breite (m)</span>
+                        <input
+                          name="newVenuePlanWidthM"
+                          className="tf-input"
+                          inputMode="decimal"
+                          value={planWidthM}
+                          onChange={(e) => setPlanWidthM(e.target.value)}
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <span className="font-medium">Tiefe (m)</span>
+                        <input
+                          name="newVenuePlanDepthM"
+                          className="tf-input"
+                          inputMode="decimal"
+                          value={planDepthM}
+                          onChange={(e) => setPlanDepthM(e.target.value)}
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 md:col-span-2 xl:col-span-4">
+                        <input
+                          type="checkbox"
+                          name="newVenuePlanWithStage"
+                          checked={planWithStage}
+                          onChange={(e) => setPlanWithStage(e.target.checked)}
+                        />
+                        <span className="font-medium">Bühne</span>
+                      </label>
+                      <div className="md:col-span-2 xl:col-span-4">
+                        <button
+                          type="button"
+                          className="tf-btn tf-btn-primary"
+                          disabled={planBusy}
+                          onClick={openSaalplanEditor}
+                        >
+                          {planBusy ? "Wird vorbereitet…" : "Saalplan zeichnen (neues Fenster)"}
+                        </button>
+                        <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
+                          Öffnet den Geometrie-Editor in einem neuen Tab. Speichern, dann hierher
+                          zurück — Buchungsmodus und Zuordnung folgen am Event.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-sm text-[var(--tf-navy)]">
+                        Saalplan gewählt
+                        {selectedVenuePlan ? `: ${selectedVenuePlan.name}` : ""}.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={saalplanEditorUrl(venuePlanId)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                        >
+                          Saalplan bearbeiten
+                        </a>
+                        <button
+                          type="button"
+                          className="tf-btn text-[var(--danger)] !min-h-10 text-sm"
+                          disabled={planBusy}
+                          onClick={discardCurrentSaalplan}
+                        >
+                          Saalplan verwerfen
+                        </button>
+                      </div>
+                      <fieldset className="space-y-2 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
+                        <legend className="px-1 text-sm font-semibold text-[var(--tf-navy)]">
+                          Buchungsmodus
+                        </legend>
+                        <input type="hidden" name="seatingBookingMode" value={seatingBookingMode} />
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            checked={seatingBookingMode === "seat_map_and_best"}
+                            onChange={() => setSeatingBookingMode("seat_map_and_best")}
+                          />
+                          <span className="font-medium">Saalplan + Bestplatzbuchung</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input
+                            type="radio"
+                            checked={seatingBookingMode === "best_available"}
+                            onChange={() => setSeatingBookingMode("best_available")}
+                          />
+                          <span className="font-medium">Nur Bestplatzbuchung</span>
+                        </label>
+                      </fieldset>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <input type="hidden" name="seatingBookingMode" value="none" />
+              )}
+            </div>
           ) : (
             <input type="hidden" name="seatingBookingMode" value="none" />
           )}
-
-          {showSaalplanSection ? (
-            <div className="space-y-4 rounded-xl border border-[var(--tf-line)] p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="font-medium text-[var(--tf-navy)]">Neuen Saalplan zeichnen</p>
-                {!wantSaalplan ? (
-                  <button
-                    type="button"
-                    className="tf-btn"
-                    onClick={() => setWantSaalplan(true)}
-                  >
-                    Saalplan anlegen
-                  </button>
-                ) : null}
-              </div>
-
-              {wantSaalplan ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                  {!venuePlanId && locationMode === "new" ? (
-                    <input type="hidden" name="createVenuePlan" value="on" />
-                  ) : null}
-                  <label className="grid gap-1 md:col-span-2 xl:col-span-2">
-                    <span className="font-medium">Name</span>
-                    <input
-                      name="newVenuePlanName"
-                      className="tf-input"
-                      value={planName}
-                      onChange={(e) => setPlanName(e.target.value)}
-                      placeholder="z. B. Großer Saal"
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="font-medium">Breite (m)</span>
-                    <input
-                      name="newVenuePlanWidthM"
-                      className="tf-input"
-                      inputMode="decimal"
-                      value={planWidthM}
-                      onChange={(e) => setPlanWidthM(e.target.value)}
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="font-medium">Tiefe (m)</span>
-                    <input
-                      name="newVenuePlanDepthM"
-                      className="tf-input"
-                      inputMode="decimal"
-                      value={planDepthM}
-                      onChange={(e) => setPlanDepthM(e.target.value)}
-                    />
-                  </label>
-                  <label className="flex items-center gap-2 md:col-span-2 xl:col-span-4">
-                    <input
-                      type="checkbox"
-                      name="newVenuePlanWithStage"
-                      checked={planWithStage}
-                      onChange={(e) => setPlanWithStage(e.target.checked)}
-                    />
-                    <span className="font-medium">Bühne</span>
-                  </label>
-                  <div className="md:col-span-2 xl:col-span-4">
-                    <button
-                      type="button"
-                      className="tf-btn tf-btn-primary"
-                      disabled={planBusy}
-                      onClick={openSaalplanEditor}
-                    >
-                      {planBusy ? "Wird vorbereitet…" : "Saalplan-Editor öffnen"}
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {editorPlan ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <p className="font-medium text-[var(--tf-navy)]">Saalplan bearbeiten</p>
-                <button
-                  type="button"
-                  className="tf-btn text-[var(--danger)]"
-                  disabled={planBusy}
-                  onClick={discardCurrentSaalplan}
-                >
-                  Saalplan verwerfen
-                </button>
-              </div>
-              <SaalplanEditor
-                planId={editorPlan.id}
-                initialName={editorPlan.name}
-                initialWidthCm={editorPlan.widthCm}
-                initialDepthCm={editorPlan.depthCm}
-                initialObjects={editorPlan.objects}
-                initialCategorySlots={editorPlan.categorySlots}
-                seedCategorySlots={categories
-                  .filter((c) => c.name.trim())
-                  .map((c, i) => ({
-                    key: c.name.trim().toLowerCase().replace(/\s+/g, "-"),
-                    name: c.name.trim(),
-                    color: ["#14B8A6", "#0F2747", "#D6A642", "#3B82F6"][i % 4]!,
-                  }))}
-                saveAction={saveVenuePlanAction}
-              />
-            </div>
-          ) : null}
         </div>
       </section>
 
       {/* Step 3 — Tickets */}
       <section className={step === 2 ? "space-y-4" : "hidden"}>
         <div className="tf-card !p-6 md:!p-8 grid gap-4 text-sm">
-          <p className="font-medium text-[var(--tf-navy)]">Ticketkategorien</p>
-
-          {templates.length > 0 ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[var(--tf-text-secondary)]">Vorlage übernehmen:</span>
-              {templates.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className="tf-btn text-xs"
-                  onClick={() => addCategory(t)}
-                >
-                  {t.name} ({formatEuroFromCents(t.priceGrossCents)})
-                </button>
-              ))}
+          {venuePlanId && seatingBookingMode !== "none" ? (
+            <div className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-4 py-3">
+              <p className="font-medium text-[var(--tf-navy)]">
+                Kategorien und Preise kommen am Event
+              </p>
+              <p className="mt-1 text-[var(--tf-text-secondary)]">
+                Nach dem Anlegen landest du bei der Saalplan-Zuordnung — dort Preiskategorien
+                anlegen, Bereiche zuweisen und danach die Preise setzen.
+              </p>
             </div>
-          ) : null}
+          ) : (
+            <>
+              <p className="font-medium text-[var(--tf-navy)]">Ticketkategorien</p>
+              <p className="text-[var(--tf-text-secondary)]">
+                Ohne Saalplan legst du hier die Verkaufskategorien an. Preise ab 0 € sind ok.
+              </p>
 
-          <div className="space-y-3">
-            {categories.map((cat, index) => (
-              <div
-                key={cat.key}
-                className="grid gap-3 rounded-xl border border-[var(--tf-line)] p-4"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
-                    Kategorie {index + 1}
-                  </p>
-                  {categories.length > 1 ? (
+              {templates.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs text-[var(--tf-text-secondary)]">Vorlage übernehmen:</span>
+                  {templates.map((t) => (
                     <button
+                      key={t.id}
                       type="button"
-                      className="text-xs text-[var(--danger)]"
-                      onClick={() =>
-                        setCategories((prev) => prev.filter((c) => c.key !== cat.key))
-                      }
+                      className="tf-btn text-xs"
+                      onClick={() => addCategory(t)}
                     >
-                      Entfernen
+                      {t.name} ({formatEuroFromCents(t.priceGrossCents)})
                     </button>
-                  ) : null}
+                  ))}
                 </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <label className="grid gap-1 md:col-span-2 xl:col-span-4">
-                    <span className="font-medium">Name</span>
-                    <input
-                      name="categoryName"
-                      className="tf-input"
-                      value={cat.name}
-                      onChange={(e) => updateCategory(cat.key, { name: e.target.value })}
-                      placeholder="z. B. Kategorie 1, VIP, Early Bird"
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="font-medium">Preis (€ brutto)</span>
-                    <input
-                      name="categoryPrice"
-                      className="tf-input"
-                      inputMode="decimal"
-                      value={cat.priceEuro}
-                      onChange={(e) => updateCategory(cat.key, { priceEuro: e.target.value })}
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="font-medium">Kontingent</span>
-                    <input
-                      name="categoryCapacity"
-                      type="number"
-                      min="1"
-                      className="tf-input"
-                      value={cat.capacity}
-                      onChange={(e) => updateCategory(cat.key, { capacity: e.target.value })}
-                    />
-                  </label>
-                  <label className="grid gap-1">
-                    <span className="font-medium">Max. pro Bestellung</span>
-                    <input
-                      name="categoryMaxPerOrder"
-                      type="number"
-                      min="1"
-                      className="tf-input"
-                      value={cat.maxPerOrder}
-                      onChange={(e) => updateCategory(cat.key, { maxPerOrder: e.target.value })}
-                    />
-                  </label>
-                  <div className="md:col-span-2 xl:col-span-2">
-                    <SmartDateTimeInput
-                      name="categorySaleStartsAt"
-                      label="Verkauf von (optional)"
-                      value={cat.saleStartsAt}
-                      onChange={(v) => updateCategory(cat.key, { saleStartsAt: v })}
-                    />
-                  </div>
-                  <div className="md:col-span-2 xl:col-span-2">
-                    <SmartDateTimeInput
-                      name="categorySaleEndsAt"
-                      label="Verkauf bis (optional)"
-                      value={cat.saleEndsAt}
-                      onChange={(v) => updateCategory(cat.key, { saleEndsAt: v })}
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ) : null}
 
-          <button type="button" className="tf-btn w-fit" onClick={() => addCategory()}>
-            + Weitere Kategorie
-          </button>
+              <div className="space-y-3">
+                {categories.map((cat, index) => (
+                  <div
+                    key={cat.key}
+                    className="grid gap-3 rounded-xl border border-[var(--tf-line)] p-4"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
+                        Kategorie {index + 1}
+                      </p>
+                      {categories.length > 1 ? (
+                        <button
+                          type="button"
+                          className="text-xs text-[var(--danger)]"
+                          onClick={() =>
+                            setCategories((prev) => prev.filter((c) => c.key !== cat.key))
+                          }
+                        >
+                          Entfernen
+                        </button>
+                      ) : null}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      <label className="grid gap-1 md:col-span-1">
+                        <span className="font-medium">Name</span>
+                        <input
+                          name="categoryName"
+                          className="tf-input"
+                          value={cat.name}
+                          onChange={(e) => updateCategory(cat.key, { name: e.target.value })}
+                          placeholder="z. B. Kategorie 1, VIP"
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <span className="font-medium">Preis (€)</span>
+                        <input
+                          name="categoryPrice"
+                          className="tf-input"
+                          inputMode="decimal"
+                          value={cat.priceEuro}
+                          onChange={(e) => updateCategory(cat.key, { priceEuro: e.target.value })}
+                        />
+                      </label>
+                      <label className="grid gap-1">
+                        <span className="font-medium">Kontingent</span>
+                        <input
+                          name="categoryCapacity"
+                          type="number"
+                          min="1"
+                          className="tf-input"
+                          value={cat.capacity}
+                          onChange={(e) => updateCategory(cat.key, { capacity: e.target.value })}
+                        />
+                      </label>
+                      <input type="hidden" name="categoryMaxPerOrder" value={cat.maxPerOrder} />
+                      <input type="hidden" name="categorySaleStartsAt" value={cat.saleStartsAt} />
+                      <input type="hidden" name="categorySaleEndsAt" value={cat.saleEndsAt} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button type="button" className="tf-btn w-fit" onClick={() => addCategory()}>
+                + Weitere Kategorie
+              </button>
+            </>
+          )}
         </div>
       </section>
 
@@ -1514,7 +1613,7 @@ export function CreateEventWizard({
                 ) {
                   return;
                 }
-                const orphanId = editorPlan?.id || venuePlanId;
+                const orphanId = venuePlanId;
                 clearDraftStorage();
                 setStep(0);
                 setName("");
@@ -1548,8 +1647,7 @@ export function CreateEventWizard({
                 setNewLocHomepage("");
                 setNewLocCapacity("");
                 setWantSaalplan(false);
-                setEditorPlan(null);
-                setCategories([newCategoryRow()]);
+                                setCategories([newCategoryRow()]);
                 setStepError(null);
                 if (orphanId) {
                   const plan = locList

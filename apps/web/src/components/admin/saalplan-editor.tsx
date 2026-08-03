@@ -9,7 +9,7 @@ import {
   useTransition,
   type ReactNode,
 } from "react";
-import { Eraser, Paintbrush, Plus, Save, ZoomIn, ZoomOut } from "lucide-react";
+import { Plus, Save, ZoomIn, ZoomOut } from "lucide-react";
 import type { VenuePlanObject } from "@/lib/saalplan/types";
 import {
   areaSqm,
@@ -31,15 +31,8 @@ import {
   type SnapGuide,
 } from "@/lib/saalplan/snap";
 import {
-  colorForSlotKey,
-  defaultSlotColor,
-  paintBlockCategory,
-  paintRowCategory,
-  paintSeatCategory,
   parsePlanCategorySlots,
   pruneCategoryAssignments,
-  resolveSeatCategoryKey,
-  slotKeyFromName,
   type PlanCategorySlot,
 } from "@/lib/saalplan/category-slots";
 
@@ -49,14 +42,13 @@ type Props = {
   initialWidthCm: number;
   initialDepthCm: number;
   initialObjects: VenuePlanObject[];
+  /** Preserved on save for legacy plans; not editable in the geometry editor. */
   initialCategorySlots?: PlanCategorySlot[];
-  /** Optional seed from event ticket categories (names/colors). */
-  seedCategorySlots?: PlanCategorySlot[];
   saveAction: (formData: FormData) => Promise<void>;
+  /** Optional return path shown after save (wizard / event). */
+  returnTo?: string | null;
+  returnLabel?: string | null;
 };
-
-type EditorMode = "layout" | "paint";
-type PaintTarget = "block" | "row" | "seat";
 
 type DragState = {
   kind: "move";
@@ -81,18 +73,18 @@ export function SaalplanEditor({
   initialDepthCm,
   initialObjects,
   initialCategorySlots,
-  seedCategorySlots,
   saveAction,
+  returnTo,
+  returnLabel,
 }: Props) {
   const [name, setName] = useState(initialName);
   const [widthCm, setWidthCm] = useState(initialWidthCm);
   const [depthCm, setDepthCm] = useState(initialDepthCm);
   const [objects, setObjects] = useState<VenuePlanObject[]>(initialObjects);
-  const [categorySlots, setCategorySlots] = useState<PlanCategorySlot[]>(() => {
-    const saved = parsePlanCategorySlots(initialCategorySlots ?? []);
-    if (saved.length > 0) return saved;
-    return parsePlanCategorySlots(seedCategorySlots ?? []);
-  });
+  // Keep legacy slots for save round-trip; geometry editor does not paint categories.
+  const [categorySlots] = useState<PlanCategorySlot[]>(() =>
+    parsePlanCategorySlots(initialCategorySlots ?? []),
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialObjects[0]?.id ?? null,
   );
@@ -102,13 +94,7 @@ export function SaalplanEditor({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [viewport, setViewport] = useState({ w: 720, h: 520 });
-  const [editorMode, setEditorMode] = useState<EditorMode>("layout");
-  const [paintTarget, setPaintTarget] = useState<PaintTarget>("block");
-  const [selectedSlotKey, setSelectedSlotKey] = useState<string | null>(
-    () => categorySlots[0]?.key ?? null,
-  );
-  const [eraseMode, setEraseMode] = useState(false);
-  const [newSlotName, setNewSlotName] = useState("");
+  const [savedOnce, setSavedOnce] = useState(false);
 
   const dragRef = useRef<DragState | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -121,21 +107,6 @@ export function SaalplanEditor({
   const standingEstimate = planStandingEstimate(objects);
   const hasStage = objects.some((o) => o.type === "stage");
   const hasSeats = capacity > 0 || objects.some((o) => o.type === "seat_block" || o.type === "standing_area");
-  const paintedSeatCount = useMemo(() => {
-    let n = 0;
-    for (const block of objects) {
-      if (block.type !== "seat_block" || block.numberedSeats === false) continue;
-      const rows = Math.max(0, Math.round(block.rows ?? 0));
-      const cols = Math.max(0, Math.round(block.seatsPerRow ?? 0));
-      for (let r = 1; r <= rows; r += 1) {
-        for (let s = 1; s <= cols; s += 1) {
-          if (resolveSeatCategoryKey(block, r, s)) n += 1;
-        }
-      }
-    }
-    return n;
-  }, [objects]);
-  const hasCategoryPaint = categorySlots.length > 0 && paintedSeatCount > 0;
 
   useEffect(() => {
     const el = canvasRef.current;
@@ -225,99 +196,6 @@ export function SaalplanEditor({
     );
     setDirty(true);
     setMessage(notice);
-  }
-
-  function markSlotsDirty(next: PlanCategorySlot[]) {
-    setCategorySlots(next);
-    setDirty(true);
-    setMessage(null);
-    if (selectedSlotKey && !next.some((s) => s.key === selectedSlotKey)) {
-      setSelectedSlotKey(next[0]?.key ?? null);
-    }
-  }
-
-  function addCategorySlot() {
-    const name = newSlotName.trim();
-    if (!name) {
-      setMessage("Bitte einen Kategorienamen eingeben (z. B. Parkett).");
-      return;
-    }
-    let key = slotKeyFromName(name);
-    if (categorySlots.some((s) => s.key === key)) {
-      key = `${key}-${Math.random().toString(36).slice(2, 5)}`;
-    }
-    const next = [
-      ...categorySlots,
-      { key, name, color: defaultSlotColor(categorySlots.length) },
-    ];
-    markSlotsDirty(next);
-    setSelectedSlotKey(key);
-    setNewSlotName("");
-    setEraseMode(false);
-    setEditorMode("paint");
-    setMessage(`Kategorie „${name}“ angelegt — jetzt Block, Reihe oder Platz antippen.`);
-  }
-
-  function removeCategorySlot(key: string) {
-    markSlotsDirty(categorySlots.filter((s) => s.key !== key));
-    setObjects((prev) =>
-      prev.map((o) => {
-        if (o.type !== "seat_block") return o;
-        let next = o;
-        if (o.categoryKey === key) next = { ...next, categoryKey: undefined };
-        if (o.rowCategoryKeys) {
-          const rows = { ...o.rowCategoryKeys };
-          for (const [rk, rv] of Object.entries(rows)) {
-            if (rv === key) delete rows[rk];
-          }
-          next = {
-            ...next,
-            rowCategoryKeys: Object.keys(rows).length ? rows : undefined,
-          };
-        }
-        if (o.seatCategoryKeys) {
-          const seats = { ...o.seatCategoryKeys };
-          for (const [sk, sv] of Object.entries(seats)) {
-            if (sv === key) delete seats[sk];
-          }
-          next = {
-            ...next,
-            seatCategoryKeys: Object.keys(seats).length ? seats : undefined,
-          };
-        }
-        return next;
-      }),
-    );
-  }
-
-  function applyPaint(blockId: string, rowIndex?: number, seatIndex?: number) {
-    const key = eraseMode ? null : selectedSlotKey;
-    if (!eraseMode && !key) {
-      setMessage("Zuerst eine Kategorie wählen oder anlegen.");
-      return;
-    }
-    setObjects((prev) =>
-      prev.map((o) => {
-        if (o.id !== blockId || o.type !== "seat_block") return o;
-        if (paintTarget === "seat" && rowIndex && seatIndex) {
-          return paintSeatCategory(o, rowIndex, seatIndex, key);
-        }
-        if (paintTarget === "row" && rowIndex) {
-          return paintRowCategory(o, rowIndex, key);
-        }
-        return paintBlockCategory(o, key);
-      }),
-    );
-    setDirty(true);
-    setMessage(
-      eraseMode
-        ? "Zuordnung entfernt."
-        : paintTarget === "seat"
-          ? "Platz zugeordnet."
-          : paintTarget === "row"
-            ? "Reihe zugeordnet."
-            : "Block zugeordnet.",
-    );
   }
 
   function deleteSelected() {
@@ -447,12 +325,6 @@ export function SaalplanEditor({
     e.stopPropagation();
     e.preventDefault();
     setSelectedId(obj.id);
-    if (editorMode === "paint") {
-      if (obj.type === "seat_block" && obj.numberedSeats !== false && paintTarget === "block") {
-        applyPaint(obj.id);
-      }
-      return;
-    }
     if (obj.locked) return;
     dragRef.current = {
       kind: "move",
@@ -476,11 +348,8 @@ export function SaalplanEditor({
       try {
         await saveAction(fd);
         setDirty(false);
-        setMessage(
-          categorySlots.length > 0
-            ? "Gespeichert — Kategorien im Plan sind gesetzt. Beim Event werden gleichnamige Ticketkategorien automatisch verknüpft."
-            : "Gespeichert — der Plan ist bereit für Events.",
-        );
+        setSavedOnce(true);
+        setMessage("Gespeichert — der Plan ist bereit. Kategorien ordnest du am Event zu.");
       } catch (err) {
         setMessage(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
       }
@@ -529,7 +398,7 @@ export function SaalplanEditor({
 
   return (
     <div className="space-y-4">
-      <ol className="grid gap-2 rounded-2xl border border-[var(--tf-line)] bg-white p-4 text-sm sm:grid-cols-5">
+      <ol className="grid gap-2 rounded-2xl border border-[var(--tf-line)] bg-white p-4 text-sm sm:grid-cols-4">
         {[
           {
             n: 1,
@@ -551,20 +420,9 @@ export function SaalplanEditor({
           },
           {
             n: 4,
-            title: "Kategorien",
-            done: hasCategoryPaint || capacity === 0,
-            text:
-              capacity === 0
-                ? "Optional bei nummerierten Sitzen"
-                : hasCategoryPaint
-                  ? `${paintedSeatCount} Plätze zugeordnet`
-                  : "Im Plan Block/Reihe/Platz zuordnen",
-          },
-          {
-            n: 5,
             title: "Speichern",
             done: !dirty && (hasStage || hasSeats),
-            text: dirty ? "Noch ungespeicherte Änderungen" : "Fertig für Events",
+            text: dirty ? "Noch ungespeicherte Änderungen" : "Fertig — weiter am Event",
           },
         ].map((s) => (
           <li
@@ -650,158 +508,26 @@ export function SaalplanEditor({
             <Save className="mr-1 inline h-4 w-4" />
             {pending ? "Speichert…" : dirty ? "Speichern" : "Gespeichert"}
           </button>
+          {returnTo && (!dirty || savedOnce) ? (
+            <a href={returnTo} className="tf-btn tf-btn-secondary !min-h-10 text-sm">
+              {returnLabel?.trim() || "Zurück zum Event"}
+            </a>
+          ) : null}
         </div>
       </div>
 
       {message ? <p className="text-sm text-[var(--tf-teal)]">{message}</p> : null}
 
-      <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--tf-navy)]">
-              Im Saalplan Kategorien zuordnen
-            </h2>
-            <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-              Kategorien hier anlegen und auf Block, Reihe oder Einzelplatz malen. Beim Event werden
-              Ticketkategorien mit gleichem Namen automatisch verknüpft.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
-                editorMode === "layout"
-                  ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.12)] text-[var(--tf-navy)]"
-                  : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)]"
-              }`}
-              onClick={() => setEditorMode("layout")}
-            >
-              Anordnen
-            </button>
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium ${
-                editorMode === "paint"
-                  ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.12)] text-[var(--tf-navy)]"
-                  : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)]"
-              }`}
-              onClick={() => setEditorMode("paint")}
-            >
-              <Paintbrush className="h-3.5 w-3.5" />
-              Kategorien malen
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-end gap-2">
-          <label className="grid min-w-[12rem] flex-1 gap-1 text-sm">
-            <span className="text-xs text-[var(--tf-text-secondary)]">Neue Kategorie</span>
-            <input
-              className="tf-input !min-h-10"
-              placeholder="z. B. Parkett, Rang, VIP"
-              value={newSlotName}
-              onChange={(e) => setNewSlotName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCategorySlot();
-                }
-              }}
-            />
-          </label>
-          <button type="button" className="tf-btn tf-btn-primary !min-h-10 text-sm" onClick={addCategorySlot}>
-            Hinzufügen
-          </button>
-        </div>
-
-        {categorySlots.length > 0 ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {categorySlots.map((slot) => {
-              const active = !eraseMode && selectedSlotKey === slot.key && editorMode === "paint";
-              return (
-                <div key={slot.key} className="inline-flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedSlotKey(slot.key);
-                      setEraseMode(false);
-                      setEditorMode("paint");
-                    }}
-                    className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${
-                      active
-                        ? "border-[var(--tf-navy)] ring-2 ring-[rgba(15,39,71,0.15)]"
-                        : "border-[var(--tf-line)]"
-                    }`}
-                  >
-                    <span className="h-3 w-3 rounded-full" style={{ background: slot.color }} />
-                    {slot.name}
-                  </button>
-                  <button
-                    type="button"
-                    className="rounded-full px-2 py-1 text-xs text-[var(--tf-text-secondary)] hover:text-[var(--danger)]"
-                    title="Kategorie entfernen"
-                    onClick={() => removeCategorySlot(slot.key)}
-                  >
-                    ×
-                  </button>
-                </div>
-              );
-            })}
-            <button
-              type="button"
-              onClick={() => {
-                setEraseMode(true);
-                setEditorMode("paint");
-              }}
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium ${
-                eraseMode && editorMode === "paint"
-                  ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
-                  : "border-[var(--tf-line)] text-[var(--tf-navy)]"
-              }`}
-            >
-              <Eraser className="h-3.5 w-3.5" />
-              Entfernen
-            </button>
-          </div>
-        ) : (
-          <p className="mt-3 text-xs text-[var(--tf-text-secondary)]">
-            Noch keine Kategorien — z. B. „Parkett“ anlegen, dann auf den Plan malen.
-          </p>
-        )}
-
-        {editorMode === "paint" ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(
-              [
-                { id: "block", label: "Ganzer Block" },
-                { id: "row", label: "Reihe" },
-                { id: "seat", label: "Einzelplatz" },
-              ] as const
-            ).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
-                  paintTarget === t.id
-                    ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.12)] text-[var(--tf-navy)]"
-                    : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)]"
-                }`}
-                onClick={() => setPaintTarget(t.id)}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
-      </div>
+      <p className="text-sm text-[var(--tf-text-secondary)]">
+        Hier nur Geometrie: Bühne, Sitzblöcke und Stehbereiche. Preiskategorien ordnest du danach am
+        Event zu.
+      </p>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
         <div className="overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              {editorMode === "paint"
-                ? "Malmodus: Kategorie wählen, dann Block / Reihe / Platz antippen"
-                : "Ziehen = verschieben · Größe über Maße / Reihen rechts · Entf = löschen"}
+              Ziehen = verschieben · Größe über Maße / Reihen rechts · Entf = löschen
               {dirty ? " · ungespeichert" : ""}
             </p>
             <div className="flex items-center gap-1">
@@ -942,17 +668,13 @@ export function SaalplanEditor({
                           obj.standingMode ?? "standing",
                         )
                       : 0;
-                  const blockSlotColor =
-                    obj.type === "seat_block" && obj.categoryKey
-                      ? colorForSlotKey(categorySlots, obj.categoryKey)
-                      : null;
 
                   return (
                     <g
                       key={obj.id}
                       transform={`rotate(${obj.rotationDeg} ${cx} ${cy})`}
                       onPointerDown={(e) => onPointerDownObject(e, obj)}
-                      style={{ cursor: editorMode === "paint" ? "crosshair" : "move" }}
+                      style={{ cursor: "move" }}
                     >
                       <rect
                         x={x}
@@ -965,11 +687,9 @@ export function SaalplanEditor({
                             ? "rgba(15,39,71,0.05)"
                             : obj.type === "standing_area"
                               ? "rgba(15,39,71,0.07)"
-                              : blockSlotColor
-                                ? `${blockSlotColor}22`
-                                : numbered
-                                  ? "rgba(20,184,166,0.1)"
-                                  : "rgba(20,184,166,0.16)"
+                              : numbered
+                                ? "rgba(20,184,166,0.1)"
+                                : "rgba(20,184,166,0.16)"
                         }
                         stroke={isSel ? "var(--tf-teal)" : "var(--tf-navy)"}
                         strokeWidth={isSel ? 2 : 1.25}
@@ -988,15 +708,7 @@ export function SaalplanEditor({
                       {obj.type === "seat_block" &&
                       (obj.rows ?? 0) > 0 &&
                       (obj.seatsPerRow ?? 0) > 0
-                        ? renderSeatDots(obj, x, y, w, h, {
-                            slots: categorySlots,
-                            interactive:
-                              editorMode === "paint" &&
-                              numbered &&
-                              (paintTarget === "row" || paintTarget === "seat"),
-                            onPaint: (rowIndex, seatIndex) =>
-                              applyPaint(obj.id, rowIndex, seatIndex),
-                          })
+                        ? renderSeatDots(obj, x, y, w, h)
                         : null}
 
                       {obj.type === "standing_area" ? (
@@ -1283,17 +995,11 @@ function renderSeatDots(
   y: number,
   w: number,
   h: number,
-  opts?: {
-    slots: PlanCategorySlot[];
-    interactive?: boolean;
-    onPaint?: (rowIndex: number, seatIndex: number) => void;
-  },
 ) {
   const rows = Math.min(obj.rows ?? 0, 24);
   const cols = Math.min(obj.seatsPerRow ?? 0, 40);
   if (rows < 1 || cols < 1) return null;
   const numbered = obj.numberedSeats !== false;
-  // Tight inset — users place blocks themselves; don't waste space on empty margins.
   const padX = w * (numbered ? 0.05 : 0.03);
   const padY = h * 0.05;
   const innerW = w - padX * 2;
@@ -1302,7 +1008,6 @@ function renderSeatDots(
   const cellH = innerH / rows;
   const r = Math.max(1.2, Math.min(cellW, cellH) * (numbered ? 0.32 : 0.28));
   const nodes: ReactNode[] = [];
-  const interactive = Boolean(opts?.interactive && numbered);
 
   if (numbered) {
     for (let row = 0; row < rows; row += 1) {
@@ -1346,31 +1051,15 @@ function renderSeatDots(
     for (let col = 0; col < cols; col += 1) {
       const cx = x + padX + cellW * (col + 0.5);
       const cy = y + padY + cellH * (row + 0.5);
-      const slotKey = numbered
-        ? resolveSeatCategoryKey(obj, row + 1, col + 1)
-        : null;
-      const slotColor = colorForSlotKey(opts?.slots ?? [], slotKey);
       nodes.push(
         <circle
           key={`${row}-${col}`}
           cx={cx}
           cy={cy}
           r={r}
-          fill={slotColor ?? "var(--tf-navy)"}
-          opacity={numbered ? (slotColor ? 0.92 : 0.45) : 0.28}
-          style={{
-            pointerEvents: interactive ? "auto" : "none",
-            cursor: interactive ? "crosshair" : undefined,
-          }}
-          onPointerDown={
-            interactive
-              ? (e) => {
-                  e.stopPropagation();
-                  e.preventDefault();
-                  opts?.onPaint?.(row + 1, col + 1);
-                }
-              : undefined
-          }
+          fill="var(--tf-navy)"
+          opacity={numbered ? 0.45 : 0.28}
+          style={{ pointerEvents: "none" }}
         />,
       );
       if (numbered && r >= 5.5) {
@@ -1406,5 +1095,5 @@ function renderSeatDots(
       </text>,
     );
   }
-  return <g style={{ pointerEvents: interactive ? "auto" : "none" }}>{nodes}</g>;
+  return <g style={{ pointerEvents: "none" }}>{nodes}</g>;
 }

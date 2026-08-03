@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useState } from "react";
 
 export type PlanOption = {
@@ -17,7 +16,16 @@ type Props = {
   initialLocationId: string;
   initialVenuePlanId: string;
   initialSeatingBookingMode?: string;
+  /** Current event id for returnTo when editing the plan. */
+  eventId?: string;
 };
+
+function planEditorHref(planId: string, eventId?: string) {
+  if (!eventId) return `/admin/saalplan/${planId}`;
+  const returnTo = encodeURIComponent(`/admin/events/${eventId}#saalplan`);
+  const returnLabel = encodeURIComponent("Zurück zum Event");
+  return `/admin/saalplan/${planId}?returnTo=${returnTo}&returnLabel=${returnLabel}`;
+}
 
 export function EventVenuePlanFields({
   locations,
@@ -25,6 +33,7 @@ export function EventVenuePlanFields({
   initialLocationId,
   initialVenuePlanId,
   initialSeatingBookingMode = "none",
+  eventId,
 }: Props) {
   const [locationId, setLocationId] = useState(initialLocationId);
   const [venuePlanId, setVenuePlanId] = useState(initialVenuePlanId);
@@ -98,9 +107,12 @@ export function EventVenuePlanFields({
       <input type="hidden" name="seatingBookingMode" value={venuePlanId ? bookingMode : "none"} />
 
       {venuePlanId ? (
-        <fieldset className="md:col-span-2 space-y-3 rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
+        <fieldset
+          id="saalplan"
+          className="md:col-span-2 scroll-mt-24 space-y-3 rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-4"
+        >
           <legend className="px-1 text-sm font-semibold text-[var(--tf-navy)]">
-            Onlineshop-Verkauf mit Saalplan
+            Saalplan & Buchung
           </legend>
           <div className="grid gap-2 sm:grid-cols-2">
             <label
@@ -135,13 +147,15 @@ export function EventVenuePlanFields({
             </label>
           </div>
           <p className="text-sm text-[var(--tf-text-secondary)]">
-            Kategorien für Reihen und Plätze legst du im Saalplan fest.{" "}
-            <Link
-              href={`/admin/saalplan/${venuePlanId}`}
+            Geometrie im Editor — Preiskategorien ordnest du unten am Event zu.{" "}
+            <a
+              href={planEditorHref(venuePlanId, eventId)}
+              target="_blank"
+              rel="noreferrer"
               className="font-semibold text-[var(--tf-teal)] hover:underline"
             >
-              Im Saalplan Kategorien zuordnen
-            </Link>
+              Saalplan bearbeiten
+            </a>
           </p>
         </fieldset>
       ) : null}

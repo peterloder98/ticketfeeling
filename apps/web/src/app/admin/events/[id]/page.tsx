@@ -229,10 +229,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               Nächster Schritt: Saalplan zuordnen
             </p>
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-              {unassignedSeatCount} Plätze ohne Kategorie — weiter unten unter „Saalplan-Zuordnung“
+              {unassignedSeatCount} Plätze ohne Kategorie — unter „Saalplan-Zuordnung“ Bereich oder
+              Plätze antippen
               {seatingCategories.length === 1
                 ? `. Mit einer Kategorie wird der ganze Plan automatisch zugewiesen.`
-                : ". Kategorie wählen und Block antippen."}
+                : ". Preiskategorie wählen und Block antippen — bei Bedarf neue Kategorie anlegen."}
             </p>
             <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
               Jetzt zuordnen
@@ -406,6 +407,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         )}
       </section>
 
+      <EventSeatingAssignmentPanel eventId={event.id} canWrite={canWrite} />
+
       <EventCategoriesPanel
         eventId={event.id}
         categories={event.ticketCategories}
@@ -413,8 +416,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         canWrite={canWrite}
         salesReleased={isEventSalesReleased(event.status)}
       />
-
-      <EventSeatingAssignmentPanel eventId={event.id} canWrite={canWrite} />
 
       <section className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Auf meine Website</h2>

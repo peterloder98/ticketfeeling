@@ -68,9 +68,10 @@ function categoryIdFromPlan(
 
 /**
  * Expand / sync venue plan seat_blocks into EventSeat rows.
- * - Adds missing seats (category from plan slots → matching EventTicketCategory name)
+ * - Adds missing seats (unassigned by default; legacy plan slots can prefill categoryId)
  * - Updates labels for existing keys
- * - Re-applies plan category onto available seats when the plan has a slot assignment
+ * - Does not wipe event-assigned categoryId on available seats when saving plan geometry
+ * - Slot name-match is legacy fallback only (old painted plans)
  * - Removes only `available` seats that no longer exist in the plan
  * - Never deletes held/sold seats
  */
@@ -110,8 +111,12 @@ export async function ensureEventSeats(eventId: string) {
 
   const objects = parseVenuePlanObjects(event.venuePlan.objects);
   const objectsById = new Map(objects.map((o) => [o.id, o]));
+  // Legacy only: old plans may still have painted categorySlots / per-seat keys.
   const slots = parsePlanCategorySlots(event.venuePlan.categorySlots);
-  const slotToCategoryId = mapSlotKeysToCategoryIds(slots, event.ticketCategories);
+  const hasLegacySlots = slots.length > 0;
+  const slotToCategoryId = hasLegacySlots
+    ? mapSlotKeysToCategoryIds(slots, event.ticketCategories)
+    : new Map<string, string>();
   const desired = buildDesiredSeats(event.id, event.venuePlanId, objects);
   const desiredByKey = new Map(desired.map((s) => [s.seatKey, s]));
 
@@ -142,10 +147,15 @@ export async function ensureEventSeats(eventId: string) {
       const blockCfg = layout.blocks?.[s.blockObjectId];
       const rowLocked = blockCfg?.lockedRowIndexes?.includes(s.rowIndex) ?? false;
       const block = objectsById.get(s.blockObjectId);
-      const fromPlan = categoryIdFromPlan(block, s.rowIndex, s.seatIndex, slotToCategoryId);
+      // Happy path: start unassigned. Legacy painted slots may prefill.
+      const fromPlan = hasLegacySlots
+        ? categoryIdFromPlan(block, s.rowIndex, s.seatIndex, slotToCategoryId)
+        : undefined;
+      const categoryId =
+        fromPlan !== undefined ? fromPlan : (blockCfg?.categoryId ?? null);
       return {
         ...s,
-        categoryId: fromPlan !== undefined ? fromPlan : (blockCfg?.categoryId ?? null),
+        categoryId,
         locked: Boolean(blockCfg?.locked) || rowLocked,
       };
     });
@@ -161,7 +171,9 @@ export async function ensureEventSeats(eventId: string) {
     const next = desiredByKey.get(seat.seatKey);
     if (!next) continue;
     const block = objectsById.get(next.blockObjectId);
-    const fromPlan = categoryIdFromPlan(block, next.rowIndex, next.seatIndex, slotToCategoryId);
+    const fromPlan = hasLegacySlots
+      ? categoryIdFromPlan(block, next.rowIndex, next.seatIndex, slotToCategoryId)
+      : undefined;
     const geometryChanged =
       seat.blockLabel !== next.blockLabel ||
       seat.rowLabel !== next.rowLabel ||
@@ -169,12 +181,12 @@ export async function ensureEventSeats(eventId: string) {
       seat.blockObjectId !== next.blockObjectId ||
       seat.rowIndex !== next.rowIndex ||
       seat.seatIndex !== next.seatIndex;
-    // Plan is source of truth for painted slots: push onto available seats only.
+    // Preserve event assignments. Legacy slots only fill still-unassigned available seats.
     const categoryChanged =
       seat.status === "available" &&
+      seat.categoryId == null &&
       fromPlan !== undefined &&
-      fromPlan !== null &&
-      seat.categoryId !== fromPlan;
+      fromPlan !== null;
 
     if (geometryChanged || categoryChanged) {
       await prisma.eventSeat.update({

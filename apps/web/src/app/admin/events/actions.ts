@@ -216,7 +216,7 @@ export async function createEventAction(formData: FormData) {
     })
     .filter((c): c is NonNullable<typeof c> => Boolean(c));
 
-  if (categories.length === 0) {
+  if (categories.length === 0 && seatingBookingMode === "none") {
     throw new Error("CATEGORIES_REQUIRED");
   }
 
