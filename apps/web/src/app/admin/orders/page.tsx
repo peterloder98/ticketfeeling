@@ -110,10 +110,14 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
             voidedAt: order.voidedAt,
           });
           const strike = orderCancelledStrikeClass(cancelled);
-          const detailHref =
-            order.channel === "box_office"
-              ? `/kasse/beleg/${order.id}`
-              : `/konto/bestellung/${order.id}`;
+          const item = order.items[0];
+          const termin = item?.eventStartsAtSnapshot
+            ? item.eventStartsAtSnapshot.toLocaleString("de-DE", {
+                timeZone: "Europe/Berlin",
+                dateStyle: "medium",
+                timeStyle: "short",
+              })
+            : null;
           return (
             <div
               key={order.id}
@@ -129,18 +133,26 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                 </p>
               </div>
               <p className={`mt-1 text-[var(--muted)] ${strike}`}>
-                {order.items[0]?.eventNameSnapshot ?? "—"} ·{" "}
+                {item?.eventNameSnapshot ?? "—"}
+                {termin ? ` · ${termin}` : ""}
+                {item?.locationSnapshot ? ` · ${item.locationSnapshot}` : ""}
+              </p>
+              <p className={`text-[var(--muted)] ${strike}`}>
+                {order.customer.firstName} {order.customer.lastName} · {order.customer.email} ·{" "}
                 {formatEuroFromCents(order.grossCents)} · {order.tickets.length} Tickets
                 {order.channel === "box_office"
                   ? ` · ${paymentMethodLabel(payment?.method)}`
-                  : ` · ${order.customer.email}`}
+                  : ""}
               </p>
               <p className="text-xs text-[var(--muted)]">
-                {order.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}
+                Kaufdatum:{" "}
+                {(order.paidAt ?? order.createdAt).toLocaleString("de-DE", {
+                  timeZone: "Europe/Berlin",
+                })}
                 {order.channel === "box_office" ? " · vor Ort" : " · Online-Selbstkauf"}
               </p>
               <div className="mt-2 flex flex-wrap gap-3">
-                <Link href={detailHref} className="text-[var(--gold-soft)] underline">
+                <Link href={`/admin/orders/${order.id}`} className="text-[var(--gold-soft)] underline">
                   Details
                 </Link>
                 <Link

@@ -173,10 +173,7 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
               voidedAt: order.voidedAt,
             });
             const strike = orderCancelledStrikeClass(cancelled);
-            const detailHref =
-              order.channel === "box_office"
-                ? `/kasse/beleg/${order.id}`
-                : `/konto/bestellung/${order.id}`;
+            const detailHref = `/admin/orders/${order.id}`;
             const events = [...new Set(order.items.map((i) => i.eventNameSnapshot))].join(", ");
 
             return (
