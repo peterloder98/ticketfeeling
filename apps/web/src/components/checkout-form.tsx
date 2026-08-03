@@ -44,6 +44,8 @@ function checkoutErrorMessage(code: string) {
       return "Warenkorb ist leer.";
     case "CART_EXPIRED":
       return "Reservierung abgelaufen — bitte erneut in den Warenkorb legen.";
+    case "HOLD_EXPIRED":
+      return "Deine Platzreservierung ist abgelaufen — bitte die Tickets erneut in den Warenkorb legen.";
     case "TERMS_REQUIRED":
     case "PRIVACY_REQUIRED":
     case "WITHDRAWAL_ACK_REQUIRED":

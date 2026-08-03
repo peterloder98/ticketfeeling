@@ -19,6 +19,7 @@ import { sepaReservationExpiresAt } from "@/lib/commerce/sepa-availability";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureLegalSchema } from "@/lib/legal/sync-catalog";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
+import { categoryNeedsSeats, seatsPerTicket } from "@/lib/seating/types";
 
 export type CheckoutCustomerInput = {
   email: string;
@@ -238,6 +239,28 @@ export async function createOrderFromCart(input: {
       if (!pool) throw new Error("INVENTORY_INVALID");
       if (pool.soldQuantity + pool.heldQuantity > pool.capacity) {
         throw new Error("INVENTORY_INVALID");
+      }
+
+      // Seated categories: seats must still be held by this cart item (prevents
+      // checkout after expireSeatHolds freed seats while inventory looked held).
+      const needsSeats = categoryNeedsSeats({
+        seatingBookingMode: item.category.event.seatingBookingMode,
+        categoryKind: item.category.categoryKind,
+        freeSeating: item.category.freeSeating,
+      });
+      if (needsSeats) {
+        const expectedSeats =
+          item.quantity *
+          seatsPerTicket({
+            categoryKind: item.category.categoryKind,
+            companionFree: item.category.companionFree,
+          });
+        const heldSeatCount = await tx.eventSeat.count({
+          where: { cartItemId: item.id, status: "held" },
+        });
+        if (heldSeatCount < expectedSeats) {
+          throw new Error("HOLD_EXPIRED");
+        }
       }
     }
 

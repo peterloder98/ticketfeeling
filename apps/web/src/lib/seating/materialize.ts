@@ -220,7 +220,29 @@ export async function syncSeatsForVenuePlan(venuePlanId: string) {
 let lastSeatExpireMs = 0;
 const SEAT_EXPIRE_THROTTLE_MS = 15_000;
 
-/** Release expired seat holds. Throttled — safe on every seat-map load. */
+function isProtectedPaymentHold(hold: {
+  orderId: string | null;
+  cartItem?: {
+    cart?: {
+      status: string;
+      orders: { paymentStatus: string | null; status: string }[];
+    } | null;
+  } | null;
+}) {
+  const order = hold.cartItem?.cart?.orders?.[0];
+  const paymentStatus = order?.paymentStatus;
+  return Boolean(
+    hold.orderId ||
+      (hold.cartItem?.cart?.status === "converted" &&
+        (paymentStatus === "pending" || paymentStatus === "processing")),
+  );
+}
+
+/**
+ * Release expired seat holds and couple inventory holds so seats cannot free
+ * while inventory still looks held (which would let checkout sell without seats).
+ * SEPA / pending-payment holds are never released here.
+ */
 export async function expireSeatHolds(now = new Date()) {
   const t = Date.now();
   if (t - lastSeatExpireMs < SEAT_EXPIRE_THROTTLE_MS) return 0;
@@ -232,17 +254,96 @@ export async function expireSeatHolds(now = new Date()) {
       status: "held",
       holdExpiresAt: { lt: now },
     },
-    select: { id: true },
+    select: { id: true, cartItemId: true },
     take: 500,
   });
   if (expired.length === 0) return 0;
-  await prisma.eventSeat.updateMany({
-    where: { id: { in: expired.map((s) => s.id) } },
-    data: {
-      status: "available",
-      holdExpiresAt: null,
-      cartItemId: null,
-    },
+
+  const seatIdsByCartItem = new Map<string | null, string[]>();
+  for (const seat of expired) {
+    const key = seat.cartItemId;
+    const list = seatIdsByCartItem.get(key) ?? [];
+    list.push(seat.id);
+    seatIdsByCartItem.set(key, list);
+  }
+
+  const cartItemIds = [...seatIdsByCartItem.keys()].filter((id): id is string => Boolean(id));
+  const holds =
+    cartItemIds.length > 0
+      ? await prisma.inventoryHold.findMany({
+          where: { cartItemId: { in: cartItemIds }, status: "held" },
+          select: {
+            id: true,
+            poolId: true,
+            quantity: true,
+            cartItemId: true,
+            orderId: true,
+            cartItem: {
+              select: {
+                cart: {
+                  select: {
+                    status: true,
+                    orders: {
+                      select: { paymentStatus: true, status: true },
+                      orderBy: { createdAt: "desc" },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        })
+      : [];
+  const holdByCartItemId = new Map(
+    holds.filter((h) => h.cartItemId).map((h) => [h.cartItemId as string, h]),
+  );
+
+  let freed = 0;
+  await prisma.$transaction(async (tx) => {
+    const orphanIds = seatIdsByCartItem.get(null) ?? [];
+    if (orphanIds.length > 0) {
+      await tx.eventSeat.updateMany({
+        where: { id: { in: orphanIds }, status: "held" },
+        data: { status: "available", holdExpiresAt: null, cartItemId: null },
+      });
+      freed += orphanIds.length;
+    }
+
+    for (const cartItemId of cartItemIds) {
+      const seatIds = seatIdsByCartItem.get(cartItemId) ?? [];
+      const hold = holdByCartItemId.get(cartItemId);
+
+      // Protect holds tied to orders awaiting async payment (SEPA processing).
+      if (hold && isProtectedPaymentHold(hold)) {
+        continue;
+      }
+
+      if (hold) {
+        const current = await tx.inventoryHold.findUnique({
+          where: { id: hold.id },
+          select: { id: true, status: true },
+        });
+        if (current?.status === "held") {
+          await tx.inventoryHold.update({
+            where: { id: hold.id },
+            data: { status: "expired" },
+          });
+          await tx.inventoryPool.update({
+            where: { id: hold.poolId },
+            data: { heldQuantity: { decrement: hold.quantity } },
+          });
+        }
+      }
+
+      // Free all held seats for this cart item (not only the expired subset) so inventory + seats stay aligned.
+      await tx.eventSeat.updateMany({
+        where: { cartItemId, status: "held" },
+        data: { status: "available", holdExpiresAt: null, cartItemId: null },
+      });
+      freed += seatIds.length;
+    }
   });
-  return expired.length;
+
+  return freed;
 }
