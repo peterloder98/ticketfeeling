@@ -159,14 +159,22 @@ export function BoxOfficeDeliveryActions({
         Tickets als PDF im Anhang. Erneut senden oder drucken jederzeit möglich.
       </p>
 
-      <button
-        type="button"
-        className="text-sm text-[var(--danger)] underline-offset-2 hover:underline"
-        disabled={busy !== null}
-        onClick={() => void voidSale()}
-      >
-        Verkauf stornieren
-      </button>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <button
+          type="button"
+          className="text-sm text-[var(--danger)] underline-offset-2 hover:underline"
+          disabled={busy !== null}
+          onClick={() => void voidSale()}
+        >
+          Gesamten Verkauf stornieren
+        </button>
+        <a
+          href="#storno"
+          className="text-sm text-[var(--tf-navy)] underline-offset-2 hover:underline"
+        >
+          Einzelne Tickets stornieren
+        </a>
+      </div>
 
       {message ? <p className="text-sm text-[var(--tf-teal)]">{message}</p> : null}
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}

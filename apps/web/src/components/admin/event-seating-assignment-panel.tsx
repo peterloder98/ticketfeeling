@@ -36,8 +36,8 @@ const QUICK_COLORS = ["#14B8A6", "#0F2747", "#3B82F6", "#D6A642", ...DEFAULT_CAT
 );
 
 /**
- * Primary Eventim-style UX: assign ticket categories on the event plan
- * (block / row / seat), create categories on the fly, lock under Erweitert.
+ * Assign ticket categories on the event plan (block / row / seat),
+ * create categories on the fly, lock/unlock for gradual seat release.
  */
 export function EventSeatingAssignmentPanel({
   eventId,
@@ -62,7 +62,6 @@ export function EventSeatingAssignmentPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState("#14B8A6");
@@ -96,6 +95,17 @@ export function EventSeatingAssignmentPanel({
 
   const assignedCount = seats.filter((s) => s.categoryId).length;
   const unassignedCount = seats.length - assignedCount;
+  const lockedCount = seats.filter((s) => s.locked).length;
+  /** Assigned + unlocked + not sold — seats customers can buy from. */
+  const onSaleCount = seats.filter(
+    (s) => s.categoryId && !s.locked && s.status !== "sold",
+  ).length;
+  const lockableSeatIds = seats
+    .filter((s) => !s.locked && s.status === "available")
+    .map((s) => s.id);
+  const unlockableSeatIds = seats
+    .filter((s) => s.locked && s.status !== "sold")
+    .map((s) => s.id);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -137,24 +147,34 @@ export function EventSeatingAssignmentPanel({
     void load();
   }, [load]);
 
-  async function applyPatch(patch: {
-    seatIds?: string[];
-    blockObjectId?: string;
-    rowIndex?: number;
-  }) {
+  async function applyPatch(
+    patch: {
+      seatIds?: string[];
+      blockObjectId?: string;
+      rowIndex?: number;
+    },
+    opts?: { locked?: boolean; categoryId?: string | null; silent?: boolean },
+  ) {
     if (!canWrite) return;
-    if (mode === "assign" && !selectedCategoryId) {
+    const effectiveMode = opts?.locked === true ? "lock" : opts?.locked === false ? "unlock" : mode;
+    if (effectiveMode === "assign" && opts?.categoryId === undefined && !selectedCategoryId) {
       setError("Bitte zuerst eine Preiskategorie wählen oder anlegen.");
       return;
     }
     setBusy(true);
     setError(null);
-    setMessage(null);
+    if (!opts?.silent) setMessage(null);
     try {
       const body: Record<string, unknown> = { eventId, ...patch };
-      if (mode === "assign") body.categoryId = selectedCategoryId;
-      if (mode === "lock") body.locked = true;
-      if (mode === "unlock") body.locked = false;
+      if (opts?.locked !== undefined) {
+        body.locked = opts.locked;
+      } else if (mode === "assign") {
+        body.categoryId = opts?.categoryId !== undefined ? opts.categoryId : selectedCategoryId;
+      } else if (mode === "lock") {
+        body.locked = true;
+      } else if (mode === "unlock") {
+        body.locked = false;
+      }
       const res = await fetch("/api/v1/admin/events/seating", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -165,7 +185,14 @@ export function EventSeatingAssignmentPanel({
         setError(data?.error?.code ?? "Speichern fehlgeschlagen");
         return;
       }
-      setMessage(`${data.updated ?? 0} Plätze aktualisiert.`);
+      const n = data.updated ?? 0;
+      if (body.locked === true) {
+        setMessage(n === 0 ? "Keine freien Plätze zum Sperren." : `${n} Plätze gesperrt.`);
+      } else if (body.locked === false) {
+        setMessage(n === 0 ? "Keine gesperrten Plätze freigegeben." : `${n} Plätze freigegeben.`);
+      } else {
+        setMessage(`${n} Plätze aktualisiert.`);
+      }
       await load();
       router.refresh();
     } finally {
@@ -173,8 +200,61 @@ export function EventSeatingAssignmentPanel({
     }
   }
 
+  function seatEligibleForPaint(seat: SeatRow) {
+    if (mode === "lock") return seat.status === "available" && !seat.locked;
+    if (mode === "unlock") return seat.locked && seat.status !== "sold";
+    return seat.status === "available";
+  }
+
   function onSeatClick(seat: SeatRow) {
     if (busy || !canWrite) return;
+    if (mode === "lock" || mode === "unlock") {
+      if (target === "seat") {
+        if (!seatEligibleForPaint(seat)) {
+          if (seat.status === "sold") {
+            setError("Verkaufte Plätze bleiben unberührt.");
+          } else if (seat.status === "held" && mode === "lock") {
+            setError("Reservierte Plätze werden nicht gesperrt.");
+          }
+          return;
+        }
+        void applyPatch({ seatIds: [seat.id] });
+        return;
+      }
+      if (target === "row") {
+        const ids = seats
+          .filter(
+            (s) =>
+              s.blockObjectId === seat.blockObjectId &&
+              s.rowIndex === seat.rowIndex &&
+              seatEligibleForPaint(s),
+          )
+          .map((s) => s.id);
+        if (ids.length === 0) {
+          setError(
+            mode === "lock"
+              ? "In dieser Reihe nichts zum Sperren (frei & ungesperrt)."
+              : "In dieser Reihe nichts zum Freigeben.",
+          );
+          return;
+        }
+        void applyPatch({ seatIds: ids });
+        return;
+      }
+      const ids = seats
+        .filter((s) => s.blockObjectId === seat.blockObjectId && seatEligibleForPaint(s))
+        .map((s) => s.id);
+      if (ids.length === 0) {
+        setError(
+          mode === "lock"
+            ? "In diesem Block nichts zum Sperren."
+            : "In diesem Block nichts zum Freigeben.",
+        );
+        return;
+      }
+      void applyPatch({ seatIds: ids });
+      return;
+    }
     if (target === "seat") {
       void applyPatch({ seatIds: [seat.id] });
     } else if (target === "row") {
@@ -184,8 +264,41 @@ export function EventSeatingAssignmentPanel({
     }
   }
 
+  async function bulkLock(lock: boolean) {
+    const ids = lock ? lockableSeatIds : unlockableSeatIds;
+    if (ids.length === 0) {
+      setError(lock ? "Keine freien Plätze zum Sperren." : "Keine gesperrten Plätze.");
+      return;
+    }
+    if (
+      !confirm(
+        lock
+          ? `${ids.length} freie Plätze sperren? Sie erscheinen dann nicht im Verkauf.`
+          : `${ids.length} Plätze freigeben und in den Verkauf nehmen?`,
+      )
+    ) {
+      return;
+    }
+    await applyPatch({ seatIds: ids }, { locked: lock });
+  }
+
   function onBlockClick(blockObjectId: string) {
     if (busy || !canWrite || target !== "block") return;
+    if (mode === "lock" || mode === "unlock") {
+      const ids = seats
+        .filter((s) => s.blockObjectId === blockObjectId && seatEligibleForPaint(s))
+        .map((s) => s.id);
+      if (ids.length === 0) {
+        setError(
+          mode === "lock"
+            ? "In diesem Block nichts zum Sperren."
+            : "In diesem Block nichts zum Freigeben.",
+        );
+        return;
+      }
+      void applyPatch({ seatIds: ids });
+      return;
+    }
     void applyPatch({ blockObjectId });
   }
 
@@ -255,9 +368,11 @@ export function EventSeatingAssignmentPanel({
           return false;
         }
         setMessage(
-          `Geschafft — ${data.updated ?? unassigned.length} Plätze sind „${seatingCategories[0]!.name}“.`,
+          `Geschafft — ${data.updated ?? unassigned.length} Plätze sind „${seatingCategories[0]!.name}“. ` +
+            "Tipp: Noch nicht alle verkaufen? Reihen oder Blöcke sperren und später freigeben.",
         );
         setSelectedCategoryId(catId);
+        setMode("lock");
         await load();
         router.refresh();
         return true;
@@ -326,16 +441,26 @@ export function EventSeatingAssignmentPanel({
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Preiskategorie wählen, dann Block, Reihe oder Plätze antippen — so wie bei Eventim, nur
-            schlichter.
+            Preiskategorie wählen, dann Block, Reihe oder Plätze antippen.
           </p>
-          <p className="mt-2 text-sm font-medium text-[var(--tf-navy)]">
-            Zugewiesen: {assignedCount} / {seats.length} Plätze
-            {unassignedCount > 0 ? (
-              <span className="ml-2 font-normal text-[var(--tf-text-secondary)]">
-                ({unassignedCount} offen)
-              </span>
-            ) : null}
+          <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+            Nicht alle Plätze müssen verkauft werden — Reihen/Blöcke sperren und später freigeben.
+          </p>
+          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-[var(--tf-navy)]">
+            <span>
+              Im Verkauf: {onSaleCount}
+            </span>
+            <span>
+              Gesperrt: {lockedCount}
+            </span>
+            <span>
+              Zugewiesen: {assignedCount} / {seats.length}
+              {unassignedCount > 0 ? (
+                <span className="ml-1 font-normal text-[var(--tf-text-secondary)]">
+                  ({unassignedCount} offen)
+                </span>
+              ) : null}
+            </span>
           </p>
         </div>
         {editorHref ? (
@@ -489,7 +614,37 @@ export function EventSeatingAssignmentPanel({
         </p>
       ) : null}
 
-      <div className="mt-3 flex flex-wrap gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+          Aktion
+        </span>
+        {(
+          [
+            { id: "assign", label: "Zuweisen", icon: Paintbrush },
+            { id: "lock", label: "Sperren", icon: Lock },
+            { id: "unlock", label: "Freigeben", icon: Unlock },
+          ] as const
+        ).map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold ${
+              mode === m.id
+                ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
+                : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)]"
+            }`}
+            onClick={() => {
+              setMode(m.id);
+              setError(null);
+            }}
+          >
+            <m.icon className="h-3.5 w-3.5" />
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2 flex flex-wrap gap-2">
         {(
           [
             { id: "block", label: "Bereich / Block" },
@@ -512,38 +667,36 @@ export function EventSeatingAssignmentPanel({
         ))}
       </div>
 
-      <details
-        className="mt-3 rounded-xl border border-[var(--tf-line)] p-3"
-        open={showAdvanced || mode !== "assign"}
-        onToggle={(e) => setShowAdvanced((e.target as HTMLDetailsElement).open)}
-      >
-        <summary className="cursor-pointer text-sm font-medium text-[var(--tf-navy)]">
-          Erweitert: Sperren / Freigeben
-        </summary>
+      {mode === "lock" || mode === "unlock" ? (
+        <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+          {mode === "lock"
+            ? "Tippe Block, Reihe oder Platz — verkaufte und reservierte Plätze bleiben unberührt."
+            : "Tippe Block, Reihe oder Platz zum Freigeben — verkaufte Plätze bleiben gesperrt/verkauft."}
+        </p>
+      ) : null}
+
+      {canWrite ? (
         <div className="mt-3 flex flex-wrap gap-2">
-          {(
-            [
-              { id: "assign", label: "Kategorie zuweisen", icon: Paintbrush },
-              { id: "lock", label: "Sperren", icon: Lock },
-              { id: "unlock", label: "Freigeben", icon: Unlock },
-            ] as const
-          ).map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold ${
-                mode === m.id
-                  ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
-                  : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)]"
-              }`}
-              onClick={() => setMode(m.id)}
-            >
-              <m.icon className="h-3.5 w-3.5" />
-              {m.label}
-            </button>
-          ))}
+          <button
+            type="button"
+            className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+            disabled={busy || lockableSeatIds.length === 0}
+            onClick={() => void bulkLock(true)}
+          >
+            Alle sperren
+            {lockableSeatIds.length > 0 ? ` (${lockableSeatIds.length})` : ""}
+          </button>
+          <button
+            type="button"
+            className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+            disabled={busy || unlockableSeatIds.length === 0}
+            onClick={() => void bulkLock(false)}
+          >
+            Alle freigeben
+            {unlockableSeatIds.length > 0 ? ` (${unlockableSeatIds.length})` : ""}
+          </button>
         </div>
-      </details>
+      ) : null}
 
       {message ? <p className="mt-2 text-sm text-[var(--tf-teal)]">{message}</p> : null}
       {error ? <p className="mt-2 text-sm text-[var(--danger)]">{error}</p> : null}
@@ -687,9 +840,10 @@ export function EventSeatingAssignmentPanel({
                           cursor: target === "row" ? "pointer" : "default",
                         }}
                         onClick={() => {
-                          if (target === "row") {
-                            void applyPatch({ blockObjectId: obj.id, rowIndex: rowNum });
-                          }
+                          if (target !== "row") return;
+                          const sample = blockSeats.find((s) => s.rowIndex === rowNum);
+                          if (sample) onSeatClick(sample);
+                          else void applyPatch({ blockObjectId: obj.id, rowIndex: rowNum });
                         }}
                       >
                         {rowNum}
@@ -705,9 +859,10 @@ export function EventSeatingAssignmentPanel({
                           cursor: target === "row" ? "pointer" : "default",
                         }}
                         onClick={() => {
-                          if (target === "row") {
-                            void applyPatch({ blockObjectId: obj.id, rowIndex: rowNum });
-                          }
+                          if (target !== "row") return;
+                          const sample = blockSeats.find((s) => s.rowIndex === rowNum);
+                          if (sample) onSeatClick(sample);
+                          else void applyPatch({ blockObjectId: obj.id, rowIndex: rowNum });
                         }}
                       >
                         {rowNum}

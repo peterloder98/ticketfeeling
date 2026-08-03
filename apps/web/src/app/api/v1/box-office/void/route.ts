@@ -8,6 +8,8 @@ import { voidBoxOfficeOrder } from "@/lib/commerce/box-office-void";
 const schema = z.object({
   orderId: z.string().uuid(),
   reason: z.string().max(500).optional(),
+  /** Optional: void only these tickets; omit for whole order. */
+  ticketIds: z.array(z.string().uuid()).min(1).max(200).optional(),
 });
 
 export async function POST(request: Request) {
@@ -30,13 +32,14 @@ export async function POST(request: Request) {
 
   try {
     const body = schema.parse(await request.json());
-    await voidBoxOfficeOrder({
+    const result = await voidBoxOfficeOrder({
       orderId: body.orderId,
       organizationId: membership.organizationId,
       actorUserId: session.user.id,
       reason: body.reason,
+      ticketIds: body.ticketIds,
     });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";
     const status = message === "FORBIDDEN" || message === "DELIVERED_NEEDS_ADMIN" ? 403 : 400;

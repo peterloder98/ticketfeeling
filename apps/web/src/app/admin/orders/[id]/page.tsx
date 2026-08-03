@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { formatEuroFromCents } from "@/lib/money";
 import { ChannelBadge } from "@/components/channel-badge";
+import { BoxOfficeTicketVoidPanel } from "@/components/box-office-ticket-void";
 import {
   channelShortHint,
   isOrderCancelled,
@@ -45,8 +46,13 @@ export default async function AdminOrderDetailPage({ params }: Props) {
   const allowed =
     (await userHasPermission(session.user.id, membership.organizationId, "audit:read")) ||
     (await userHasPermission(session.user.id, membership.organizationId, "org:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "reports:read"));
+    (await userHasPermission(session.user.id, membership.organizationId, "reports:read")) ||
+    (await userHasPermission(session.user.id, membership.organizationId, "events:write"));
   if (!allowed) return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
+
+  const canVoidTickets =
+    (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
+    (await userHasPermission(session.user.id, membership.organizationId, "org:write"));
 
   const { id } = await params;
   const order = await prisma.order.findFirst({
@@ -231,6 +237,47 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </li>
             ))}
           </ul>
+        </section>
+      ) : null}
+
+      {order.tickets.length > 0 ? (
+        <section className="tf-card space-y-3">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Tickets</h2>
+          <ul className="space-y-2 text-sm">
+            {order.tickets.map((t) => (
+              <li
+                key={t.id}
+                className={`flex flex-wrap items-baseline justify-between gap-2 ${
+                  t.status === "voided" ? "text-[var(--tf-text-secondary)] line-through" : ""
+                }`}
+              >
+                <span className="font-mono">{t.ticketNumber}</span>
+                <span>
+                  {t.categorySnapshot}
+                  {t.seatLabel ? ` · ${t.seatLabel}` : ""}
+                  {t.status === "voided" ? " · storniert" : ""}
+                  {t.presence === "in" ? " · eingecheckt" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {canVoidTickets && order.channel === "box_office" && !cancelled ? (
+            <div className="border-t border-[var(--tf-line)] pt-4">
+              <BoxOfficeTicketVoidPanel
+                orderId={order.id}
+                voided={Boolean(order.voidedAt)}
+                compact
+                tickets={order.tickets.map((t) => ({
+                  id: t.id,
+                  ticketNumber: t.ticketNumber,
+                  categorySnapshot: t.categorySnapshot,
+                  status: t.status,
+                  presence: t.presence,
+                  seatLabel: t.seatLabel,
+                }))}
+              />
+            </div>
+          ) : null}
         </section>
       ) : null}
 

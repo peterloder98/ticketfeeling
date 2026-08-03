@@ -155,18 +155,26 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: { code: "TARGET_REQUIRED" } }, { status: 400 });
     }
 
-    // Never change held/sold seats' category mid-hold in a destructive way — allow lock only on available.
-    // Category can be set on available seats; held/sold keep assignment for history.
+    // Category: available seats only (held/sold keep their assignment).
+    // Lock: available only — never touch held/sold (gradual release).
+    // Unlock: available + held locked seats; never unlock sold.
     const data: { categoryId?: string | null; locked?: boolean } = {};
     if (body.categoryId !== undefined) data.categoryId = body.categoryId;
     if (body.locked !== undefined) data.locked = body.locked;
 
+    let statusFilter: { in: string[] } | undefined;
+    if (body.locked === true) {
+      statusFilter = { in: ["available"] };
+    } else if (body.locked === false) {
+      statusFilter = { in: ["available", "held"] };
+    } else if (body.categoryId !== undefined) {
+      statusFilter = { in: ["available"] };
+    }
+
     const result = await prisma.eventSeat.updateMany({
       where: {
         ...where,
-        ...(body.locked !== undefined || body.categoryId !== undefined
-          ? { status: { in: ["available", "held", "sold"] } }
-          : {}),
+        ...(statusFilter ? { status: statusFilter } : {}),
       },
       data,
     });

@@ -8,6 +8,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { ChannelBadge } from "@/components/channel-badge";
 import { TicketQrImage } from "@/components/ticket-qr-image";
 import { BoxOfficeDeliveryActions } from "@/components/box-office-delivery-actions";
+import { BoxOfficeTicketVoidPanel } from "@/components/box-office-ticket-void";
 import {
   boxOfficeSaleStatusLabel,
   channelShortHint,
@@ -131,10 +132,27 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
           orderId={order.id}
           deliveryStatus={order.deliveryStatus}
           customerEmail={order.customer.email}
-          ticketIds={order.tickets.map((t) => t.id)}
+          ticketIds={order.tickets.filter((t) => t.status !== "voided").map((t) => t.id)}
           voided={voided}
         />
       </div>
+
+      {!voided ? (
+        <div id="storno">
+          <BoxOfficeTicketVoidPanel
+            orderId={order.id}
+            voided={voided}
+            tickets={order.tickets.map((t) => ({
+              id: t.id,
+              ticketNumber: t.ticketNumber,
+              categorySnapshot: t.categorySnapshot,
+              status: t.status,
+              presence: t.presence,
+              seatLabel: t.seatLabel,
+            }))}
+          />
+        </div>
+      ) : null}
 
       <div
         className={`rounded-2xl border border-[var(--tf-line)] bg-white p-5 space-y-3 ${voided ? "line-through" : ""}`}
@@ -186,27 +204,37 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
 
       {!voided ? (
         <div className="space-y-3">
-          <h2 className="font-[family-name:var(--font-display)] text-xl text-[var(--gold-soft)]">
-            Tickets mit QR
-          </h2>
-          {order.tickets.map((ticket) => (
-            <div key={ticket.id} className="tf-card space-y-3">
-              <div className="flex justify-between gap-2 text-sm">
-                <span className="font-mono">{ticket.ticketNumber}</span>
-                <span className="text-[var(--muted)]">
-                  {ticket.categorySnapshot} · {ticket.presence}
-                </span>
+          <h2 className="text-xl font-semibold text-[var(--tf-navy)]">Tickets mit QR</h2>
+          {order.tickets
+            .filter((t) => t.status !== "voided")
+            .map((ticket) => (
+              <div key={ticket.id} className="tf-card space-y-3">
+                <div className="flex justify-between gap-2 text-sm">
+                  <span className="font-mono">{ticket.ticketNumber}</span>
+                  <span className="text-[var(--tf-text-secondary)]">
+                    {ticket.categorySnapshot}
+                    {ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""}
+                  </span>
+                </div>
+                <TicketQrImage
+                  key={ticket.qrTokens[0]?.token ?? ticket.id}
+                  token={ticket.qrTokens[0]?.token ?? ""}
+                  size={200}
+                />
+                <Link
+                  href={`/ticket/${ticket.id}`}
+                  className="text-sm text-[var(--tf-teal)] underline"
+                >
+                  Ticketansicht öffnen
+                </Link>
               </div>
-              <TicketQrImage
-                key={ticket.qrTokens[0]?.token ?? ticket.id}
-                token={ticket.qrTokens[0]?.token ?? ""}
-                size={200}
-              />
-              <Link href={`/ticket/${ticket.id}`} className="text-sm text-[var(--gold-soft)] underline">
-                Ticketansicht öffnen
-              </Link>
-            </div>
-          ))}
+            ))}
+          {order.tickets.some((t) => t.status === "voided") ? (
+            <p className="text-sm text-[var(--tf-text-secondary)]">
+              {order.tickets.filter((t) => t.status === "voided").length} Ticket(s) bereits
+              storniert.
+            </p>
+          ) : null}
         </div>
       ) : (
         <p className="text-sm text-[var(--danger)]">
