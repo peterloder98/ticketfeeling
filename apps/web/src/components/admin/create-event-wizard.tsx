@@ -10,6 +10,7 @@ import { SaalplanEditor } from "@/components/admin/saalplan-editor";
 import { CountrySelect } from "@/components/country-select";
 import { PhoneInput } from "@/components/phone-input";
 import {
+  discardVenuePlanQuietAction,
   prepareWizardLocationPlanAction,
   saveVenuePlanAction,
 } from "@/app/admin/saalplan/actions";
@@ -19,6 +20,8 @@ import { formatEuroFromCents } from "@/lib/money";
 import type { VenuePlanObject } from "@/lib/saalplan/types";
 
 const DRAFT_KEY = "tf-create-event-wizard-v1";
+
+type DraftGate = "checking" | "offer" | "ready";
 
 export type WizardVenuePlan = {
   id: string;
@@ -94,7 +97,9 @@ export function CreateEventWizard({
   initialTourId = "",
   action,
 }: Props) {
-  const [hydrated, setHydrated] = useState(false);
+  const [draftGate, setDraftGate] = useState<DraftGate>("checking");
+  const [pendingDraft, setPendingDraft] = useState<Record<string, unknown> | null>(null);
+  const hydrated = draftGate === "ready";
   const [step, setStep] = useState(0);
   const [tourId, setTourId] = useState(initialTourId);
   const [name, setName] = useState(() => {
@@ -130,13 +135,10 @@ export function CreateEventWizard({
   const [locationMode, setLocationMode] = useState<"existing" | "new">(
     locations.length > 0 ? "existing" : "new",
   );
+  // Never auto-attach a saalplan — unfinished shells used to hijack every new event.
   const [locationId, setLocationId] = useState(locations[0]?.id ?? "");
-  const [venuePlanId, setVenuePlanId] = useState(
-    locations[0]?.venuePlans[0]?.id ?? "",
-  );
-  const [seatingBookingMode, setSeatingBookingMode] = useState(
-    locations[0]?.venuePlans[0]?.id ? "seat_map_and_best" : "none",
-  );
+  const [venuePlanId, setVenuePlanId] = useState("");
+  const [seatingBookingMode, setSeatingBookingMode] = useState("none");
   const [newLocName, setNewLocName] = useState("");
   const [newLocStreet, setNewLocStreet] = useState("");
   const [newLocHouse, setNewLocHouse] = useState("");
@@ -164,64 +166,178 @@ export function CreateEventWizard({
   const [categories, setCategories] = useState<CategoryRow[]>([newCategoryRow()]);
   const [stepError, setStepError] = useState<string | null>(null);
 
-  // Restore draft after accidental remount (e.g. former cover upload refresh bug)
+  function clearDraftStorage() {
+    try {
+      sessionStorage.removeItem(DRAFT_KEY);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function applyDraft(draft: Record<string, unknown>) {
+    if (typeof draft.step === "number") setStep(draft.step);
+    if (typeof draft.name === "string") setName(draft.name);
+    if (typeof draft.slug === "string") setSlug(draft.slug);
+    if (typeof draft.slugManual === "boolean") setSlugManual(draft.slugManual);
+    if (typeof draft.subtitle === "string") setSubtitle(draft.subtitle);
+    if (typeof draft.shortDescription === "string") {
+      setShortDescription(draft.shortDescription);
+    }
+    if (typeof draft.description === "string") setDescription(draft.description);
+    if (typeof draft.status === "string") {
+      setStatus(draft.status as (typeof CREATE_EVENT_STATUSES)[number]);
+    }
+    if (typeof draft.eventStartsAt === "string") setEventStartsAt(draft.eventStartsAt);
+    if (typeof draft.eventEndsAt === "string") setEventEndsAt(draft.eventEndsAt);
+    if (typeof draft.doorsOpenAt === "string") setDoorsOpenAt(draft.doorsOpenAt);
+    if (typeof draft.presaleStartsAt === "string") setPresaleStartsAt(draft.presaleStartsAt);
+    if (typeof draft.endsManual === "boolean") setEndsManual(draft.endsManual);
+    if (typeof draft.doorsManual === "boolean") setDoorsManual(draft.doorsManual);
+    if (typeof draft.ticketTaxPercent === "string") {
+      setTicketTaxPercent(draft.ticketTaxPercent);
+    }
+    if (typeof draft.feeTaxMode === "string") setFeeTaxMode(draft.feeTaxMode);
+    if (typeof draft.feeTaxPercent === "string") setFeeTaxPercent(draft.feeTaxPercent);
+    if (typeof draft.coverImageUrl === "string") setCoverImageUrl(draft.coverImageUrl);
+    if (initialTourId) setTourId(initialTourId);
+    else if (typeof draft.tourId === "string") setTourId(draft.tourId);
+    if (draft.locationMode === "existing" || draft.locationMode === "new") {
+      setLocationMode(draft.locationMode);
+    }
+    if (typeof draft.locationId === "string") setLocationId(draft.locationId);
+    // Only restore a finished saalplan (with seats). Empty shells must not hijack new events.
+    if (typeof draft.venuePlanId === "string" && draft.venuePlanId) {
+      const locId =
+        typeof draft.locationId === "string" ? draft.locationId : locationId;
+      const plan = locations
+        .find((l) => l.id === locId)
+        ?.venuePlans.find((p) => p.id === draft.venuePlanId);
+      if (plan && plan.seatCapacity > 0) {
+        setVenuePlanId(plan.id);
+        setSeatingBookingMode("seat_map_and_best");
+      } else {
+        setVenuePlanId("");
+        setSeatingBookingMode("none");
+      }
+    }
+    if (typeof draft.newLocName === "string") setNewLocName(draft.newLocName);
+    if (typeof draft.newLocStreet === "string") setNewLocStreet(draft.newLocStreet);
+    if (typeof draft.newLocHouse === "string") setNewLocHouse(draft.newLocHouse);
+    if (typeof draft.newLocZip === "string") setNewLocZip(draft.newLocZip);
+    if (typeof draft.newLocCity === "string") setNewLocCity(draft.newLocCity);
+    if (typeof draft.newLocCountry === "string") setNewLocCountry(draft.newLocCountry);
+    if (typeof draft.newLocPhone === "string") setNewLocPhone(draft.newLocPhone);
+    if (typeof draft.newLocHomepage === "string") setNewLocHomepage(draft.newLocHomepage);
+    if (typeof draft.newLocCapacity === "string") setNewLocCapacity(draft.newLocCapacity);
+    if (Array.isArray(draft.categories) && draft.categories.length > 0) {
+      setCategories(draft.categories as CategoryRow[]);
+    }
+  }
+
+  function continuePendingDraft() {
+    if (pendingDraft) applyDraft(pendingDraft);
+    setPendingDraft(null);
+    setDraftGate("ready");
+  }
+
+  function discardPendingDraft() {
+    const orphanPlanId =
+      typeof pendingDraft?.venuePlanId === "string" ? pendingDraft.venuePlanId : "";
+    clearDraftStorage();
+    setPendingDraft(null);
+    setEditorPlan(null);
+    setVenuePlanId("");
+    setSeatingBookingMode("none");
+    setWantSaalplan(false);
+    setStep(0);
+    setDraftGate("ready");
+    if (orphanPlanId) {
+      const plan = locations
+        .flatMap((l) => l.venuePlans)
+        .find((p) => p.id === orphanPlanId);
+      if (plan && plan.seatCapacity === 0) {
+        void discardVenuePlanQuietAction(orphanPlanId).then((res) => {
+          if (res.ok) {
+            setLocList((prev) =>
+              prev.map((l) => ({
+                ...l,
+                venuePlans: l.venuePlans.filter((p) => p.id !== orphanPlanId),
+              })),
+            );
+          }
+        });
+      }
+    }
+  }
+
+  function discardCurrentSaalplan() {
+    const id = editorPlan?.id || venuePlanId;
+    if (!id) {
+      setEditorPlan(null);
+      setVenuePlanId("");
+      setSeatingBookingMode("none");
+      setWantSaalplan(false);
+      return;
+    }
+    const plan =
+      locList.flatMap((l) => l.venuePlans).find((p) => p.id === id) ?? null;
+    const unfinished = !plan || plan.seatCapacity === 0;
+    const msg = unfinished
+      ? "Diesen Saalplan verwerfen? Er ist noch nicht fertig und wird gelöscht."
+      : "Saalplan vom Event lösen? Der Plan bleibt am Ort erhalten.";
+    if (!window.confirm(msg)) return;
+
+    startPlanBusy(async () => {
+      if (unfinished) {
+        const res = await discardVenuePlanQuietAction(id);
+        if (res.ok) {
+          setLocList((prev) =>
+            prev.map((l) => ({
+              ...l,
+              venuePlans: l.venuePlans.filter((p) => p.id !== id),
+            })),
+          );
+        } else if (res.reason === "IN_USE") {
+          setStepError("Dieser Saalplan hängt schon an einem Event und kann nicht gelöscht werden.");
+          return;
+        }
+      }
+      setEditorPlan(null);
+      setVenuePlanId("");
+      setSeatingBookingMode("none");
+      setWantSaalplan(false);
+      setStepError(null);
+    });
+  }
+
+  // Offer resume/discard for session drafts — never silently reopen unfinished saalplans.
   useEffect(() => {
     try {
       const raw = sessionStorage.getItem(DRAFT_KEY);
       if (raw) {
         const draft = JSON.parse(raw) as Record<string, unknown>;
-        if (typeof draft.step === "number") setStep(draft.step);
-        if (typeof draft.name === "string") setName(draft.name);
-        if (typeof draft.slug === "string") setSlug(draft.slug);
-        if (typeof draft.slugManual === "boolean") setSlugManual(draft.slugManual);
-        if (typeof draft.subtitle === "string") setSubtitle(draft.subtitle);
-        if (typeof draft.shortDescription === "string") {
-          setShortDescription(draft.shortDescription);
+        const meaningful = Boolean(
+          (typeof draft.name === "string" && draft.name.trim()) ||
+            (typeof draft.eventStartsAt === "string" && draft.eventStartsAt) ||
+            (typeof draft.venuePlanId === "string" && draft.venuePlanId) ||
+            (typeof draft.step === "number" && draft.step > 0) ||
+            (typeof draft.newLocName === "string" && draft.newLocName.trim()),
+        );
+        if (meaningful) {
+          setPendingDraft(draft);
+          setDraftGate("offer");
+          return;
         }
-        if (typeof draft.description === "string") setDescription(draft.description);
-        if (typeof draft.status === "string") {
-          setStatus(draft.status as (typeof CREATE_EVENT_STATUSES)[number]);
-        }
-        if (typeof draft.eventStartsAt === "string") setEventStartsAt(draft.eventStartsAt);
-        if (typeof draft.eventEndsAt === "string") setEventEndsAt(draft.eventEndsAt);
-        if (typeof draft.doorsOpenAt === "string") setDoorsOpenAt(draft.doorsOpenAt);
-        if (typeof draft.presaleStartsAt === "string") setPresaleStartsAt(draft.presaleStartsAt);
-        if (typeof draft.endsManual === "boolean") setEndsManual(draft.endsManual);
-        if (typeof draft.doorsManual === "boolean") setDoorsManual(draft.doorsManual);
-        if (typeof draft.ticketTaxPercent === "string") {
-          setTicketTaxPercent(draft.ticketTaxPercent);
-        }
-        if (typeof draft.feeTaxMode === "string") setFeeTaxMode(draft.feeTaxMode);
-        if (typeof draft.feeTaxPercent === "string") setFeeTaxPercent(draft.feeTaxPercent);
-        if (typeof draft.coverImageUrl === "string") setCoverImageUrl(draft.coverImageUrl);
-        if (initialTourId) setTourId(initialTourId);
-        else if (typeof draft.tourId === "string") setTourId(draft.tourId);
-        if (draft.locationMode === "existing" || draft.locationMode === "new") {
-          setLocationMode(draft.locationMode);
-        }
-        if (typeof draft.locationId === "string") setLocationId(draft.locationId);
-        if (typeof draft.venuePlanId === "string") setVenuePlanId(draft.venuePlanId);
-        if (typeof draft.newLocName === "string") setNewLocName(draft.newLocName);
-        if (typeof draft.newLocStreet === "string") setNewLocStreet(draft.newLocStreet);
-        if (typeof draft.newLocHouse === "string") setNewLocHouse(draft.newLocHouse);
-        if (typeof draft.newLocZip === "string") setNewLocZip(draft.newLocZip);
-        if (typeof draft.newLocCity === "string") setNewLocCity(draft.newLocCity);
-        if (typeof draft.newLocCountry === "string") setNewLocCountry(draft.newLocCountry);
-        if (typeof draft.newLocPhone === "string") setNewLocPhone(draft.newLocPhone);
-        if (typeof draft.newLocHomepage === "string") setNewLocHomepage(draft.newLocHomepage);
-        if (typeof draft.newLocCapacity === "string") setNewLocCapacity(draft.newLocCapacity);
-        if (Array.isArray(draft.categories) && draft.categories.length > 0) {
-          setCategories(draft.categories as CategoryRow[]);
-        }
+        clearDraftStorage();
       }
     } catch {
-      /* ignore corrupt draft */
+      clearDraftStorage();
     }
-    setHydrated(true);
+    setDraftGate("ready");
   }, [initialTourId]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (draftGate !== "ready") return;
     const draft = {
       step,
       name,
@@ -294,7 +410,7 @@ export function CreateEventWizard({
     newLocHomepage,
     newLocCapacity,
     categories,
-    hydrated,
+    draftGate,
   ]);
 
   function applyStartDerived(start: string) {
@@ -495,7 +611,29 @@ export function CreateEventWizard({
       noValidate
       className="mt-6 w-full space-y-6"
     >
-      <ol className="grid gap-2 sm:grid-cols-4">
+      {draftGate === "offer" ? (
+        <div className="rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.06)] px-4 py-4">
+          <p className="font-medium text-[var(--tf-navy)]">Angefangener Entwurf gefunden</p>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Du kannst weitermachen — oder verwerfen und frisch starten. Unfertige Saalpläne werden
+            dabei nicht automatisch wieder angehängt.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="tf-btn tf-btn-primary"
+              onClick={continuePendingDraft}
+            >
+              Entwurf fortsetzen
+            </button>
+            <button type="button" className="tf-btn" onClick={discardPendingDraft}>
+              Entwurf verwerfen
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <ol className={`grid gap-2 sm:grid-cols-4 ${draftGate !== "ready" ? "opacity-40 pointer-events-none" : ""}`}>
         {STEPS.map((s, i) => {
           const active = i === step;
           const done = i < step;
@@ -525,6 +663,7 @@ export function CreateEventWizard({
         </p>
       ) : null}
 
+      <div className={draftGate !== "ready" ? "pointer-events-none opacity-40" : undefined}>
       {/* Step 1 — Inhalte */}
       <section className={step === 0 ? "space-y-4" : "hidden"}>
         <div className="tf-card !p-6 md:!p-8 space-y-8 text-sm">
@@ -779,14 +918,11 @@ export function CreateEventWizard({
                   onChange={(e) => {
                     const next = e.target.value;
                     setLocationId(next);
-                    const loc = locList.find((l) => l.id === next);
-                    const stillOk = loc?.venuePlans.some((p) => p.id === venuePlanId);
-                    if (!stillOk) {
-                      const first = loc?.venuePlans[0]?.id ?? "";
-                      setVenuePlanId(first);
-                      setSeatingBookingMode(first ? "seat_map_and_best" : "none");
-                    }
+                    // Never auto-attach a plan when switching location.
+                    setVenuePlanId("");
+                    setSeatingBookingMode("none");
                     setEditorPlan(null);
+                    setWantSaalplan(false);
                   }}
                 >
                   <option value="">— bitte wählen —</option>
@@ -819,13 +955,33 @@ export function CreateEventWizard({
                   disabled={!selectedLocation}
                 >
                   <option value="">— keiner (Steh / freie Platzwahl) —</option>
-                  {(selectedLocation?.venuePlans ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                      {p.seatCapacity > 0 ? ` · ${p.seatCapacity} Sitze` : ""} · {p.sizeLabel}
-                    </option>
-                  ))}
+                  {(selectedLocation?.venuePlans ?? [])
+                    .filter(
+                      (p) =>
+                        p.seatCapacity > 0 ||
+                        p.id === venuePlanId ||
+                        p.id === editorPlan?.id,
+                    )
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                        {p.seatCapacity > 0
+                          ? ` · ${p.seatCapacity} Sitze`
+                          : " · noch unfertig"}{" "}
+                        · {p.sizeLabel}
+                      </option>
+                    ))}
                 </select>
+                {venuePlanId && !editorPlan ? (
+                  <button
+                    type="button"
+                    className="mt-1 justify-self-start text-sm text-[var(--danger)]"
+                    disabled={planBusy}
+                    onClick={discardCurrentSaalplan}
+                  >
+                    Saalplan verwerfen
+                  </button>
+                ) : null}
               </label>
             </div>
           ) : (
@@ -1024,7 +1180,17 @@ export function CreateEventWizard({
 
           {editorPlan ? (
             <div className="space-y-3">
-              <p className="font-medium text-[var(--tf-navy)]">Saalplan bearbeiten</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="font-medium text-[var(--tf-navy)]">Saalplan bearbeiten</p>
+                <button
+                  type="button"
+                  className="tf-btn text-[var(--danger)]"
+                  disabled={planBusy}
+                  onClick={discardCurrentSaalplan}
+                >
+                  Saalplan verwerfen
+                </button>
+              </div>
               <SaalplanEditor
                 planId={editorPlan.id}
                 initialName={editorPlan.name}
@@ -1290,22 +1456,99 @@ export function CreateEventWizard({
       </section>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button
-          type="button"
-          className="tf-btn"
-          onClick={goBack}
-          disabled={step === 0}
-        >
-          Zurück
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            className="tf-btn"
+            onClick={goBack}
+            disabled={step === 0 || draftGate !== "ready"}
+          >
+            Zurück
+          </button>
+          {draftGate === "ready" ? (
+            <button
+              type="button"
+              className="text-sm text-[var(--tf-text-secondary)] underline-offset-2 hover:text-[var(--tf-navy)] hover:underline"
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    "Entwurf verwerfen und von vorn beginnen? Unfertige Saalpläne werden gelöscht.",
+                  )
+                ) {
+                  return;
+                }
+                const orphanId = editorPlan?.id || venuePlanId;
+                clearDraftStorage();
+                setStep(0);
+                setName("");
+                setSlug("");
+                setSlugManual(false);
+                setSubtitle("");
+                setShortDescription("");
+                setDescription("");
+                setStatus("draft");
+                setEventStartsAt("");
+                setEventEndsAt("");
+                setDoorsOpenAt("");
+                setPresaleStartsAt("");
+                setEndsManual(false);
+                setDoorsManual(false);
+                setCoverImageUrl("");
+                setTourId(initialTourId);
+                setLocationMode(locations.length > 0 ? "existing" : "new");
+                setLocationId(locations[0]?.id ?? "");
+                setVenuePlanId("");
+                setSeatingBookingMode("none");
+                setNewLocName("");
+                setNewLocStreet("");
+                setNewLocHouse("");
+                setNewLocZip("");
+                setNewLocCity("");
+                setNewLocCountry("DE");
+                setNewLocPhone("");
+                setNewLocHomepage("");
+                setNewLocCapacity("");
+                setWantSaalplan(false);
+                setEditorPlan(null);
+                setCategories([newCategoryRow()]);
+                setStepError(null);
+                if (orphanId) {
+                  const plan = locList
+                    .flatMap((l) => l.venuePlans)
+                    .find((p) => p.id === orphanId);
+                  if (!plan || plan.seatCapacity === 0) {
+                    void discardVenuePlanQuietAction(orphanId).then((res) => {
+                      if (res.ok) {
+                        setLocList((prev) =>
+                          prev.map((l) => ({
+                            ...l,
+                            venuePlans: l.venuePlans.filter((p) => p.id !== orphanId),
+                          })),
+                        );
+                      }
+                    });
+                  }
+                }
+              }}
+            >
+              Entwurf verwerfen
+            </button>
+          ) : null}
+        </div>
         {step < STEPS.length - 1 ? (
-          <button type="button" className="tf-btn tf-btn-primary" onClick={goNext}>
+          <button
+            type="button"
+            className="tf-btn tf-btn-primary"
+            onClick={goNext}
+            disabled={draftGate !== "ready"}
+          >
             Weiter
           </button>
         ) : (
           <button
             type="submit"
             className="tf-btn tf-btn-primary"
+            disabled={draftGate !== "ready"}
             onClick={(e) => {
               const err = validateStep(0) || validateStep(1) || validateStep(2);
               if (err) {
@@ -1313,16 +1556,13 @@ export function CreateEventWizard({
                 setStepError(err);
                 return;
               }
-              try {
-                sessionStorage.removeItem(DRAFT_KEY);
-              } catch {
-                /* ignore */
-              }
+              clearDraftStorage();
             }}
           >
             Event anlegen
           </button>
         )}
+      </div>
       </div>
     </form>
   );

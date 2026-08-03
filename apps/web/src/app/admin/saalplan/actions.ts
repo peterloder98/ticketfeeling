@@ -212,14 +212,62 @@ export async function saveVenuePlanAction(formData: FormData) {
   revalidatePath(`/admin/locations/${plan.locationId}`);
 }
 
+async function deleteVenuePlanRecord(input: {
+  organizationId: string;
+  planId: string;
+  requireUnused: boolean;
+}): Promise<{ deleted: boolean; locationId?: string; reason?: string }> {
+  const plan = await prisma.venuePlan.findFirst({
+    where: { id: input.planId, organizationId: input.organizationId },
+    include: { _count: { select: { events: true } } },
+  });
+  if (!plan) return { deleted: false, reason: "NOT_FOUND" };
+  if (input.requireUnused && plan._count.events > 0) {
+    return { deleted: false, locationId: plan.locationId, reason: "IN_USE" };
+  }
+
+  // EventSeat has no FK to VenuePlan — clear any leftover inventory rows first.
+  if (typeof prisma.eventSeat?.deleteMany === "function") {
+    await prisma.eventSeat.deleteMany({ where: { venuePlanId: plan.id } });
+  }
+  await prisma.venuePlan.delete({ where: { id: plan.id } });
+  return { deleted: true, locationId: plan.locationId };
+}
+
 export async function deleteVenuePlanAction(formData: FormData) {
   const { membership } = await requireLocationsWrite();
   const planId = String(formData.get("planId") ?? "");
-  const plan = await prisma.venuePlan.findFirst({
-    where: { id: planId, organizationId: membership.organizationId },
+  const result = await deleteVenuePlanRecord({
+    organizationId: membership.organizationId,
+    planId,
+    requireUnused: false,
   });
-  if (!plan) throw new Error("NOT_FOUND");
-  await prisma.venuePlan.delete({ where: { id: plan.id } });
-  revalidatePath(`/admin/locations/${plan.locationId}`);
-  redirect(`/admin/locations/${plan.locationId}`);
+  if (!result.deleted) throw new Error("NOT_FOUND");
+  revalidatePath(`/admin/locations/${result.locationId}`);
+  redirect(`/admin/locations/${result.locationId}`);
+}
+
+/**
+ * Discard an unfinished wizard/editor plan without redirect.
+ * Safe only when no event still references the plan.
+ */
+export async function discardVenuePlanQuietAction(
+  planId: string,
+): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const { membership } = await requireLocationsWrite();
+  const id = String(planId ?? "").trim();
+  if (!id) return { ok: false, reason: "MISSING_ID" };
+
+  const result = await deleteVenuePlanRecord({
+    organizationId: membership.organizationId,
+    planId: id,
+    requireUnused: true,
+  });
+  if (!result.deleted) {
+    return { ok: false, reason: result.reason ?? "NOT_FOUND" };
+  }
+  if (result.locationId) {
+    revalidatePath(`/admin/locations/${result.locationId}`);
+  }
+  return { ok: true };
 }
