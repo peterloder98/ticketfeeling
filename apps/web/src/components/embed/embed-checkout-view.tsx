@@ -19,6 +19,9 @@ type Bootstrap = {
     unitPriceGrossCents: number;
     categoryName: string;
     eventName: string;
+    eventStartsAt?: string | Date | null;
+    locationName?: string | null;
+    locationCity?: string | null;
   }>;
   summary: { grossCents: number; grossFormatted?: string | null } | null;
   paymentOptions: CheckoutPaymentOption[];
@@ -27,6 +30,21 @@ type Bootstrap = {
   isStaff: boolean;
   loginEmail: string | null;
 };
+
+function formatCheckoutWhen(value: string | Date | null | undefined) {
+  if (!value) return null;
+  const date = typeof value === "string" ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin",
+    weekday: "short",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export function EmbedCheckoutView() {
   const { bump } = useCart();
@@ -107,17 +125,40 @@ export function EmbedCheckoutView() {
           Bestellung
         </p>
         <ul className="mt-2 space-y-2">
-          {data.items.map((item) => (
-            <li key={item.id} className="flex justify-between gap-2 text-xs">
-              <span className="min-w-0 text-[var(--tf-navy)]">
-                {item.quantity}× {item.categoryName}
-                <span className="block text-[var(--tf-text-secondary)]">{item.eventName}</span>
-              </span>
-              <span className="shrink-0 tabular-nums font-medium">
-                {formatEuroFromCents(item.quantity * item.unitPriceGrossCents)}
-              </span>
-            </li>
-          ))}
+          {data.items.map((item) => {
+            const when = formatCheckoutWhen(item.eventStartsAt);
+            const venue = item.locationName?.trim() || null;
+            const city = item.locationCity?.trim() || null;
+            return (
+              <li key={item.id} className="flex justify-between gap-2 text-xs">
+                <span className="min-w-0 text-[var(--tf-navy)]">
+                  {item.quantity}× {item.categoryName}
+                  <span className="mt-0.5 block font-medium">{item.eventName}</span>
+                  {when ? (
+                    <span className="mt-0.5 block text-[var(--tf-text-secondary)]">
+                      <span className="font-medium text-[var(--tf-navy)]">Termin · </span>
+                      {when}
+                    </span>
+                  ) : null}
+                  {venue ? (
+                    <span className="block text-[var(--tf-text-secondary)]">
+                      <span className="font-medium text-[var(--tf-navy)]">Location · </span>
+                      {venue}
+                    </span>
+                  ) : null}
+                  {city ? (
+                    <span className="block text-[var(--tf-text-secondary)]">
+                      <span className="font-medium text-[var(--tf-navy)]">Ort · </span>
+                      {city}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 tabular-nums font-medium">
+                  {formatEuroFromCents(item.quantity * item.unitPriceGrossCents)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
         <p className="mt-2 flex justify-between border-t border-[var(--tf-line)] pt-2 text-sm font-semibold text-[var(--tf-navy)]">
           <span>Gesamt</span>

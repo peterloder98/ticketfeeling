@@ -15,13 +15,34 @@ export const metadata = { title: "Zahlung" };
 
 type Props = { params: Promise<{ orderId: string }> };
 
+function formatAddress(location: {
+  name: string;
+  street?: string | null;
+  houseNumber?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+} | null) {
+  if (!location) return null;
+  const street = [location.street, location.houseNumber].filter(Boolean).join(" ");
+  const city = [location.postalCode, location.city].filter(Boolean).join(" ");
+  return {
+    name: location.name,
+    street: street || null,
+    city: city || null,
+  };
+}
+
 export default async function EmbedPayPage({ params }: Props) {
   const { orderId } = await params;
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
       payments: true,
-      items: true,
+      items: {
+        include: {
+          event: { include: { location: true } },
+        },
+      },
       customer: true,
     },
   });
@@ -86,18 +107,58 @@ export default async function EmbedPayPage({ params }: Props) {
       </div>
 
       <div className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5">
-        <ul className="space-y-2">
-          {order.items.map((item) => (
-            <li key={item.id} className="flex justify-between gap-2 text-xs">
-              <span>
-                {item.quantity}× {item.categorySnapshot}
-                <span className="block text-[var(--tf-text-secondary)]">
-                  {item.eventNameSnapshot}
+        <ul className="space-y-3">
+          {order.items.map((item) => {
+            const when =
+              item.eventStartsAtSnapshot ?? item.event.eventStartsAt
+                ? (item.eventStartsAtSnapshot ?? item.event.eventStartsAt)!.toLocaleString(
+                    "de-DE",
+                    {
+                      timeZone: "Europe/Berlin",
+                      weekday: "short",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    },
+                  )
+                : null;
+            const addr =
+              formatAddress(item.event.location) ??
+              (item.locationSnapshot
+                ? { name: item.locationSnapshot, street: null, city: null }
+                : null);
+            return (
+              <li key={item.id} className="flex justify-between gap-2 text-xs">
+                <span className="min-w-0 text-[var(--tf-navy)]">
+                  {item.quantity}× {item.categorySnapshot}
+                  <span className="mt-0.5 block font-medium">{item.eventNameSnapshot}</span>
+                  {when ? (
+                    <span className="mt-0.5 block text-[var(--tf-text-secondary)]">
+                      <span className="font-medium text-[var(--tf-navy)]">Termin · </span>
+                      {when}
+                    </span>
+                  ) : null}
+                  {addr?.name ? (
+                    <span className="block text-[var(--tf-text-secondary)]">
+                      <span className="font-medium text-[var(--tf-navy)]">Location · </span>
+                      {addr.name}
+                    </span>
+                  ) : null}
+                  {addr?.city ? (
+                    <span className="block text-[var(--tf-text-secondary)]">
+                      <span className="font-medium text-[var(--tf-navy)]">Ort · </span>
+                      {addr.city}
+                    </span>
+                  ) : null}
                 </span>
-              </span>
-              <span className="tabular-nums font-medium">{formatEuroFromCents(item.grossCents)}</span>
-            </li>
-          ))}
+                <span className="shrink-0 tabular-nums font-medium">
+                  {formatEuroFromCents(item.grossCents)}
+                </span>
+              </li>
+            );
+          })}
         </ul>
         <p className="mt-2 flex justify-between border-t border-[var(--tf-line)] pt-2 font-semibold text-[var(--tf-navy)]">
           <span>Gesamt</span>

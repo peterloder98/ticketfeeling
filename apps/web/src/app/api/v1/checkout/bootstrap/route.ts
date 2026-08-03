@@ -87,6 +87,9 @@ export async function GET(request: Request) {
         unitPriceGrossCents: item.unitPriceGrossCents,
         categoryName: item.category.name,
         eventName: item.category.event.name,
+        eventStartsAt: item.category.event.eventStartsAt,
+        locationName: item.category.event.location?.name ?? null,
+        locationCity: item.category.event.location?.city ?? null,
       })),
       summary: {
         ...summary,

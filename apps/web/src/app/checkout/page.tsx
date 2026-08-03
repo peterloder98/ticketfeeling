@@ -122,13 +122,16 @@ export default async function CheckoutPage() {
                 const when = ev.eventStartsAt
                   ? ev.eventStartsAt.toLocaleString("de-DE", {
                       timeZone: "Europe/Berlin",
-                      dateStyle: "medium",
-                      timeStyle: "short",
+                      weekday: "short",
+                      day: "numeric",
+                      month: "long",
+                      year: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
                     })
                   : null;
-                const place = ev.location
-                  ? [ev.location.name, ev.location.city].filter(Boolean).join(", ")
-                  : null;
+                const venueName = ev.location?.name?.trim() || null;
+                const city = ev.location?.city?.trim() || null;
                 return (
                   <li
                     key={item.id}
@@ -139,14 +142,26 @@ export default async function CheckoutPage() {
                         <p className="font-semibold text-[var(--tf-navy)]">
                           {item.quantity}× {item.category.name}
                         </p>
-                        <p className="mt-0.5 text-sm text-[var(--tf-text-secondary)]">
+                        <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
                           {ev.name}
                         </p>
                         {when ? (
-                          <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">{when}</p>
+                          <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                            <span className="font-medium text-[var(--tf-navy)]">Termin · </span>
+                            {when}
+                          </p>
                         ) : null}
-                        {place ? (
-                          <p className="text-xs text-[var(--tf-text-secondary)]">{place}</p>
+                        {venueName ? (
+                          <p className="text-xs text-[var(--tf-text-secondary)]">
+                            <span className="font-medium text-[var(--tf-navy)]">Location · </span>
+                            {venueName}
+                          </p>
+                        ) : null}
+                        {city ? (
+                          <p className="text-xs text-[var(--tf-text-secondary)]">
+                            <span className="font-medium text-[var(--tf-navy)]">Ort · </span>
+                            {city}
+                          </p>
                         ) : null}
                         {item.category.categoryKind === "wheelchair" &&
                         item.category.companionFree ? (

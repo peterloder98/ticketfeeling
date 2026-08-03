@@ -188,7 +188,7 @@ export default async function PayPage({ params }: Props) {
                           </p>
                           {when ? (
                             <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-                              <span className="font-medium text-[var(--tf-navy)]">Datum · </span>
+                              <span className="font-medium text-[var(--tf-navy)]">Termin · </span>
                               {when}
                             </p>
                           ) : null}
@@ -199,7 +199,12 @@ export default async function PayPage({ params }: Props) {
                                 {addr.name}
                               </p>
                               {addr.street ? <p>{addr.street}</p> : null}
-                              {addr.city ? <p>{addr.city}</p> : null}
+                              {addr.city ? (
+                                <p>
+                                  <span className="font-medium text-[var(--tf-navy)]">Ort · </span>
+                                  {addr.city}
+                                </p>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>
