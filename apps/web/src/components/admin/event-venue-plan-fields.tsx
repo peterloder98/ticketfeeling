@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 export type PlanOption = {
@@ -133,6 +134,15 @@ export function EventVenuePlanFields({
               <span className="font-semibold text-[var(--tf-navy)]">Nur Bestplatzbuchung</span>
             </label>
           </div>
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Kategorien für Reihen und Plätze legst du im Saalplan fest.{" "}
+            <Link
+              href={`/admin/saalplan/${venuePlanId}`}
+              className="font-semibold text-[var(--tf-teal)] hover:underline"
+            >
+              Im Saalplan Kategorien zuordnen
+            </Link>
+          </p>
         </fieldset>
       ) : null}
     </>

@@ -31,6 +31,16 @@ export type VenuePlanObject = {
    * Default true for backwards compatibility.
    */
   numberedSeats?: boolean;
+  /**
+   * seat_block: named category slot key (VenuePlan.categorySlots).
+   * Mapped to EventTicketCategory by name when seats materialize.
+   * Overrides: seatCategoryKeys → rowCategoryKeys → categoryKey.
+   */
+  categoryKey?: string | null;
+  /** seat_block: rowIndex (1-based string) → category slot key */
+  rowCategoryKeys?: Record<string, string>;
+  /** seat_block: "R{row}:S{seat}" → category slot key */
+  seatCategoryKeys?: Record<string, string>;
   /** standing_area only */
   standingMode?: StandingMode;
 };
@@ -129,6 +139,29 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
       obj.rows = Math.max(1, Math.round(Number(o.rows) || 1));
       obj.seatsPerRow = Math.max(1, Math.round(Number(o.seatsPerRow) || 1));
       obj.numberedSeats = o.numberedSeats === false ? false : true;
+      if (typeof o.categoryKey === "string" && o.categoryKey.trim()) {
+        obj.categoryKey = o.categoryKey.trim();
+      } else if (o.categoryKey === null) {
+        obj.categoryKey = null;
+      }
+      if (o.rowCategoryKeys && typeof o.rowCategoryKeys === "object" && !Array.isArray(o.rowCategoryKeys)) {
+        const rows: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o.rowCategoryKeys as Record<string, unknown>)) {
+          if (typeof v === "string" && v.trim()) rows[k] = v.trim();
+        }
+        if (Object.keys(rows).length) obj.rowCategoryKeys = rows;
+      }
+      if (
+        o.seatCategoryKeys &&
+        typeof o.seatCategoryKeys === "object" &&
+        !Array.isArray(o.seatCategoryKeys)
+      ) {
+        const seats: Record<string, string> = {};
+        for (const [k, v] of Object.entries(o.seatCategoryKeys as Record<string, unknown>)) {
+          if (typeof v === "string" && v.trim()) seats[k] = v.trim();
+        }
+        if (Object.keys(seats).length) obj.seatCategoryKeys = seats;
+      }
     }
     if (type === "standing_area") {
       obj.standingMode = o.standingMode === "standing_tables" ? "standing_tables" : "standing";

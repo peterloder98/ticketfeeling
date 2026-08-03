@@ -176,9 +176,7 @@ export async function prepareWizardLocationPlanAction(
   });
 
   const objects = parseVenuePlanObjects(plan.objects);
-  const categorySlots = parsePlanCategorySlots(
-    (plan as { categorySlots?: unknown }).categorySlots,
-  );
+  const categorySlots = parsePlanCategorySlots(plan.categorySlots);
   revalidatePath(`/admin/locations/${locationId}`);
 
   return {

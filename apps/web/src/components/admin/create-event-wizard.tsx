@@ -168,6 +168,7 @@ export function CreateEventWizard({
     widthCm: number;
     depthCm: number;
     objects: VenuePlanObject[];
+    categorySlots?: import("@/lib/saalplan/category-slots").PlanCategorySlot[];
   }>(null);
   const [planBusy, startPlanBusy] = useTransition();
 
@@ -584,6 +585,7 @@ export function CreateEventWizard({
           widthCm: result.widthCm,
           depthCm: result.depthCm,
           objects: result.objects,
+          categorySlots: result.categorySlots,
         });
         setWantSaalplan(false);
       } catch (e) {
@@ -1227,6 +1229,14 @@ export function CreateEventWizard({
                 initialWidthCm={editorPlan.widthCm}
                 initialDepthCm={editorPlan.depthCm}
                 initialObjects={editorPlan.objects}
+                initialCategorySlots={editorPlan.categorySlots}
+                seedCategorySlots={categories
+                  .filter((c) => c.name.trim())
+                  .map((c, i) => ({
+                    key: c.name.trim().toLowerCase().replace(/\s+/g, "-"),
+                    name: c.name.trim(),
+                    color: ["#14B8A6", "#0F2747", "#D6A642", "#3B82F6"][i % 4]!,
+                  }))}
                 saveAction={saveVenuePlanAction}
               />
             </div>

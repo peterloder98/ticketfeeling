@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Lock, Unlock, Paintbrush } from "lucide-react";
@@ -50,6 +51,7 @@ export function EventSeatingAssignmentPanel({
     ReturnType<typeof parseVenuePlanObjects>
   >([]);
   const [planSize, setPlanSize] = useState({ widthCm: 2000, depthCm: 1500 });
+  const [venuePlanId, setVenuePlanId] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>("assign");
   const [target, setTarget] = useState<Target>("block");
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
@@ -99,11 +101,14 @@ export function EventSeatingAssignmentPanel({
       setSeats(data.seats ?? []);
       setCategories(data.categories ?? []);
       if (data.venuePlan) {
+        setVenuePlanId(data.venuePlan.id ?? null);
         setPlanObjects(parseVenuePlanObjects(data.venuePlan.objects));
         setPlanSize({
           widthCm: data.venuePlan.widthCm,
           depthCm: data.venuePlan.depthCm,
         });
+      } else {
+        setVenuePlanId(null);
       }
       const seatingCats = (data.categories as Category[] | undefined)?.filter(
         (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
@@ -240,10 +245,10 @@ export function EventSeatingAssignmentPanel({
   if (!enabled) {
     return (
       <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Sitze nachjustieren</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
           Zuerst einen Saalplan mit nummerierten Sitzblöcken zuweisen und den Sitzplatzmodus
-          aktivieren. Danach kannst du Kategorien zuordnen.
+          aktivieren. Kategorien ordnest du im Saalplan zu.
         </p>
       </section>
     );
@@ -252,10 +257,19 @@ export function EventSeatingAssignmentPanel({
   if (seatingCategories.length === 0) {
     return (
       <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Sitze nachjustieren</h2>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-          Lege zuerst Ticketkategorien mit fester Platzwahl an (nicht Stehplatz / freie Platzwahl).
+          Lege Ticketkategorien mit fester Platzwahl an — Namen wie im Saalplan (z. B. Parkett),
+          dann werden sie automatisch verknüpft.
         </p>
+        {venuePlanId ? (
+          <Link
+            href={`/admin/saalplan/${venuePlanId}`}
+            className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm"
+          >
+            Im Saalplan Kategorien zuordnen
+          </Link>
+        ) : null}
       </section>
     );
   }
@@ -277,17 +291,25 @@ export function EventSeatingAssignmentPanel({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-            Nach den Ticketkategorien
+            Feinschliff am Event
           </p>
           <h2 className="mt-1 text-lg font-semibold text-[var(--tf-navy)]">
-            Saalplan-Zuordnung
+            Sitze nachjustieren
           </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             {unassignedCount > 0
-              ? "Hier werden Plätze den Ticketkategorien zugeordnet — nicht im Saalplan-Editor."
-              : "Alle Plätze sind zugeordnet — du kannst bei Bedarf nachjustieren."}
+              ? "Hauptzuordnung passiert im Saalplan. Hier kannst du nachjustieren oder Plätze sperren."
+              : "Alles zugeordnet — bei Bedarf nachjustieren oder unter Erweitert sperren."}
           </p>
         </div>
+        {venuePlanId ? (
+          <Link
+            href={`/admin/saalplan/${venuePlanId}`}
+            className="tf-btn tf-btn-primary !min-h-10 text-sm"
+          >
+            Im Saalplan Kategorien zuordnen
+          </Link>
+        ) : null}
       </div>
 
       {canWrite && seatingCategories.length === 1 && unassignedCount > 0 ? (
@@ -296,29 +318,47 @@ export function EventSeatingAssignmentPanel({
             Fast fertig — {unassignedCount} Plätze noch zuweisen
           </p>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Du hast eine sitzende Kategorie („{seatingCategories[0]!.name}“). Ein Klick reicht für den
-            ganzen Saalplan.
+            Ideal: im Saalplan malen. Oder hier mit einem Klick die Kategorie „
+            {seatingCategories[0]!.name}“ auf alle offenen Plätze legen.
           </p>
-          <button
-            type="button"
-            className="tf-btn tf-btn-primary mt-3 !min-h-10 text-sm"
-            disabled={busy}
-            onClick={() => void assignAllToSingleCategory()}
-          >
-            {busy ? "Wird zugewiesen…" : "Ganzen Saalplan zuweisen"}
-          </button>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {venuePlanId ? (
+              <Link
+                href={`/admin/saalplan/${venuePlanId}`}
+                className="tf-btn !min-h-10 text-sm"
+              >
+                Zum Saalplan
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className="tf-btn tf-btn-primary !min-h-10 text-sm"
+              disabled={busy}
+              onClick={() => void assignAllToSingleCategory()}
+            >
+              {busy ? "Wird zugewiesen…" : "Ganzen Saalplan zuweisen"}
+            </button>
+          </div>
         </div>
       ) : null}
 
       {canWrite && seatingCategories.length > 1 && unassignedCount > 0 ? (
         <div className="mt-4 rounded-xl border border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.12)] px-4 py-3">
           <p className="text-sm font-semibold text-[var(--tf-navy)]">
-            Nächster Schritt: Kategorien zuordnen
+            Noch {unassignedCount} Plätze ohne Kategorie
           </p>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Noch {unassignedCount} Plätze ohne Kategorie. Unten eine Kategorie wählen, dann einen
-            Block antippen — fertig. Sperren brauchst du nur später unter „Erweitert“.
+            Am klarsten: im Saalplan Block/Reihe/Platz bemalen (Namen der Ticketkategorien
+            verwenden). Hier unten bleibt die Nachjustierung für dieses Event.
           </p>
+          {venuePlanId ? (
+            <Link
+              href={`/admin/saalplan/${venuePlanId}`}
+              className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm"
+            >
+              Im Saalplan Kategorien zuordnen
+            </Link>
+          ) : null}
         </div>
       ) : null}
 

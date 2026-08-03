@@ -115,8 +115,6 @@ export function SaalplanEditor({
   const canvasRef = useRef<HTMLDivElement>(null);
   const scaleRef = useRef(1);
   const hallRef = useRef({ widthCm: initialWidthCm, depthCm: initialDepthCm });
-  const editorModeRef = useRef(editorMode);
-  editorModeRef.current = editorMode;
 
   const selected = objects.find((o) => o.id === selectedId) ?? null;
   const capacity = planSeatCapacity(objects);
@@ -996,7 +994,6 @@ export function SaalplanEditor({
                               editorMode === "paint" &&
                               numbered &&
                               (paintTarget === "row" || paintTarget === "seat"),
-                            paintTarget,
                             onPaint: (rowIndex, seatIndex) =>
                               applyPaint(obj.id, rowIndex, seatIndex),
                           })
@@ -1280,7 +1277,18 @@ export function SaalplanEditor({
   );
 }
 
-function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h: number) {
+function renderSeatDots(
+  obj: VenuePlanObject,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  opts?: {
+    slots: PlanCategorySlot[];
+    interactive?: boolean;
+    onPaint?: (rowIndex: number, seatIndex: number) => void;
+  },
+) {
   const rows = Math.min(obj.rows ?? 0, 24);
   const cols = Math.min(obj.seatsPerRow ?? 0, 40);
   if (rows < 1 || cols < 1) return null;
@@ -1294,6 +1302,7 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
   const cellH = innerH / rows;
   const r = Math.max(1.2, Math.min(cellW, cellH) * (numbered ? 0.32 : 0.28));
   const nodes: ReactNode[] = [];
+  const interactive = Boolean(opts?.interactive && numbered);
 
   if (numbered) {
     for (let row = 0; row < rows; row += 1) {
@@ -1337,15 +1346,31 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
     for (let col = 0; col < cols; col += 1) {
       const cx = x + padX + cellW * (col + 0.5);
       const cy = y + padY + cellH * (row + 0.5);
+      const slotKey = numbered
+        ? resolveSeatCategoryKey(obj, row + 1, col + 1)
+        : null;
+      const slotColor = colorForSlotKey(opts?.slots ?? [], slotKey);
       nodes.push(
         <circle
           key={`${row}-${col}`}
           cx={cx}
           cy={cy}
           r={r}
-          fill="var(--tf-navy)"
-          opacity={numbered ? 0.45 : 0.28}
-          style={{ pointerEvents: "none" }}
+          fill={slotColor ?? "var(--tf-navy)"}
+          opacity={numbered ? (slotColor ? 0.92 : 0.45) : 0.28}
+          style={{
+            pointerEvents: interactive ? "auto" : "none",
+            cursor: interactive ? "crosshair" : undefined,
+          }}
+          onPointerDown={
+            interactive
+              ? (e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  opts?.onPaint?.(row + 1, col + 1);
+                }
+              : undefined
+          }
         />,
       );
       if (numbered && r >= 5.5) {
@@ -1381,5 +1406,5 @@ function renderSeatDots(obj: VenuePlanObject, x: number, y: number, w: number, h
       </text>,
     );
   }
-  return <g style={{ pointerEvents: "none" }}>{nodes}</g>;
+  return <g style={{ pointerEvents: interactive ? "auto" : "none" }}>{nodes}</g>;
 }

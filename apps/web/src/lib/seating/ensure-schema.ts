@@ -12,6 +12,7 @@ const SEATING_SCHEMA_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seating_layout_config" JSONB NOT NULL DEFAULT '{}'`,
   `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "category_id" UUID`,
   `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE "venue_plans" ADD COLUMN IF NOT EXISTS "category_slots" JSONB NOT NULL DEFAULT '[]'`,
   `CREATE INDEX IF NOT EXISTS "event_seats_event_id_category_id_status_idx" ON "event_seats"("event_id", "category_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "event_seats_event_id_locked_status_idx" ON "event_seats"("event_id", "locked", "status")`,
 ];
@@ -45,7 +46,15 @@ async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
          AND column_name = 'category_id'
        LIMIT 1`,
     );
-    return rows.length > 0;
+    if (rows.length === 0) return false;
+    const slots = await db.$queryRawUnsafe<Array<{ ok: number }>>(
+      `SELECT 1 AS ok FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'venue_plans'
+         AND column_name = 'category_slots'
+       LIMIT 1`,
+    );
+    return slots.length > 0;
   } catch {
     return false;
   }

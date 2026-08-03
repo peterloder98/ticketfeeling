@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import {
+  mapSlotKeysToCategoryIds,
+  parsePlanCategorySlots,
+  resolveSeatCategoryKey,
+} from "@/lib/saalplan/category-slots";
 import { parseSeatingLayoutConfig } from "@/lib/seating/layout-config";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 
@@ -49,10 +54,23 @@ function buildDesiredSeats(
   return rows;
 }
 
+function categoryIdFromPlan(
+  block: ReturnType<typeof parseVenuePlanObjects>[number] | undefined,
+  rowIndex: number,
+  seatIndex: number,
+  slotToCategoryId: Map<string, string>,
+): string | null | undefined {
+  if (!block) return undefined;
+  const key = resolveSeatCategoryKey(block, rowIndex, seatIndex);
+  if (!key) return undefined;
+  return slotToCategoryId.get(key) ?? null;
+}
+
 /**
  * Expand / sync venue plan seat_blocks into EventSeat rows.
- * - Adds missing seats
+ * - Adds missing seats (category from plan slots → matching EventTicketCategory name)
  * - Updates labels for existing keys
+ * - Re-applies plan category onto available seats when the plan has a slot assignment
  * - Removes only `available` seats that no longer exist in the plan
  * - Never deletes held/sold seats
  */
@@ -60,7 +78,13 @@ export async function ensureEventSeats(eventId: string) {
   await ensureSeatingAssignmentSchema(prisma);
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    include: { venuePlan: true },
+    include: {
+      venuePlan: true,
+      ticketCategories: {
+        where: { status: "active" },
+        select: { id: true, name: true },
+      },
+    },
   });
   if (!event?.venuePlanId || !event.venuePlan) return { created: 0, updated: 0, removed: 0, total: 0 };
   if (event.seatingBookingMode === "none") return { created: 0, updated: 0, removed: 0, total: 0 };
@@ -85,6 +109,9 @@ export async function ensureEventSeats(eventId: string) {
   }
 
   const objects = parseVenuePlanObjects(event.venuePlan.objects);
+  const objectsById = new Map(objects.map((o) => [o.id, o]));
+  const slots = parsePlanCategorySlots(event.venuePlan.categorySlots);
+  const slotToCategoryId = mapSlotKeysToCategoryIds(slots, event.ticketCategories);
   const desired = buildDesiredSeats(event.id, event.venuePlanId, objects);
   const desiredByKey = new Map(desired.map((s) => [s.seatKey, s]));
 
@@ -114,9 +141,11 @@ export async function ensureEventSeats(eventId: string) {
     const slice = toCreate.slice(i, i + chunk).map((s) => {
       const blockCfg = layout.blocks?.[s.blockObjectId];
       const rowLocked = blockCfg?.lockedRowIndexes?.includes(s.rowIndex) ?? false;
+      const block = objectsById.get(s.blockObjectId);
+      const fromPlan = categoryIdFromPlan(block, s.rowIndex, s.seatIndex, slotToCategoryId);
       return {
         ...s,
-        categoryId: blockCfg?.categoryId ?? null,
+        categoryId: fromPlan !== undefined ? fromPlan : (blockCfg?.categoryId ?? null),
         locked: Boolean(blockCfg?.locked) || rowLocked,
       };
     });
@@ -131,24 +160,37 @@ export async function ensureEventSeats(eventId: string) {
   for (const seat of existing) {
     const next = desiredByKey.get(seat.seatKey);
     if (!next) continue;
-    if (
+    const block = objectsById.get(next.blockObjectId);
+    const fromPlan = categoryIdFromPlan(block, next.rowIndex, next.seatIndex, slotToCategoryId);
+    const geometryChanged =
       seat.blockLabel !== next.blockLabel ||
       seat.rowLabel !== next.rowLabel ||
       seat.seatNumber !== next.seatNumber ||
       seat.blockObjectId !== next.blockObjectId ||
       seat.rowIndex !== next.rowIndex ||
-      seat.seatIndex !== next.seatIndex
-    ) {
+      seat.seatIndex !== next.seatIndex;
+    // Plan is source of truth for painted slots: push onto available seats only.
+    const categoryChanged =
+      seat.status === "available" &&
+      fromPlan !== undefined &&
+      fromPlan !== null &&
+      seat.categoryId !== fromPlan;
+
+    if (geometryChanged || categoryChanged) {
       await prisma.eventSeat.update({
         where: { id: seat.id },
         data: {
-          blockLabel: next.blockLabel,
-          rowLabel: next.rowLabel,
-          seatNumber: next.seatNumber,
-          blockObjectId: next.blockObjectId,
-          rowIndex: next.rowIndex,
-          seatIndex: next.seatIndex,
-          // Preserve categoryId + locked — never wipe admin assignments.
+          ...(geometryChanged
+            ? {
+                blockLabel: next.blockLabel,
+                rowLabel: next.rowLabel,
+                seatNumber: next.seatNumber,
+                blockObjectId: next.blockObjectId,
+                rowIndex: next.rowIndex,
+                seatIndex: next.seatIndex,
+              }
+            : {}),
+          ...(categoryChanged ? { categoryId: fromPlan } : {}),
         },
       });
       updated += 1;

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { SaalplanEditor } from "@/components/admin/saalplan-editor";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import { parsePlanCategorySlots } from "@/lib/saalplan/category-slots";
 import { saveVenuePlanAction } from "@/app/admin/saalplan/actions";
 
 export const dynamic = "force-dynamic";
@@ -53,8 +54,8 @@ export default async function VenuePlanEditorPage({ params }: Props) {
           Saalplan bearbeiten
         </h1>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          {plan.location.name} — Maße prüfen, Bühne & Sitzblöcke platzieren, speichern. Danach beim
-          Event unter „Saalplan“ auswählen.
+          {plan.location.name} — Maße, Blöcke und Kategorien (Block/Reihe/Platz) hier setzen. Beim
+          Event werden Ticketkategorien mit gleichem Namen verknüpft.
         </p>
       </div>
 
@@ -64,6 +65,7 @@ export default async function VenuePlanEditorPage({ params }: Props) {
         initialWidthCm={plan.widthCm}
         initialDepthCm={plan.depthCm}
         initialObjects={parseVenuePlanObjects(plan.objects)}
+        initialCategorySlots={parsePlanCategorySlots(plan.categorySlots)}
         saveAction={saveVenuePlanAction}
       />
     </div>

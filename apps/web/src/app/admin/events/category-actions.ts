@@ -197,6 +197,10 @@ export async function upsertEventCategoryAction(formData: FormData) {
     after: { eventId: event.id, name, priceGrossCents, capacity },
   });
 
+  // Rematerialize so plan category slots map onto newly named EventTicketCategories.
+  const { ensureEventSeats } = await import("@/lib/seating/materialize");
+  await ensureEventSeats(event.id);
+
   revalidatePath(`/admin/events/${event.id}`);
   revalidatePath(`/event/${event.slug}`);
   revalidatePath("/events");
@@ -270,6 +274,9 @@ export async function applyCategoryTemplateAction(formData: FormData) {
     entityId: event.id,
     after: { templateId, name: template.name },
   });
+
+  const { ensureEventSeats } = await import("@/lib/seating/materialize");
+  await ensureEventSeats(event.id);
 
   revalidatePath(`/admin/events/${event.id}`);
   revalidatePath(`/event/${event.slug}`);

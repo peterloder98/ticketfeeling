@@ -555,6 +555,9 @@ model VenuePlan {
   depthCm        Int      @map("depth_cm")
   /// Plan objects: stage, seat blocks, … (JSON array of VenuePlanObject)
   objects        Json     @default("[]")
+  /// Named category slots for paint-assign in saalplan editor (key/name/color).
+  /// Mapped to EventTicketCategory by name when EventSeats materialize.
+  categorySlots  Json     @default("[]") @map("category_slots")
   isTemplate     Boolean  @default(false) @map("is_template")
   version        Int      @default(1)
   createdAt      DateTime @default(now()) @map("created_at")
