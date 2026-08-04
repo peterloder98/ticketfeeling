@@ -9,14 +9,19 @@ type BrandLogoProps = {
 };
 
 /** Cache-bust so browsers pick up the latest artwork. */
-const V = "20260731b";
+const V = "20260804a";
 
+/**
+ * Intrinsic pixel sizes match cleaned PNG masters (object-contain, never stretch).
+ * Full lockup is height-driven so aspect ratio stays correct in nav/footer/hero.
+ */
 const ASSETS = {
   full: {
-    src: `/brand/logo-lockup.png?v=${V}`,
-    width: 908,
-    height: 650,
-    className: "h-auto w-[200px] sm:w-[240px] md:w-[280px]",
+    src: `/brand/logo-ticketfeeling.png?v=${V}`,
+    width: 455,
+    height: 309,
+    /** Height-driven — keep w-auto so AR never stretches. */
+    className: "h-14 w-auto sm:h-16 md:h-[4.5rem]",
   },
   mark: {
     src: `/brand/icon-mark-clear.png?v=${V}`,
@@ -28,7 +33,7 @@ const ASSETS = {
     src: `/brand/icon-app-clear.png?v=${V}`,
     width: 512,
     height: 512,
-    className: "h-9 w-9 md:h-10 md:w-10",
+    className: "h-9 w-auto md:h-10",
   },
 } as const;
 
