@@ -7,6 +7,7 @@ import {
   formatEventDateForSubject,
 } from "@/lib/email/ticket-mail";
 import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
+import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import type { Prisma } from "@prisma/client";
 
@@ -287,7 +288,7 @@ export async function fulfillPaidOrder(orderId: string) {
           items: {
             create: [
               ...order.items.map((item) => ({
-                description: `${item.eventNameSnapshot} – ${item.categorySnapshot}`,
+                description: buildInvoiceTicketDescription(item),
                 quantity: item.quantity,
                 taxRateBps: item.taxRateBps,
                 netCents: item.netCents,

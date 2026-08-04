@@ -7,7 +7,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 
 type Params = { params: Promise<{ invoiceId: string }> };
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 });
@@ -43,8 +43,12 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 });
   }
 
+  // Staff can force-regenerate cached PDFs (e.g. after template fixes).
+  const force =
+    isStaff && new URL(request.url).searchParams.get("regenerate") === "1";
+
   try {
-    const pdf = await getOrCreateInvoicePdf(invoiceId, { persist: true });
+    const pdf = await getOrCreateInvoicePdf(invoiceId, { persist: true, force });
     return new NextResponse(new Uint8Array(pdf.buffer), {
       status: 200,
       headers: {
