@@ -1,6 +1,6 @@
 /**
- * Knock out solid black plate from ChatGPT/JPEG logo artwork → real PNG+alpha.
- * Writes master + lockup + email variants.
+ * @deprecated Prefer `render-brand-logos.ts` (SVG → crisp PNG).
+ * Legacy: knock out solid black plate from ChatGPT/JPEG logo artwork → PNG+alpha.
  *
  * Usage: npx tsx scripts/make-logo-master.ts [sourcePath]
  */

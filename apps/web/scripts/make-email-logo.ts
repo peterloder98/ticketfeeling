@@ -1,10 +1,14 @@
+/**
+ * Thin wrapper: prefer `npx tsx scripts/render-brand-logos.ts` (SVG → all PNG sizes).
+ * Kept for older scripts that only need logo-email.png.
+ */
 import fs from "fs";
 import sharp from "sharp";
 import path from "path";
 import { fileURLToPath } from "url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-/** Prefer cleaned master; fall back to lockup for older checkouts. */
+/** Prefer SVG-rendered master; fall back to lockup for older checkouts. */
 const master = path.join(root, "public/brand/logo-ticketfeeling.png");
 const lockup = path.join(root, "public/brand/logo-lockup.png");
 const out = path.join(root, "public/brand/logo-email.png");

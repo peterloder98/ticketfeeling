@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 360" role="img" aria-label="Ticketfeeling">
+  <title>Ticketfeeling</title>
+  <defs>
+    <linearGradient id="tf-teal" x1="0%" y1="40%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#0D9488"/>
+      <stop offset="50%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#2DD4BF"/>
+    </linearGradient>
+    <style type="text/css">
+      .wm {
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-weight: 700;
+        font-size: 44px;
+        letter-spacing: -0.02em;
+      }
+      .tg {
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        letter-spacing: 0.14em;
+        fill: #D6A642;
+      }
+    </style>
+  </defs>
+  <g transform="translate(38,14) skewX(-12)">
+    <path fill="#0F2747" d="M20 0H255a22 22 0 0 1 0 44H122V190a20 20 0 0 1-40 0V44H20a22 22 0 0 1 0-44Z"/>
+    <path fill="url(#tf-teal)" d="M262 0H410L472 22L410 44H262a22 22 0 0 1 0-44Z"/>
+    <path fill="url(#tf-teal)" d="M262 98H372L428 120L372 142H262a22 22 0 0 1 0-44Z"/>
+  </g>
+  <text class="wm" x="260" y="268" text-anchor="middle">
+    <tspan fill="#0F2747">ticket</tspan><tspan fill="#14B8A6">feeling</tspan>
+  </text>
+  <text class="tg" x="260" y="318" text-anchor="middle">MEHR ALS EIN TICKET.</text>
+</svg>

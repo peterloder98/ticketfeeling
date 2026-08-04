@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 220" role="img" aria-label="Ticketfeeling">
+  <title>Ticketfeeling</title>
+  <defs>
+    <linearGradient id="tf-teal-mark" x1="0%" y1="40%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#0D9488"/>
+      <stop offset="50%" stop-color="#14B8A6"/>
+      <stop offset="100%" stop-color="#2DD4BF"/>
+    </linearGradient>
+  </defs>
+  <g transform="translate(10,10) skewX(-12)">
+    <path fill="#0F2747" d="M20 0H255a22 22 0 0 1 0 44H122V190a20 20 0 0 1-40 0V44H20a22 22 0 0 1 0-44Z"/>
+    <path fill="url(#tf-teal-mark)" d="M262 0H410L472 22L410 44H262a22 22 0 0 1 0-44Z"/>
+    <path fill="url(#tf-teal-mark)" d="M262 98H372L428 120L372 142H262a22 22 0 0 1 0-44Z"/>
+  </g>
+</svg>
