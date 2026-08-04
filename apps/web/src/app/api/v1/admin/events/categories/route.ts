@@ -6,6 +6,10 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canMutateEventCategories } from "@/lib/commerce/event-sale";
+import {
+  isPlanBackedTicketCategory,
+  syncPlanBackedCategoryCapacities,
+} from "@/lib/seating/sync-category-capacity";
 
 const CATEGORY_KINDS = [
   "standard",
@@ -70,6 +74,9 @@ export async function PUT(request: Request) {
       categoryKind === "standing" ||
       categoryKind === "free_choice" ||
       event.seatingBookingMode === "none";
+    const planBacked = isPlanBackedTicketCategory({ freeSeating, categoryKind });
+    // Plan-backed: Kontingent is derived from Saalplan; ignore manual input on create.
+    const capacity = planBacked ? 0 : body.capacity;
 
     if (body.categoryId) {
       const category = await prisma.eventTicketCategory.findFirst({
@@ -78,6 +85,9 @@ export async function PUT(request: Request) {
       });
       if (!category) return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
+      // Keep submitted capacity for freiverkauf; plan-backed is overwritten by seat sync below.
+      const nextCapacity = planBacked ? category.capacity : body.capacity;
+
       await prisma.$transaction(async (tx) => {
         await tx.eventTicketCategory.update({
           where: { id: category.id },
@@ -85,7 +95,7 @@ export async function PUT(request: Request) {
             name: body.name,
             description,
             priceGrossCents,
-            capacity: body.capacity,
+            capacity: nextCapacity,
             maxPerOrder: body.maxPerOrder,
             categoryKind,
             companionFree,
@@ -93,14 +103,20 @@ export async function PUT(request: Request) {
             color: body.color === undefined ? undefined : body.color,
           },
         });
-        for (const pool of category.pools) {
-          const newCap = Math.max(pool.soldQuantity + pool.heldQuantity, body.capacity);
-          await tx.inventoryPool.update({
-            where: { id: pool.id },
-            data: { capacity: newCap },
-          });
+        if (!planBacked) {
+          for (const pool of category.pools) {
+            const newCap = Math.max(pool.soldQuantity + pool.heldQuantity, body.capacity);
+            await tx.inventoryPool.update({
+              where: { id: pool.id },
+              data: { capacity: newCap },
+            });
+          }
         }
       });
+
+      if (planBacked) {
+        await syncPlanBackedCategoryCapacities(prisma, event.id);
+      }
 
       await writeAudit({
         organizationId: membership.organizationId,
@@ -108,7 +124,7 @@ export async function PUT(request: Request) {
         action: "event.category.updated",
         entityType: "event_ticket_category",
         entityId: category.id,
-        after: { name: body.name, priceGrossCents, capacity: body.capacity },
+        after: { name: body.name, priceGrossCents, planBacked },
       });
 
       const updated = await prisma.eventTicketCategory.findUniqueOrThrow({
@@ -136,7 +152,7 @@ export async function PUT(request: Request) {
           name: body.name,
           description,
           priceGrossCents,
-          capacity: body.capacity,
+          capacity,
           maxPerOrder: body.maxPerOrder,
           onlineBookable: true,
           boxOfficeBookable: true,
@@ -153,7 +169,7 @@ export async function PUT(request: Request) {
           eventId: event.id,
           categoryId: cat.id,
           channel: "online",
-          capacity: body.capacity,
+          capacity,
           soldQuantity: 0,
           heldQuantity: 0,
         },
@@ -163,7 +179,7 @@ export async function PUT(request: Request) {
           eventId: event.id,
           categoryId: cat.id,
           channel: "box_office",
-          capacity: body.capacity,
+          capacity,
           soldQuantity: 0,
           heldQuantity: 0,
         },

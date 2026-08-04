@@ -7,6 +7,7 @@ import {
 } from "@/lib/saalplan/category-slots";
 import { parseSeatingLayoutConfig } from "@/lib/seating/layout-config";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
+import { syncPlanBackedCategoryCapacities } from "@/lib/seating/sync-category-capacity";
 
 type DesiredSeat = {
   eventId: string;
@@ -221,6 +222,7 @@ export async function ensureEventSeats(eventId: string) {
   }
 
   const total = await prisma.eventSeat.count({ where: { eventId } });
+  await syncPlanBackedCategoryCapacities(prisma, eventId);
   return { created, updated, removed, total };
 }
 

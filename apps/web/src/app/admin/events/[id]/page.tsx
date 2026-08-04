@@ -232,7 +232,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               wählen und Bereich oder Plätze antippen
               {seatingCategories.length === 0
                 ? " — bei Bedarf dort eine Preiskategorie anlegen."
-                : ". Preise und Kontingente bearbeitest du direkt unter dem Plan."}
+                : ". Preise darunter — Kontingent kommt automatisch aus dem Plan."}
             </p>
             <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
               Jetzt zuordnen
@@ -412,6 +412,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         templates={templates}
         canWrite={canWrite}
         salesReleased={isEventSalesReleased(event.status)}
+        seatingEnabled={seatingEnabled}
       />
 
       <section className="tf-card !p-5">

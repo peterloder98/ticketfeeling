@@ -4,6 +4,7 @@ import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 import { formatEuroFromCents } from "@/lib/money";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
+import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity";
 
 export type EventCategoryRow = {
   id: string;
@@ -142,6 +143,107 @@ function CategoryKindFields({
   );
 }
 
+function ContingentField({
+  capacity,
+  planBacked,
+  compact = false,
+}: {
+  capacity: number;
+  planBacked: boolean;
+  compact?: boolean;
+}) {
+  if (planBacked) {
+    return (
+      <label className="grid gap-1">
+        <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
+          Kontingent
+        </span>
+        <input
+          name="capacity"
+          type="number"
+          className="tf-input bg-[rgba(15,39,71,0.04)]"
+          value={capacity}
+          readOnly
+          aria-readonly="true"
+        />
+        <span className="text-xs text-[var(--tf-text-secondary)]">
+          Automatisch aus zugewiesenen, nicht gesperrten Plätzen im Saalplan.
+        </span>
+      </label>
+    );
+  }
+  return (
+    <label className="grid gap-1">
+      <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
+        Kontingent
+      </span>
+      <input
+        name="capacity"
+        type="number"
+        className="tf-input"
+        defaultValue={capacity}
+        min={0}
+        required
+      />
+    </label>
+  );
+}
+
+function NewCategoryCapacityFields({ seatingEnabled }: { seatingEnabled: boolean }) {
+  const [kind, setKind] = useState("standard");
+  const planBacked =
+    seatingEnabled &&
+    isPlanBackedTicketCategory({
+      freeSeating: kind === "standing" || kind === "free_choice",
+      categoryKind: kind,
+    });
+
+  return (
+    <>
+      <label className="grid gap-1">
+        <span>Art</span>
+        <select
+          name="categoryKind"
+          className="tf-input"
+          value={kind}
+          onChange={(e) => setKind(e.target.value)}
+        >
+          {KIND_OPTIONS.map((k) => (
+            <option key={k.value} value={k.value}>
+              {k.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {kind === "wheelchair" ? (
+        <label className="flex items-center gap-2 text-xs text-[var(--tf-text-secondary)]">
+          <input type="checkbox" name="companionFree" />
+          Begleitung frei
+        </label>
+      ) : null}
+      <div className="grid grid-cols-2 gap-3">
+        <label className="grid gap-1">
+          <span>Preis €</span>
+          <input
+            name="priceEuro"
+            type="number"
+            step="0.01"
+            className="tf-input"
+            defaultValue="45"
+            required
+          />
+        </label>
+        <ContingentField
+          key={planBacked ? "auto" : "manual"}
+          capacity={planBacked ? 0 : 100}
+          planBacked={planBacked}
+          compact
+        />
+      </div>
+    </>
+  );
+}
+
 export function EventCategoriesPanel({
   eventId,
   categories: initialCategories,
@@ -149,6 +251,7 @@ export function EventCategoriesPanel({
   templates,
   canWrite,
   salesReleased = false,
+  seatingEnabled = false,
 }: {
   eventId: string;
   categories: Category[];
@@ -158,6 +261,8 @@ export function EventCategoriesPanel({
   canWrite: boolean;
   /** True when event is freigegeben — no new categories allowed */
   salesReleased?: boolean;
+  /** When true, plan-backed categories get Kontingent from Saalplan seats. */
+  seatingEnabled?: boolean;
 }) {
   const router = useRouter();
   const [localCategories, setLocalCategories] = useState(initialCategories);
@@ -297,7 +402,9 @@ export function EventCategoriesPanel({
         <p className="text-sm text-[var(--tf-text-secondary)]">
           {salesReleased
             ? "Verkauf ist freigegeben — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
-            : "Direkt unter dem Saalplan: Preis, Kontingent, Name, Farbe und Art bearbeiten — Zuordnung bleibt oben am Plan."}
+            : seatingEnabled
+              ? "Preis, Name, Farbe und Art hier bearbeiten. Kontingent kommt automatisch aus zugewiesenen, nicht gesperrten Plätzen im Saalplan oben."
+              : "Preis, Kontingent, Name und Art bearbeiten."}
         </p>
       </div>
 
@@ -312,6 +419,12 @@ export function EventCategoriesPanel({
         {categories.map((cat) => {
           const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
           const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
+          const planBacked =
+            seatingEnabled &&
+            isPlanBackedTicketCategory({
+              freeSeating: cat.freeSeating,
+              categoryKind: cat.categoryKind,
+            });
           return (
             <div key={cat.id} className="tf-card !p-4">
               {canWrite ? (
@@ -349,16 +462,7 @@ export function EventCategoriesPanel({
                       required
                     />
                   </label>
-                  <label className="grid gap-1">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Kontingent</span>
-                    <input
-                      name="capacity"
-                      type="number"
-                      className="tf-input"
-                      defaultValue={cat.capacity}
-                      required
-                    />
-                  </label>
+                  <ContingentField capacity={cat.capacity} planBacked={planBacked} />
                   <label className="grid gap-1">
                     <span className="text-xs text-[var(--tf-text-secondary)]">Max./Best.</span>
                     <input
@@ -455,31 +559,8 @@ export function EventCategoriesPanel({
                 placeholder="z. B. Kategorie 1, VIP, Stehplatz…"
               />
             </label>
-            <CategoryKindFields key={newFormKey} compact />
             <CategoryColorField key={`color-${newFormKey}`} compact />
-            <div className="grid grid-cols-2 gap-3">
-              <label className="grid gap-1">
-                <span>Preis €</span>
-                <input
-                  name="priceEuro"
-                  type="number"
-                  step="0.01"
-                  className="tf-input"
-                  defaultValue="45"
-                  required
-                />
-              </label>
-              <label className="grid gap-1">
-                <span>Kontingent</span>
-                <input
-                  name="capacity"
-                  type="number"
-                  className="tf-input"
-                  defaultValue="100"
-                  required
-                />
-              </label>
-            </div>
+            <NewCategoryCapacityFields key={`cap-${newFormKey}`} seatingEnabled={seatingEnabled} />
             <label className="grid gap-1">
               <span>Max. / Bestellung</span>
               <input name="maxPerOrder" type="number" className="tf-input" defaultValue="10" required />

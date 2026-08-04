@@ -10,6 +10,7 @@ import {
   type AssignmentCategory,
   type CreatedEventCategory,
 } from "@/components/admin/event-seating-assignment-panel";
+import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity";
 
 type Template = {
   id: string;
@@ -63,12 +64,15 @@ export function EventSeatingSetup({
   templates,
   canWrite,
   salesReleased = false,
+  seatingEnabled = false,
 }: {
   eventId: string;
   initialCategories: EventCategoryRow[];
   templates: Template[];
   canWrite: boolean;
   salesReleased?: boolean;
+  /** Venue plan + seating mode — plan-backed Kontingent only when true. */
+  seatingEnabled?: boolean;
 }) {
   const [categories, setCategories] = useState(initialCategories);
 
@@ -113,6 +117,27 @@ export function EventSeatingSetup({
     });
   }, []);
 
+  const onCapacitiesChange = useCallback((caps: Record<string, number>) => {
+    setCategories((prev) => {
+      let changed = false;
+      const next = prev.map((c) => {
+        if (!isPlanBackedTicketCategory(c)) return c;
+        const capacity = caps[c.id] ?? 0;
+        if (c.capacity === capacity) return c;
+        changed = true;
+        return {
+          ...c,
+          capacity,
+          pools: c.pools.map((p) => ({
+            ...p,
+            capacity: Math.max(p.soldQuantity + p.heldQuantity, capacity),
+          })),
+        };
+      });
+      return changed ? next : prev;
+    });
+  }, []);
+
   return (
     <div className="space-y-4">
       <EventSeatingAssignmentPanel
@@ -121,6 +146,7 @@ export function EventSeatingSetup({
         categories={toAssignmentCategories(categories)}
         onCategoriesChange={onAssignmentCategoriesChange}
         onCategoryCreated={onCategoryCreated}
+        onCapacitiesChange={seatingEnabled ? onCapacitiesChange : undefined}
       />
       <EventCategoriesPanel
         eventId={eventId}
@@ -129,6 +155,7 @@ export function EventSeatingSetup({
         templates={templates}
         canWrite={canWrite}
         salesReleased={salesReleased}
+        seatingEnabled={seatingEnabled}
       />
     </div>
   );

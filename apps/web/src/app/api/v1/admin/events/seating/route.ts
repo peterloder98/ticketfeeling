@@ -10,6 +10,7 @@ import {
   parseSeatingLayoutConfig,
   type SeatingLayoutConfig,
 } from "@/lib/seating/layout-config";
+import { syncPlanBackedCategoryCapacities } from "@/lib/seating/sync-category-capacity";
 import { writeAudit } from "@/lib/audit";
 
 const patchSchema = z.object({
@@ -100,6 +101,9 @@ export async function GET(request: Request) {
     },
   });
 
+  // Heal Kontingent drift on admin load (assigned + not locked).
+  const capacities = await syncPlanBackedCategoryCapacities(prisma, event.id);
+
   return NextResponse.json({
     ok: true,
     enabled: true,
@@ -108,6 +112,7 @@ export async function GET(request: Request) {
     layoutConfig: parseSeatingLayoutConfig(event.seatingLayoutConfig),
     categories: event.ticketCategories,
     seats,
+    capacities,
   });
 }
 
@@ -207,16 +212,18 @@ export async function PATCH(request: Request) {
       });
     }
 
+    const capacities = await syncPlanBackedCategoryCapacities(prisma, event.id);
+
     await writeAudit({
       organizationId: membership.organizationId,
       actorUserId: session.user.id,
       action: "seating.assignment.update",
       entityType: "event",
       entityId: event.id,
-      after: { ...body, updated: result.count },
+      after: { ...body, updated: result.count, capacities },
     });
 
-    return NextResponse.json({ ok: true, updated: result.count });
+    return NextResponse.json({ ok: true, updated: result.count, capacities });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";
     return NextResponse.json({ error: { code: message } }, { status: 400 });

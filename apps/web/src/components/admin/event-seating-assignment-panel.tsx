@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lock, Unlock, Paintbrush, Plus, ZoomIn, ZoomOut } from "lucide-react";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import { sellableSeatCountsByCategory } from "@/lib/seating/sync-category-capacity";
 
 export type AssignmentCategory = {
   id: string;
@@ -58,6 +59,8 @@ export function EventSeatingAssignmentPanel({
   categories: controlledCategories,
   onCategoriesChange,
   onCategoryCreated,
+  /** Live Kontingent from assigned, not-locked seats — keeps Preiskategorien in sync. */
+  onCapacitiesChange,
 }: {
   eventId: string;
   canWrite: boolean;
@@ -65,6 +68,7 @@ export function EventSeatingAssignmentPanel({
   onCategoriesChange?: (categories: AssignmentCategory[]) => void;
   /** Full API category after quick-create — populates the edit section below. */
   onCategoryCreated?: (category: CreatedEventCategory) => void;
+  onCapacitiesChange?: (capacities: Record<string, number>) => void;
 }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
@@ -107,6 +111,15 @@ export function EventSeatingAssignmentPanel({
       ),
     [categories],
   );
+
+  const seatingCategoryIdsKey = seatingCategories.map((c) => c.id).join(",");
+
+  // Push derived Kontingent into shared category state whenever seats or categories change.
+  useEffect(() => {
+    if (!onCapacitiesChange || !seatingCategoryIdsKey) return;
+    const ids = seatingCategoryIdsKey.split(",");
+    onCapacitiesChange(sellableSeatCountsByCategory(seats, ids));
+  }, [seats, seatingCategoryIdsKey, onCapacitiesChange]);
 
   const colorById = useMemo(() => {
     const map = new Map<string, string>();
@@ -332,6 +345,9 @@ export function EventSeatingAssignmentPanel({
       } else {
         setMessage(`${n} Plätze aktualisiert.`);
       }
+      if (data.capacities && onCapacitiesChange) {
+        onCapacitiesChange(data.capacities as Record<string, number>);
+      }
       // Soft sync seats — keep canvas mounted; never full loading remount.
       void load({ silent: true, seatsOnly: true });
     } catch {
@@ -461,7 +477,8 @@ export function EventSeatingAssignmentPanel({
           eventId,
           name,
           priceEuro: 0,
-          capacity: Math.max(seats.length, 1),
+          // Plan-backed: server sets 0; Kontingent fills from Saalplan assignments.
+          capacity: 0,
           maxPerOrder: 10,
           categoryKind: "standard",
           color: newCatColor,
@@ -617,7 +634,7 @@ export function EventSeatingAssignmentPanel({
 
       {unassignedCount === 0 && seats.length > 0 ? (
         <p className="mt-4 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-          Alles zugeordnet — Preise und Kontingente bearbeitest du direkt darunter.
+          Alles zugeordnet — Preise darunter bearbeiten; Kontingent folgt aus dem Plan.
         </p>
       ) : null}
 
@@ -724,7 +741,7 @@ export function EventSeatingAssignmentPanel({
             </button>
           </div>
           <p className="sm:col-span-3 text-xs text-[var(--tf-text-secondary)]">
-            Preis und Kontingent setzt du direkt unter dem Plan — 0 € ist erstmal ok.
+            Preis setzt du unter dem Plan — Kontingent zählt zugewiesene, nicht gesperrte Plätze.
           </p>
         </div>
       ) : null}
