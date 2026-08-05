@@ -7,11 +7,10 @@
  * write logo-ticketfeeling.png, and lanczos-resize email/lockup derivatives only.
  *
  * Source is typically a 1024×682 JPEG *plate* (no alpha); logo content is much smaller
- * inside that frame (~430×280). We:
+ * inside that frame (~500×350). We:
  *  1) flood-fill near-black from corners → transparency (protects navy wordmark)
  *  2) trim to content + pad
- *  3) lanczos 2× upscale for retina headroom (never invent detail, but avoids
- *     browser upscaling a ~300px-tall bitmap on 2x/3x displays)
+ *  3) write master at native content resolution (no invented upscale)
  *
  * Usage: npx tsx scripts/make-logo-master.ts [sourcePath]
  */
@@ -101,8 +100,9 @@ function processRgba(data: Buffer, width: number, height: number) {
 
     if (!bg[i]) {
       // Foreground: keep exact colors (gradients intact).
-      // Tiny enclosed plate pockets (JPEG islands) → transparent.
-      if (maxc <= 16 && maxc - Math.min(r, g, b) <= 8) {
+      // Enclosed plate pockets in glyph counters (JPEG islands) → transparent.
+      // Threshold matches plate detection; navy wordmark stays (higher chroma/blue).
+      if (maxc <= 22 && maxc - Math.min(r, g, b) <= 10) {
         data[o] = 0;
         data[o + 1] = 0;
         data[o + 2] = 0;
@@ -173,15 +173,8 @@ async function main() {
   const nativeH = nativeMeta.height!;
   console.log("native content", nativeW, "x", nativeH);
 
-  // 2× master for retina — primary app asset.
-  await sharp(nativePng)
-    .resize({
-      width: nativeW * 2,
-      height: nativeH * 2,
-      kernel: sharp.kernel.lanczos3,
-    })
-    .png({ compressionLevel: 9 })
-    .toFile(master);
+  // Master = native content (no lanczos upscale — preserves real pixels only).
+  await sharp(nativePng).png({ compressionLevel: 9 }).toFile(master);
 
   const masterMeta = await sharp(master).metadata();
   console.log(
@@ -197,12 +190,12 @@ async function main() {
   await sharp(master).png({ compressionLevel: 9 }).toFile(lockup);
   console.log("wrote", path.relative(root, lockup), masterMeta.width, "x", masterMeta.height);
 
-  // 1× preview / legacy — do not use as BrandLogo source.
+  // 1× alias (same as master when we ship native).
   await sharp(nativePng).png({ compressionLevel: 9 }).toFile(lockup1x);
   const m1 = await sharp(lockup1x).metadata();
   console.log("wrote", path.relative(root, lockup1x), m1.width, "x", m1.height);
 
-  // Email/PDF: high density from 2× master (without enlarging further).
+  // Email/PDF: from native master, never enlarge beyond content.
   await sharp(master)
     .resize({ width: 840, withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
     .png({ compressionLevel: 9 })
