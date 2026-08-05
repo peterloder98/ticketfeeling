@@ -481,12 +481,9 @@ export async function renderInvoicePdf(invoiceId: string): Promise<{
  * Always regenerate invoice PDF from DB records (deterministic).
  * Does not read or write `pdf_data` blobs — saves storage; same invoice
  * number/amounts every time from invoice + line items + org snapshots.
- *
- * `persist` / `force` are ignored (kept for call-site compatibility).
  */
 export async function getOrCreateInvoicePdf(
   invoiceId: string,
-  _options?: { persist?: boolean; force?: boolean },
 ): Promise<{ buffer: Buffer; invoiceNumber: string; filename: string }> {
   const existing = await prisma.invoice.findUnique({
     where: { id: invoiceId },
