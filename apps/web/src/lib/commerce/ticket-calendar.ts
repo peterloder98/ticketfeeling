@@ -1,4 +1,4 @@
-/** Build a minimal iCalendar (.ics) for a ticket event. */
+/** Build iCalendar (.ics) and deep links for ticket events. */
 
 function pad(n: number) {
   return String(n).padStart(2, "0");
@@ -45,11 +45,13 @@ export type TicketCalendarInput = {
   url?: string | null;
 };
 
+export function resolveCalendarEndsAt(startsAt: Date, endsAt?: Date | null) {
+  if (endsAt && endsAt.getTime() > startsAt.getTime()) return endsAt;
+  return new Date(startsAt.getTime() + 3 * 60 * 60 * 1000);
+}
+
 export function buildTicketIcs(input: TicketCalendarInput): { filename: string; body: string } {
-  const endsAt =
-    input.endsAt && input.endsAt.getTime() > input.startsAt.getTime()
-      ? input.endsAt
-      : new Date(input.startsAt.getTime() + 3 * 60 * 60 * 1000);
+  const endsAt = resolveCalendarEndsAt(input.startsAt, input.endsAt);
   const stamp = formatIcsUtc(new Date());
   const uid = `ticket-${input.ticketId}@ticketfeeling.de`;
   const lines = [
@@ -81,4 +83,70 @@ export function buildTicketIcs(input: TicketCalendarInput): { filename: string; 
     filename: `ticketfeeling-${safeName || input.ticketId.slice(0, 8)}.ics`,
     body,
   };
+}
+
+export type CalendarDeepLinkInput = {
+  title: string;
+  startsAt: Date;
+  endsAt?: Date | null;
+  locationLabel?: string | null;
+  description?: string | null;
+  url?: string | null;
+};
+
+function calendarDescription(input: CalendarDeepLinkInput) {
+  const parts = [input.description?.trim(), input.url?.trim()].filter(Boolean);
+  return parts.join("\n") || undefined;
+}
+
+/** Google Calendar “Add event” template URL */
+export function buildGoogleCalendarUrl(input: CalendarDeepLinkInput) {
+  const endsAt = resolveCalendarEndsAt(input.startsAt, input.endsAt);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: input.title,
+    dates: `${formatIcsUtc(input.startsAt)}/${formatIcsUtc(endsAt)}`,
+  });
+  const details = calendarDescription(input);
+  if (details) params.set("details", details);
+  if (input.locationLabel) params.set("location", input.locationLabel);
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+/** Outlook.com / Hotmail compose URL */
+export function buildOutlookCalendarUrl(input: CalendarDeepLinkInput) {
+  const endsAt = resolveCalendarEndsAt(input.startsAt, input.endsAt);
+  const params = new URLSearchParams({
+    path: "/calendar/action/compose",
+    rru: "addevent",
+    subject: input.title,
+    startdt: input.startsAt.toISOString(),
+    enddt: endsAt.toISOString(),
+  });
+  const body = calendarDescription(input);
+  if (body) params.set("body", body);
+  if (input.locationLabel) params.set("location", input.locationLabel);
+  return `https://outlook.live.com/calendar/0/deeplink/compose?${params.toString()}`;
+}
+
+/** Yahoo Calendar compose URL */
+export function buildYahooCalendarUrl(input: CalendarDeepLinkInput) {
+  const endsAt = resolveCalendarEndsAt(input.startsAt, input.endsAt);
+  const params = new URLSearchParams({
+    v: "60",
+    title: input.title,
+    st: formatIcsUtc(input.startsAt),
+    et: formatIcsUtc(endsAt),
+  });
+  const desc = calendarDescription(input);
+  if (desc) params.set("desc", desc);
+  if (input.locationLabel) params.set("in_loc", input.locationLabel);
+  return `https://calendar.yahoo.com/?${params.toString()}`;
+}
+
+/** webcal:// variant of an https .ics URL (Apple / native calendar apps) */
+export function toWebcalUrl(httpsIcsUrl: string) {
+  if (httpsIcsUrl.startsWith("https://")) return `webcal://${httpsIcsUrl.slice("https://".length)}`;
+  if (httpsIcsUrl.startsWith("http://")) return `webcal://${httpsIcsUrl.slice("http://".length)}`;
+  return httpsIcsUrl;
 }

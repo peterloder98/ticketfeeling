@@ -5,6 +5,10 @@ import Link from "next/link";
 import { ChevronDown, Mail, Send } from "lucide-react";
 import { TicketQrImage } from "@/components/ticket-qr-image";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
+import {
+  TicketCalendarMenu,
+  type TicketCalendarEvent,
+} from "@/components/ticket-calendar-menu";
 
 export type OrderTicketView = {
   id: string;
@@ -30,6 +34,11 @@ export type OrderPositionView = {
   eventNameSnapshot: string;
   whenLabel: string | null;
   placeLabel: string | null;
+  /** e.g. "17:30" — omit when event has no doorsOpenAt */
+  doorsOpenLabel: string | null;
+  /** Absolute event times for calendar deep links */
+  startsAtIso: string | null;
+  endsAtIso: string | null;
   tickets: OrderTicketView[];
 };
 
@@ -230,6 +239,17 @@ function TicketForwardForm({
   );
 }
 
+function TicketMetaRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+        {label}
+      </p>
+      <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">{value}</p>
+    </div>
+  );
+}
+
 export function OrderTicketsPanel({
   positions,
   canForward,
@@ -300,6 +320,7 @@ export function OrderTicketsPanel({
               <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
                 {position.whenLabel}
                 {position.placeLabel ? ` · ${position.placeLabel}` : ""}
+                {position.doorsOpenLabel ? ` · Einlass ab ${position.doorsOpenLabel} Uhr` : ""}
               </p>
             ) : null}
             <p className="mt-1.5 text-sm text-[var(--tf-text-secondary)]">
@@ -317,6 +338,27 @@ export function OrderTicketsPanel({
               const showQr = Boolean(
                 ticket.canUseEntry && ticket.qrToken && !transferredIds[ticket.id],
               );
+              const calendarHref = accessToken
+                ? `/api/v1/tickets/${ticket.id}/calendar?t=${encodeURIComponent(accessToken)}`
+                : `/api/v1/tickets/${ticket.id}/calendar`;
+              const calendarEvent: TicketCalendarEvent | null = position.startsAtIso
+                ? {
+                    title: position.eventNameSnapshot,
+                    startsAtIso: position.startsAtIso,
+                    endsAtIso: position.endsAtIso,
+                    locationLabel: position.placeLabel,
+                    description: [
+                      `Ticket ${ticket.ticketNumber}${
+                        ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
+                      } · ${ticket.categorySnapshot}`,
+                      position.doorsOpenLabel
+                        ? `Einlass ab ${position.doorsOpenLabel} Uhr`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join("\n"),
+                  }
+                : null;
 
               return (
                 <li key={ticket.id}>
@@ -349,32 +391,57 @@ export function OrderTicketsPanel({
                     </summary>
 
                     <div className="space-y-4 px-5 pb-5 md:px-6">
-                      <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
-                        <div className="space-y-1 text-sm">
-                          <p className="font-semibold text-[var(--tf-navy)]">
-                            {ticket.categorySnapshot}
-                          </p>
-                          {ticket.seatLabel ? (
-                            <p className="font-medium text-[var(--tf-teal-hover)]">
-                              {ticket.seatLabel}
+                      <div className="flex flex-wrap items-stretch justify-between gap-5 rounded-xl border border-[var(--tf-line)] bg-white p-4 md:p-5">
+                        <div className="min-w-0 flex-1 space-y-4">
+                          <div className="space-y-1">
+                            <p className="text-base font-semibold text-[var(--tf-navy)]">
+                              {ticket.categorySnapshot}
                             </p>
-                          ) : null}
-                          <p className="text-xs text-[var(--tf-text-secondary)]">
-                            {ticket.ticketNumber} · {presenceLabel(ticket.presence)}
-                          </p>
-                          {locked ? (
-                            <p className="text-xs font-medium text-[var(--tf-teal-hover)]">
-                              Weitergeleitet{holder ? ` an ${holder}` : ""} — QR/PDF gesperrt
-                            </p>
-                          ) : holder ? (
+                            {ticket.seatLabel ? (
+                              <p className="font-medium text-[var(--tf-teal-hover)]">
+                                {ticket.seatLabel}
+                              </p>
+                            ) : null}
                             <p className="text-xs text-[var(--tf-text-secondary)]">
-                              Inhaber: {holder}
+                              {ticket.ticketNumber} · {presenceLabel(ticket.presence)}
                             </p>
-                          ) : null}
+                            {locked ? (
+                              <p className="text-xs font-medium text-[var(--tf-teal-hover)]">
+                                Weitergeleitet{holder ? ` an ${holder}` : ""} — QR/PDF gesperrt
+                              </p>
+                            ) : holder ? (
+                              <p className="text-xs text-[var(--tf-text-secondary)]">
+                                Inhaber: {holder}
+                              </p>
+                            ) : null}
+                          </div>
+
+                          <div className="space-y-3 border-t border-[var(--tf-line)] pt-3">
+                            <p className="text-sm font-semibold leading-snug text-[var(--tf-navy)]">
+                              {position.eventNameSnapshot}
+                            </p>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              {position.whenLabel ? (
+                                <TicketMetaRow label="Beginn" value={position.whenLabel} />
+                              ) : null}
+                              {position.doorsOpenLabel ? (
+                                <TicketMetaRow
+                                  label="Einlasszeit"
+                                  value={`ab ${position.doorsOpenLabel} Uhr`}
+                                />
+                              ) : null}
+                              {position.placeLabel ? (
+                                <TicketMetaRow label="Location" value={position.placeLabel} />
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
+
                         {showQr ? (
-                          <div className="rounded-xl border border-[var(--tf-line)] bg-white p-2">
-                            <TicketQrImage token={ticket.qrToken!} size={112} />
+                          <div className="mx-auto shrink-0 self-center sm:mx-0">
+                            <div className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-1">
+                              <TicketQrImage token={ticket.qrToken!} size={120} />
+                            </div>
                           </div>
                         ) : null}
                       </div>
@@ -405,17 +472,11 @@ export function OrderTicketsPanel({
                           >
                             Ticket öffnen
                           </Link>
-                          {showQr ? (
-                            <a
-                              href={
-                                accessToken
-                                  ? `/api/v1/tickets/${ticket.id}/calendar?t=${encodeURIComponent(accessToken)}`
-                                  : `/api/v1/tickets/${ticket.id}/calendar`
-                              }
-                              className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-                            >
-                              Zum Kalender
-                            </a>
+                          {showQr && calendarEvent ? (
+                            <TicketCalendarMenu
+                              icsHref={calendarHref}
+                              event={calendarEvent}
+                            />
                           ) : null}
                         </div>
 

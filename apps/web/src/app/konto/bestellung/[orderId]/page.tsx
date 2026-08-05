@@ -114,6 +114,17 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
             .filter(Boolean)
             .join(", ")
         : null);
+    const doorsOpenAt = firstTicket?.event.doorsOpenAt ?? null;
+    const doorsOpenLabel = doorsOpenAt
+      ? doorsOpenAt.toLocaleTimeString("de-DE", {
+          timeZone: "Europe/Berlin",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
+    const startsAt =
+      item.eventStartsAtSnapshot ?? firstTicket?.event.eventStartsAt ?? null;
+    const endsAt = firstTicket?.event.eventEndsAt ?? null;
 
     return {
       id: item.id,
@@ -122,6 +133,9 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
       eventNameSnapshot: item.eventNameSnapshot,
       whenLabel,
       placeLabel,
+      doorsOpenLabel,
+      startsAtIso: startsAt ? startsAt.toISOString() : null,
+      endsAtIso: endsAt ? endsAt.toISOString() : null,
       tickets: itemTickets.map((ticket) => {
         const transferred = isTicketTransferred({
           holderCustomerId: ticket.holderCustomerId,

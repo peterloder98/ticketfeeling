@@ -44,6 +44,20 @@ export async function GET(request: Request, { params }: Params) {
     ? `${appBase}/ticket/${ticket.id}?t=${encodeURIComponent(accessToken)}`
     : `${appBase}/ticket/${ticket.id}`;
 
+  const doorsOpen = ticket.event.doorsOpenAt
+    ? ticket.event.doorsOpenAt.toLocaleTimeString("de-DE", {
+        timeZone: "Europe/Berlin",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const descriptionParts = [
+    `Ticket ${ticket.ticketNumber}${
+      ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
+    } · ${ticket.categorySnapshot}`,
+    doorsOpen ? `Einlass ab ${doorsOpen} Uhr` : null,
+  ].filter(Boolean);
+
   const ics = buildTicketIcs({
     ticketId: ticket.id,
     ticketNumber: ticket.ticketNumber,
@@ -51,9 +65,7 @@ export async function GET(request: Request, { params }: Params) {
     startsAt: ticket.event.eventStartsAt,
     endsAt: ticket.event.eventEndsAt,
     locationLabel,
-    description: `Ticket ${ticket.ticketNumber}${
-      ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
-    } · ${ticket.categorySnapshot}`,
+    description: descriptionParts.join("\n"),
     url: ticketUrl,
   });
 

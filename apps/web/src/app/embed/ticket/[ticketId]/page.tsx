@@ -13,6 +13,7 @@ import {
 } from "@/lib/tickets/access";
 import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
+import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 
 export const dynamic = "force-dynamic";
@@ -102,9 +103,29 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
         minute: "2-digit",
       })
     : "—";
+  const doorsOpenLabel = ticket.event.doorsOpenAt
+    ? ticket.event.doorsOpenAt.toLocaleTimeString("de-DE", {
+        timeZone: "Europe/Berlin",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
   const place = ticket.event.location
     ? [ticket.event.location.name, ticket.event.location.city].filter(Boolean).join(", ")
     : "—";
+  const placeFull = ticket.event.location
+    ? [
+        ticket.event.location.name,
+        [ticket.event.location.street, ticket.event.location.houseNumber]
+          .filter(Boolean)
+          .join(" "),
+        [ticket.event.location.postalCode, ticket.event.location.city]
+          .filter(Boolean)
+          .join(" "),
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : null;
   const holder = `${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim();
 
   return (
@@ -133,6 +154,14 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
               <dt className="text-[var(--tf-text-secondary)]">Beginn</dt>
               <dd className="font-medium text-[var(--tf-navy)]">{when}</dd>
             </div>
+            {doorsOpenLabel ? (
+              <div>
+                <dt className="text-[var(--tf-text-secondary)]">Einlasszeit</dt>
+                <dd className="font-medium text-[var(--tf-navy)]">
+                  ab {doorsOpenLabel} Uhr
+                </dd>
+              </div>
+            ) : null}
             <div>
               <dt className="text-[var(--tf-text-secondary)]">Location</dt>
               <dd className="font-medium text-[var(--tf-navy)]">{place}</dd>
@@ -183,9 +212,24 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
                 PDF speichern
               </a>
               {ticket.event.eventStartsAt ? (
-                <a href={calendarHref} className="tf-btn tf-btn-secondary w-full !min-h-10 text-sm">
-                  Zum Kalender
-                </a>
+                <TicketCalendarMenu
+                  icsHref={calendarHref}
+                  fullWidth
+                  event={{
+                    title: ticket.eventNameSnapshot || ticket.event.name,
+                    startsAtIso: ticket.event.eventStartsAt.toISOString(),
+                    endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
+                    locationLabel: placeFull,
+                    description: [
+                      `Ticket ${ticket.ticketNumber}${
+                        ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
+                      } · ${ticket.categorySnapshot}`,
+                      doorsOpenLabel ? `Einlass ab ${doorsOpenLabel} Uhr` : null,
+                    ]
+                      .filter(Boolean)
+                      .join("\n"),
+                  }}
+                />
               ) : null}
               <TicketWalletButtons
                 ticketId={ticket.id}
