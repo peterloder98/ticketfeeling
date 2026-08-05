@@ -294,9 +294,6 @@ export function OrderTicketsPanel({
         >
           <div className="border-b border-[var(--tf-line)] bg-[#f8fafc] px-5 py-4 md:px-6">
             <p className="text-base font-semibold text-[var(--tf-navy)]">
-              {position.quantity}× {position.categorySnapshot}
-            </p>
-            <p className="mt-0.5 text-sm text-[var(--tf-text-secondary)]">
               {position.eventNameSnapshot}
             </p>
             {position.whenLabel ? (
@@ -305,9 +302,8 @@ export function OrderTicketsPanel({
                 {position.placeLabel ? ` · ${position.placeLabel}` : ""}
               </p>
             ) : null}
-            <p className="mt-2 text-xs font-medium text-[var(--tf-navy)]">
-              {position.tickets.length} Ticket{position.tickets.length === 1 ? "" : "s"} — zum
-              Anzeigen aufklappen
+            <p className="mt-1.5 text-sm text-[var(--tf-text-secondary)]">
+              {position.quantity}× {position.categorySnapshot}
             </p>
           </div>
 
