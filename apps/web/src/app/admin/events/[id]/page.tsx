@@ -24,6 +24,8 @@ import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
+import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
+import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -32,13 +34,32 @@ type Props = {
   searchParams: Promise<{ saved?: string }>;
 };
 
+function EventLoadError({ message }: { message?: string }) {
+  return (
+    <div className="tf-card space-y-3 !p-6">
+      <h1 className="text-2xl font-semibold text-[var(--tf-navy)]">Event konnte nicht geladen werden</h1>
+      <p className="text-sm text-[var(--tf-text-secondary)]">
+        {message ??
+          "Die Eventdaten sind unvollständig oder die Datenbank ist noch nicht aktuell. Bitte kurz warten und erneut öffnen — oder den Entwurf im Assistenten speichern."}
+      </p>
+      <Link href="/admin/events" className="tf-btn tf-btn-secondary inline-flex !min-h-10 text-sm">
+        ← Zurück zur Event-Liste
+      </Link>
+    </div>
+  );
+}
+
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
-  const event = await prisma.event.findUnique({
-    where: { id },
-    select: { name: true },
-  });
-  return { title: event?.name ? `${event.name} · Event` : "Event" };
+  try {
+    const event = await prisma.event.findUnique({
+      where: { id },
+      select: { name: true },
+    });
+    return { title: event?.name ? `${event.name} · Event` : "Event" };
+  } catch {
+    return { title: "Event" };
+  }
 }
 
 export default async function AdminEventDetailPage({ params, searchParams }: Props) {
@@ -65,36 +86,93 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       "tours:write",
     ));
 
-  // Event include selects seatingLayoutConfig; seat count filters category_id.
-  await ensureSeatingAssignmentSchema(prisma);
+  // Full Event scalars need SEPA + seating columns; list page uses a narrow select and
+  // can look fine while detail 500s on schema drift (P2022 → Application error).
+  await Promise.all([
+    ensureSeatingAssignmentSchema(prisma),
+    ensureSepaPaymentSchema(prisma),
+  ]);
 
-  const event = await prisma.event.findFirst({
-    where: { id, organizationId: membership.organizationId },
-    include: {
-      location: true,
-      tour: { select: { id: true, name: true, coverImageUrl: true } },
-      venuePlan: { select: { id: true, name: true, locationId: true } },
-      ticketCategories: {
-        orderBy: { sortOrder: "asc" },
-        include: { pools: true },
-      },
-      artists: {
-        orderBy: { sortOrder: "asc" },
-        include: {
-          artist: {
-            select: {
-              id: true,
-              name: true,
-              homepage: true,
-              youtube: true,
-              shortBio: true,
+  let event;
+  try {
+    event = await prisma.event.findFirst({
+      where: { id, organizationId: membership.organizationId },
+      include: {
+        // Never `location: true` — Decimal lat/lng breaks Client Component serialization.
+        location: { select: { id: true, name: true, city: true } },
+        tour: { select: { id: true, name: true, coverImageUrl: true } },
+        venuePlan: { select: { id: true, name: true, locationId: true } },
+        ticketCategories: {
+          orderBy: { sortOrder: "asc" },
+          include: { pools: true },
+        },
+        artists: {
+          orderBy: { sortOrder: "asc" },
+          include: {
+            artist: {
+              select: {
+                id: true,
+                name: true,
+                homepage: true,
+                youtube: true,
+                shortBio: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    });
+  } catch (err) {
+    console.error("[admin/events/[id]] event load failed", id, err);
+    return (
+      <EventLoadError message="Die Eventdaten konnten nicht aus der Datenbank gelesen werden. Oft hilft ein erneuter Versuch in ein paar Sekunden." />
+    );
+  }
   if (!event) notFound();
+
+  // Plain props only — never pass the raw Prisma graph into Client Components.
+  const editEvent = {
+    id: event.id,
+    name: event.name,
+    subtitle: event.subtitle,
+    slug: event.slug,
+    status: event.status,
+    tourId: event.tourId,
+    shortDescription: event.shortDescription,
+    description: event.description,
+    showRemainingAvailability: event.showRemainingAvailability,
+    locationId: event.locationId,
+    venuePlanId: event.venuePlanId,
+    seatingBookingMode: event.seatingBookingMode,
+    eventStartsAt: event.eventStartsAt,
+    eventEndsAt: event.eventEndsAt,
+    doorsOpenAt: event.doorsOpenAt,
+    presaleStartsAt: event.presaleStartsAt,
+    ticketTaxRateBasisPoints: event.ticketTaxRateBasisPoints,
+    administrationFeeTaxMode: event.administrationFeeTaxMode,
+    administrationFeeCustomTaxRateBasisPoints: event.administrationFeeCustomTaxRateBasisPoints,
+    sepaMinDaysBeforeEvent: event.sepaMinDaysBeforeEvent,
+    coverImageUrl: event.coverImageUrl,
+  };
+
+  const seatingCategoriesRows: EventCategoryRow[] = event.ticketCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    priceGrossCents: c.priceGrossCents,
+    capacity: c.capacity,
+    maxPerOrder: c.maxPerOrder,
+    categoryKind: c.categoryKind,
+    companionFree: c.companionFree,
+    color: c.color,
+    freeSeating: c.freeSeating,
+    pools: c.pools.map((p) => ({
+      channel: p.channel,
+      soldQuantity: p.soldQuantity,
+      heldQuantity: p.heldQuantity,
+      capacity: p.capacity,
+    })),
+  }));
 
   const [report, locations, venuePlans, templates, tours, orgArtists] = await Promise.all([
     getEventSalesReport(event.id),
@@ -160,11 +238,16 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   const seatingCategories = event.ticketCategories.filter(
     (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
   );
-  const unassignedSeatCount = seatingEnabled
-    ? await prisma.eventSeat.count({
+  let unassignedSeatCount = 0;
+  if (seatingEnabled) {
+    try {
+      unassignedSeatCount = await prisma.eventSeat.count({
         where: { eventId: event.id, categoryId: null },
-      })
-    : 0;
+      });
+    } catch (err) {
+      console.error("[admin/events/[id]] seat count failed", event.id, err);
+    }
+  }
   const needsSeatAssignment = seatingEnabled && unassignedSeatCount > 0;
 
   const when = event.eventStartsAt
@@ -409,7 +492,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
 
         {canWrite ? (
           <EventEditForm
-            event={event}
+            event={editEvent}
             locations={locations}
             planOptions={planOptions}
             venuePlan={event.venuePlan}
@@ -470,7 +553,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
 
       <EventSeatingSetup
         eventId={event.id}
-        initialCategories={event.ticketCategories}
+        initialCategories={seatingCategoriesRows}
         templates={templates}
         canWrite={canWrite}
         salesReleased={isEventSalesReleased(event.status)}

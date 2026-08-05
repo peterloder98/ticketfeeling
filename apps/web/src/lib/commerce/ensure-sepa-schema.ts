@@ -28,14 +28,24 @@ let schemaReady = false;
 
 async function probeSepaSchemaReady(db: PrismaClient): Promise<boolean> {
   try {
-    const rows = await db.$queryRawUnsafe<Array<{ ok: number }>>(
-      `SELECT 1 AS ok FROM information_schema.columns
-       WHERE table_schema = 'public'
-         AND table_name = 'orders'
-         AND column_name = 'reservation_status'
-       LIMIT 1`,
+    // Must check BOTH sides — a partial apply (orders ok, events missing) used to
+    // short-circuit ensure and leave admin event detail on P2022 / Application error.
+    const present = new Set(
+      (
+        await db.$queryRawUnsafe<Array<{ table_name: string; column_name: string }>>(
+          `SELECT table_name, column_name FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND (
+               (table_name = 'orders' AND column_name = 'reservation_status')
+               OR (table_name = 'events' AND column_name = 'sepa_min_days_before_event')
+             )`,
+        )
+      ).map((r) => `${r.table_name}.${r.column_name}`),
     );
-    return rows.length > 0;
+    return (
+      present.has("orders.reservation_status") &&
+      present.has("events.sepa_min_days_before_event")
+    );
   } catch {
     return false;
   }

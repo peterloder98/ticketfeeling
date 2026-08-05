@@ -39,22 +39,24 @@ let schemaReady = false;
 
 async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
   try {
-    const rows = await db.$queryRawUnsafe<Array<{ ok: number }>>(
-      `SELECT 1 AS ok FROM information_schema.columns
-       WHERE table_schema = 'public'
-         AND table_name = 'event_seats'
-         AND column_name = 'category_id'
-       LIMIT 1`,
+    const present = new Set(
+      (
+        await db.$queryRawUnsafe<Array<{ table_name: string; column_name: string }>>(
+          `SELECT table_name, column_name FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND (
+               (table_name = 'event_seats' AND column_name = 'category_id')
+               OR (table_name = 'venue_plans' AND column_name = 'category_slots')
+               OR (table_name = 'events' AND column_name = 'seating_layout_config')
+             )`,
+        )
+      ).map((r) => `${r.table_name}.${r.column_name}`),
     );
-    if (rows.length === 0) return false;
-    const slots = await db.$queryRawUnsafe<Array<{ ok: number }>>(
-      `SELECT 1 AS ok FROM information_schema.columns
-       WHERE table_schema = 'public'
-         AND table_name = 'venue_plans'
-         AND column_name = 'category_slots'
-       LIMIT 1`,
+    return (
+      present.has("event_seats.category_id") &&
+      present.has("venue_plans.category_slots") &&
+      present.has("events.seating_layout_config")
     );
-    return slots.length > 0;
   } catch {
     return false;
   }
