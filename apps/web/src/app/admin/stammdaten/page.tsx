@@ -8,10 +8,28 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import Link from "next/link";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+import {
+  companyAddressToJson,
+  formatCompanyAddressLine,
+  resolveBillingCompanyAddress,
+  resolvePublicCompanyAddress,
+  type CompanyAddress,
+} from "@/lib/legal/company-address";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
 const TSE_MODES = ["none", "planned", "fiskaly", "external"] as const;
+
+function readAddressFromForm(formData: FormData, prefix: string): CompanyAddress {
+  return {
+    street: String(formData.get(`${prefix}Street`) ?? "").trim(),
+    houseNumber: String(formData.get(`${prefix}HouseNumber`) ?? "").trim(),
+    postalCode: String(formData.get(`${prefix}PostalCode`) ?? "").trim(),
+    city: String(formData.get(`${prefix}City`) ?? "").trim(),
+    country: String(formData.get(`${prefix}Country`) ?? "DE").trim() || "DE",
+  };
+}
 
 async function requireOrgWrite() {
   const session = await getServerSession(authOptions);
@@ -25,6 +43,64 @@ async function requireOrgWrite() {
   );
   if (!allowed) throw new Error("FORBIDDEN");
   return { session, membership };
+}
+
+async function updateCompanyAddresses(formData: FormData) {
+  "use server";
+  const { session, membership } = await requireOrgWrite();
+
+  const publicAddress = readAddressFromForm(formData, "public");
+  const billingAddress = readAddressFromForm(formData, "billing");
+  if (!publicAddress.street || !publicAddress.city || !publicAddress.postalCode) {
+    throw new Error("PUBLIC_ADDRESS_REQUIRED");
+  }
+  if (!billingAddress.street || !billingAddress.city || !billingAddress.postalCode) {
+    throw new Error("BILLING_ADDRESS_REQUIRED");
+  }
+
+  const before = await prisma.organizationSettings.findUnique({
+    where: { organizationId: membership.organizationId },
+  });
+  const prevData =
+    before?.data && typeof before.data === "object" && !Array.isArray(before.data)
+      ? (before.data as Record<string, unknown>)
+      : {};
+
+  await prisma.organizationSettings.update({
+    where: { organizationId: membership.organizationId },
+    data: {
+      street: publicAddress.street,
+      houseNumber: publicAddress.houseNumber,
+      postalCode: publicAddress.postalCode,
+      city: publicAddress.city,
+      country: publicAddress.country,
+      publicCompanyAddress: companyAddressToJson(publicAddress),
+      billingCompanyAddress: companyAddressToJson(billingAddress),
+      data: {
+        ...prevData,
+        publicCompanyAddress: companyAddressToJson(publicAddress),
+        billingCompanyAddress: companyAddressToJson(billingAddress),
+      } as Prisma.InputJsonValue,
+    },
+  });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "org.addresses.updated",
+    entityType: "organization_settings",
+    entityId: membership.organizationId,
+    before: before
+      ? {
+          public: resolvePublicCompanyAddress(before),
+          billing: resolveBillingCompanyAddress(before),
+        }
+      : null,
+    after: { public: publicAddress, billing: billingAddress },
+  });
+
+  revalidatePath("/admin/stammdaten");
+  revalidatePath("/recht/impressum");
 }
 
 async function updateTrackingDefaults(formData: FormData) {
@@ -135,6 +211,8 @@ export default async function AdminStammdatenPage() {
     include: { settings: true, bankAccounts: true },
   });
   const settings = org?.settings;
+  const publicAddress = resolvePublicCompanyAddress(settings);
+  const billingAddress = resolveBillingCompanyAddress(settings);
 
   return (
     <div className="space-y-6">
@@ -152,6 +230,134 @@ export default async function AdminStammdatenPage() {
           Einstellungen → E-Mail-Konten
         </Link>
         .
+      </div>
+
+      <div className="tf-card text-sm">
+        <h2 className="text-lg font-semibold">Firmenanschriften</h2>
+        <p className="mt-2 text-[var(--muted)]">
+          Öffentliche Anschrift erscheint überall kundenseitig (Impressum, Kontakt, Tickets).
+          Rechnungsanschrift nur auf Rechnungen und Steuer-/Auszahlungsbelegen — nie öffentlich.
+        </p>
+        {canWrite && settings ? (
+          <form action={updateCompanyAddresses} className="mt-4 grid gap-8 lg:grid-cols-2">
+            <fieldset className="grid gap-3">
+              <legend className="text-base font-semibold text-[var(--tf-navy)]">
+                Öffentlich (Landshut)
+              </legend>
+              <label className="grid gap-1">
+                <span>Straße</span>
+                <input
+                  name="publicStreet"
+                  className="tf-input"
+                  required
+                  defaultValue={publicAddress.street}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span>Hausnummer</span>
+                <input
+                  name="publicHouseNumber"
+                  className="tf-input"
+                  required
+                  defaultValue={publicAddress.houseNumber}
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="grid gap-1">
+                  <span>PLZ</span>
+                  <input
+                    name="publicPostalCode"
+                    className="tf-input"
+                    required
+                    defaultValue={publicAddress.postalCode}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span>Ort</span>
+                  <input
+                    name="publicCity"
+                    className="tf-input"
+                    required
+                    defaultValue={publicAddress.city}
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1">
+                <span>Land (ISO)</span>
+                <input
+                  name="publicCountry"
+                  className="tf-input"
+                  defaultValue={publicAddress.country}
+                />
+              </label>
+            </fieldset>
+            <fieldset className="grid gap-3">
+              <legend className="text-base font-semibold text-[var(--tf-navy)]">
+                Rechnung / Steuer (intern)
+              </legend>
+              <label className="grid gap-1">
+                <span>Straße</span>
+                <input
+                  name="billingStreet"
+                  className="tf-input"
+                  required
+                  defaultValue={billingAddress.street}
+                />
+              </label>
+              <label className="grid gap-1">
+                <span>Hausnummer</span>
+                <input
+                  name="billingHouseNumber"
+                  className="tf-input"
+                  required
+                  defaultValue={billingAddress.houseNumber}
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="grid gap-1">
+                  <span>PLZ</span>
+                  <input
+                    name="billingPostalCode"
+                    className="tf-input"
+                    required
+                    defaultValue={billingAddress.postalCode}
+                  />
+                </label>
+                <label className="grid gap-1">
+                  <span>Ort</span>
+                  <input
+                    name="billingCity"
+                    className="tf-input"
+                    required
+                    defaultValue={billingAddress.city}
+                  />
+                </label>
+              </div>
+              <label className="grid gap-1">
+                <span>Land (ISO)</span>
+                <input
+                  name="billingCountry"
+                  className="tf-input"
+                  defaultValue={billingAddress.country}
+                />
+              </label>
+            </fieldset>
+            <button type="submit" className="tf-btn tf-btn-primary w-fit lg:col-span-2">
+              Anschriften speichern
+            </button>
+          </form>
+        ) : (
+          <dl className="mt-3 grid gap-4 md:grid-cols-2">
+            <div>
+              <dt className="text-[var(--muted)]">Öffentlich</dt>
+              <dd>{formatCompanyAddressLine(publicAddress)}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--muted)]">Rechnung / Steuer</dt>
+              <dd>{formatCompanyAddressLine(billingAddress)}</dd>
+            </div>
+          </dl>
+        )}
       </div>
 
       <div className="tf-card text-sm">

@@ -2,6 +2,11 @@ import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { isAppleWalletConfigured, isGoogleWalletConfigured } from "@/lib/wallet/config";
+import {
+  DEFAULT_LEGAL_PERSON_LINE,
+  DEFAULT_PUBLIC_COMPANY_ADDRESS,
+  formatCompanyAddressBlock,
+} from "@/lib/legal/company-address";
 
 function appBaseUrl() {
   return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
@@ -78,7 +83,12 @@ function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
       ${attachHint}
     </div>
     <div style="padding:8px 28px 28px">
-      <p style="margin:0;font-size:13px;line-height:1.45;color:#64748B;font-family:system-ui,-apple-system,sans-serif">Fragen? Antworte einfach auf diese E-Mail oder schreib an den Support über ticketfeeling.de/hilfe.</p>
+      <p style="margin:0 0 10px;font-size:13px;line-height:1.45;color:#64748B;font-family:system-ui,-apple-system,sans-serif">Fragen? Antworte einfach auf diese E-Mail oder schreib an den Support über ticketfeeling.de/hilfe.</p>
+      <p style="margin:0;font-size:12px;line-height:1.45;color:#94A3B8;font-family:system-ui,-apple-system,sans-serif">${escapeHtml(
+        formatCompanyAddressBlock(DEFAULT_PUBLIC_COMPANY_ADDRESS, {
+          legalPersonLine: DEFAULT_LEGAL_PERSON_LINE,
+        }),
+      ).replaceAll("\n", "<br/>")}</p>
     </div>
   </div>
   </div>

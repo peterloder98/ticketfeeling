@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
+import { buildSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
 import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 import { writeAudit } from "@/lib/audit";
 import { signBoxOfficeSale } from "@/lib/fiscal/tse";
@@ -156,11 +156,7 @@ export async function createBoxOfficeSale(input: {
     const year = new Date().getFullYear();
     const orderNumber = `TF-K-${year}-${String(kasseCount + 1).padStart(6, "0")}`;
 
-    const sellerSnapshot = {
-      ...seller,
-      addressLine: formatSellerAddress(seller),
-      role: "seller",
-    };
+    const sellerSnapshot = sellerSnapshotPayload(seller, "seller");
 
     if (priced.lineSplits.length !== resolved.length) throw new Error("PRICE_MISMATCH");
 

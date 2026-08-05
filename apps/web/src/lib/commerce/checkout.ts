@@ -4,7 +4,7 @@ import { getOpenCart } from "@/lib/commerce/cart";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { priceCart } from "@/lib/commerce/pricing";
 import { writeAudit } from "@/lib/audit";
-import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
+import { buildSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
 import { getPaymentProvider } from "@/lib/payments";
 import {
   estimatePaymentFeeCents,
@@ -308,14 +308,10 @@ export async function createOrderFromCart(input: {
     const grossCents = priced.customerTotalCents;
     if (grossCents !== customerTotalCents) throw new Error("PRICE_MISMATCH");
 
-    const sellerSnapshot = {
-      ...seller,
-      addressLine: formatSellerAddress(seller),
-      role: "seller",
-    };
+    const sellerSnapshot = sellerSnapshotPayload(seller, "seller");
     const organizerSnapshot = {
       ...sellerSnapshot,
-      role: "organizer",
+      role: "organizer" as const,
       eventBrand: seller.brandName,
     };
     const contractSnapshot = {

@@ -10,9 +10,10 @@ Zum Start ist Ticketfeeling keine eigene Gesellschaft. Betreiber, Verkäufer und
 ## Entscheidung
 
 * Anzeige nach außen: **Peter Loder – Ticketfeeling**
-* Anschrift: Innere Münchener Str. 36, 84028 Landshut
+* **Öffentliche Anschrift** (Impressum, Kontakt, AGB, …): Innere Münchener Str. 36, 84028 Landshut — gespeichert als `OrganizationSettings.publicCompanyAddress`
+* **Rechnungs-/Steueranschrift** (nur Invoice-PDFs, Auszahlungsbelege): Konradinstr. 6, 84032 Altdorf — `billingCompanyAddress`; nie öffentlich anzeigen
 * SCHLAGERfeeling bleibt Veranstaltungsmarke
-* Jede Bestellung speichert unveränderliche `sellerSnapshot`, `organizerSnapshot`, `contractSnapshot` (Rechtstextversionen inkl. Inhalt)
+* Jede Bestellung speichert unveränderliche `sellerSnapshot` (öffentliche Anschrift), `organizerSnapshot`, `contractSnapshot`; Rechnungen speichern Billing-`sellerSnapshot`
 * Kundengelder fließen auf den Händleraccount von Peter Loder (kein Plattform-Treuhandmodell)
 * Tageskasse erst nach TSE/KassenSichV-Prüfung
 

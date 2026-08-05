@@ -3,7 +3,11 @@ import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
-import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
+import {
+  buildBillingSellerIdentity,
+  formatSellerAddress,
+  formatSellerCountry,
+} from "@/lib/legal/seller";
 import {
   formatInvoiceEventWhen,
   formatInvoiceLocationLabel,
@@ -84,7 +88,7 @@ function buyerLines(buyer: Record<string, unknown>): string[] {
 
 function sellerLinesFromSnapshot(
   sellerSnap: Record<string, unknown>,
-  fallback: ReturnType<typeof buildSellerIdentity>,
+  fallback: ReturnType<typeof buildBillingSellerIdentity>,
 ): string[] {
   const street =
     [str(sellerSnap.street) || fallback.street, str(sellerSnap.houseNumber) || fallback.houseNumber]
@@ -94,12 +98,20 @@ function sellerLinesFromSnapshot(
     [str(sellerSnap.postalCode) || fallback.postalCode, str(sellerSnap.city) || fallback.city]
       .filter(Boolean)
       .join(" ");
+  const countryRaw = str(sellerSnap.country) || fallback.country || "DE";
+  const country =
+    str(sellerSnap.countryLabel) ||
+    (countryRaw.length <= 3 ? formatSellerCountry({ country: countryRaw }) : countryRaw);
+  const legalLine = str(sellerSnap.legalPersonLine) || fallback.legalPersonLine;
   const lines = [
     str(sellerSnap.displayName) || fallback.displayName,
+    legalLine && legalLine !== (str(sellerSnap.displayName) || fallback.displayName)
+      ? legalLine
+      : null,
     street,
     city,
-    str(sellerSnap.country) || fallback.country || "DE",
-  ].filter(Boolean);
+    country,
+  ].filter(Boolean) as string[];
   const vat = str(sellerSnap.vatId) || fallback.vatId;
   const tax = str(sellerSnap.taxNumber) || fallback.taxNumber;
   if (vat) lines.push(`USt-IdNr.: ${vat}`);
@@ -181,8 +193,25 @@ export async function renderInvoicePdf(invoiceId: string): Promise<{
   });
   if (!invoice) throw new Error("INVOICE_NOT_FOUND");
 
-  const sellerIdentity = buildSellerIdentity(invoice.organization, invoice.organization.settings);
+  // Always prefer billing address for tax invoices (never public Landshut on Rechnung).
+  const sellerIdentity = buildBillingSellerIdentity(
+    invoice.organization,
+    invoice.organization.settings,
+  );
   const sellerSnap = asRecord(invoice.sellerSnapshot);
+  // Legacy invoices may still snapshot the public address — override street fields from billing.
+  const billingSnap = {
+    ...sellerSnap,
+    street: sellerIdentity.street,
+    houseNumber: sellerIdentity.houseNumber,
+    postalCode: sellerIdentity.postalCode,
+    city: sellerIdentity.city,
+    country: sellerIdentity.country,
+    countryLabel: formatSellerCountry(sellerIdentity),
+    legalPersonLine: sellerIdentity.legalPersonLine,
+    addressLine: formatSellerAddress(sellerIdentity),
+    addressKind: "billing",
+  };
   const buyerSnap = {
     ...asRecord(invoice.buyerSnapshot),
     firstName: str(asRecord(invoice.buyerSnapshot).firstName) || invoice.order.customer.firstName,
@@ -292,7 +321,7 @@ export async function renderInvoicePdf(invoiceId: string): Promise<{
   y = doc.y + 8;
 
   const buyers = buyerLines(buyerSnap);
-  const sellers = sellerLinesFromSnapshot(sellerSnap, sellerIdentity);
+  const sellers = sellerLinesFromSnapshot(billingSnap, sellerIdentity);
   const blockStart = y;
 
   doc.font("Helvetica").fontSize(10).fillColor(INK);

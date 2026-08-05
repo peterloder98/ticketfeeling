@@ -235,6 +235,10 @@ model OrganizationSettings {
   postalCode       String? @map("postal_code")
   city             String?
   country          String  @default("DE")
+  /// Public-facing company address (Impressum, Kontakt, AGB, …). JSON CompanyAddress.
+  publicCompanyAddress  Json @default("{}") @map("public_company_address")
+  /// Billing/tax address for invoices & accounting only. JSON CompanyAddress. Never show publicly.
+  billingCompanyAddress Json @default("{}") @map("billing_company_address")
   phone            String?
   email            String?
   supportEmail     String? @map("support_email")

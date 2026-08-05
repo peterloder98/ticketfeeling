@@ -14,6 +14,7 @@ import { withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
+import { buildBillingSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
 import type { Prisma } from "@prisma/client";
 
 type SeatLike = {
@@ -273,6 +274,13 @@ export async function fulfillPaidOrder(orderId: string) {
           }
         : billing;
 
+      // Invoice seller = billing address only (tax/accounting). Order sellerSnapshot stays public.
+      const billingSeller = buildBillingSellerIdentity(
+        order.organization,
+        order.organization.settings,
+      );
+      const invoiceSellerSnapshot = sellerSnapshotPayload(billingSeller, "seller");
+
       invoice = await tx.invoice.create({
         data: {
           organizationId: order.organizationId,
@@ -283,12 +291,7 @@ export async function fulfillPaidOrder(orderId: string) {
           netCents: order.netCents,
           taxCents: order.taxCents,
           grossCents: order.grossCents,
-          sellerSnapshot: (order.sellerSnapshot as object) ?? {
-            displayName: "Peter Loder – Ticketfeeling",
-            email: order.organization.settings?.email,
-            vatId: order.organization.settings?.vatId,
-            city: order.organization.settings?.city,
-          },
+          sellerSnapshot: invoiceSellerSnapshot,
           buyerSnapshot: buyerSnapshot as Prisma.InputJsonValue,
           items: {
             create: [

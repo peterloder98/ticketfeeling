@@ -92,11 +92,28 @@ async function main() {
   const allPermissions = await prisma.permission.findMany();
   const permByKey = Object.fromEntries(allPermissions.map((p) => [p.key, p]));
 
+  const publicCompanyAddress = {
+    street: "Innere Münchener Str.",
+    houseNumber: "36",
+    postalCode: "84028",
+    city: "Landshut",
+    country: "DE",
+  };
+  const billingCompanyAddress = {
+    street: "Konradinstr.",
+    houseNumber: "6",
+    postalCode: "84032",
+    city: "Altdorf",
+    country: "DE",
+  };
+
   const orgSettingsData = {
     legalPersonName: "Peter Loder",
     tradeName: "Ticketfeeling",
     brandName: "SCHLAGERfeeling",
     taxOffice: "Finanzamt Landshut (ergänzen)",
+    publicCompanyAddress,
+    billingCompanyAddress,
   };
 
   const org = await prisma.organization.upsert({
@@ -116,11 +133,13 @@ async function main() {
       legalForm: "Einzelunternehmen",
       contactFirstName: "Peter",
       contactLastName: "Loder",
-      street: "Innere Münchener Str.",
-      houseNumber: "36",
-      postalCode: "84028",
-      city: "Landshut",
-      country: "DE",
+      street: publicCompanyAddress.street,
+      houseNumber: publicCompanyAddress.houseNumber,
+      postalCode: publicCompanyAddress.postalCode,
+      city: publicCompanyAddress.city,
+      country: publicCompanyAddress.country,
+      publicCompanyAddress,
+      billingCompanyAddress,
       phone: "+49 (wird ergänzt)",
       email: "info@ticketfeeling.de",
       supportEmail: "support@ticketfeeling.de",
@@ -138,11 +157,13 @@ async function main() {
       legalForm: "Einzelunternehmen",
       contactFirstName: "Peter",
       contactLastName: "Loder",
-      street: "Innere Münchener Str.",
-      houseNumber: "36",
-      postalCode: "84028",
-      city: "Landshut",
-      country: "DE",
+      street: publicCompanyAddress.street,
+      houseNumber: publicCompanyAddress.houseNumber,
+      postalCode: publicCompanyAddress.postalCode,
+      city: publicCompanyAddress.city,
+      country: publicCompanyAddress.country,
+      publicCompanyAddress,
+      billingCompanyAddress,
       phone: "+49 (wird ergänzt)",
       email: "info@ticketfeeling.de",
       supportEmail: "support@ticketfeeling.de",

@@ -4,6 +4,7 @@ import { getPrisma } from "@/lib/db";
 import { writePayoutAudit } from "@/lib/stripe-payout/audit";
 import type { PayoutDocumentType } from "@/lib/stripe-payout/types";
 import { formatEuroFromCents } from "@/lib/money";
+import { buildBillingSellerIdentity, formatSellerAddressBlock } from "@/lib/legal/seller";
 
 function pdfBuffer(build: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -44,7 +45,10 @@ export async function buildPayoutDocumentPdf(localPayoutId: string, documentType
   const prisma = getPrisma();
   const payout = await prisma.stripePayout.findUniqueOrThrow({
     where: { id: localPayoutId },
-    include: { balanceTransactions: true },
+    include: {
+      balanceTransactions: true,
+      organization: { include: { settings: true } },
+    },
   });
   const bts = payout.balanceTransactions;
   const orders = await prisma.order.findMany({
@@ -56,6 +60,11 @@ export async function buildPayoutDocumentPdf(localPayoutId: string, documentType
     include: { invoices: true, items: true },
   });
 
+  const billingSeller =
+    payout.organization != null
+      ? buildBillingSellerIdentity(payout.organization, payout.organization.settings)
+      : null;
+
   const title =
     documentType === "revenue_collective"
       ? "Interner Erlös-Sammelbuchungsbeleg zur Stripe-Auszahlung"
@@ -66,6 +75,14 @@ export async function buildPayoutDocumentPdf(localPayoutId: string, documentType
   const buf = await pdfBuffer((doc) => {
     doc.fillColor("#0F2747").fontSize(16).text(title, { align: "left" });
     doc.moveDown(0.5);
+    if (billingSeller) {
+      doc.fillColor("#334155").fontSize(9);
+      doc.text(billingSeller.displayName);
+      for (const line of formatSellerAddressBlock(billingSeller).split("\n")) {
+        doc.text(line);
+      }
+      doc.moveDown(0.5);
+    }
     doc.fillColor("#334155").fontSize(10);
     doc.text(`Stripe-Payout-ID: ${payout.stripePayoutId}`);
     doc.text(`Status: ${payout.status} · Abgleich: ${payout.transactionReconciliationStatus}`);

@@ -1,4 +1,9 @@
 import type { LegalDocumentType } from "@/lib/legal/document-types";
+import {
+  DEFAULT_LEGAL_PERSON_LINE,
+  DEFAULT_PUBLIC_COMPANY_ADDRESS,
+  formatCompanyAddressBlock,
+} from "@/lib/legal/company-address";
 
 export type LegalSeedDoc = {
   type: LegalDocumentType;
@@ -8,20 +13,19 @@ export type LegalSeedDoc = {
   content: string;
 };
 
-const SELLER = `Peter Loder
-Konradinstr. 6
-84032 Altdorf
-Deutschland
-Einzelunternehmen
+/** Public address only — never Konradinstr. / Altdorf in customer-facing legal texts. */
+const SELLER = `${formatCompanyAddressBlock(DEFAULT_PUBLIC_COMPANY_ADDRESS, {
+  legalPersonLine: DEFAULT_LEGAL_PERSON_LINE,
+})}
 E-Mail: support@ticketfeeling.de
 Telefon: 01512 / 5744383`;
 
 export const LEGAL_SEED_CATALOG: LegalSeedDoc[] = [
   {
     type: "impressum",
-    version: "1.0.0",
+    version: "1.0.1",
     title: "Impressum",
-    changelog: "Erstveröffentlichung Ticketfeeling",
+    changelog: "Öffentliche Anschrift: Innere Münchener Str. 36, Landshut (Billing-Adresse nur intern)",
     content: `Angaben gemäß § 5 Digitale-Dienste-Gesetz (DDG)
 
 ${SELLER}
@@ -251,17 +255,15 @@ Hinweis: Entwurf für Ticketfeeling – vor Produktivstart fachlich prüfen.`,
   },
   {
     type: "withdrawal_form",
-    version: "1.0.0",
+    version: "1.0.1",
     title: "Muster-Widerrufsformular",
-    changelog: "Erstveröffentlichung",
+    changelog: "Öffentliche Anschrift Landshut",
     content: `Muster-Widerrufsformular
 (Wenn Sie den Vertrag widerrufen wollen, dann füllen Sie bitte dieses Formular aus und senden Sie es zurück. Dieses Formular gilt nur, soweit ein Widerrufsrecht besteht – nicht für Termintickets nach § 312g Abs. 2 Nr. 9 BGB.)
 
 An:
 Peter Loder – Ticketfeeling
-Konradinstr. 6
-84032 Altdorf
-Deutschland
+${formatCompanyAddressBlock(DEFAULT_PUBLIC_COMPANY_ADDRESS)}
 E-Mail: support@ticketfeeling.de
 
 Hiermit widerrufe(n) ich/wir (*) den von mir/uns (*) abgeschlossenen Vertrag über den Kauf der folgenden Waren (*)/die Erbringung der folgenden Dienstleistung (*):
@@ -306,9 +308,9 @@ Hinweis: Entwurf für Ticketfeeling – vor Produktivstart fachlich prüfen.`,
   },
   {
     type: "cookies",
-    version: "1.0.0",
+    version: "1.0.1",
     title: "Cookie-Richtlinie",
-    changelog: "Erstveröffentlichung",
+    changelog: "Öffentliche Anschrift Landshut",
     content: `Cookie-Richtlinie – Ticketfeeling
 Stand: August 2026
 
@@ -336,19 +338,14 @@ ${SELLER}`,
   },
   {
     type: "privacy",
-    version: "1.0.0",
+    version: "1.0.1",
     title: "Datenschutzerklärung",
-    changelog: "Erstveröffentlichung DSGVO-Erklärung Ticketfeeling",
+    changelog: "Öffentliche Anschrift Landshut (Verantwortlicher)",
     content: `Datenschutzerklärung – Ticketfeeling
 Stand: August 2026
 
 1. Verantwortlicher
-Peter Loder
-Konradinstr. 6
-84032 Altdorf
-Deutschland
-E-Mail: support@ticketfeeling.de
-Telefon: 01512 / 5744383
+${SELLER}
 
 2. Übersicht
 Diese Erklärung informiert Sie gemäß Art. 13 und 14 DSGVO über die Verarbeitung personenbezogener Daten bei Nutzung der Ticketfeeling-Plattform.

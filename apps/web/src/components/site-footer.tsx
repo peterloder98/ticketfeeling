@@ -1,8 +1,32 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand-logo";
 import { CookieSettingsButton } from "@/components/cookie-settings-button";
+import { getDefaultOrganization } from "@/lib/commerce/org";
+import {
+  DEFAULT_LEGAL_PERSON_LINE,
+  formatCompanyAddressBlock,
+  resolvePublicCompanyAddress,
+} from "@/lib/legal/company-address";
 
-export function SiteFooter() {
+export async function SiteFooter() {
+  let legalPersonLine = DEFAULT_LEGAL_PERSON_LINE;
+  let publicAddress = resolvePublicCompanyAddress(null);
+  try {
+    const org = await getDefaultOrganization();
+    if (org) {
+      publicAddress = resolvePublicCompanyAddress(org.settings);
+      const form = org.settings?.legalForm?.trim();
+      const name = org.settings?.legalName?.trim() || "Peter Loder";
+      legalPersonLine = form && !name.includes("(") ? `${name} (${form})` : name;
+    }
+  } catch {
+    /* keep defaults */
+  }
+
+  const publicAddressBlock = formatCompanyAddressBlock(publicAddress, {
+    legalPersonLine,
+  });
+
   return (
     <footer className="mt-12 border-t border-white/10 bg-[var(--tf-navy)] text-white">
       <div className="tf-container grid gap-10 py-12 md:grid-cols-2 lg:grid-cols-4">
@@ -15,6 +39,9 @@ export function SiteFooter() {
           </p>
           <p className="text-base leading-relaxed text-white/80">
             Events persönlich, sicher und direkt beim Veranstalter buchen.
+          </p>
+          <p className="whitespace-pre-line text-sm leading-relaxed text-white/55">
+            {publicAddressBlock}
           </p>
         </div>
 

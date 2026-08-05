@@ -9,7 +9,8 @@
 * **Rechtlicher Betreiber / Verkäufer / Veranstalter:** Peter Loder (Einzelunternehmen)
 * **Geschäftsbezeichnung:** Ticketfeeling
 * **Veranstaltungsmarke:** SCHLAGERfeeling
-* **Anschrift:** Innere Münchener Str. 36, 84028 Landshut
+* **Öffentliche Anschrift:** Innere Münchener Str. 36, 84028 Landshut (Impressum/Kontakt/Rechtstexte)
+* **Rechnungsanschrift (intern):** Konradinstr. 6, 84032 Altdorf — nur Rechnungen/Steuerbelege, nie öffentlich
 * Ticketfeeling ist zunächst **keine** eigene Firma und verwahrt **keine** fremden Gelder.
 
 ### Externe Darstellung

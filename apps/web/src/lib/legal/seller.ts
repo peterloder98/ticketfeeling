@@ -1,10 +1,21 @@
 import type { Organization, OrganizationSettings } from "@prisma/client";
+import {
+  type CompanyAddress,
+  DEFAULT_LEGAL_PERSON_LINE,
+  countryLabelDe,
+  formatCompanyAddressBlock,
+  formatCompanyAddressLine,
+  resolveBillingCompanyAddress,
+  resolvePublicCompanyAddress,
+} from "@/lib/legal/company-address";
 
 export type SellerIdentity = {
   legalPersonName: string;
   tradeName: string;
   displayName: string;
   brandName: string;
+  /** "Peter Loder (Einzelunternehmen)" when legal form is set */
+  legalPersonLine: string;
   street: string;
   houseNumber: string;
   postalCode: string;
@@ -19,12 +30,16 @@ export type SellerIdentity = {
   taxNumber: string | null;
   taxOffice: string | null;
   responsiblePerson: string;
+  /** public | billing — which address this identity carries */
+  addressKind: "public" | "billing";
 };
 
-export function buildSellerIdentity(
+export type SellerAddressKind = "public" | "billing";
+
+function identityBase(
   org: Organization,
   settings: OrganizationSettings | null | undefined,
-): SellerIdentity {
+) {
   const data = (settings?.data ?? {}) as Record<string, unknown>;
   const legalPersonName =
     (typeof data.legalPersonName === "string" && data.legalPersonName) ||
@@ -34,17 +49,18 @@ export function buildSellerIdentity(
     (typeof data.tradeName === "string" && data.tradeName) || org.name || "Ticketfeeling";
   const brandName =
     (typeof data.brandName === "string" && data.brandName) || "SCHLAGERfeeling";
+  const legalForm = settings?.legalForm?.trim() || "Einzelunternehmen";
+  const legalPersonLine =
+    legalForm && !legalPersonName.includes("(")
+      ? `${legalPersonName} (${legalForm})`
+      : legalPersonName || DEFAULT_LEGAL_PERSON_LINE;
 
   return {
     legalPersonName,
     tradeName,
     displayName: `${legalPersonName} – ${tradeName}`,
     brandName,
-    street: settings?.street ?? "Innere Münchener Str.",
-    houseNumber: settings?.houseNumber ?? "36",
-    postalCode: settings?.postalCode ?? "84028",
-    city: settings?.city ?? "Landshut",
-    country: settings?.country ?? "DE",
+    legalPersonLine,
     email: settings?.email ?? null,
     supportEmail: settings?.supportEmail ?? null,
     phone: settings?.phone ?? null,
@@ -57,6 +73,84 @@ export function buildSellerIdentity(
   };
 }
 
-export function formatSellerAddress(seller: SellerIdentity) {
-  return `${seller.street} ${seller.houseNumber}, ${seller.postalCode} ${seller.city}`;
+function withAddress(
+  base: ReturnType<typeof identityBase>,
+  address: CompanyAddress,
+  addressKind: SellerAddressKind,
+): SellerIdentity {
+  return {
+    ...base,
+    street: address.street,
+    houseNumber: address.houseNumber,
+    postalCode: address.postalCode,
+    city: address.city,
+    country: address.country,
+    addressKind,
+  };
+}
+
+/** Public-facing seller (Impressum, checkout, tickets, emails). Landshut — never Konradinstr. */
+export function buildSellerIdentity(
+  org: Organization,
+  settings: OrganizationSettings | null | undefined,
+): SellerIdentity {
+  return withAddress(
+    identityBase(org, settings),
+    resolvePublicCompanyAddress(settings),
+    "public",
+  );
+}
+
+/** Billing / tax seller (invoice PDFs, accounting docs). Altdorf / Konradinstr. */
+export function buildBillingSellerIdentity(
+  org: Organization,
+  settings: OrganizationSettings | null | undefined,
+): SellerIdentity {
+  return withAddress(
+    identityBase(org, settings),
+    resolveBillingCompanyAddress(settings),
+    "billing",
+  );
+}
+
+export function formatSellerAddress(seller: Pick<SellerIdentity, "street" | "houseNumber" | "postalCode" | "city">) {
+  return formatCompanyAddressLine({
+    street: seller.street,
+    houseNumber: seller.houseNumber,
+    postalCode: seller.postalCode,
+    city: seller.city,
+    country: "DE",
+  });
+}
+
+/** Multiline address block including legal person line and country. */
+export function formatSellerAddressBlock(seller: SellerIdentity) {
+  return formatCompanyAddressBlock(
+    {
+      street: seller.street,
+      houseNumber: seller.houseNumber,
+      postalCode: seller.postalCode,
+      city: seller.city,
+      country: seller.country,
+    },
+    { legalPersonLine: seller.legalPersonLine },
+  );
+}
+
+export function formatSellerCountry(seller: Pick<SellerIdentity, "country">) {
+  return countryLabelDe(seller.country);
+}
+
+/** Snapshot payload for orders (public) or invoices (billing). */
+export function sellerSnapshotPayload(
+  seller: SellerIdentity,
+  role: "seller" | "organizer" = "seller",
+) {
+  return {
+    ...seller,
+    addressLine: formatSellerAddress(seller),
+    addressBlock: formatSellerAddressBlock(seller),
+    countryLabel: formatSellerCountry(seller),
+    role,
+  };
 }
