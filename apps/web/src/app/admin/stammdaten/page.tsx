@@ -179,7 +179,7 @@ export default async function AdminStammdatenPage() {
       <div className="tf-card text-sm">
         <h2 className="text-lg font-semibold">Verwaltungsgebühr</h2>
         <p className="mt-2 text-[var(--muted)]">
-          Die einheitliche Verwaltungsgebühr (Standard 3 %) wird zentral unter Einstellungen →
+          Die einheitliche Verwaltungsgebühr (Standard 4 %) wird zentral unter Einstellungen →
           Preise und Gebühren gepflegt — nicht mehr als Vorverkaufsgebühr.
         </p>
         <Link

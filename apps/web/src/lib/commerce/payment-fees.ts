@@ -5,7 +5,12 @@
 
 import { DEFAULT_SEPA_MIN_DAYS_BEFORE_EVENT } from "@/lib/commerce/sepa-availability";
 
-export type PaymentMethodKey = "card" | "sepa_debit" | "apple_pay" | "google_pay";
+export type PaymentMethodKey =
+  | "card"
+  | "sepa_debit"
+  | "apple_pay"
+  | "google_pay"
+  | "klarna";
 
 /** Legacy keys still accepted from older sessions / DB rows */
 export type LegacyPaymentMethodKey = "stripe_sepa" | "stripe_card" | "paypal";
@@ -33,6 +38,7 @@ export const DEFAULT_PAYMENT_METHOD_ORDER: PaymentMethodKey[] = [
   "card",
   "apple_pay",
   "google_pay",
+  "klarna",
 ];
 
 export const DEFAULT_PAYMENT_UI_CONFIG: PaymentUiConfig = {
@@ -67,6 +73,14 @@ export const DEFAULT_PAYMENT_FEE_CONFIG: PaymentFeeConfigMap = {
   google_pay: {
     percentageBps: 150,
     fixedFeeCents: 25,
+    active: true,
+    testMode: true,
+    customerSurchargeEnabled: false,
+  },
+  /** Stripe Klarna estimate (DE) — internal cost only, never added to customer total */
+  klarna: {
+    percentageBps: 299,
+    fixedFeeCents: 35,
     active: true,
     testMode: true,
     customerSurchargeEnabled: false,
@@ -113,6 +127,13 @@ export const PAYMENT_METHOD_META: Record<
     provider: "stripe",
     wallet: true,
   },
+  klarna: {
+    title: "Klarna",
+    description:
+      "Jetzt kaufen und flexibel später oder in Raten bezahlen — ganz nach deinen Möglichkeiten.",
+    hint: "Abwicklung sicher über Stripe.",
+    provider: "stripe",
+  },
 };
 
 export function roundCents(value: number): number {
@@ -120,7 +141,13 @@ export function roundCents(value: number): number {
 }
 
 export function normalizePaymentMethodKey(value: string): PaymentMethodKey | null {
-  if (value === "card" || value === "sepa_debit" || value === "apple_pay" || value === "google_pay") {
+  if (
+    value === "card" ||
+    value === "sepa_debit" ||
+    value === "apple_pay" ||
+    value === "google_pay" ||
+    value === "klarna"
+  ) {
     return value;
   }
   if (value === "stripe_card") return "card";
@@ -140,6 +167,7 @@ export function parsePaymentFeeConfig(raw: unknown): PaymentFeeConfigMap {
     sepa_debit: "sepa_debit",
     apple_pay: "apple_pay",
     google_pay: "google_pay",
+    klarna: "klarna",
   };
 
   for (const [srcKey, destKey] of Object.entries(alias)) {
@@ -210,7 +238,8 @@ export function isPaymentMethodKey(value: string): value is PaymentMethodKey {
     value === "card" ||
     value === "sepa_debit" ||
     value === "apple_pay" ||
-    value === "google_pay"
+    value === "google_pay" ||
+    value === "klarna"
   );
 }
 
@@ -300,7 +329,7 @@ export function buildCheckoutPaymentOptions(input: {
       description: meta.description,
       hint:
         key === "sepa_debit" && sepaDisabled
-          ? "Lastschrift ist für dieses Event aufgrund des nahen Veranstaltungstermins nicht mehr verfügbar. Bitte bezahle mit Karte, Apple Pay oder Google Pay."
+          ? "Lastschrift ist für dieses Event aufgrund des nahen Veranstaltungstermins nicht mehr verfügbar. Bitte bezahle mit Karte, Apple Pay, Google Pay oder Klarna."
           : meta.hint,
       brands: meta.brands,
       provider: "stripe" as const,
@@ -344,6 +373,9 @@ export function translateStripePaymentError(message: string | null | undefined):
   }
   if (lower.includes("authentication") || lower.includes("3d secure")) {
     return "Die zusätzliche Bestätigung ist fehlgeschlagen. Bitte versuche es erneut.";
+  }
+  if (lower.includes("klarna")) {
+    return "Die Klarna-Zahlung konnte nicht abgeschlossen werden. Bitte versuche es erneut oder wähle eine andere Zahlungsart.";
   }
   // Avoid leaking raw Stripe English tech messages when possible
   if (/^[A-Z_]+$/.test(raw) || lower.includes("invalid")) {

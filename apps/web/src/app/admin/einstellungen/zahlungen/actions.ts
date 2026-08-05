@@ -61,6 +61,7 @@ export async function updatePaymentFeeConfigAction(formData: FormData) {
     sepa_debit: readMethod(formData, "sepa_debit"),
     apple_pay: readMethod(formData, "apple_pay"),
     google_pay: readMethod(formData, "google_pay"),
+    klarna: readMethod(formData, "klarna"),
   };
 
   for (const key of Object.keys(config) as PaymentMethodKey[]) {

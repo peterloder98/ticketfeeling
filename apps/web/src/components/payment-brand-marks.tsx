@@ -97,6 +97,19 @@ export function SepaMark() {
   );
 }
 
+export function KlarnaMark() {
+  return (
+    <MarkShell label="Klarna" className="!px-3">
+      <span
+        className="text-[13px] font-bold tracking-tight text-[#FFB3C7]"
+        style={{ fontFamily: "Arial, Helvetica, sans-serif", color: "#0A0B09" }}
+      >
+        Klarna.
+      </span>
+    </MarkShell>
+  );
+}
+
 /** Accepted online payment methods shown for trust — always centered. */
 export function PaymentBrandRow({ className = "" }: { className?: string }) {
   return (
@@ -105,6 +118,9 @@ export function PaymentBrandRow({ className = "" }: { className?: string }) {
       role="list"
       aria-label="Akzeptierte Zahlungsarten"
     >
+      <span role="listitem">
+        <SepaMark />
+      </span>
       <span role="listitem">
         <VisaMark />
       </span>
@@ -118,7 +134,7 @@ export function PaymentBrandRow({ className = "" }: { className?: string }) {
         <GooglePayMark />
       </span>
       <span role="listitem">
-        <SepaMark />
+        <KlarnaMark />
       </span>
     </div>
   );

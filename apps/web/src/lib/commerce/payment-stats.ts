@@ -9,8 +9,12 @@ export type PaymentMethodStatRow = {
   revenueCents: number;
   estimatedFeeCents: number;
   actualFeeCents: number;
+  /** Average actual Stripe fee per order */
+  avgFeeCents: number;
   netPayoutCents: number;
   feeVarianceCents: number;
+  /** Share of total revenue (0–100) */
+  sharePercent: number;
 };
 
 export type PlatformFeeVsStripeStats = {
@@ -69,8 +73,10 @@ export async function getPaymentFeeStats(input: {
       revenueCents: 0,
       estimatedFeeCents: 0,
       actualFeeCents: 0,
+      avgFeeCents: 0,
       netPayoutCents: 0,
       feeVarianceCents: 0,
+      sharePercent: 0,
     });
   }
 
@@ -92,8 +98,10 @@ export async function getPaymentFeeStats(input: {
         revenueCents: 0,
         estimatedFeeCents: 0,
         actualFeeCents: 0,
+        avgFeeCents: 0,
         netPayoutCents: 0,
         feeVarianceCents: 0,
+        sharePercent: 0,
       });
     }
     const row = buckets.get(method)!;
@@ -129,6 +137,15 @@ export async function getPaymentFeeStats(input: {
       feeVarianceCents: 0,
     },
   );
+
+  for (const row of rows) {
+    row.avgFeeCents =
+      row.orderCount > 0 ? Math.round(row.actualFeeCents / row.orderCount) : 0;
+    row.sharePercent =
+      totals.revenueCents > 0
+        ? Math.round((row.revenueCents / totals.revenueCents) * 10_000) / 100
+        : 0;
+  }
 
   const avgFeeCents =
     totals.orderCount > 0 ? Math.round(totals.actualFeeCents / totals.orderCount) : 0;
@@ -171,8 +188,10 @@ export function paymentStatsToCsv(rows: PaymentMethodStatRow[]) {
     "Zahlungsart",
     "Bestellungen",
     "Umsatz_EUR",
+    "Anteil_Prozent",
     "Gebuehren_geschaetzt_EUR",
     "Gebuehren_tatsaechlich_EUR",
+    "Gebuehren_durchschnitt_EUR",
     "Abweichung_EUR",
     "Netto_EUR",
   ];
@@ -183,8 +202,10 @@ export function paymentStatsToCsv(rows: PaymentMethodStatRow[]) {
         r.label,
         String(r.orderCount),
         (r.revenueCents / 100).toFixed(2).replace(".", ","),
+        r.sharePercent.toFixed(2).replace(".", ","),
         (r.estimatedFeeCents / 100).toFixed(2).replace(".", ","),
         (r.actualFeeCents / 100).toFixed(2).replace(".", ","),
+        (r.avgFeeCents / 100).toFixed(2).replace(".", ","),
         (r.feeVarianceCents / 100).toFixed(2).replace(".", ","),
         (r.netPayoutCents / 100).toFixed(2).replace(".", ","),
       ].join(";"),

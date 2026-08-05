@@ -27,7 +27,7 @@ export function AddToCartPanel({
   checkoutHref = "/checkout",
 }: {
   categories: Category[];
-  /** e.g. "zzgl. 3 % Verwaltungsgebühr" — shown under ticket price */
+  /** e.g. "zzgl. 4 % Verwaltungsgebühr" — shown under ticket price */
   feeSurchargeNote?: string;
   showRemainingAvailability?: boolean;
   /** @deprecated use cartHref/checkoutHref — kept so old call sites compile */

@@ -405,16 +405,17 @@ export default async function ZahlungenEinstellungenPage({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="border-b border-[var(--tf-line)] text-[var(--tf-text-secondary)]">
                 <th className="py-2 pr-3 font-medium">Zahlungsart</th>
                 <th className="py-2 pr-3 font-medium">Bestellungen</th>
                 <th className="py-2 pr-3 font-medium">Umsatz</th>
-                <th className="py-2 pr-3 font-medium">Gebühren (geschätzt)</th>
-                <th className="py-2 pr-3 font-medium">Gebühren (tatsächlich)</th>
-                <th className="py-2 pr-3 font-medium">Abweichung</th>
-                <th className="py-2 font-medium">Netto</th>
+                <th className="py-2 pr-3 font-medium">Anteil</th>
+                <th className="py-2 pr-3 font-medium">Stripe-Gebühren</th>
+                <th className="py-2 pr-3 font-medium">Ø Stripe-Gebühr</th>
+                <th className="py-2 pr-3 font-medium">Abweichung (geschätzt)</th>
+                <th className="py-2 font-medium">Netto-Auszahlung</th>
               </tr>
             </thead>
             <tbody>
@@ -426,10 +427,13 @@ export default async function ZahlungenEinstellungenPage({
                     {formatEuroFromCents(row.revenueCents)}
                   </td>
                   <td className="py-2.5 pr-3 tabular-nums">
-                    {formatEuroFromCents(row.estimatedFeeCents)}
+                    {row.sharePercent.toFixed(1).replace(".", ",")}&nbsp;%
                   </td>
                   <td className="py-2.5 pr-3 tabular-nums">
                     {formatEuroFromCents(row.actualFeeCents)}
+                  </td>
+                  <td className="py-2.5 pr-3 tabular-nums">
+                    {formatEuroFromCents(row.avgFeeCents)}
                   </td>
                   <td className="py-2.5 pr-3 tabular-nums">
                     {formatEuroFromCents(row.feeVarianceCents)}
@@ -441,7 +445,7 @@ export default async function ZahlungenEinstellungenPage({
               ))}
               {stats.rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-6 text-[var(--tf-text-secondary)]">
+                  <td colSpan={8} className="py-6 text-[var(--tf-text-secondary)]">
                     Noch keine bezahlten Online-Bestellungen im Zeitraum.
                   </td>
                 </tr>
@@ -452,11 +456,12 @@ export default async function ZahlungenEinstellungenPage({
                   <td className="py-3 pr-3 tabular-nums">
                     {formatEuroFromCents(stats.totals.revenueCents)}
                   </td>
-                  <td className="py-3 pr-3 tabular-nums">
-                    {formatEuroFromCents(stats.totals.estimatedFeeCents)}
-                  </td>
+                  <td className="py-3 pr-3 tabular-nums">100&nbsp;%</td>
                   <td className="py-3 pr-3 tabular-nums">
                     {formatEuroFromCents(stats.totals.actualFeeCents)}
+                  </td>
+                  <td className="py-3 pr-3 tabular-nums">
+                    {formatEuroFromCents(stats.avgFeeCents)}
                   </td>
                   <td className="py-3 pr-3 tabular-nums">
                     {formatEuroFromCents(stats.totals.feeVarianceCents)}

@@ -6,6 +6,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import {
   ApplePayMark,
   GooglePayMark,
+  KlarnaMark,
   MastercardMark,
   SepaMark,
   VisaMark,
@@ -26,6 +27,8 @@ function brandsForMethod(key: PaymentMethodKey) {
       return <GooglePayMark />;
     case "sepa_debit":
       return <SepaMark />;
+    case "klarna":
+      return <KlarnaMark />;
     default:
       return null;
   }

@@ -20,7 +20,7 @@ export type EventCardData = {
   locationCity?: string | null;
   coverImageUrl?: string | null;
   priceLabel?: string | null;
-  /** Small note under price, e.g. "zzgl. 3 % Verwaltungsgebühr" */
+  /** Small note under price, e.g. "zzgl. 4 % Verwaltungsgebühr" */
   priceNote?: string | null;
   remainingTickets?: number | null;
   capacity?: number | null;

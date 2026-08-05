@@ -134,7 +134,7 @@ export function EmbedCheckoutView() {
           ))}
         </ul>
         <p className="mt-2 flex justify-between border-t border-[var(--tf-line)] pt-2 text-sm font-semibold text-[var(--tf-navy)]">
-          <span>Gesamt</span>
+          <span>Gesamtbetrag</span>
           <span className="tabular-nums">
             {formatEuroFromCents(data.customerTotalCents)}
           </span>

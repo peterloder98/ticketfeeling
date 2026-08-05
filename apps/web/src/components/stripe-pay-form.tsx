@@ -10,10 +10,12 @@ function PayInner({
   successPath,
   processingPath,
   isSepa,
+  isKlarna,
 }: {
   successPath: string;
   processingPath: string;
   isSepa: boolean;
+  isKlarna: boolean;
 }) {
   const stripe = useStripe();
   const elements = useElements();
@@ -47,6 +49,20 @@ function PayInner({
     router.refresh();
   }
 
+  const paymentMethodOrder = isSepa
+    ? ["sepa_debit"]
+    : isKlarna
+      ? ["klarna"]
+      : ["card", "apple_pay", "google_pay"];
+
+  const submitLabel = pending
+    ? "Zahlung läuft…"
+    : isSepa
+      ? "Lastschrift verbindlich erteilen"
+      : isKlarna
+        ? "Mit Klarna weiter"
+        : "Jetzt bezahlen";
+
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       {isSepa ? (
@@ -55,18 +71,25 @@ function PayInner({
           Mit der Bestätigung erteilst du Stripe das Mandat für den Lastschrifteinzug.
         </p>
       ) : null}
+      {isKlarna ? (
+        <p className="rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
+          Du wirst zu Klarna weitergeleitet und kannst dort flexibel später oder in Raten bezahlen.
+          Die Abwicklung erfolgt sicher über Stripe.
+        </p>
+      ) : null}
       <PaymentElement
         options={{
           layout: "tabs",
-          paymentMethodOrder: isSepa ? ["sepa_debit"] : ["card", "apple_pay", "google_pay"],
-          wallets: isSepa
-            ? { applePay: "never", googlePay: "never" }
-            : { applePay: "auto", googlePay: "auto" },
+          paymentMethodOrder,
+          wallets:
+            isSepa || isKlarna
+              ? { applePay: "never", googlePay: "never" }
+              : { applePay: "auto", googlePay: "auto" },
         }}
       />
       {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
       <button type="submit" className="tf-btn tf-btn-primary w-full" disabled={!stripe || pending}>
-        {pending ? "Zahlung läuft…" : isSepa ? "Lastschrift verbindlich erteilen" : "Jetzt bezahlen"}
+        {submitLabel}
       </button>
       <p className="text-center text-xs text-[var(--tf-text-secondary)]">
         Sichere Zahlungsabwicklung über Stripe.
@@ -102,6 +125,7 @@ export function StripePayForm({
   const isSepa =
     paymentMethod === "sepa_debit" ||
     paymentMethod === "stripe_sepa";
+  const isKlarna = paymentMethod === "klarna";
   const resolvedSuccess = successPath ?? `/konto/bestellung/${orderId}`;
   const resolvedProcessing = processingPath ?? `/konto/bestellung/${orderId}`;
   const stripePromise = loadStripe(publishableKey);
@@ -111,6 +135,7 @@ export function StripePayForm({
         successPath={resolvedSuccess}
         processingPath={resolvedProcessing}
         isSepa={isSepa}
+        isKlarna={isKlarna}
       />
     </Elements>
   );

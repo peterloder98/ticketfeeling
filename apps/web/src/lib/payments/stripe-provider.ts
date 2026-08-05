@@ -4,7 +4,8 @@ import { prisma } from "@/lib/db";
 import type { PaymentMethodKey } from "@/lib/commerce/payment-fees";
 
 function paymentMethodTypesFor(method: string | null | undefined): string[] {
-  if (method === "sepa_debit") return ["sepa_debit"];
+  if (method === "sepa_debit" || method === "stripe_sepa") return ["sepa_debit"];
+  if (method === "klarna") return ["klarna"];
   // card covers Apple Pay / Google Pay wallets in Payment Element
   return ["card"];
 }
@@ -42,11 +43,20 @@ export const stripePaymentProvider: PaymentProvider = {
             eventId,
             feePercentage: String(order.administrationFeePercentageBasisPoints),
             ticketSubtotalCents: String(order.ticketSubtotalCents),
-            administrationFeeCents: String(order.administrationFeeGrossCents || order.feeGrossCents),
+            administrationFeeCents: String(
+              order.administrationFeeGrossCents || order.feeGrossCents,
+            ),
             totalGrossCents: String(order.customerTotalCents || order.grossCents),
             environment: process.env.NODE_ENV ?? "development",
           },
           description: `Ticketfeeling ${order.orderNumber}`,
+          ...(methodTypes.includes("klarna")
+            ? {
+                payment_method_options: {
+                  klarna: { preferred_locale: "de-DE" as const },
+                },
+              }
+            : {}),
         },
         { idempotencyKey: `pi_order_${order.id}` },
       );

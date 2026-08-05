@@ -19,6 +19,8 @@ import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
+import { FeeInfoDialog } from "@/components/fee-info-dialog";
+import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
@@ -54,9 +56,7 @@ export default async function CheckoutPage() {
   });
   const feePercentLabel =
     summary.administrationFeePercentageBasisPoints > 0
-      ? (summary.administrationFeePercentageBasisPoints / 100)
-          .toFixed(summary.administrationFeePercentageBasisPoints % 100 === 0 ? 0 : 2)
-          .replace(".", ",")
+      ? feePercentNumberLabel(summary.administrationFeePercentageBasisPoints)
       : null;
 
   let isStaff = false;
@@ -192,10 +192,23 @@ export default async function CheckoutPage() {
                 </p>
               ) : null}
               {summary.feeGrossCents > 0 ? (
-                <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                  <span>{summary.feeLabel}</span>
-                  <span className="tabular-nums">{formatEuroFromCents(summary.feeGrossCents)}</span>
-                </p>
+                <div className="space-y-1">
+                  <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
+                    <span>
+                      {summary.feeLabel.includes("%")
+                        ? summary.feeLabel
+                        : `${summary.feeLabel}${feePercentLabel ? ` ${feePercentLabel} %` : ""}`}
+                    </span>
+                    <span className="tabular-nums">
+                      {formatEuroFromCents(summary.feeGrossCents)}
+                    </span>
+                  </p>
+                  <div className="pl-0">
+                    <FeeInfoDialog
+                      feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
+                    />
+                  </div>
+                </div>
               ) : null}
               {summary.giftCardAppliedCents > 0 ? (
                 <p className="flex justify-between gap-4 text-[var(--tf-teal-hover)]">
@@ -207,29 +220,19 @@ export default async function CheckoutPage() {
               ) : null}
               <div className="border-t border-[var(--tf-line)] pt-3">
                 <p className="flex justify-between gap-4 text-lg font-semibold text-[var(--tf-navy)]">
-                  <span>Gesamt</span>
+                  <span>Gesamtbetrag</span>
                   <span className="tabular-nums">{formatEuroFromCents(summary.grossCents)}</span>
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                   inkl. gesetzlicher Umsatzsteuer
-                  <br />
-                  {summary.feeGrossCents > 0 ? (
-                    <>
-                      Verwaltungsgebühr{feePercentLabel ? ` ${feePercentLabel} %` : ""}{" "}
-                      {formatEuroFromCents(summary.feeGrossCents)}
-                    </>
-                  ) : (
-                    <>keine Verwaltungsgebühr</>
-                  )}
                 </p>
                 <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                   Die gewählte Zahlungsart verändert den Gesamtpreis nicht.
                 </p>
                 {feePercentLabel ? (
                   <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
-                    Unsere Verwaltungsgebühr beträgt nur {feePercentLabel}&nbsp;% und bleibt
-                    unabhängig von der Zahlungsart gleich. Damit halten wir den Ticketservice
-                    bewusst transparent und deutlich günstiger als viele klassische Ticketanbieter.
+                    Unsere Verwaltungsgebühr beträgt nur {feePercentLabel}&nbsp;% — deutlich
+                    günstiger als bei vielen klassischen Ticketplattformen.
                   </p>
                 ) : null}
               </div>

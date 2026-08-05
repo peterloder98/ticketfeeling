@@ -10,7 +10,7 @@ export type PlatformFeeTaxMode = "inherit_ticket_tax_rate" | "custom";
 
 export type PlatformFeeConfig = {
   enabled: boolean;
-  /** 300 = 3.00% */
+  /** 400 = 4.00% */
   percentageBasisPoints: number;
   displayName: string;
   calculationBase: PlatformFeeCalculationBase;
@@ -22,18 +22,58 @@ export type PlatformFeeConfig = {
   version: number;
 };
 
+/** Default platform fee: 4.00% (400 basis points). */
+export const DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS = 400;
+
+export function feePercentLabel(bps: number): string {
+  const pct = bps / 100;
+  if (!Number.isFinite(pct)) return "0 %";
+  if (Number.isInteger(pct)) return `${pct} %`;
+  return `${pct.toFixed(2).replace(".", ",").replace(/0+$/, "").replace(/,$/, "")} %`;
+}
+
+/** Short percent for prose (no space before %), e.g. "4" or "4,5". */
+export function feePercentNumberLabel(bps: number): string {
+  const pct = bps / 100;
+  if (!Number.isFinite(pct)) return "0";
+  if (Number.isInteger(pct)) return String(pct);
+  return pct.toFixed(2).replace(".", ",").replace(/0+$/, "").replace(/,$/, "");
+}
+
+export function buildDefaultPlatformFeeCustomerDescription(bps: number): string {
+  const pct = feePercentNumberLabel(bps);
+  return `Die Verwaltungsgebühr unterstützt den sicheren Betrieb, die Zahlungsabwicklung, die Ticketbereitstellung und unseren persönlichen Kundenservice. Mit ${pct} % bleibt Ticketfeeling bewusst deutlich unter den Gebühren vieler klassischer Ticketanbieter.`;
+}
+
 export const DEFAULT_PLATFORM_FEE_CONFIG: PlatformFeeConfig = {
   enabled: true,
-  percentageBasisPoints: 300,
+  percentageBasisPoints: DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS,
   displayName: "Verwaltungsgebühr",
   calculationBase: "ticket_subtotal_after_discounts",
   taxMode: "inherit_ticket_tax_rate",
   customTaxRateBasisPoints: null,
-  customerDescription:
-    "Die Verwaltungsgebühr unterstützt den sicheren Betrieb, die Zahlungsabwicklung, die Ticketbereitstellung und unseren persönlichen Kundenservice. Mit 3 % bleibt Ticketfeeling bewusst deutlich unter den Gebühren vieler klassischer Ticketanbieter.",
+  customerDescription: buildDefaultPlatformFeeCustomerDescription(
+    DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS,
+  ),
   activeFrom: null,
   version: 1,
 };
+
+/** What the Verwaltungsgebühr covers — shown in the checkout info dialog. */
+export const PLATFORM_FEE_INFO_BULLETS = [
+  "Betrieb der Ticketfeeling-Plattform",
+  "Sichere Zahlungsabwicklung",
+  "Erstellung und Versand Ihrer Tickets",
+  "QR-Codes und Einlasskontrolle",
+  "Hosting und technische Infrastruktur",
+  "Persönlichen Kundenservice",
+  "Weiterentwicklung des Produkts",
+] as const;
+
+export function buildPlatformFeeInfoClosing(bps: number): string {
+  const pct = feePercentNumberLabel(bps);
+  return `Mit ${pct} % bleibt Ticketfeeling bewusst deutlich unter den Gebühren vieler klassischer Ticketanbieter.`;
+}
 
 export function parsePlatformFeeConfig(raw: unknown): PlatformFeeConfig {
   const base = { ...DEFAULT_PLATFORM_FEE_CONFIG };
@@ -69,7 +109,7 @@ export function parsePlatformFeeConfig(raw: unknown): PlatformFeeConfig {
     customerDescription:
       typeof r.customerDescription === "string" && r.customerDescription.trim()
         ? r.customerDescription.trim()
-        : base.customerDescription,
+        : buildDefaultPlatformFeeCustomerDescription(percentageBasisPoints),
     activeFrom: typeof r.activeFrom === "string" && r.activeFrom ? r.activeFrom : null,
     version:
       typeof r.version === "number" && Number.isFinite(r.version)
@@ -108,11 +148,4 @@ export function computePlatformFeeGrossCents(
   if (base === 0 || bps === 0) return 0;
   // round(base * bps / 10000) with half-up
   return Math.round((base * bps) / 10_000);
-}
-
-export function feePercentLabel(bps: number): string {
-  const pct = bps / 100;
-  if (!Number.isFinite(pct)) return "0 %";
-  if (Number.isInteger(pct)) return `${pct} %`;
-  return `${pct.toFixed(2).replace(".", ",").replace(/0+$/, "").replace(/,$/, "")} %`;
 }

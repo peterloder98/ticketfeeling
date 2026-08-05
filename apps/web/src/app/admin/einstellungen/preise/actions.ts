@@ -9,6 +9,7 @@ import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
   DEFAULT_PLATFORM_FEE_CONFIG,
+  buildDefaultPlatformFeeCustomerDescription,
   parsePlatformFeeConfig,
   type PlatformFeeConfig,
 } from "@/lib/commerce/platform-fee";
@@ -34,10 +35,10 @@ export async function updatePlatformFeeConfigAction(formData: FormData) {
   });
   const before = parsePlatformFeeConfig(settings?.platformFeeConfig);
 
-  const percent = Number(String(formData.get("percentage") ?? "3").replace(",", "."));
+  const percent = Number(String(formData.get("percentage") ?? "4").replace(",", "."));
   const percentageBasisPoints = Math.max(
     0,
-    Math.round((Number.isFinite(percent) ? percent : 3) * 100),
+    Math.round((Number.isFinite(percent) ? percent : 4) * 100),
   );
   const customTaxPercent = Number(
     String(formData.get("customTaxPercent") ?? "7").replace(",", "."),
@@ -61,7 +62,7 @@ export async function updatePlatformFeeConfigAction(formData: FormData) {
       formData.get("taxMode") === "custom" ? customTaxRateBasisPoints : null,
     customerDescription:
       String(formData.get("customerDescription") ?? "").trim() ||
-      DEFAULT_PLATFORM_FEE_CONFIG.customerDescription,
+      buildDefaultPlatformFeeCustomerDescription(percentageBasisPoints),
     activeFrom: String(formData.get("activeFrom") ?? "").trim() || null,
     version: before.version + 1,
   };

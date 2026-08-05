@@ -43,6 +43,8 @@ export function paymentMethodLabel(method: string | null | undefined): string {
       return "Apple Pay";
     case "google_pay":
       return "Google Pay";
+    case "klarna":
+      return "Klarna";
     case "paypal":
       return "PayPal (historisch)";
     default:
