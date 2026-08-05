@@ -194,13 +194,13 @@ export function buildOrderPaidTicketsMail(input: {
   const walletHtmlButtons: string[] = [];
   // Official badge PNGs (Google DE stacked + Apple US from brand kits). Height-driven.
   if (googleUrl) {
-    const src = `${appBaseUrl()}/wallet/add-to-google-wallet.png`;
+    const src = `${appBaseUrl()}/wallet/add-to-google-wallet.png?v=20260805b`;
     walletHtmlButtons.push(
       `<a href="${escapeHtml(googleUrl)}" style="display:inline-block;line-height:0;text-decoration:none;margin:0 10px 10px 0" target="_blank" rel="noreferrer"><img src="${escapeHtml(src)}" alt="Zu Google Wallet hinzufügen" height="40" style="height:40px;width:auto;border:0;display:block" /></a>`,
     );
   }
   if (appleUrl) {
-    const src = `${appBaseUrl()}/wallet/add-to-apple-wallet.png`;
+    const src = `${appBaseUrl()}/wallet/add-to-apple-wallet.png?v=20260805b`;
     walletHtmlButtons.push(
       `<a href="${escapeHtml(appleUrl)}" style="display:inline-block;line-height:0;text-decoration:none;margin:0 10px 10px 0"><img src="${escapeHtml(src)}" alt="Zu Apple Wallet hinzufügen" height="40" style="height:40px;width:auto;border:0;display:block" /></a>`,
     );

@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+
 type Props = {
   ticketId: string;
   /** Guest order access token */
@@ -12,16 +14,34 @@ type Props = {
 
 const PREVIEW_HINT = "Vorschau – Einrichtung folgt";
 
-/** Official badge artwork under /public/wallet (Apple + Google brand kits). */
-const APPLE_BADGE = {
-  src: "/wallet/add-to-apple-wallet.svg",
-  alt: "Zu Apple Wallet hinzufügen",
-} as const;
+/** Bump when badge artwork changes so CDNs / browsers refetch. */
+const BADGE_CACHE = "v=20260805b";
 
-const GOOGLE_BADGE = {
-  src: "/wallet/add-to-google-wallet.svg",
+type Badge = {
+  /** Prefer PNG — Apple’s Illustrator SVG historically broke as <img> (DOCTYPE / xlink). */
+  png: string;
+  svg: string;
+  alt: string;
+  /** Intrinsic pixel size of the PNG (keeps layout stable while loading). */
+  width: number;
+  height: number;
+};
+
+const APPLE_BADGE: Badge = {
+  png: `/wallet/add-to-apple-wallet.png?${BADGE_CACHE}`,
+  svg: `/wallet/add-to-apple-wallet.svg?${BADGE_CACHE}`,
+  alt: "Zu Apple Wallet hinzufügen",
+  width: 388,
+  height: 120,
+};
+
+const GOOGLE_BADGE: Badge = {
+  png: `/wallet/add-to-google-wallet.png?${BADGE_CACHE}`,
+  svg: `/wallet/add-to-google-wallet.svg?${BADGE_CACHE}`,
   alt: "Zu Google Wallet hinzufügen",
-} as const;
+  width: 362,
+  height: 100,
+};
 
 function withToken(path: string, accessToken?: string | null) {
   if (!accessToken) return path;
@@ -29,24 +49,25 @@ function withToken(path: string, accessToken?: string | null) {
   return `${path}${join}t=${encodeURIComponent(accessToken)}`;
 }
 
-function BadgeImg({
-  src,
-  alt,
-  size,
-}: {
-  src: string;
-  alt: string;
-  size: "sm" | "md";
-}) {
-  // Height-driven; width auto — never stretch official badges.
-  const heightClass = size === "sm" ? "h-10" : "h-12";
+function BadgeImg({ badge, size }: { badge: Badge; size: "sm" | "md" }) {
+  const [src, setSrc] = useState(badge.png);
+  const displayH = size === "sm" ? 40 : 48;
+  const displayW = Math.round((badge.width / badge.height) * displayH);
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- brand SVG badges, not optimized photos
+    // eslint-disable-next-line @next/next/no-img-element -- brand badges from /public, not optimized photos
     <img
       src={src}
-      alt={alt}
-      className={`${heightClass} w-auto max-w-full`}
+      alt={badge.alt}
+      width={displayW}
+      height={displayH}
+      className="block max-w-full"
+      style={{ height: displayH, width: "auto" }}
       draggable={false}
+      decoding="async"
+      onError={() => {
+        if (src !== badge.svg) setSrc(badge.svg);
+      }}
     />
   );
 }
@@ -69,13 +90,13 @@ export function TicketWalletButtons({
   const anyPreview = applePreview || googlePreview;
 
   const badgeLink =
-    "inline-flex shrink-0 items-center transition-opacity duration-200 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]";
+    "inline-flex w-fit shrink-0 items-center transition-opacity duration-200 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]";
   const badgeDisabled =
-    "inline-flex shrink-0 cursor-not-allowed items-center opacity-45";
+    "inline-flex w-fit shrink-0 cursor-not-allowed items-center opacity-60";
 
   return (
     <div className={`flex flex-col gap-1.5 ${className}`.trim()}>
-      <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+      <div className="flex flex-col items-start gap-2.5">
         {googleEnabled ? (
           <a
             href={withToken(`/api/v1/tickets/${ticketId}/google-wallet`, accessToken)}
@@ -84,11 +105,11 @@ export function TicketWalletButtons({
             target="_blank"
             aria-label={GOOGLE_BADGE.alt}
           >
-            <BadgeImg {...GOOGLE_BADGE} size={size} />
+            <BadgeImg badge={GOOGLE_BADGE} size={size} />
           </a>
         ) : (
           <span className={badgeDisabled} aria-disabled="true" title={PREVIEW_HINT}>
-            <BadgeImg {...GOOGLE_BADGE} size={size} />
+            <BadgeImg badge={GOOGLE_BADGE} size={size} />
           </span>
         )}
         {appleEnabled ? (
@@ -98,11 +119,11 @@ export function TicketWalletButtons({
             rel="noreferrer"
             aria-label={APPLE_BADGE.alt}
           >
-            <BadgeImg {...APPLE_BADGE} size={size} />
+            <BadgeImg badge={APPLE_BADGE} size={size} />
           </a>
         ) : (
           <span className={badgeDisabled} aria-disabled="true" title={PREVIEW_HINT}>
-            <BadgeImg {...APPLE_BADGE} size={size} />
+            <BadgeImg badge={APPLE_BADGE} size={size} />
           </span>
         )}
       </div>
