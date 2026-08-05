@@ -1,6 +1,8 @@
 /**
  * Wallet pass configuration (Apple PKPass + Google Wallet).
- * Buyers never see setup errors — UI buttons are hidden when unset.
+ * UI always shows Wallet buttons; when unset they render as disabled preview
+ * (see TicketWalletButtons). Download APIs still return 503 until configured.
+ * Email wallet links stay omitted until configured.
  */
 
 function env(name: string): string {
@@ -92,7 +94,10 @@ export function isGoogleWalletConfigured() {
   return getGoogleWalletConfig() != null;
 }
 
-/** Server-safe flags for UI (hide buyer buttons when unset). */
+/**
+ * Server-safe flags for live wallet downloads.
+ * `false` → TicketWalletButtons shows a disabled preview (no dead links).
+ */
 export function getWalletUiFlags() {
   return {
     apple: isAppleWalletConfigured(),
