@@ -477,34 +477,21 @@ export async function renderInvoicePdf(invoiceId: string): Promise<{
   return { buffer, invoiceNumber: invoice.invoiceNumber, filename };
 }
 
-/** Return stored PDF or render + optionally persist. */
+/**
+ * Always regenerate invoice PDF from DB records (deterministic).
+ * Does not read or write `pdf_data` blobs — saves storage; same invoice
+ * number/amounts every time from invoice + line items + org snapshots.
+ *
+ * `persist` / `force` are ignored (kept for call-site compatibility).
+ */
 export async function getOrCreateInvoicePdf(
   invoiceId: string,
-  options?: { persist?: boolean; force?: boolean },
+  _options?: { persist?: boolean; force?: boolean },
 ): Promise<{ buffer: Buffer; invoiceNumber: string; filename: string }> {
   const existing = await prisma.invoice.findUnique({
     where: { id: invoiceId },
-    select: { id: true, invoiceNumber: true, pdfData: true, pdfFilename: true },
+    select: { id: true },
   });
   if (!existing) throw new Error("INVOICE_NOT_FOUND");
-
-  if (!options?.force && existing.pdfData && existing.pdfData.length > 0) {
-    return {
-      buffer: Buffer.from(existing.pdfData),
-      invoiceNumber: existing.invoiceNumber,
-      filename: existing.pdfFilename || `Rechnung-${existing.invoiceNumber}.pdf`,
-    };
-  }
-
-  const pdf = await renderInvoicePdf(invoiceId);
-  if (options?.persist !== false) {
-    await prisma.invoice.update({
-      where: { id: invoiceId },
-      data: {
-        pdfData: new Uint8Array(pdf.buffer),
-        pdfFilename: pdf.filename,
-      },
-    });
-  }
-  return pdf;
+  return renderInvoicePdf(invoiceId);
 }

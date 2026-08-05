@@ -6,6 +6,11 @@ import {
   buildOrderPaidTicketsMail,
   formatEventDateForSubject,
 } from "@/lib/email/ticket-mail";
+import {
+  buildOrderStaffNotificationMail,
+  resolveOrderNotificationRecipients,
+} from "@/lib/email/order-staff-mail";
+import { withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
@@ -520,10 +525,15 @@ export async function fulfillPaidOrder(orderId: string) {
           tickets: { include: { event: { include: { location: true } } } },
           invoices: true,
           items: true,
+          payments: true,
         },
       });
 
-      // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand
+      const appBase = (
+        process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
+      ).replace(/\/$/, "");
+
+      // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand an Käufer
       if (fresh?.customer.email && fresh.channel !== "box_office") {
         const event =
           fresh.tickets[0]?.event ??
@@ -582,26 +592,12 @@ export async function fulfillPaidOrder(orderId: string) {
           console.error("[fulfillment] pdf module load failed", error);
         }
 
-        let invoiceAttachmentNumber: string | null = null;
+        // Invoice: link only — never attach/store PDF blobs
         const invoiceRow = fresh.invoices[0];
+        let invoiceAttachmentNumber: string | null = null;
+        let invoiceDownloadUrl: string | null = null;
         if (invoiceRow && fresh.invoiceRequested) {
-          try {
-            const { getOrCreateInvoicePdf } = await import("@/lib/commerce/invoice-pdf");
-            const invoicePdf = await getOrCreateInvoicePdf(invoiceRow.id, { persist: true });
-            if (invoicePdf.buffer.length > 0) {
-              pdfAttachments.push({
-                filename: invoicePdf.filename,
-                content: invoicePdf.buffer,
-              });
-              invoiceAttachmentNumber = invoicePdf.invoiceNumber;
-              await prisma.invoice.update({
-                where: { id: invoiceRow.id },
-                data: { pdfEmailedAt: new Date() },
-              });
-            }
-          } catch (error) {
-            console.error("[fulfillment] invoice pdf attach failed", invoiceRow.id, error);
-          }
+          invoiceAttachmentNumber = invoiceRow.invoiceNumber;
         }
 
         const { signOrderAccessToken } = await import("@/lib/commerce/order-access");
@@ -609,6 +605,10 @@ export async function fulfillPaidOrder(orderId: string) {
           fresh.id,
           30 * 24 * 60 * 60 * 1000,
         );
+        if (invoiceRow && fresh.invoiceRequested) {
+          const path = `/api/v1/invoices/${invoiceRow.id}/pdf`;
+          invoiceDownloadUrl = `${appBase}${withOrderAccessQuery(path, mailAccessToken)}`;
+        }
         const mail = buildOrderPaidTicketsMail({
           firstName: fresh.customer.firstName,
           lastName: fresh.customer.lastName,
@@ -623,6 +623,7 @@ export async function fulfillPaidOrder(orderId: string) {
           ticketCount: fresh.tickets.length,
           hasAttachment: pdfAttachments.length > 0,
           invoiceNumber: invoiceAttachmentNumber,
+          invoiceDownloadUrl,
           firstTicketId: fresh.tickets[0]?.id ?? null,
           accessToken: mailAccessToken,
         });
@@ -683,6 +684,122 @@ export async function fulfillPaidOrder(orderId: string) {
           });
         }
       }
+
+      // Staff „Neue Bestellung“ — every fulfilled paid order (incl. Tageskasse)
+      if (fresh) {
+        try {
+          const alreadyNotified = await prisma.auditLog.findFirst({
+            where: {
+              organizationId: fresh.organizationId,
+              entityType: "order",
+              entityId: fresh.id,
+              action: "email.order_staff_notified",
+            },
+            select: { id: true },
+          });
+          if (!alreadyNotified) {
+            const recipients = await resolveOrderNotificationRecipients(fresh.organizationId);
+            if (recipients.to.length > 0) {
+              const event =
+                fresh.tickets[0]?.event ?? null;
+              const eventName =
+                fresh.tickets[0]?.eventNameSnapshot ||
+                fresh.items[0]?.eventNameSnapshot ||
+                "Event";
+              const startsAt =
+                event?.eventStartsAt ?? fresh.items[0]?.eventStartsAtSnapshot ?? null;
+              const whenLabel = startsAt
+                ? startsAt.toLocaleString("de-DE", {
+                    timeZone: "Europe/Berlin",
+                    dateStyle: "full",
+                    timeStyle: "short",
+                  })
+                : "Termin siehe Bestellung";
+              const loc = event?.location;
+              const locationLabel = loc
+                ? [
+                    loc.name,
+                    [loc.street, loc.houseNumber].filter(Boolean).join(" "),
+                    [loc.postalCode, loc.city].filter(Boolean).join(" "),
+                  ]
+                    .filter(Boolean)
+                    .join(", ")
+                : fresh.items[0]?.locationSnapshot ?? null;
+              const paidPayment = fresh.payments.find((p) => p.status === "paid");
+              const paymentMethod =
+                paidPayment?.method ?? fresh.paymentMethod ?? null;
+              const buyerName = [fresh.customer.firstName, fresh.customer.lastName]
+                .filter(Boolean)
+                .join(" ")
+                .trim() || "Unbekannt";
+              const categories = fresh.items.map((item) => ({
+                name: item.categorySnapshot || item.productNameSnapshot,
+                quantity: item.quantity,
+                grossCents: item.grossCents,
+              }));
+              const invoiceRow = fresh.invoices[0];
+              const invoiceDownloadUrl = invoiceRow
+                ? `${appBase}/api/v1/invoices/${invoiceRow.id}/pdf`
+                : null;
+              const staffMail = buildOrderStaffNotificationMail({
+                orderId: fresh.id,
+                orderNumber: fresh.orderNumber,
+                channel: fresh.channel,
+                eventName,
+                whenLabel,
+                locationLabel,
+                buyerName,
+                buyerEmail: fresh.customer.email,
+                ticketCount: fresh.tickets.length || categories.reduce((n, c) => n + c.quantity, 0),
+                categories,
+                totalCents: fresh.customerTotalCents || fresh.grossCents,
+                currency: fresh.currency,
+                paymentMethod,
+                invoiceNumber: invoiceRow?.invoiceNumber ?? null,
+                invoiceId: invoiceRow?.id ?? null,
+                invoiceDownloadUrl,
+              });
+              const staffSend = await enqueueTransactionalEmail({
+                organizationId: fresh.organizationId,
+                to: recipients.to,
+                template: "order_staff_notification",
+                subject: staffMail.subject,
+                payload: {
+                  orderNumber: fresh.orderNumber,
+                  recipients: recipients.to,
+                  source: recipients.source,
+                },
+                text: staffMail.text,
+                html: staffMail.html,
+                embedLogo: true,
+              });
+              await writeAudit({
+                organizationId: fresh.organizationId,
+                action: "email.order_staff_notified",
+                entityType: "order",
+                entityId: fresh.id,
+                after: {
+                  to: recipients.to,
+                  source: recipients.source,
+                  provider: staffSend.provider,
+                  reason: "reason" in staffSend ? staffSend.reason : null,
+                },
+              });
+            } else {
+              await writeAudit({
+                organizationId: fresh.organizationId,
+                action: "email.order_staff_skipped",
+                entityType: "order",
+                entityId: fresh.id,
+                after: { reason: "no_recipients" },
+              });
+            }
+          }
+        } catch (error) {
+          console.error("[fulfillment] staff order notification failed", fresh.id, error);
+        }
+      }
+
       if (result.invoice?.id) {
         const sync = await lexwareStubProvider.createInvoice({ invoiceId: result.invoice.id });
         await prisma.order.update({

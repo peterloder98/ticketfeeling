@@ -31,7 +31,7 @@ type Attachment = {
 
 export async function enqueueTransactionalEmail(input: {
   organizationId: string;
-  to: string;
+  to: string | string[];
   template: string;
   subject: string;
   payload: Record<string, unknown>;
@@ -49,13 +49,19 @@ export async function enqueueTransactionalEmail(input: {
   /** Embed brand logo as CID (default true for ticket mails) */
   embedLogo?: boolean;
 }): Promise<MailSendResult> {
-  if (input.to.includes("@ticketfeeling.local")) {
+  const recipients = (Array.isArray(input.to) ? input.to : [input.to])
+    .map((t) => t.trim())
+    .filter(Boolean);
+  const toHeader = recipients.join(", ");
+  const primaryTo = recipients[0] ?? "";
+
+  if (!primaryTo || recipients.every((t) => t.includes("@ticketfeeling.local"))) {
     await writeAudit({
       organizationId: input.organizationId,
       action: "email.skipped_local_guest",
       entityType: "email",
       entityId: input.template,
-      after: { to: input.to },
+      after: { to: toHeader || primaryTo },
     });
     return {
       queued: true,
@@ -138,7 +144,7 @@ export async function enqueueTransactionalEmail(input: {
       entityType: "email",
       entityId: input.template,
       after: {
-        to: input.to.toLowerCase(),
+        to: toHeader.toLowerCase(),
         template: input.template,
         subject: input.subject,
         reason: "smtp_not_configured",
@@ -149,7 +155,7 @@ export async function enqueueTransactionalEmail(input: {
       console.info(
         "[email-stub/smtp-missing]",
         input.template,
-        input.to,
+        toHeader,
         input.subject,
         `pdfs=${pdfCount}`,
       );
@@ -185,7 +191,7 @@ export async function enqueueTransactionalEmail(input: {
 
   const info = await transporter.sendMail({
     from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
-    to: input.to,
+    to: toHeader,
     subject: input.subject,
     text: textBody,
     html: htmlBody,
@@ -204,7 +210,7 @@ export async function enqueueTransactionalEmail(input: {
     entityType: "email",
     entityId: input.template,
     after: {
-      to: input.to.toLowerCase(),
+      to: toHeader.toLowerCase(),
       template: input.template,
       subject: input.subject,
       messageId: info.messageId,

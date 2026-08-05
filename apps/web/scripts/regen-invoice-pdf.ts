@@ -30,7 +30,7 @@ async function main() {
   console.log("Invoice", inv.invoiceNumber, inv.id);
   console.log("Order items:", JSON.stringify(orderItems, null, 2));
 
-  const pdf = await getOrCreateInvoicePdf(inv.id, { force: true, persist: true });
+  const pdf = await getOrCreateInvoicePdf(inv.id);
   const out = `/tmp/${pdf.filename}`;
   writeFileSync(out, pdf.buffer);
   writeFileSync(`/Users/peterloder/Downloads/${pdf.filename.replace(".pdf", "-fixed.pdf")}`, pdf.buffer);

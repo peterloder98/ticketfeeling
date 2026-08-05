@@ -116,8 +116,10 @@ export function buildOrderPaidTicketsMail(input: {
   orderNumber: string;
   ticketCount: number;
   hasAttachment?: boolean;
-  /** When set, mail mentions the attached invoice PDF */
+  /** Invoice number when a Rechnung exists / was requested */
   invoiceNumber?: string | null;
+  /** Absolute URL to on-demand invoice PDF (tokenized for guests) */
+  invoiceDownloadUrl?: string | null;
   /** Optional first ticket id for direct wallet deep-links in email */
   firstTicketId?: string | null;
   /** Guest access token appended to wallet API links in email */
@@ -133,6 +135,7 @@ export function buildOrderPaidTicketsMail(input: {
   const place = input.locationLabel?.trim();
   const hasAttachment = input.hasAttachment !== false;
   const invoiceNumber = input.invoiceNumber?.trim() || null;
+  const invoiceUrl = input.invoiceDownloadUrl?.trim() || null;
   const appleOn = isAppleWalletConfigured();
   const googleOn = isGoogleWalletConfigured();
   const ticketId = input.firstTicketId?.trim() || null;
@@ -152,10 +155,14 @@ export function buildOrderPaidTicketsMail(input: {
       ? "Auf dem Handy kannst du Tickets außerdem zu Apple Wallet oder Google Wallet hinzufügen — über den Link zur Bestellung."
       : null;
   const attachLine = hasAttachment
-    ? `Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass — als PDF im Anhang. Diese werden Ihnen zudem per E-Mail zugesendet.${
-        invoiceNumber ? ` Dazu liegt Rechnung ${invoiceNumber} als PDF bei.` : ""
-      }`
+    ? "Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass — als PDF im Anhang."
     : `Ihre Tickets finden Sie über den Link unten (der PDF-Anhang konnte leider nicht erzeugt werden).`;
+  const invoiceLine =
+    invoiceNumber && invoiceUrl
+      ? `Rechnung ${invoiceNumber} können Sie jederzeit als PDF herunterladen: ${invoiceUrl}`
+      : invoiceNumber
+        ? `Rechnung: ${invoiceNumber}`
+        : null;
   const datePart = input.eventDateLabel?.trim();
   const subject = datePart
     ? `Ihre Tickets für ${input.eventName} – ${datePart}`
@@ -172,7 +179,7 @@ export function buildOrderPaidTicketsMail(input: {
     `Termin: ${input.whenLabel}`,
     ...(place ? [`Ort: ${place}`] : []),
     `Bestellung: ${input.orderNumber}`,
-    ...(invoiceNumber ? [`Rechnung: ${invoiceNumber}`] : []),
+    ...(invoiceLine ? [invoiceLine] : []),
     "",
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
     ...(walletNote ? ["", walletNote] : []),
@@ -202,11 +209,7 @@ export function buildOrderPaidTicketsMail(input: {
     hasAttachment
       ? `Nachfolgend finden Sie Ihre <strong>${
           input.ticketCount === 1 ? "Ticket-PDF" : `${input.ticketCount} Tickets`
-        }</strong> samt QR-Codes zum Einlass — als <strong>PDF im Anhang</strong>.${
-          invoiceNumber
-            ? ` Dazu liegt <strong>Rechnung ${escapeHtml(invoiceNumber)}</strong> als PDF bei.`
-            : ""
-        }`
+        }</strong> samt QR-Codes zum Einlass — als <strong>PDF im Anhang</strong>.`
       : "Öffnen Sie Ihre Tickets über den Link unten.",
     `<strong style="font-size:18px">${escapeHtml(input.eventName)}</strong><br/>
      <span style="color:#334155">${escapeHtml(input.whenLabel)}</span>${
@@ -216,6 +219,11 @@ export function buildOrderPaidTicketsMail(input: {
      }</span>`,
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
     `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a>`,
+    ...(invoiceUrl
+      ? [
+          `<a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1">Rechnung als PDF herunterladen</a>`,
+        ]
+      : []),
     ...(walletHtmlButtons.length
       ? [
           "Tickets zum Wallet hinzufügen (Anmeldung bzw. Bestellzugang nötig):",

@@ -577,8 +577,8 @@ export function CheckoutForm({
         {invoiceRequested ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)] sm:col-span-2">
-              Für die Rechnung brauchen wir deine Adresse. Nach dem Kauf schicken wir dir die
-              Rechnung als PDF.
+              Für die Rechnung brauchen wir deine Adresse. Nach dem Kauf kannst du die Rechnung
+              jederzeit als PDF herunterladen.
             </p>
             <div>
               <label className="tf-label" htmlFor="street">
