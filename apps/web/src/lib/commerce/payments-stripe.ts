@@ -13,6 +13,7 @@ import {
   buildSepaProcessingMail,
 } from "@/lib/email/ticket-mail";
 import { formatEuroFromCents } from "@/lib/money";
+import { invalidateWalletPassesForOrder } from "@/lib/wallet/invalidate";
 
 function appBaseUrl() {
   return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
@@ -380,6 +381,9 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           data: { status: "cancelled" },
         });
         await releaseOrderHolds(orderId);
+        await invalidateWalletPassesForOrder(orderId).catch((error) => {
+          console.error("[wallet] invalidate after SEPA fail/cancel", orderId, error);
+        });
         if (failed) await sendSepaFailedEmail(orderId);
         break;
       }
@@ -416,6 +420,9 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           await prisma.payment.updateMany({
             where: { orderId: order.id, provider: "stripe" },
             data: { status: "refunded" },
+          });
+          await invalidateWalletPassesForOrder(order.id).catch((error) => {
+            console.error("[wallet] invalidate after refund", order.id, error);
           });
         }
         await writeAudit({
@@ -468,6 +475,9 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           await prisma.ticket.updateMany({
             where: { orderId: order.id, status: "active" },
             data: { status: "cancelled" },
+          });
+          await invalidateWalletPassesForOrder(order.id).catch((error) => {
+            console.error("[wallet] invalidate after dispute", order.id, error);
           });
           await sendSepaDisputeEmail(order.id);
         }

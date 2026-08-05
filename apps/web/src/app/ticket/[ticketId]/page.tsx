@@ -11,6 +11,8 @@ import {
   isTicketParty,
   isTicketTransferred,
 } from "@/lib/tickets/access";
+import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
+import { getWalletUiFlags } from "@/lib/wallet/config";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +66,7 @@ export default async function TicketViewPage({ params }: Props) {
   });
 
   const token = ticket.qrTokens[0]?.token ?? "";
+  const walletFlags = getWalletUiFlags();
   const when = ticket.event.eventStartsAt
     ? ticket.event.eventStartsAt.toLocaleString("de-DE", {
         timeZone: "Europe/Berlin",
@@ -201,6 +204,14 @@ export default async function TicketViewPage({ params }: Props) {
                 {holder ? ` an ${holder}` : ""}.
               </p>
             )}
+            {canEntry && token ? (
+              <TicketWalletButtons
+                ticketId={ticket.id}
+                appleEnabled={walletFlags.apple}
+                googleEnabled={walletFlags.google}
+                size="md"
+              />
+            ) : null}
             <Link
               href={`/konto/bestellung/${ticket.orderId}`}
               className="tf-btn tf-btn-secondary flex w-full !min-h-12 justify-center"

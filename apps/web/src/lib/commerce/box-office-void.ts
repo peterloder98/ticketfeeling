@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { canVoidBoxOfficeOrder } from "@/lib/commerce/box-office-access";
+import { invalidateWalletPassesForTickets } from "@/lib/wallet/invalidate";
 
 type VoidResult = {
   ok: true;
@@ -160,6 +161,11 @@ export async function voidBoxOfficeOrder(input: {
       orderCancelled: cancelOrder,
       remainingActive: remainingActive.length,
     },
+  });
+
+  // QR already revoked in the transaction — skip double revoke, still void wallet passes.
+  await invalidateWalletPassesForTickets(voidIds, { revokeQr: false }).catch((error) => {
+    console.error("[wallet] invalidate after box-office void failed", order.id, error);
   });
 
   return {

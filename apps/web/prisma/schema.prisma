@@ -1343,11 +1343,55 @@ model Ticket {
   qrTokens     TicketQrToken[]
   checkins     CheckinEvent[]
   eventSeat    EventSeat?
+  walletPasses TicketWalletPass[]
 
   @@unique([organizationId, ticketNumber])
   @@index([eventId, status])
   @@index([orderId])
   @@map("tickets")
+}
+
+/// Tracks Apple / Google Wallet passes issued for a ticket (void / push updates).
+model TicketWalletPass {
+  id            String    @id @default(uuid()) @db.Uuid
+  ticketId      String    @map("ticket_id") @db.Uuid
+  /// apple | google
+  provider      String
+  /// Apple serialNumber (= ticketId) or Google object id (issuerId.ticketId)
+  externalId    String    @map("external_id")
+  /// Apple PassKit authenticationToken for web-service updates
+  authToken     String?   @map("auth_token")
+  /// active | voided | expired
+  status        String    @default("active")
+  /// Bumped on content change so Apple devices pull a fresh .pkpass
+  updateTag     String?   @map("update_tag")
+  googleClassId String?   @map("google_class_id")
+  voidedAt      DateTime? @map("voided_at")
+  lastPushedAt  DateTime? @map("last_pushed_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@unique([ticketId, provider])
+  @@unique([provider, externalId])
+  @@index([status])
+  @@map("ticket_wallet_passes")
+}
+
+/// Device registrations for Apple PassKit push updates (void / refresh).
+model AppleWalletDeviceRegistration {
+  id                      String   @id @default(uuid()) @db.Uuid
+  deviceLibraryIdentifier String   @map("device_library_identifier")
+  pushToken               String   @map("push_token")
+  passTypeIdentifier      String   @map("pass_type_identifier")
+  serialNumber            String   @map("serial_number")
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@unique([deviceLibraryIdentifier, passTypeIdentifier, serialNumber])
+  @@index([passTypeIdentifier, serialNumber])
+  @@map("apple_wallet_device_registrations")
 }
 
 model TicketQrToken {

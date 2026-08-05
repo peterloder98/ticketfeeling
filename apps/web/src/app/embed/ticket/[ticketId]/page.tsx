@@ -8,6 +8,8 @@ import { TicketQrImage } from "@/components/ticket-qr-image";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketParty, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/order-access";
+import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
+import { getWalletUiFlags } from "@/lib/wallet/config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Ticket" };
@@ -83,6 +85,7 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
     (isStaff || (hasAccessToken && !transferred) || canEntry);
 
   const token = ticket.qrTokens[0]?.token ?? "";
+  const walletFlags = getWalletUiFlags();
   const when = ticket.event.eventStartsAt
     ? ticket.event.eventStartsAt.toLocaleString("de-DE", {
         timeZone: "Europe/Berlin",
@@ -170,9 +173,17 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
           </div>
 
           {showQr ? (
-            <a href={pdfHref} className="tf-btn tf-btn-primary w-full !min-h-10 text-sm" target="_blank" rel="noreferrer">
-              PDF speichern
-            </a>
+            <>
+              <a href={pdfHref} className="tf-btn tf-btn-primary w-full !min-h-10 text-sm" target="_blank" rel="noreferrer">
+                PDF speichern
+              </a>
+              <TicketWalletButtons
+                ticketId={ticket.id}
+                accessToken={accessToken}
+                appleEnabled={walletFlags.apple}
+                googleEnabled={walletFlags.google}
+              />
+            </>
           ) : null}
         </div>
       </article>

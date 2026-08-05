@@ -10,6 +10,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
+import { getWalletUiFlags } from "@/lib/wallet/config";
 
 export const dynamic = "force-dynamic";
 
@@ -204,7 +205,13 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
           <div className="space-y-3">
             <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Positionen & Tickets</h2>
             {paid ? (
-              <OrderTicketsPanel positions={positions} canForward={Boolean(isOwner || isStaff)} />
+              <OrderTicketsPanel
+                positions={positions}
+                canForward={Boolean(isOwner || isStaff)}
+                accessToken={hasAccessToken ? sp.t! : null}
+                appleWalletEnabled={getWalletUiFlags().apple}
+                googleWalletEnabled={getWalletUiFlags().google}
+              />
             ) : (
               <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5">
                 <ul className="space-y-3 text-sm">

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, Mail, Send } from "lucide-react";
 import { TicketQrImage } from "@/components/ticket-qr-image";
 import { TicketResendButton } from "@/components/ticket-resend-button";
+import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 
 export type OrderTicketView = {
   id: string;
@@ -237,11 +238,15 @@ export function OrderTicketsPanel({
   ticketPathPrefix = "/ticket",
   /** Guest order access token — appended as ?t= */
   accessToken = null,
+  appleWalletEnabled = false,
+  googleWalletEnabled = false,
 }: {
   positions: OrderPositionView[];
   canForward: boolean;
   ticketPathPrefix?: string;
   accessToken?: string | null;
+  appleWalletEnabled?: boolean;
+  googleWalletEnabled?: boolean;
 }) {
   const [holders, setHolders] = useState<Record<string, string>>(() =>
     Object.fromEntries(
@@ -406,6 +411,14 @@ export function OrderTicketsPanel({
                         </Link>
                         {showQr ? <TicketResendButton ticketId={ticket.id} /> : null}
                       </div>
+                      {showQr ? (
+                        <TicketWalletButtons
+                          ticketId={ticket.id}
+                          accessToken={accessToken}
+                          appleEnabled={appleWalletEnabled}
+                          googleEnabled={googleWalletEnabled}
+                        />
+                      ) : null}
 
                       {canForward ? (
                         <TicketForwardForm

@@ -604,6 +604,11 @@ export async function fulfillPaidOrder(orderId: string) {
           }
         }
 
+        const { signOrderAccessToken } = await import("@/lib/commerce/order-access");
+        const mailAccessToken = signOrderAccessToken(
+          fresh.id,
+          30 * 24 * 60 * 60 * 1000,
+        );
         const mail = buildOrderPaidTicketsMail({
           firstName: fresh.customer.firstName,
           lastName: fresh.customer.lastName,
@@ -618,6 +623,8 @@ export async function fulfillPaidOrder(orderId: string) {
           ticketCount: fresh.tickets.length,
           hasAttachment: pdfAttachments.length > 0,
           invoiceNumber: invoiceAttachmentNumber,
+          firstTicketId: fresh.tickets[0]?.id ?? null,
+          accessToken: mailAccessToken,
         });
         const sendResult = await enqueueTransactionalEmail({
           organizationId: fresh.organizationId,

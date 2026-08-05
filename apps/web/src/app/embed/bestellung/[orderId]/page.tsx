@@ -9,6 +9,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
+import { getWalletUiFlags } from "@/lib/wallet/config";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tickets" };
@@ -190,6 +191,8 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
           canForward={Boolean(isOwner || isStaff)}
           ticketPathPrefix="/embed/ticket"
           accessToken={hasAccessToken ? sp.t! : null}
+          appleWalletEnabled={getWalletUiFlags().apple}
+          googleWalletEnabled={getWalletUiFlags().google}
         />
       ) : (
         <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-4 text-xs text-[var(--tf-text-secondary)]">
