@@ -11,12 +11,51 @@ export type ArtistLineupDraft = {
   bio?: string;
 };
 
+export const ARTIST_TYPES = ["solo", "band", "duo", "ensemble", "other"] as const;
+export type ArtistType = (typeof ARTIST_TYPES)[number];
+
+export const ARTIST_VISIBILITIES = ["draft", "published"] as const;
+export type ArtistVisibility = (typeof ARTIST_VISIBILITIES)[number];
+
+/** Parsed artist profile fields from admin create/edit forms. */
+export type ArtistProfileFields = {
+  name: string;
+  slug: string;
+  legalName: string | null;
+  artistType: ArtistType;
+  genre: string | null;
+  origin: string | null;
+  shortBio: string | null;
+  biography: string | null;
+  profileImageUrl: string | null;
+  headerImageUrl: string | null;
+  homepage: string | null;
+  instagram: string | null;
+  facebook: string | null;
+  tiktok: string | null;
+  youtube: string | null;
+  spotify: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  visibility: ArtistVisibility;
+  sortOrder: number;
+};
+
 export function normalizeHomepageUrl(raw: string | null | undefined): string | null {
   const value = String(raw ?? "").trim();
   if (!value) return null;
   if (/^https?:\/\//i.test(value)) return value;
   if (/^[\w.-]+\.[a-z]{2,}(\/|$)/i.test(value)) return `https://${value}`;
   return null;
+}
+
+/** Optional http(s) URL; empty → null. Throws INVALID_URL if non-empty but invalid. */
+export function normalizeOptionalHttpUrl(raw: string | null | undefined): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  const normalized = normalizeHomepageUrl(value);
+  if (!normalized) throw new Error("INVALID_URL");
+  return normalized;
 }
 
 /** Returns normalized URL/ID, or null if empty. Throws on clearly invalid input. */
@@ -26,6 +65,108 @@ export function normalizeYoutubeInput(raw: string | null | undefined): string | 
   const id = parseYoutubeVideoId(value);
   if (id) return value.startsWith("http") ? value : `https://www.youtube.com/watch?v=${id}`;
   throw new Error("INVALID_YOUTUBE");
+}
+
+function optionalText(formData: FormData, key: string): string | null {
+  return String(formData.get(key) ?? "").trim() || null;
+}
+
+function parseArtistType(raw: string): ArtistType {
+  return (ARTIST_TYPES as readonly string[]).includes(raw) ? (raw as ArtistType) : "solo";
+}
+
+function parseVisibility(raw: string, fallback: ArtistVisibility = "published"): ArtistVisibility {
+  return (ARTIST_VISIBILITIES as readonly string[]).includes(raw)
+    ? (raw as ArtistVisibility)
+    : fallback;
+}
+
+/**
+ * Parse create/edit form fields. `name` is required (throws NAME_REQUIRED).
+ * Optional URL fields throw INVALID_HOMEPAGE / INVALID_YOUTUBE / INVALID_URL.
+ */
+export function parseArtistProfileForm(
+  formData: FormData,
+  defaults?: { name?: string; slug?: string; visibility?: string },
+): ArtistProfileFields {
+  const name = String(formData.get("name") ?? "").trim() || defaults?.name?.trim() || "";
+  if (!name) throw new Error("NAME_REQUIRED");
+
+  const slugRaw = String(formData.get("slug") ?? "").trim() || defaults?.slug?.trim() || "";
+  const slug = slugRaw || slugify(name);
+
+  const biography = optionalText(formData, "biography");
+  const shortBio =
+    optionalText(formData, "shortBio") || (biography ? biography.slice(0, 280) : null);
+
+  const homepageRaw = String(formData.get("homepage") ?? "").trim();
+  const homepage = homepageRaw
+    ? normalizeHomepageUrl(homepageRaw) ??
+      (() => {
+        throw new Error("INVALID_HOMEPAGE");
+      })()
+    : null;
+
+  let youtube: string | null = null;
+  try {
+    youtube = normalizeYoutubeInput(String(formData.get("youtube") ?? ""));
+  } catch {
+    throw new Error("INVALID_YOUTUBE");
+  }
+
+  const urlFields = [
+    "profileImageUrl",
+    "headerImageUrl",
+    "instagram",
+    "facebook",
+    "tiktok",
+    "spotify",
+  ] as const;
+  const urls: Record<(typeof urlFields)[number], string | null> = {
+    profileImageUrl: null,
+    headerImageUrl: null,
+    instagram: null,
+    facebook: null,
+    tiktok: null,
+    spotify: null,
+  };
+  for (const key of urlFields) {
+    try {
+      urls[key] = normalizeOptionalHttpUrl(String(formData.get(key) ?? ""));
+    } catch {
+      throw new Error("INVALID_URL");
+    }
+  }
+
+  const sortRaw = String(formData.get("sortOrder") ?? "").trim();
+  const sortOrder = sortRaw === "" ? 0 : Number.parseInt(sortRaw, 10);
+  if (!Number.isFinite(sortOrder) || sortOrder < 0) throw new Error("INVALID_SORT");
+
+  return {
+    name,
+    slug,
+    legalName: optionalText(formData, "legalName"),
+    artistType: parseArtistType(String(formData.get("artistType") ?? "solo").trim()),
+    genre: optionalText(formData, "genre"),
+    origin: optionalText(formData, "origin"),
+    shortBio,
+    biography,
+    profileImageUrl: urls.profileImageUrl,
+    headerImageUrl: urls.headerImageUrl,
+    homepage,
+    instagram: urls.instagram,
+    facebook: urls.facebook,
+    tiktok: urls.tiktok,
+    youtube,
+    spotify: urls.spotify,
+    seoTitle: optionalText(formData, "seoTitle"),
+    seoDescription: optionalText(formData, "seoDescription"),
+    visibility: parseVisibility(
+      String(formData.get("visibility") ?? defaults?.visibility ?? "published").trim(),
+      parseVisibility(defaults?.visibility ?? "published"),
+    ),
+    sortOrder,
+  };
 }
 
 export function parseArtistsJson(raw: FormDataEntryValue | null): ArtistLineupDraft[] {

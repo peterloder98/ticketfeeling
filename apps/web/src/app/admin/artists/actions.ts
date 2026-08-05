@@ -9,12 +9,10 @@ import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
   allocateUniqueArtistSlug,
-  normalizeHomepageUrl,
-  normalizeYoutubeInput,
+  parseArtistProfileForm,
   parseArtistsJson,
 } from "@/lib/admin/artist-form";
 import { syncEventArtistsInTx } from "@/lib/admin/artist-sync";
-import { slugify } from "@/lib/admin/event-form";
 
 async function requireArtistWrite() {
   const session = await getServerSession(authOptions);
@@ -54,45 +52,37 @@ async function requireEventOrArtistWrite() {
 export async function createArtistAction(formData: FormData) {
   const { session, membership } = await requireArtistWrite();
 
-  const name = String(formData.get("name") ?? "").trim();
-  if (!name) throw new Error("NAME_REQUIRED");
-
-  let slug = String(formData.get("slug") ?? "").trim() || slugify(name);
-  const homepageRaw = String(formData.get("homepage") ?? "").trim();
-  const youtubeRaw = String(formData.get("youtube") ?? "").trim();
-  const bio = String(formData.get("biography") ?? "").trim() || null;
-  const shortBio =
-    String(formData.get("shortBio") ?? "").trim() || (bio ? bio.slice(0, 280) : null);
-  const visibility = String(formData.get("visibility") ?? "published");
-  if (visibility !== "draft" && visibility !== "published") throw new Error("INVALID_VISIBILITY");
-
-  const homepage = homepageRaw
-    ? normalizeHomepageUrl(homepageRaw) ??
-      (() => {
-        throw new Error("INVALID_HOMEPAGE");
-      })()
-    : null;
-  let youtube: string | null = null;
-  try {
-    youtube = normalizeYoutubeInput(youtubeRaw);
-  } catch {
-    throw new Error("INVALID_YOUTUBE");
-  }
-
-  slug = await allocateUniqueArtistSlug(prisma, membership.organizationId, slug || name);
+  const fields = parseArtistProfileForm(formData);
+  const slug = await allocateUniqueArtistSlug(
+    prisma,
+    membership.organizationId,
+    fields.slug || fields.name,
+  );
 
   const created = await prisma.artist.create({
     data: {
       organizationId: membership.organizationId,
-      name,
+      name: fields.name,
+      legalName: fields.legalName,
       slug,
-      artistType: "solo",
-      homepage,
-      youtube,
-      biography: bio,
-      shortBio,
-      visibility,
-      publishedAt: visibility === "published" ? new Date() : null,
+      artistType: fields.artistType,
+      genre: fields.genre,
+      origin: fields.origin,
+      shortBio: fields.shortBio,
+      biography: fields.biography,
+      profileImageUrl: fields.profileImageUrl,
+      headerImageUrl: fields.headerImageUrl,
+      homepage: fields.homepage,
+      instagram: fields.instagram,
+      facebook: fields.facebook,
+      tiktok: fields.tiktok,
+      youtube: fields.youtube,
+      spotify: fields.spotify,
+      seoTitle: fields.seoTitle,
+      seoDescription: fields.seoDescription,
+      visibility: fields.visibility,
+      sortOrder: fields.sortOrder,
+      publishedAt: fields.visibility === "published" ? new Date() : null,
     },
   });
 
@@ -102,7 +92,7 @@ export async function createArtistAction(formData: FormData) {
     action: "artist.created",
     entityType: "artist",
     entityId: created.id,
-    after: { name, slug, visibility },
+    after: { name: fields.name, slug, visibility: fields.visibility },
   });
 
   revalidatePath("/admin/artists");
@@ -121,31 +111,13 @@ export async function updateArtistAction(formData: FormData) {
   });
   if (!existing) throw new Error("NOT_FOUND");
 
-  const name = String(formData.get("name") ?? "").trim() || existing.name;
-  let slug = String(formData.get("slug") ?? "").trim() || existing.slug;
-  if (!slug) slug = slugify(name);
+  const fields = parseArtistProfileForm(formData, {
+    name: existing.name,
+    slug: existing.slug,
+    visibility: existing.visibility,
+  });
 
-  const homepageRaw = String(formData.get("homepage") ?? "").trim();
-  const youtubeRaw = String(formData.get("youtube") ?? "").trim();
-  const bio = String(formData.get("biography") ?? "").trim() || null;
-  const shortBio =
-    String(formData.get("shortBio") ?? "").trim() || (bio ? bio.slice(0, 280) : null);
-  const visibility = String(formData.get("visibility") ?? existing.visibility);
-  if (visibility !== "draft" && visibility !== "published") throw new Error("INVALID_VISIBILITY");
-
-  const homepage = homepageRaw
-    ? normalizeHomepageUrl(homepageRaw) ??
-      (() => {
-        throw new Error("INVALID_HOMEPAGE");
-      })()
-    : null;
-  let youtube: string | null = null;
-  try {
-    youtube = normalizeYoutubeInput(youtubeRaw);
-  } catch {
-    throw new Error("INVALID_YOUTUBE");
-  }
-
+  let slug = fields.slug;
   const taken = await prisma.artist.findFirst({
     where: {
       organizationId: membership.organizationId,
@@ -165,17 +137,28 @@ export async function updateArtistAction(formData: FormData) {
   await prisma.artist.update({
     where: { id: existing.id },
     data: {
-      name,
+      name: fields.name,
+      legalName: fields.legalName,
       slug,
-      homepage,
-      youtube,
-      biography: bio,
-      shortBio,
-      visibility,
+      artistType: fields.artistType,
+      genre: fields.genre,
+      origin: fields.origin,
+      shortBio: fields.shortBio,
+      biography: fields.biography,
+      profileImageUrl: fields.profileImageUrl,
+      headerImageUrl: fields.headerImageUrl,
+      homepage: fields.homepage,
+      instagram: fields.instagram,
+      facebook: fields.facebook,
+      tiktok: fields.tiktok,
+      youtube: fields.youtube,
+      spotify: fields.spotify,
+      seoTitle: fields.seoTitle,
+      seoDescription: fields.seoDescription,
+      visibility: fields.visibility,
+      sortOrder: fields.sortOrder,
       publishedAt:
-        visibility === "published"
-          ? existing.publishedAt ?? new Date()
-          : null,
+        fields.visibility === "published" ? existing.publishedAt ?? new Date() : null,
     },
   });
 
@@ -186,7 +169,7 @@ export async function updateArtistAction(formData: FormData) {
     entityType: "artist",
     entityId: existing.id,
     before: { name: existing.name, slug: existing.slug, visibility: existing.visibility },
-    after: { name, slug, visibility },
+    after: { name: fields.name, slug, visibility: fields.visibility },
   });
 
   revalidatePath("/admin/artists");
@@ -194,6 +177,67 @@ export async function updateArtistAction(formData: FormData) {
   if (existing.slug !== slug) revalidatePath(`/kuenstler/${existing.slug}`);
   revalidatePath(`/kuenstler/${slug}`);
   redirect(`/admin/artists/${existing.id}?saved=1`);
+}
+
+export async function deleteArtistAction(formData: FormData) {
+  const { session, membership } = await requireArtistWrite();
+
+  const artistId = String(formData.get("artistId") ?? "").trim();
+  if (!artistId) throw new Error("ARTIST_REQUIRED");
+
+  const confirmName = String(formData.get("confirmName") ?? "").trim();
+  const forceUnlink = String(formData.get("forceUnlink") ?? "") === "1";
+
+  const existing = await prisma.artist.findFirst({
+    where: { id: artistId, organizationId: membership.organizationId },
+    include: {
+      _count: { select: { eventLinks: true } },
+      eventLinks: {
+        include: { event: { select: { id: true, name: true } } },
+        take: 12,
+      },
+    },
+  });
+  if (!existing) throw new Error("NOT_FOUND");
+
+  if (confirmName !== existing.name) {
+    redirect(`/admin/artists/${existing.id}?deleteError=name`);
+  }
+
+  const linkCount = existing._count.eventLinks;
+  if (linkCount > 0 && !forceUnlink) {
+    redirect(`/admin/artists/${existing.id}?deleteError=in_use&count=${linkCount}`);
+  }
+
+  const linkedEventNames = existing.eventLinks.map((l) => l.event.name);
+
+  await prisma.artist.delete({ where: { id: existing.id } });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "artist.deleted",
+    entityType: "artist",
+    entityId: existing.id,
+    before: {
+      name: existing.name,
+      slug: existing.slug,
+      eventLinkCount: linkCount,
+      eventNames: linkedEventNames,
+      unlinkedFromEvents: linkCount > 0,
+    },
+  });
+
+  revalidatePath("/admin/artists");
+  revalidatePath(`/kuenstler/${existing.slug}`);
+  for (const link of existing.eventLinks) {
+    revalidatePath(`/admin/events/${link.event.id}`);
+  }
+  redirect(
+    linkCount > 0
+      ? `/admin/artists?deleted=1&unlinked=${linkCount}`
+      : "/admin/artists?deleted=1",
+  );
 }
 
 export async function updateEventLineupAction(formData: FormData) {

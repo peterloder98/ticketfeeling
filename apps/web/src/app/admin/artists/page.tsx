@@ -6,12 +6,18 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+import { ARTIST_TYPES } from "@/lib/admin/artist-form";
 import { createArtistAction } from "@/app/admin/artists/actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Künstler" };
 
-export default async function AdminArtistsPage() {
+type Props = {
+  searchParams: Promise<{ deleted?: string; unlinked?: string }>;
+};
+
+export default async function AdminArtistsPage({ searchParams }: Props) {
+  const { deleted, unlinked } = await searchParams;
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
@@ -46,11 +52,21 @@ export default async function AdminArtistsPage() {
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.katalog} />
 
+      {deleted ? (
+        <p className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Künstler gelöscht
+          {unlinked && Number(unlinked) > 0
+            ? ` — aus ${unlinked} Event-Line-up${Number(unlinked) === 1 ? "" : "s"} entfernt.`
+            : "."}
+        </p>
+      ) : null}
+
       {canWrite ? (
         <form action={createArtistAction} className="tf-card space-y-4">
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Schnell anlegen</h2>
           <p className="text-sm text-[var(--tf-text-secondary)]">
-            Nur der Name ist Pflicht — der Rest ist optional.
+            Nur der Name ist Pflicht — der Rest ist optional. Mehr Details kannst du danach unter
+            Bearbeiten pflegen.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1 text-sm sm:col-span-2">
@@ -79,6 +95,28 @@ export default async function AdminArtistsPage() {
                 Details hinzufügen (optional)
               </summary>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-sm">
+                  <span className="text-[var(--tf-text-secondary)]">Art</span>
+                  <select name="artistType" className="tf-input" defaultValue="solo">
+                    {ARTIST_TYPES.map((type) => (
+                      <option key={type} value={type}>
+                        {type === "solo"
+                          ? "Solo"
+                          : type === "band"
+                            ? "Band"
+                            : type === "duo"
+                              ? "Duo"
+                              : type === "ensemble"
+                                ? "Ensemble"
+                                : "Sonstiges"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-[var(--tf-text-secondary)]">Genre</span>
+                  <input name="genre" className="tf-input" placeholder="z. B. Schlager" />
+                </label>
                 <label className="grid gap-1 text-sm">
                   <span className="text-[var(--tf-text-secondary)]">Homepage</span>
                   <input
