@@ -1,24 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import {
+  emptyLineupArtist,
+  lineupToJsonPayload,
+  type LibraryArtist,
+  type LineupArtistRow,
+} from "@/lib/admin/lineup-artist";
 
-export type LineupArtistRow = {
-  key: string;
-  id?: string | null;
-  name: string;
-  homepage: string;
-  youtube: string;
-  bio: string;
-  detailsOpen: boolean;
-};
-
-export type LibraryArtist = {
-  id: string;
-  name: string;
-  homepage: string | null;
-  youtube: string | null;
-  shortBio: string | null;
-};
+export type { LibraryArtist, LineupArtistRow };
+export { emptyLineupArtist, lineupToJsonPayload };
 
 type Props = {
   value: LineupArtistRow[];
@@ -30,36 +21,6 @@ type Props = {
   /** Softer copy for wizard vs. event edit. */
   hint?: string;
 };
-
-function newKey() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-export function emptyLineupArtist(partial?: Partial<LineupArtistRow>): LineupArtistRow {
-  return {
-    key: newKey(),
-    id: null,
-    name: "",
-    homepage: "",
-    youtube: "",
-    bio: "",
-    detailsOpen: false,
-    ...partial,
-  };
-}
-
-export function lineupToJsonPayload(rows: LineupArtistRow[]) {
-  return rows
-    .filter((r) => r.name.trim())
-    .map((r) => ({
-      key: r.key,
-      id: r.id || null,
-      name: r.name.trim(),
-      homepage: r.homepage.trim(),
-      youtube: r.youtube.trim(),
-      bio: r.bio.trim(),
-    }));
-}
 
 export function ArtistLineupEditor({
   value,

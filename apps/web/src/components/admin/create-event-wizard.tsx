@@ -13,11 +13,8 @@ import {
   discardVenuePlanQuietAction,
   prepareWizardLocationPlanAction,
 } from "@/app/admin/saalplan/actions";
-import {
-  ArtistLineupEditor,
-  type LibraryArtist,
-  type LineupArtistRow,
-} from "@/components/admin/artist-lineup-editor";
+import { ArtistLineupEditor } from "@/components/admin/artist-lineup-editor";
+import type { LibraryArtist, LineupArtistRow } from "@/lib/admin/lineup-artist";
 import { CREATE_EVENT_STATUSES, slugify } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import {

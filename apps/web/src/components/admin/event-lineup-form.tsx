@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { ArtistLineupEditor } from "@/components/admin/artist-lineup-editor";
 import {
-  ArtistLineupEditor,
   emptyLineupArtist,
   type LibraryArtist,
   type LineupArtistRow,
-} from "@/components/admin/artist-lineup-editor";
+} from "@/lib/admin/lineup-artist";
 import { updateEventLineupAction } from "@/app/admin/artists/actions";
 
 type Props = {

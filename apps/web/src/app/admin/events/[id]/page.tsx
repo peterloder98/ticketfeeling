@@ -18,7 +18,6 @@ import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
-import { emptyLineupArtist } from "@/components/admin/artist-lineup-editor";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -174,49 +173,62 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     })),
   }));
 
-  const [report, locations, venuePlans, templates, tours, orgArtists] = await Promise.all([
-    getEventSalesReport(event.id),
-    prisma.location.findMany({
-      where: { organizationId: membership.organizationId },
-      select: { id: true, name: true, city: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.venuePlan.findMany({
-      where: { organizationId: membership.organizationId },
-      select: {
-        id: true,
-        name: true,
-        locationId: true,
-        widthCm: true,
-        depthCm: true,
-        objects: true,
-      },
-      orderBy: { name: "asc" },
-    }),
-    typeof prisma.ticketCategoryTemplate?.findMany === "function"
-      ? prisma.ticketCategoryTemplate.findMany({
-          where: { organizationId: membership.organizationId },
-          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-          select: { id: true, name: true, priceGrossCents: true, capacity: true },
-        })
-      : Promise.resolve([]),
-    prisma.tour.findMany({
-      where: { organizationId: membership.organizationId },
-      select: { id: true, name: true },
-      orderBy: { name: "asc" },
-    }),
-    prisma.artist.findMany({
-      where: { organizationId: membership.organizationId },
-      select: {
-        id: true,
-        name: true,
-        homepage: true,
-        youtube: true,
-        shortBio: true,
-      },
-      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    }),
-  ]);
+  let report;
+  let locations;
+  let venuePlans;
+  let templates;
+  let tours;
+  let orgArtists;
+  try {
+    [report, locations, venuePlans, templates, tours, orgArtists] = await Promise.all([
+      getEventSalesReport(event.id),
+      prisma.location.findMany({
+        where: { organizationId: membership.organizationId },
+        select: { id: true, name: true, city: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.venuePlan.findMany({
+        where: { organizationId: membership.organizationId },
+        select: {
+          id: true,
+          name: true,
+          locationId: true,
+          widthCm: true,
+          depthCm: true,
+          objects: true,
+        },
+        orderBy: { name: "asc" },
+      }),
+      typeof prisma.ticketCategoryTemplate?.findMany === "function"
+        ? prisma.ticketCategoryTemplate.findMany({
+            where: { organizationId: membership.organizationId },
+            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+            select: { id: true, name: true, priceGrossCents: true, capacity: true },
+          })
+        : Promise.resolve([]),
+      prisma.tour.findMany({
+        where: { organizationId: membership.organizationId },
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+      prisma.artist.findMany({
+        where: { organizationId: membership.organizationId },
+        select: {
+          id: true,
+          name: true,
+          homepage: true,
+          youtube: true,
+          shortBio: true,
+        },
+        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      }),
+    ]);
+  } catch (err) {
+    console.error("[admin/events/[id]] related data load failed", id, err);
+    return (
+      <EventLoadError message="Zusätzliche Eventdaten konnten nicht geladen werden. Bitte erneut versuchen." />
+    );
+  }
 
   const displayCover = resolveEventCoverUrl(event);
   const usesTourCover = eventUsesTourCover({
@@ -525,16 +537,15 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           <EventLineupForm
             eventId={event.id}
             library={orgArtists}
-            initialLineup={event.artists.map((link) =>
-              emptyLineupArtist({
-                key: link.id,
-                id: link.artist.id,
-                name: link.artist.name,
-                homepage: link.artist.homepage ?? "",
-                youtube: link.artist.youtube ?? "",
-                bio: link.artist.shortBio ?? "",
-              }),
-            )}
+            initialLineup={event.artists.map((link) => ({
+              key: link.id,
+              id: link.artist.id,
+              name: link.artist.name,
+              homepage: link.artist.homepage ?? "",
+              youtube: link.artist.youtube ?? "",
+              bio: link.artist.shortBio ?? "",
+              detailsOpen: false,
+            }))}
           />
         ) : (
           <ul className="mt-4 space-y-1 text-sm">
