@@ -520,7 +520,14 @@ export async function fulfillPaidOrder(orderId: string) {
       },
     });
 
-    if (!result.alreadyFulfilled) {
+    // Send buyer mail on first fulfillment, or retry if tickets exist but mail never landed.
+    const shouldSendBuyerMail =
+      !result.alreadyFulfilled ||
+      (result.alreadyFulfilled &&
+        !result.order.ticketSentAt &&
+        result.order.channel !== "box_office");
+
+    if (shouldSendBuyerMail) {
       const fresh = await prisma.order.findUnique({
         where: { id: result.order.id },
         include: {
@@ -537,7 +544,7 @@ export async function fulfillPaidOrder(orderId: string) {
       ).replace(/\/$/, "");
 
       // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand an Käufer
-      if (fresh?.customer.email && fresh.channel !== "box_office") {
+      if (fresh?.customer.email && fresh.channel !== "box_office" && !fresh.ticketSentAt) {
         const event =
           fresh.tickets[0]?.event ??
           null;

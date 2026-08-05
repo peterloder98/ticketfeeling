@@ -205,7 +205,7 @@ export async function resendTicketMail(input: {
     ticketNumber: ticket.ticketNumber,
     orderId: ticket.orderId,
     ticketId: ticket.id,
-    hasAttachment: true,
+    hasAttachment: false,
   });
 
   await enqueueTransactionalEmail({
@@ -218,11 +218,8 @@ export async function resendTicketMail(input: {
       orderNumber: ticket.order.orderNumber,
       ticketPath: `/ticket/${ticket.id}`,
     },
-    attachTicketPdfs: true,
-    ticketIds: [ticket.id],
     text: mail.text,
     html: mail.html,
-    compactPdf: true,
     embedLogo: true,
   });
 

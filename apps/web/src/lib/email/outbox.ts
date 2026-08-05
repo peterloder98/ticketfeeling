@@ -29,10 +29,11 @@ type Attachment = {
   contentDisposition?: "inline" | "attachment";
 };
 
-/** Buyer paid confirmations — never attach ticket PDFs (links only). */
+/** Buyer ticket mails — never attach ticket PDFs (links only). */
 const NEVER_ATTACH_TICKET_PDF_TEMPLATES = new Set([
   "order_paid_tickets",
   "sepa_payment_succeeded",
+  "tickets_resent",
 ]);
 
 export async function enqueueTransactionalEmail(input: {

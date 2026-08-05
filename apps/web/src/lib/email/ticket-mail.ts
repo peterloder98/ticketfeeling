@@ -377,14 +377,14 @@ export function buildTicketsResentMail(input: {
   ];
 
   return {
-    subject: `Dein Ticket erneut: ${input.ticketNumber}`,
+    subject: `Dein Ticket erneut (per Link, kein PDF-Anhang): ${input.ticketNumber}`,
     text: lines.join("\n"),
     html: wrapHtml(
       [
         escapeHtml(greeting),
         hasAttachment
           ? "hier ist dein Ticket erneut als <strong>PDF im Anhang</strong>."
-          : "hier ist der Link zu deinem Ticket erneut.",
+          : "hier ist der Link zu deinem Ticket erneut — <strong>kein PDF-Anhang</strong>.",
         `<strong>${escapeHtml(input.eventName)}</strong><br/>Ticketnr. ${escapeHtml(input.ticketNumber)}`,
         `<a href="${escapeHtml(ticketUrl)}" style="color:#0D9488;font-weight:600">Ticket ansehen</a> · <a href="${escapeHtml(orderUrl)}" style="color:#0D9488;font-weight:600">Bestellung</a>`,
         "Dein Ticketfeeling-Team",
@@ -453,6 +453,9 @@ export function buildSepaProcessingMail(input: {
 
 export function buildSepaSucceededMail(input: {
   firstName?: string | null;
+  lastName?: string | null;
+  gender?: string | null;
+  salutation?: string | null;
   eventName: string;
   whenLabel: string;
   eventDateLabel?: string | null;
@@ -461,12 +464,13 @@ export function buildSepaSucceededMail(input: {
   orderNumber: string;
   ticketCount: number;
   hasAttachment?: boolean;
+  invoiceNumber?: string | null;
+  invoiceDownloadUrl?: string | null;
+  firstTicketId?: string | null;
+  accessToken?: string | null;
 }): TicketMailContent {
-  const base = buildOrderPaidTicketsMail(input);
-  return {
-    ...base,
-    subject: "Deine Zahlung ist eingegangen – hier ist dein Ticket",
-  };
+  // Same fingerprint subject/body as card confirmations (link-only).
+  return buildOrderPaidTicketsMail(input);
 }
 
 export function buildSepaFailedMail(input: {
