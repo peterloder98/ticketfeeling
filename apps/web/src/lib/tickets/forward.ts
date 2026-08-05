@@ -184,6 +184,7 @@ export async function forwardTicket(input: {
       recipient: email,
       senderName,
     },
+    attachTicketPdfs: true,
     ticketIds: [ticket.id],
     text: mail.text,
     html: mail.html,

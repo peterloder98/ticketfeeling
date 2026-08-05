@@ -218,6 +218,7 @@ export async function resendTicketMail(input: {
       orderNumber: ticket.order.orderNumber,
       ticketPath: `/ticket/${ticket.id}`,
     },
+    attachTicketPdfs: true,
     ticketIds: [ticket.id],
     text: mail.text,
     html: mail.html,

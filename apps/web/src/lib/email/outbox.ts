@@ -29,17 +29,29 @@ type Attachment = {
   contentDisposition?: "inline" | "attachment";
 };
 
+/** Buyer paid confirmations — never attach ticket PDFs (links only). */
+const NEVER_ATTACH_TICKET_PDF_TEMPLATES = new Set([
+  "order_paid_tickets",
+  "sepa_payment_succeeded",
+]);
+
 export async function enqueueTransactionalEmail(input: {
   organizationId: string;
   to: string | string[];
   template: string;
   subject: string;
   payload: Record<string, unknown>;
-  /** Attach ticket PDFs when ticketIds provided */
+  /**
+   * Explicit opt-in required to attach ticket PDFs (from ticketIds,
+   * orderIdForCombinedPdf, or pdfAttachments).
+   * Buyer confirmation templates ignore this and never attach ticket PDFs.
+   */
+  attachTicketPdfs?: boolean;
+  /** Ticket ids to render as PDF attachments (requires attachTicketPdfs) */
   ticketIds?: string[];
-  /** Prefer one combined PDF for the whole order */
+  /** Prefer one combined PDF for the whole order (requires attachTicketPdfs) */
   orderIdForCombinedPdf?: string;
-  /** Already-rendered PDF buffers (skips re-render) */
+  /** Already-rendered PDF buffers (requires attachTicketPdfs; ticket numbers ≠ "ticket" in name) */
   pdfAttachments?: { filename: string; content: Buffer }[];
   /** Optional body overrides (fixed templates) */
   text?: string;
@@ -72,24 +84,42 @@ export async function enqueueTransactionalEmail(input: {
   }
 
   const attachments: Attachment[] = [];
-  const compact = input.compactPdf ?? Boolean(input.ticketIds?.length || input.orderIdForCombinedPdf);
+  const neverTicketPdfs = NEVER_ATTACH_TICKET_PDF_TEMPLATES.has(input.template);
+  // Hard rule: buyer confirmations never get ticket PDFs, even if a caller
+  // accidentally passes attachTicketPdfs / ticketIds / pdfAttachments.
+  const allowTicketPdfs = !neverTicketPdfs && input.attachTicketPdfs === true;
+  const compact =
+    input.compactPdf ??
+    Boolean(allowTicketPdfs && (input.ticketIds?.length || input.orderIdForCombinedPdf));
   const embedLogo = input.embedLogo !== false;
 
   if (input.pdfAttachments?.length) {
-    for (const pdf of input.pdfAttachments) {
-      if (pdf.content.length > 0) {
-        attachments.push({
-          filename: pdf.filename,
-          content: pdf.content,
-          contentType: "application/pdf",
-        });
+    if (!allowTicketPdfs) {
+      console.warn(
+        "[email] skipped pdfAttachments (attachTicketPdfs required / template blocked)",
+        input.template,
+        input.pdfAttachments.length,
+      );
+    } else {
+      for (const pdf of input.pdfAttachments) {
+        if (pdf.content.length > 0) {
+          attachments.push({
+            filename: pdf.filename,
+            content: pdf.content,
+            contentType: "application/pdf",
+          });
+        }
       }
     }
   }
 
-  // Prefer one combined order PDF; fall back to per-ticket PDFs so the mail always
-  // gets real attachments when any ticket can be rendered.
-  if (!attachments.some((a) => a.contentType === "application/pdf") && input.orderIdForCombinedPdf) {
+  // Prefer one combined order PDF; fall back to per-ticket PDFs — only when
+  // callers explicitly opt in (box office / forward / resend).
+  if (
+    allowTicketPdfs &&
+    !attachments.some((a) => a.contentType === "application/pdf") &&
+    input.orderIdForCombinedPdf
+  ) {
     try {
       const pdf = await renderOrderTicketsPdf(input.orderIdForCombinedPdf);
       if (pdf.buffer.length > 0) {
@@ -104,7 +134,11 @@ export async function enqueueTransactionalEmail(input: {
     }
   }
 
-  if (!attachments.some((a) => a.contentType === "application/pdf") && input.ticketIds?.length) {
+  if (
+    allowTicketPdfs &&
+    !attachments.some((a) => a.contentType === "application/pdf") &&
+    input.ticketIds?.length
+  ) {
     for (const ticketId of input.ticketIds) {
       try {
         const pdf = await renderTicketPdf(ticketId, { compact });
@@ -119,6 +153,25 @@ export async function enqueueTransactionalEmail(input: {
         console.error("[email] pdf attach failed", ticketId, error);
       }
     }
+  }
+
+  if (
+    neverTicketPdfs &&
+    (input.attachTicketPdfs ||
+      input.ticketIds?.length ||
+      input.orderIdForCombinedPdf ||
+      input.pdfAttachments?.length)
+  ) {
+    console.warn(
+      "[email] buyer confirmation refuses ticket PDF attachments",
+      input.template,
+      {
+        attachTicketPdfs: input.attachTicketPdfs === true,
+        ticketIds: input.ticketIds?.length ?? 0,
+        orderIdForCombinedPdf: Boolean(input.orderIdForCombinedPdf),
+        pdfAttachments: input.pdfAttachments?.length ?? 0,
+      },
+    );
   }
 
   if (embedLogo) {

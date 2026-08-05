@@ -99,6 +99,7 @@ export async function emailBoxOfficeTickets(input: {
       when: whenLabel,
       ticketCount: order.tickets.length,
     },
+    attachTicketPdfs: true,
     ticketIds: order.tickets.map((t) => t.id),
     text: mail.text,
     html: mail.html,

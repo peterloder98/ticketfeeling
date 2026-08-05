@@ -185,16 +185,19 @@ export function buildOrderPaidTicketsMail(input: {
         ? `Rechnung: ${invoiceNumber}`
         : null;
   const datePart = input.eventDateLabel?.trim();
+  // Subject makes the link-only delivery unmistakable (also a deploy smoke-check).
   const subject = datePart
-    ? `Ihre Tickets für ${input.eventName} – ${datePart}`
-    : `Ihre Tickets für ${input.eventName}`;
+    ? `Ihre Tickets (per Link, kein PDF-Anhang) – ${input.eventName} – ${datePart}`
+    : `Ihre Tickets (per Link, kein PDF-Anhang) – ${input.eventName}`;
 
   const lines = [
     `${greeting},`,
     "",
+    "Wichtig: Diese Bestätigung enthält keinen Ticket-PDF-Anhang. Ihre Tickets öffnen Sie ausschließlich über die Links unten.",
+    "",
     "vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei diesem Event dabei sind.",
     "",
-    `${ticketCountLabel} samt QR-Codes finden Sie über die Links unten — PDF bei Bedarf herunterladen, kein Anhang nötig.`,
+    `${ticketCountLabel} samt QR-Codes finden Sie über die Links — PDF bei Bedarf dort herunterladen.`,
     "",
     `Event: ${input.eventName}`,
     `Termin: ${input.whenLabel}`,
@@ -231,8 +234,9 @@ export function buildOrderPaidTicketsMail(input: {
 
   const htmlParas = [
     escapeHtml(`${greeting},`),
+    "<strong>Wichtig:</strong> Diese Bestätigung enthält <strong>keinen Ticket-PDF-Anhang</strong>. Ihre Tickets öffnen Sie ausschließlich über die Links unten.",
     "vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei diesem Event dabei sind.",
-    `${escapeHtml(ticketCountLabel)} samt QR-Codes finden Sie über die Links unten — <strong>PDF bei Bedarf herunterladen</strong>, kein Anhang nötig.`,
+    `${escapeHtml(ticketCountLabel)} samt QR-Codes finden Sie über die Links — <strong>PDF bei Bedarf dort herunterladen</strong>.`,
     `<strong style="font-size:18px">${escapeHtml(input.eventName)}</strong><br/>
      <span style="color:#334155">${escapeHtml(input.whenLabel)}</span>${
        place ? `<br/><span style="color:#334155">${escapeHtml(place)}</span>` : ""
