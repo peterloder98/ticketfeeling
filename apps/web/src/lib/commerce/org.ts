@@ -2,6 +2,7 @@ import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/db";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
+import { ensureCompanyAddressSchema } from "@/lib/legal/ensure-company-address-schema";
 
 async function fetchDefaultOrganization() {
   try {
@@ -15,6 +16,7 @@ async function fetchDefaultOrganization() {
     // that migrate deploy has not applied yet. Patch + retry, then degrade.
     console.error("[org] findFirst with settings failed", error);
     await ensureSepaPaymentSchema(prisma);
+    await ensureCompanyAddressSchema(prisma).catch(() => undefined);
     try {
       return await prisma.organization.findFirst({
         where: { status: "active" },

@@ -40,6 +40,27 @@ const FALLBACK_STATEMENTS = [
   `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_data" BYTEA`,
   `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_filename" TEXT`,
   `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_emailed_at" TIMESTAMP(3)`,
+  // Public vs billing company addresses (migration 20260805190000)
+  `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "public_company_address" JSONB NOT NULL DEFAULT '{}'`,
+  `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "billing_company_address" JSONB NOT NULL DEFAULT '{}'`,
+  `UPDATE "organization_settings"
+   SET
+     "public_company_address" = jsonb_build_object(
+       'street', COALESCE(NULLIF(TRIM("street"), ''), 'Innere Münchener Str.'),
+       'houseNumber', COALESCE(NULLIF(TRIM("house_number"), ''), '36'),
+       'postalCode', COALESCE(NULLIF(TRIM("postal_code"), ''), '84028'),
+       'city', COALESCE(NULLIF(TRIM("city"), ''), 'Landshut'),
+       'country', COALESCE(NULLIF(TRIM("country"), ''), 'DE')
+     ),
+     "billing_company_address" = jsonb_build_object(
+       'street', 'Konradinstr.',
+       'houseNumber', '6',
+       'postalCode', '84032',
+       'city', 'Altdorf',
+       'country', 'DE'
+     )
+   WHERE "public_company_address" = '{}'::jsonb
+      OR "billing_company_address" = '{}'::jsonb`,
 ];
 
 function withTimeout(promise, ms, label) {
