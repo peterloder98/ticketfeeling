@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { useRouter } from "next/navigation";
@@ -11,17 +11,30 @@ function PayInner({
   processingPath,
   isSepa,
   isKlarna,
+  amountLabel,
+  autoFocus,
 }: {
   successPath: string;
   processingPath: string;
   isSepa: boolean;
   isKlarna: boolean;
+  amountLabel?: string;
+  autoFocus?: boolean;
 }) {
   const stripe = useStripe();
   const elements = useElements();
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  useEffect(() => {
+    if (!autoFocus) return;
+    const node = formRef.current;
+    if (!node) return;
+    // Bring the Stripe form into view so payment entry is immediate after checkout.
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [autoFocus]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -58,13 +71,19 @@ function PayInner({
   const submitLabel = pending
     ? "Zahlung läuft…"
     : isSepa
-      ? "Lastschrift verbindlich erteilen"
+      ? amountLabel
+        ? `Lastschrift über ${amountLabel} erteilen`
+        : "Lastschrift verbindlich erteilen"
       : isKlarna
-        ? "Mit Klarna weiter"
-        : "Jetzt bezahlen";
+        ? amountLabel
+          ? `Mit Klarna ${amountLabel} weiter`
+          : "Mit Klarna weiter"
+        : amountLabel
+          ? `Jetzt ${amountLabel} bezahlen`
+          : "Jetzt bezahlen";
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form ref={formRef} onSubmit={onSubmit} className="space-y-4">
       {isSepa ? (
         <p className="rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
           Die IBAN findest du auf deiner Bankkarte, deinem Kontoauszug oder im Online-Banking.
@@ -88,7 +107,11 @@ function PayInner({
         }}
       />
       {error ? <p className="text-sm text-[#b91c1c]">{error}</p> : null}
-      <button type="submit" className="tf-btn tf-btn-primary w-full" disabled={!stripe || pending}>
+      <button
+        type="submit"
+        className="tf-btn tf-btn-primary w-full !min-h-12 text-base"
+        disabled={!stripe || pending}
+      >
         {submitLabel}
       </button>
       <p className="text-center text-xs text-[var(--tf-text-secondary)]">
@@ -105,6 +128,8 @@ export function StripePayForm({
   successPath,
   processingPath,
   paymentMethod,
+  amountLabel,
+  autoFocus,
 }: {
   clientSecret: string;
   orderId: string;
@@ -114,6 +139,10 @@ export function StripePayForm({
   /** Where to go while SEPA is still processing */
   processingPath?: string;
   paymentMethod?: string | null;
+  /** Shown on the primary CTA, e.g. "49,00 €" */
+  amountLabel?: string;
+  /** Scroll payment form into view on mount */
+  autoFocus?: boolean;
 }) {
   if (!publishableKey) {
     return (
@@ -136,6 +165,8 @@ export function StripePayForm({
         processingPath={resolvedProcessing}
         isSepa={isSepa}
         isKlarna={isKlarna}
+        amountLabel={amountLabel}
+        autoFocus={autoFocus}
       />
     </Elements>
   );

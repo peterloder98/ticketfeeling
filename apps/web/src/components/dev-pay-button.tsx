@@ -56,13 +56,6 @@ export function DevPayButton({
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Jetzt bezahlen</h2>
-        <p className="mt-1 text-sm leading-relaxed text-[var(--tf-text-secondary)]">
-          Mit dem Klick bestätigst du die Zahlung von <strong>{amountLabel}</strong>. Danach
-          erhältst du deine Tickets inkl. QR-Code zum Einlass — als PDF und in deiner Bestellung.
-        </p>
-      </div>
       <p className="rounded-[14px] border border-[rgba(20,184,166,0.3)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
         Testmodus: Es wird nichts wirklich abgebucht. Ideal zum Ausprobieren von Kauf, PDF und
         Scanner.
