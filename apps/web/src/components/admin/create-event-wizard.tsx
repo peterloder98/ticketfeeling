@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useFormStatus } from "react-dom";
+import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import {
   shiftDateTimeLocal,
@@ -27,49 +29,160 @@ import {
 } from "@/lib/commerce/address";
 import { formatEuroFromCents } from "@/lib/money";
 
-const DRAFT_KEY = "tf-create-event-wizard-v1";
-/** Legacy per-tab key — migrated to localStorage so saalplan new-tab return works. */
-const DRAFT_KEY_SESSION = "tf-create-event-wizard-v1";
+const DRAFT_KEY_LEGACY = "tf-create-event-wizard-v1";
 
 type DraftGate = "checking" | "offer" | "ready";
 
-function readDraftRaw(): string | null {
+function draftLocalKey(organizationId: string) {
+  return organizationId
+    ? `${DRAFT_KEY_LEGACY}:${organizationId}`
+    : DRAFT_KEY_LEGACY;
+}
+
+function draftSessionKey(organizationId: string) {
+  return draftLocalKey(organizationId);
+}
+
+function readDraftRaw(organizationId: string): string | null {
+  const primary = draftLocalKey(organizationId);
   try {
-    const fromLocal = localStorage.getItem(DRAFT_KEY);
+    const fromLocal = localStorage.getItem(primary);
     if (fromLocal) return fromLocal;
+    // Migrate legacy unscoped key once.
+    if (organizationId) {
+      const legacy = localStorage.getItem(DRAFT_KEY_LEGACY);
+      if (legacy) {
+        localStorage.setItem(primary, legacy);
+        localStorage.removeItem(DRAFT_KEY_LEGACY);
+        return legacy;
+      }
+    }
   } catch {
     /* ignore */
   }
   try {
-    return sessionStorage.getItem(DRAFT_KEY_SESSION);
+    const fromSession = sessionStorage.getItem(draftSessionKey(organizationId));
+    if (fromSession) return fromSession;
+    if (organizationId) {
+      const legacy = sessionStorage.getItem(DRAFT_KEY_LEGACY);
+      if (legacy) {
+        sessionStorage.setItem(draftSessionKey(organizationId), legacy);
+        sessionStorage.removeItem(DRAFT_KEY_LEGACY);
+        return legacy;
+      }
+    }
   } catch {
-    return null;
+    /* ignore */
   }
+  return null;
 }
 
-function writeDraftRaw(json: string) {
+function writeDraftRaw(organizationId: string, json: string) {
   try {
-    localStorage.setItem(DRAFT_KEY, json);
+    localStorage.setItem(draftLocalKey(organizationId), json);
   } catch {
     /* quota / private mode */
   }
   try {
-    sessionStorage.setItem(DRAFT_KEY_SESSION, json);
+    sessionStorage.setItem(draftSessionKey(organizationId), json);
   } catch {
     /* ignore */
   }
 }
 
-function clearDraftRaw() {
+function clearDraftRaw(organizationId: string) {
   try {
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(draftLocalKey(organizationId));
+    localStorage.removeItem(DRAFT_KEY_LEGACY);
   } catch {
     /* ignore */
   }
   try {
-    sessionStorage.removeItem(DRAFT_KEY_SESSION);
+    sessionStorage.removeItem(draftSessionKey(organizationId));
+    sessionStorage.removeItem(DRAFT_KEY_LEGACY);
   } catch {
     /* ignore */
+  }
+}
+
+function isMeaningfulDraft(draft: Record<string, unknown>): boolean {
+  const categories = Array.isArray(draft.categories) ? draft.categories : [];
+  const lineup = Array.isArray(draft.lineup) ? draft.lineup : [];
+  return Boolean(
+    (typeof draft.name === "string" && draft.name.trim()) ||
+      (typeof draft.eventStartsAt === "string" && draft.eventStartsAt) ||
+      (typeof draft.venuePlanId === "string" && draft.venuePlanId) ||
+      (typeof draft.step === "number" && draft.step > 0) ||
+      (typeof draft.newLocName === "string" && draft.newLocName.trim()) ||
+      (typeof draft.subtitle === "string" && draft.subtitle.trim()) ||
+      (typeof draft.description === "string" && draft.description.trim()) ||
+      (typeof draft.coverImageUrl === "string" && draft.coverImageUrl.trim()) ||
+      categories.length > 0 ||
+      lineup.some(
+        (row) =>
+          typeof row === "object" &&
+          row !== null &&
+          typeof (row as { name?: unknown }).name === "string" &&
+          Boolean((row as { name: string }).name.trim()),
+      ),
+  );
+}
+
+/** Prefer keeping a richer draft if a transient empty write races it. */
+function draftWeight(draft: Record<string, unknown>): number {
+  let w = 0;
+  if (typeof draft.name === "string" && draft.name.trim()) w += 4;
+  if (typeof draft.eventStartsAt === "string" && draft.eventStartsAt) w += 3;
+  if (typeof draft.venuePlanId === "string" && draft.venuePlanId) w += 3;
+  if (typeof draft.step === "number") w += draft.step;
+  if (Array.isArray(draft.categories)) w += draft.categories.length * 2;
+  if (Array.isArray(draft.lineup)) {
+    w += draft.lineup.filter(
+      (row) =>
+        typeof row === "object" &&
+        row !== null &&
+        typeof (row as { name?: unknown }).name === "string" &&
+        Boolean((row as { name: string }).name.trim()),
+    ).length;
+  }
+  if (typeof draft.newLocName === "string" && draft.newLocName.trim()) w += 2;
+  if (typeof draft.coverImageUrl === "string" && draft.coverImageUrl.trim()) w += 1;
+  return w;
+}
+
+function humanizeCreateEventError(err: unknown): string {
+  const code = err instanceof Error ? err.message : "";
+  switch (code) {
+    case "COVER_REQUIRED_FOR_SALE":
+      return "Für den gewählten Status brauchst du ein Cover-Bild. Dein Entwurf bleibt gespeichert.";
+    case "TRACKING_REVIEW_REQUIRED":
+      return "Bitte Tracking prüfen (Org-Defaults oder eigene IDs). Dein Entwurf bleibt gespeichert.";
+    case "CATEGORIES_REQUIRED":
+      return "Mindestens eine Ticketkategorie fehlt. Dein Entwurf bleibt gespeichert.";
+    case "TAX_RATE_MISSING":
+      return "Kein aktiver Steuersatz in der Organisation. Dein Entwurf bleibt gespeichert.";
+    case "NAME_REQUIRED":
+      return "Bitte einen Event-Titel eingeben.";
+    case "LOCATION_REQUIRED":
+    case "LOCATION_NAME_REQUIRED":
+      return "Bitte einen Ort wählen oder anlegen.";
+    case "LOCATION_NOT_FOUND":
+      return "Der gewählte Ort wurde nicht gefunden.";
+    case "VENUE_PLAN_NOT_FOUND":
+    case "VENUE_PLAN_NEEDS_LOCATION":
+      return "Der Saalplan konnte nicht zugeordnet werden — bitte im Schritt „Ort“ neu wählen.";
+    case "FORBIDDEN":
+      return "Keine Berechtigung zum Anlegen.";
+    default:
+      if (
+        code === STREET_NO_NUMBERS_MESSAGE ||
+        code === POSTAL_CODE_DIGITS_ONLY_MESSAGE ||
+        code.includes("Straße") ||
+        code.includes("Postleitzahl")
+      ) {
+        return code;
+      }
+      return "Event konnte nicht angelegt werden. Dein Entwurf bleibt gespeichert — bitte Angaben prüfen und erneut versuchen.";
   }
 }
 
@@ -162,7 +275,33 @@ function saalplanEditorUrl(planId: string) {
   return `/admin/saalplan/${planId}?returnTo=${returnTo}&returnLabel=${returnLabel}`;
 }
 
+function WizardSubmitButton({
+  disabled,
+  onValidate,
+}: {
+  disabled: boolean;
+  onValidate: () => string | null;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      className="tf-btn tf-btn-primary"
+      disabled={disabled || pending}
+      onClick={(e) => {
+        const err = onValidate();
+        if (err) {
+          e.preventDefault();
+        }
+      }}
+    >
+      {pending ? "Wird angelegt…" : "Event anlegen"}
+    </button>
+  );
+}
+
 type Props = {
+  organizationId: string;
   locations: WizardLocation[];
   templates: WizardCategoryTemplate[];
   tours?: WizardTour[];
@@ -172,6 +311,7 @@ type Props = {
 };
 
 export function CreateEventWizard({
+  organizationId,
   locations,
   templates,
   tours = [],
@@ -181,6 +321,8 @@ export function CreateEventWizard({
 }: Props) {
   const [draftGate, setDraftGate] = useState<DraftGate>("checking");
   const [pendingDraft, setPendingDraft] = useState<Record<string, unknown> | null>(null);
+  /** Block auto-persist until restore/discard decision is applied — prevents empty writes wiping storage. */
+  const allowPersistRef = useRef(false);
   const hydrated = draftGate === "ready";
   const [step, setStep] = useState(0);
   const [tourId, setTourId] = useState(initialTourId);
@@ -246,7 +388,76 @@ export function CreateEventWizard({
   const [stepError, setStepError] = useState<string | null>(null);
 
   function clearDraftStorage() {
-    clearDraftRaw();
+    clearDraftRaw(organizationId);
+  }
+
+  function buildDraftSnapshot(overrides: Record<string, unknown> = {}) {
+    return {
+      v: 1,
+      savedAt: new Date().toISOString(),
+      organizationId,
+      step,
+      name,
+      slug,
+      slugManual,
+      subtitle,
+      shortDescription,
+      description,
+      status,
+      eventStartsAt,
+      eventEndsAt,
+      doorsOpenAt,
+      presaleStartsAt,
+      endsManual,
+      doorsManual,
+      ticketTaxPercent,
+      feeTaxMode,
+      feeTaxPercent,
+      coverImageUrl,
+      tourId,
+      locationMode,
+      locationId,
+      locationQuery,
+      venuePlanId,
+      wantSaalplan,
+      seatingBookingMode,
+      planName,
+      planWidthM,
+      planDepthM,
+      planWithStage,
+      newLocName,
+      newLocStreet,
+      newLocHouse,
+      newLocZip,
+      newLocCity,
+      newLocCountry,
+      newLocPhone,
+      newLocHomepage,
+      newLocCapacity,
+      categories,
+      lineup,
+      ...overrides,
+    };
+  }
+
+  function persistDraftNow(overrides: Record<string, unknown> = {}) {
+    const next = buildDraftSnapshot(overrides);
+    try {
+      const raw = readDraftRaw(organizationId);
+      if (raw) {
+        const prev = JSON.parse(raw) as Record<string, unknown>;
+        // Never let a thinner/empty snapshot silently replace a richer draft.
+        if (isMeaningfulDraft(prev) && draftWeight(next) < draftWeight(prev) && !isMeaningfulDraft(next)) {
+          return;
+        }
+        if (isMeaningfulDraft(prev) && draftWeight(next) + 2 < draftWeight(prev) && !next.name && !next.eventStartsAt) {
+          return;
+        }
+      }
+    } catch {
+      /* ignore parse issues — still write */
+    }
+    writeDraftRaw(organizationId, JSON.stringify(next));
   }
 
   function applyDraft(draft: Record<string, unknown>) {
@@ -285,6 +496,10 @@ export function CreateEventWizard({
     if (typeof draft.seatingBookingMode === "string") {
       setSeatingBookingMode(draft.seatingBookingMode);
     }
+    if (typeof draft.planName === "string") setPlanName(draft.planName);
+    if (typeof draft.planWidthM === "string") setPlanWidthM(draft.planWidthM);
+    if (typeof draft.planDepthM === "string") setPlanDepthM(draft.planDepthM);
+    if (typeof draft.planWithStage === "boolean") setPlanWithStage(draft.planWithStage);
     // Restore plan from draft — localStorage survives the editor tab round-trip.
     if (typeof draft.venuePlanId === "string" && draft.venuePlanId) {
       const locId =
@@ -322,8 +537,27 @@ export function CreateEventWizard({
     if (typeof draft.newLocPhone === "string") setNewLocPhone(draft.newLocPhone);
     if (typeof draft.newLocHomepage === "string") setNewLocHomepage(draft.newLocHomepage);
     if (typeof draft.newLocCapacity === "string") setNewLocCapacity(draft.newLocCapacity);
-    if (Array.isArray(draft.categories) && draft.categories.length > 0) {
-      setCategories(draft.categories as CategoryRow[]);
+    // Always restore categories when present (including validating capacity strings).
+    if (Array.isArray(draft.categories)) {
+      setCategories(
+        (draft.categories as CategoryRow[]).map((c) => ({
+          ...newCategoryRow(),
+          ...c,
+          key: typeof c.key === "string" && c.key ? c.key : newCategoryRow().key,
+          capacity:
+            c.capacity === undefined || c.capacity === null || c.capacity === ""
+              ? "100"
+              : String(c.capacity),
+          priceEuro:
+            c.priceEuro === undefined || c.priceEuro === null || c.priceEuro === ""
+              ? "0"
+              : String(c.priceEuro),
+          maxPerOrder:
+            c.maxPerOrder === undefined || c.maxPerOrder === null || c.maxPerOrder === ""
+              ? "10"
+              : String(c.maxPerOrder),
+        })),
+      );
     }
     if (Array.isArray(draft.lineup)) {
       setLineup(draft.lineup as LineupArtistRow[]);
@@ -332,6 +566,7 @@ export function CreateEventWizard({
 
   function continuePendingDraft() {
     if (pendingDraft) applyDraft(pendingDraft);
+    allowPersistRef.current = true;
     setPendingDraft(null);
     setDraftGate("ready");
   }
@@ -340,6 +575,7 @@ export function CreateEventWizard({
     const orphanPlanId =
       typeof pendingDraft?.venuePlanId === "string" ? pendingDraft.venuePlanId : "";
     clearDraftStorage();
+    allowPersistRef.current = true;
     setPendingDraft(null);
     setVenuePlanId("");
     setSeatingBookingMode("none");
@@ -405,21 +641,16 @@ export function CreateEventWizard({
 
   // Restore drafts: auto-resume after saalplan return; otherwise offer resume/discard.
   useEffect(() => {
+    allowPersistRef.current = false;
     try {
-      const raw = readDraftRaw();
+      const raw = readDraftRaw(organizationId);
       if (raw) {
         const draft = JSON.parse(raw) as Record<string, unknown>;
-        const meaningful = Boolean(
-          (typeof draft.name === "string" && draft.name.trim()) ||
-            (typeof draft.eventStartsAt === "string" && draft.eventStartsAt) ||
-            (typeof draft.venuePlanId === "string" && draft.venuePlanId) ||
-            (typeof draft.step === "number" && draft.step > 0) ||
-            (typeof draft.newLocName === "string" && draft.newLocName.trim()),
-        );
-        if (meaningful) {
+        if (isMeaningfulDraft(draft)) {
           if (shouldAutoResumeWizard()) {
             applyDraft(draft);
             stripResumeParamsFromUrl();
+            allowPersistRef.current = true;
             setDraftGate("ready");
             return;
           }
@@ -427,56 +658,21 @@ export function CreateEventWizard({
           setDraftGate("offer");
           return;
         }
+        // Empty placeholder only — safe to drop.
         clearDraftStorage();
       }
     } catch {
-      clearDraftStorage();
+      // Keep storage on parse hiccups; start fresh UI without wiping a maybe-valid blob.
     }
+    allowPersistRef.current = true;
     setDraftGate("ready");
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / tour change only
-  }, [initialTourId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / tour / org change only
+  }, [initialTourId, organizationId]);
 
   useEffect(() => {
-    if (draftGate !== "ready") return;
-    const draft = {
-      step,
-      name,
-      slug,
-      slugManual,
-      subtitle,
-      shortDescription,
-      description,
-      status,
-      eventStartsAt,
-      eventEndsAt,
-      doorsOpenAt,
-      presaleStartsAt,
-      endsManual,
-      doorsManual,
-      ticketTaxPercent,
-      feeTaxMode,
-      feeTaxPercent,
-      coverImageUrl,
-      tourId,
-      locationMode,
-      locationId,
-      locationQuery,
-      venuePlanId,
-      wantSaalplan,
-      seatingBookingMode,
-      newLocName,
-      newLocStreet,
-      newLocHouse,
-      newLocZip,
-      newLocCity,
-      newLocCountry,
-      newLocPhone,
-      newLocHomepage,
-      newLocCapacity,
-      categories,
-      lineup,
-    };
-    writeDraftRaw(JSON.stringify(draft));
+    if (draftGate !== "ready" || !allowPersistRef.current) return;
+    persistDraftNow();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- snapshot via persistDraftNow closures
   }, [
     step,
     name,
@@ -503,6 +699,10 @@ export function CreateEventWizard({
     venuePlanId,
     wantSaalplan,
     seatingBookingMode,
+    planName,
+    planWidthM,
+    planDepthM,
+    planWithStage,
     newLocName,
     newLocStreet,
     newLocHouse,
@@ -515,6 +715,7 @@ export function CreateEventWizard({
     categories,
     lineup,
     draftGate,
+    organizationId,
   ]);
 
   function applyStartDerived(start: string) {
@@ -626,53 +827,12 @@ export function CreateEventWizard({
       return;
     }
 
-    // Persist draft before opening a new tab (localStorage — shared across tabs).
-    try {
-      const raw = readDraftRaw();
-      const current = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
-      writeDraftRaw(
-        JSON.stringify({
-          ...current,
-          step,
-          name,
-          slug,
-          slugManual,
-          subtitle,
-          shortDescription,
-          description,
-          status,
-          eventStartsAt,
-          eventEndsAt,
-          doorsOpenAt,
-          presaleStartsAt,
-          endsManual,
-          doorsManual,
-          ticketTaxPercent,
-          feeTaxMode,
-          feeTaxPercent,
-          coverImageUrl,
-          tourId,
-          locationMode,
-          locationId,
-          locationQuery,
-          wantSaalplan: true,
-          seatingBookingMode:
-            seatingBookingMode === "none" ? "seat_map_and_best" : seatingBookingMode,
-          newLocName,
-          newLocStreet,
-          newLocHouse,
-          newLocZip,
-          newLocCity,
-          newLocCountry,
-          newLocPhone,
-          newLocHomepage,
-          newLocCapacity,
-          categories,
-        }),
-      );
-    } catch {
-      /* ignore */
-    }
+    // Persist full draft before opening a new tab (localStorage — shared across tabs).
+    persistDraftNow({
+      wantSaalplan: true,
+      seatingBookingMode:
+        seatingBookingMode === "none" ? "seat_map_and_best" : seatingBookingMode,
+    });
 
     startPlanBusy(async () => {
       try {
@@ -736,46 +896,13 @@ export function CreateEventWizard({
         setVenuePlanId(result.venuePlanId);
         setSeatingBookingMode("seat_map_and_best");
         setWantSaalplan(true);
-        writeDraftRaw(
-          JSON.stringify({
-            step,
-            name,
-            slug,
-            slugManual,
-            subtitle,
-            shortDescription,
-            description,
-            status,
-            eventStartsAt,
-            eventEndsAt,
-            doorsOpenAt,
-            presaleStartsAt,
-            endsManual,
-            doorsManual,
-            ticketTaxPercent,
-            feeTaxMode,
-            feeTaxPercent,
-            coverImageUrl,
-            tourId,
-            locationMode: "existing",
-            locationId: result.locationId,
-            locationQuery,
-            venuePlanId: result.venuePlanId,
-            wantSaalplan: true,
-            seatingBookingMode: "seat_map_and_best",
-            newLocName,
-            newLocStreet,
-            newLocHouse,
-            newLocZip,
-            newLocCity,
-            newLocCountry,
-            newLocPhone,
-            newLocHomepage,
-            newLocCapacity,
-            categories,
-            lineup,
-          }),
-        );
+        persistDraftNow({
+          locationMode: "existing",
+          locationId: result.locationId,
+          venuePlanId: result.venuePlanId,
+          wantSaalplan: true,
+          seatingBookingMode: "seat_map_and_best",
+        });
         window.open(saalplanEditorUrl(result.venuePlanId), "_blank", "noopener,noreferrer");
       } catch (e) {
         setStepError(
@@ -812,19 +939,36 @@ export function CreateEventWizard({
     },
   ];
 
+  async function submitWizard(formData: FormData) {
+    // Flush latest state first — never clear storage until create succeeds.
+    persistDraftNow();
+    try {
+      await action(formData);
+      // Success without redirect (unusual) — only then clear.
+      clearDraftStorage();
+    } catch (err) {
+      if (isRedirectError(err)) {
+        // Successful create → redirect. Clear draft only now.
+        clearDraftStorage();
+        throw err;
+      }
+      setStepError(humanizeCreateEventError(err));
+    }
+  }
+
   return (
     <form
       id="create-event-wizard-form"
-      action={action}
+      action={submitWizard}
       noValidate
       className="mt-6 w-full space-y-6"
     >
       {draftGate === "offer" ? (
-        <div className="rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.06)] px-4 py-4">
-          <p className="font-medium text-[var(--tf-navy)]">Angefangener Entwurf gefunden</p>
+        <div className="rounded-xl border border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] px-4 py-4">
+          <p className="font-medium text-[var(--tf-navy)]">Entwurf wiederherstellen</p>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Du kannst weitermachen — oder verwerfen und frisch starten. Unfertige Saalpläne werden
-            dabei nicht automatisch wieder angehängt.
+            Es liegt ein gespeicherter Event-Entwurf vor (Titel, Kategorien, Kontingent, Künstler,
+            Saalplan). Wiederherstellen oder verwerfen — nichts geht stillschweigend verloren.
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -832,7 +976,7 @@ export function CreateEventWizard({
               className="tf-btn tf-btn-primary"
               onClick={continuePendingDraft}
             >
-              Entwurf fortsetzen
+              Entwurf wiederherstellen
             </button>
             <button type="button" className="tf-btn" onClick={discardPendingDraft}>
               Entwurf verwerfen
@@ -1775,8 +1919,10 @@ export function CreateEventWizard({
                 setNewLocHomepage("");
                 setNewLocCapacity("");
                 setWantSaalplan(false);
-                                setCategories([newCategoryRow()]);
+                setCategories([]);
+                setLineup([]);
                 setStepError(null);
+                allowPersistRef.current = true;
                 if (orphanId) {
                   const plan = locList
                     .flatMap((l) => l.venuePlans)
@@ -1810,22 +1956,14 @@ export function CreateEventWizard({
             Weiter
           </button>
         ) : (
-          <button
-            type="submit"
-            className="tf-btn tf-btn-primary"
+          <WizardSubmitButton
             disabled={draftGate !== "ready"}
-            onClick={(e) => {
+            onValidate={() => {
               const err = validateStep(0) || validateStep(1) || validateStep(2);
-              if (err) {
-                e.preventDefault();
-                setStepError(err);
-                return;
-              }
-              clearDraftStorage();
+              setStepError(err);
+              return err;
             }}
-          >
-            Event anlegen
-          </button>
+          />
         )}
       </div>
       </div>

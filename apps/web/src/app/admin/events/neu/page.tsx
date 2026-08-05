@@ -125,6 +125,7 @@ export default async function NewEventPage({ searchParams }: Props) {
       </h1>
 
       <CreateEventWizard
+        organizationId={membership.organizationId}
         locations={locations}
         templates={templates}
         tours={tours}
