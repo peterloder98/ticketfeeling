@@ -1,6 +1,12 @@
 /**
- * @deprecated Prefer `render-brand-logos.ts` (SVG → crisp PNG).
- * Legacy: knock out solid black plate from ChatGPT/JPEG logo artwork → PNG+alpha.
+ * Soft-knockout solid black plate from original ChatGPT/JPEG logo artwork → PNG+alpha.
+ *
+ * Source is typically a 1024×682 JPEG *plate* (no alpha); logo content is much smaller
+ * inside that frame (~430×280). We:
+ *  1) flood-fill near-black from corners → transparency (protects navy wordmark)
+ *  2) trim to content + pad
+ *  3) lanczos 2× upscale for retina headroom (never invent detail, but avoids
+ *     browser upscaling a ~300px-tall bitmap on 2x/3x displays)
  *
  * Usage: npx tsx scripts/make-logo-master.ts [sourcePath]
  */
@@ -16,153 +22,103 @@ const defaultSrc =
   process.argv[2] ??
   path.join(brandDir, "logo-ticketfeeling.raw.png");
 
-/** Reference solids from this JPEG plate (crushed vs true brand hex). */
-const NAVY = { r: 0, g: 16, b: 44 };
-const TEAL = { r: 20, g: 184, b: 166 };
-const GOLD = { r: 214, g: 140, b: 40 };
-
 function clamp8(n: number) {
   return Math.max(0, Math.min(255, Math.round(n)));
 }
 
+/** Near-black, low-chroma plate pixel (JPEG ringing stays in range). */
+function isPlatePixel(r: number, g: number, b: number) {
+  const maxc = Math.max(r, g, b);
+  const chroma = maxc - Math.min(r, g, b);
+  return maxc <= 26 && chroma <= 12;
+}
+
 /**
- * Treat pixel as brandColor × alpha over black; restore solid + alpha.
- * Returns null if not this family.
+ * Flood-fill plate from corners, then soft-alpha only on plate AA.
+ * Brand pixels (navy/teal/gold/gradients) stay fully opaque — no color remapping.
  */
-function unpremultiplyBrand(
-  r: number,
-  g: number,
-  b: number,
-  ref: { r: number; g: number; b: number },
-  /** Which channel best tracks coverage for this color. */
-  key: "r" | "g" | "b",
-): { r: number; g: number; b: number; a: number } | null {
-  const refKey = ref[key];
-  if (refKey < 8) return null;
-  const coverage = Math.min(1, Math.max(0, ([r, g, b][["r", "g", "b"].indexOf(key)] as number) / refKey));
-  if (coverage < 0.04) return { r: ref.r, g: ref.g, b: ref.b, a: 0 };
-  const a = clamp8(coverage * 255);
-  // Keep solid brand color (avoid muddy AA charcoal).
-  return { r: ref.r, g: ref.g, b: ref.b, a };
-}
+function processRgba(data: Buffer, width: number, height: number) {
+  const n = width * height;
+  const bg = new Uint8Array(n);
 
-/** Soft-knockout near-black while protecting / recovering navy / teal / gold. */
-function processRgba(data: Buffer) {
-  for (let i = 0; i < data.length; i += 4) {
-    let r = data[i]!;
-    let g = data[i + 1]!;
-    let b = data[i + 2]!;
+  const seeds: Array<[number, number]> = [
+    [0, 0],
+    [width - 1, 0],
+    [0, height - 1],
+    [width - 1, height - 1],
+    [Math.floor(width / 2), 0],
+    [Math.floor(width / 2), height - 1],
+    [0, Math.floor(height / 2)],
+    [width - 1, Math.floor(height / 2)],
+  ];
+
+  const stack: number[] = [];
+  for (const [x, y] of seeds) {
+    const i = y * width + x;
+    const o = i * 4;
+    if (isPlatePixel(data[o]!, data[o + 1]!, data[o + 2]!)) {
+      bg[i] = 1;
+      stack.push(i);
+    }
+  }
+
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % width;
+    const y = (i / width) | 0;
+    const neighbors: Array<[number, number]> = [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ];
+    for (const [nx, ny] of neighbors) {
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const ni = ny * width + nx;
+      if (bg[ni]) continue;
+      const o = ni * 4;
+      if (isPlatePixel(data[o]!, data[o + 1]!, data[o + 2]!)) {
+        bg[ni] = 1;
+        stack.push(ni);
+      }
+    }
+  }
+
+  const HARD = 8;
+  const SOFT = 26;
+
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    const r = data[o]!;
+    const g = data[o + 1]!;
+    const b = data[o + 2]!;
     const maxc = Math.max(r, g, b);
-    const minc = Math.min(r, g, b);
-    const chroma = maxc - minc;
 
-    // --- Gold family (orange tagline) ---
-    if (r >= 55 && g >= 25 && r > b + 15 && g > b - 5 && r + g > b * 2.2) {
-      // Solid-ish gold
-      if (maxc >= 120 && chroma >= 40) {
-        data[i + 3] = 255;
+    if (!bg[i]) {
+      // Foreground: keep exact colors (gradients intact).
+      // Tiny enclosed plate pockets (JPEG islands) → transparent.
+      if (maxc <= 16 && maxc - Math.min(r, g, b) <= 8) {
+        data[o] = 0;
+        data[o + 1] = 0;
+        data[o + 2] = 0;
+        data[o + 3] = 0;
         continue;
       }
-      const up = unpremultiplyBrand(r, g, b, GOLD, "r");
-      if (up) {
-        data[i] = up.r;
-        data[i + 1] = up.g;
-        data[i + 2] = up.b;
-        data[i + 3] = up.a;
-        continue;
-      }
-    }
-
-    // --- Teal family ---
-    if (g >= 35 && g > r + 12 && g + 40 >= b && b >= r) {
-      if (g >= 90) {
-        data[i + 3] = 255;
-        continue;
-      }
-      // Dark teal AA / mosquito → alpha against TEAL
-      const up = unpremultiplyBrand(r, g, b, TEAL, "g");
-      if (up) {
-        data[i] = up.r;
-        data[i + 1] = up.g;
-        data[i + 2] = up.b;
-        data[i + 3] = up.a;
-        continue;
-      }
-    }
-
-    // --- Navy family (blue-dominant, including crushed JPEG navy) ---
-    if (b >= 18 && b > r + 6 && b >= g - 1) {
-      // Solid navy body in this asset sits ~b 40–55
-      if (b >= 38 && g <= 55 && r <= 40) {
-        data[i] = NAVY.r;
-        data[i + 1] = NAVY.g;
-        data[i + 2] = NAVY.b;
-        data[i + 3] = 255;
-        continue;
-      }
-      const up = unpremultiplyBrand(r, g, b, NAVY, "b");
-      if (up) {
-        data[i] = up.r;
-        data[i + 1] = up.g;
-        data[i + 2] = up.b;
-        data[i + 3] = up.a;
-        continue;
-      }
-    }
-
-    // --- Low-chroma dark / gray plate & JPEG ringing ---
-    if (chroma <= 18 && maxc <= 55) {
-      const hard = 14;
-      const soft = 48;
-      let a: number;
-      if (maxc <= hard) a = 0;
-      else a = clamp8(((maxc - hard) / (soft - hard)) * 255);
-      data[i + 3] = a;
-      if (a > 0 && a < 255) {
-        const f = 255 / a;
-        data[i] = clamp8(r * f);
-        data[i + 1] = clamp8(g * f);
-        data[i + 2] = clamp8(b * f);
-      }
+      data[o + 3] = 255;
       continue;
     }
 
-    // Residual near-black / muddy mosquito (not brand-colored)
-    if (maxc < 28 && chroma < 22) {
-      data[i + 3] = 0;
+    // Plate / plate AA → soft transparency. No unpremultiply (avoids chalky halos).
+    if (maxc <= HARD) {
+      data[o] = 0;
+      data[o + 1] = 0;
+      data[o + 2] = 0;
+      data[o + 3] = 0;
       continue;
     }
-
-    data[i + 3] = 255;
+    const a = clamp8(((maxc - HARD) / (SOFT - HARD)) * 90);
+    data[o + 3] = a;
   }
-}
-
-async function writeTrimmedPng(
-  data: Buffer,
-  width: number,
-  height: number,
-  outPath: string,
-  opts?: { width?: number; padding?: number },
-) {
-  const padding = opts?.padding ?? 14;
-  let pipeline = sharp(data, { raw: { width, height, channels: 4 } })
-    .trim({ threshold: 12 })
-    .extend({
-      top: padding,
-      bottom: padding,
-      left: padding,
-      right: padding,
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-    });
-
-  if (opts?.width) {
-    pipeline = pipeline.resize({ width: opts.width, withoutEnlargement: true });
-  }
-
-  await pipeline.png({ compressionLevel: 9 }).toFile(outPath);
-  const meta = await sharp(outPath).metadata();
-  console.log("wrote", path.relative(root, outPath), meta.width, "x", meta.height, meta.size, "bytes");
-  return meta;
 }
 
 async function main() {
@@ -174,37 +130,80 @@ async function main() {
 
   const rawBackup = path.join(brandDir, "logo-ticketfeeling.raw.png");
   if (path.resolve(src) !== path.resolve(rawBackup)) {
-    // Keep original bytes when already a jpeg/png plate.
     fs.copyFileSync(src, rawBackup);
     console.log("backed up raw →", path.relative(root, rawBackup));
   }
 
+  // Real PNG archive of the plate (no knockout) for reference.
+  const originalPng = path.join(brandDir, "logo-original.png");
+  await sharp(src).png({ compressionLevel: 9 }).toFile(originalPng);
+  console.log("wrote", path.relative(root, originalPng), "(plate archive)");
+
   const { data, info } = await sharp(src).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  processRgba(data);
+  console.log("source", info.width, "x", info.height);
+  processRgba(data, info.width, info.height);
 
   const master = path.join(brandDir, "logo-ticketfeeling.png");
   const lockup = path.join(brandDir, "logo-lockup.png");
   const lockup1x = path.join(brandDir, "logo-lockup-1x.png");
   const email = path.join(brandDir, "logo-email.png");
 
-  const masterMeta = await writeTrimmedPng(data, info.width, info.height, master, { padding: 14 });
+  // Native trim (1× content) first.
+  const nativePng = await sharp(data, {
+    raw: { width: info.width, height: info.height, channels: 4 },
+  })
+    .trim({ threshold: 8 })
+    .extend({
+      top: 18,
+      bottom: 18,
+      left: 18,
+      right: 18,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    })
+    .png({ compressionLevel: 9 })
+    .toBuffer();
+
+  const nativeMeta = await sharp(nativePng).metadata();
+  const nativeW = nativeMeta.width!;
+  const nativeH = nativeMeta.height!;
+  console.log("native content", nativeW, "x", nativeH);
+
+  // 2× master for retina — primary app asset.
+  await sharp(nativePng)
+    .resize({
+      width: nativeW * 2,
+      height: nativeH * 2,
+      kernel: sharp.kernel.lanczos3,
+    })
+    .png({ compressionLevel: 9 })
+    .toFile(master);
+
+  const masterMeta = await sharp(master).metadata();
+  console.log(
+    "wrote",
+    path.relative(root, master),
+    masterMeta.width,
+    "x",
+    masterMeta.height,
+    masterMeta.size,
+    "bytes",
+  );
 
   await sharp(master).png({ compressionLevel: 9 }).toFile(lockup);
   console.log("wrote", path.relative(root, lockup), masterMeta.width, "x", masterMeta.height);
 
-  await sharp(master)
-    .resize({ width: Math.round((masterMeta.width ?? 500) / 2), withoutEnlargement: true })
-    .png({ compressionLevel: 9 })
-    .toFile(lockup1x);
+  // 1× preview / legacy — do not use as BrandLogo source.
+  await sharp(nativePng).png({ compressionLevel: 9 }).toFile(lockup1x);
   const m1 = await sharp(lockup1x).metadata();
-  console.log("wrote", path.relative(root, lockup1x), m1.width, "x", m1.height, m1.size, "bytes");
+  console.log("wrote", path.relative(root, lockup1x), m1.width, "x", m1.height);
 
+  // Email/PDF: high density from 2× master (without enlarging further).
   await sharp(master)
-    .resize({ width: 420, withoutEnlargement: true })
+    .resize({ width: 840, withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
     .png({ compressionLevel: 9 })
     .toFile(email);
   const me = await sharp(email).metadata();
-  console.log("wrote", path.relative(root, email), me.width, "x", me.height, me.size, "bytes");
+  console.log("wrote", path.relative(root, email), me.width, "x", me.height);
 
   const { data: check, info: ci } = await sharp(master).ensureAlpha().raw().toBuffer({
     resolveWithObject: true,
@@ -227,6 +226,11 @@ async function main() {
     console.error("FAIL: corner is not transparent");
     process.exit(1);
   }
+
+  console.log(
+    "\nBrandLogo FULL intrinsic should be:",
+    `width: ${masterMeta.width}, height: ${masterMeta.height}`,
+  );
 }
 
 main().catch((e) => {

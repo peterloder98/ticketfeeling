@@ -96,7 +96,7 @@ ${SELLER}
 
 10. Digitale Tickets
 10.1 Tickets können als PDF, Ausdruck, Anzeige auf dem Smartphone oder als Screenshot genutzt werden, sofern der QR-Code vollständig und gut lesbar ist.
-10.2 Zukünftig können Apple Wallet und Google Wallet unterstützt werden.
+10.2 Soweit technisch angeboten, können Tickets zusätzlich in Apple Wallet und Google Wallet hinterlegt werden. Bei Storno oder Ungültigkeit kann der Wallet-Pass aktualisiert bzw. deaktiviert werden.
 10.3 Maßgeblich für den Einlass ist der gültige, nicht entwertete QR-Code.
 
 11. Ticketübertragung
@@ -210,7 +210,7 @@ Hinweis: Entwurf für Ticketfeeling – vor Produktivstart fachlich prüfen.`,
 Stand: August 2026
 
 1. Ticketformen
-Zulässig sind PDF, Ausdruck, Smartphone-Anzeige und Screenshot, sofern der QR-Code vollständig lesbar ist. Apple Wallet und Google Wallet können später ergänzt werden.
+Zulässig sind PDF, Ausdruck, Smartphone-Anzeige und Screenshot, sofern der QR-Code vollständig lesbar ist. Soweit angeboten, zusätzlich Apple Wallet und Google Wallet.
 
 2. Persönliche Nutzung und Übertragung
 Tickets dürfen privat übertragen oder verschenkt werden. Gewerblicher und automatisierter Weiterverkauf sowie Weiterverkauf mit Gewinnerzielungsabsicht sind untersagt.

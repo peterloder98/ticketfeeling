@@ -1,32 +1,56 @@
+import Image from "next/image";
 import Link from "next/link";
-import { BrandLogoLockup, BrandLogoMark } from "@/components/brand-logo-mark";
+import { BrandLogoMark } from "@/components/brand-logo-mark";
 
 type BrandLogoProps = {
   href?: string | null;
   variant?: "full" | "mark" | "app";
   className?: string;
-  /** Kept for API compat with former next/image usage; SVG needs no preload. */
   priority?: boolean;
 };
 
-const FULL_CLASS = "aspect-[520/360] h-14 w-auto sm:h-16 md:h-[4.5rem]";
+/** Cache-bust so browsers pick up the latest artwork. */
+const V = "20260805a";
+
+/**
+ * Full lockup = high-res original raster (soft-knockout PNG, 2× content).
+ * Intrinsic pixels match `public/brand/logo-ticketfeeling.png`.
+ * Height-driven `w-auto object-contain` — never stretch / never point at 1× preview.
+ *
+ * Display guidance (2× screens): CSS height ≲ half of source height.
+ * Master is 654px tall → keep CSS height ≤ ~280px (hero 88–104px / footer 56px are safe).
+ */
+const FULL = {
+  src: `/brand/logo-ticketfeeling.png?v=${V}`,
+  width: 930,
+  height: 654,
+  className: "h-14 w-auto sm:h-16 md:h-[4.5rem]",
+} as const;
+
 const MARK_CLASS = "aspect-[520/220] h-8 w-auto md:h-9";
 const APP_CLASS = "aspect-[520/220] h-9 w-auto md:h-10";
 
 /**
- * Official Ticketfeeling artwork — vector lockup/mark (sharp at any size).
- * Never distort / recolor / outline / shadow / 3D.
+ * Official Ticketfeeling artwork — never distort / recolor / outline / shadow / 3D.
+ * Full lockup uses the original raster; mark/app use crisp SVG monogram.
  */
 export function BrandLogo({
   href = "/",
   variant = "full",
   className = "",
-  priority: _priority = false,
+  priority = false,
 }: BrandLogoProps) {
   const graphic =
     variant === "full" ? (
-      <BrandLogoLockup
-        className={`block max-w-full object-contain ${FULL_CLASS} ${className}`}
+      <Image
+        src={FULL.src}
+        alt="Ticketfeeling"
+        width={FULL.width}
+        height={FULL.height}
+        priority={priority}
+        quality={100}
+        unoptimized
+        className={`object-contain ${FULL.className} ${className}`}
       />
     ) : (
       <BrandLogoMark

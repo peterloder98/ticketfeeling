@@ -1,8 +1,8 @@
 /**
- * Rasterize crisp SVG brand assets → PNG masters for email/PDF.
+ * Rasterize SVG *mark/app icons* → PNG (optional).
  *
- * Uses Inter WOFF from prisma's bundled assets (already in the monorepo),
- * falling back to Arial Bold on macOS if librsvg cannot load WOFF.
+ * Full lockup PNGs come from the original artwork via make-logo-master.ts —
+ * do NOT overwrite logo-ticketfeeling.png from the SVG recreation.
  *
  * Usage: npx tsx scripts/render-brand-logos.ts
  */
@@ -90,25 +90,14 @@ async function main() {
   const fonts = findFontCandidates();
   console.log("using font", fonts.family, fonts.bold);
 
-  const lockupSvg = path.join(brandDir, "logo-ticketfeeling.svg");
   const markSvg = path.join(brandDir, "icon-mark.svg");
   const appSvg = path.join(brandDir, "icon-app.svg");
 
-  await writePng(lockupSvg, path.join(brandDir, "logo-ticketfeeling.png"), 1365, fonts);
-  await writePng(lockupSvg, path.join(brandDir, "logo-lockup.png"), 910, fonts);
-  await writePng(lockupSvg, path.join(brandDir, "logo-lockup-1x.png"), 455, fonts);
-  await writePng(lockupSvg, path.join(brandDir, "logo-email.png"), 420, fonts);
-
+  // Mark/app icons only — full lockup is make-logo-master.ts from original raster.
   await writePng(markSvg, path.join(brandDir, "icon-mark-clear.png"), 574, fonts);
   await writePng(appSvg, path.join(brandDir, "icon-app-clear.png"), 512, fonts);
 
-  const master = path.join(brandDir, "logo-ticketfeeling.png");
-  const { data, info } = await sharp(master).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
-  if (data[3] !== 0) {
-    console.error("FAIL: master corner not transparent", data[3]);
-    process.exit(1);
-  }
-  console.log("ok — transparent master", `${info.width}x${info.height}`);
+  console.log("ok — mark/app PNGs updated (lockup untouched)");
 }
 
 main().catch((e) => {

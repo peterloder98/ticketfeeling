@@ -1,5 +1,5 @@
 /**
- * Thin wrapper: prefer `npx tsx scripts/render-brand-logos.ts` (SVG → all PNG sizes).
+ * Resize email logo from high-res knockout master (make-logo-master.ts).
  * Kept for older scripts that only need logo-email.png.
  */
 import fs from "fs";
@@ -18,7 +18,7 @@ async function main() {
   // Master is already knocked-out; resize only. Legacy lockup still needs a black pass.
   if (src === master) {
     await sharp(src)
-      .resize({ width: 420, withoutEnlargement: true })
+      .resize({ width: 840, withoutEnlargement: true, kernel: sharp.kernel.lanczos3 })
       .png({ compressionLevel: 9 })
       .toFile(out);
   } else {
