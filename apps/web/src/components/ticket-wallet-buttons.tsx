@@ -12,7 +12,8 @@ type Props = {
   size?: "sm" | "md";
 };
 
-const PREVIEW_HINT = "Vorschau – Einrichtung folgt";
+/** Tooltip only — no visible preview caption under badges. */
+const PREVIEW_TITLE = "Einrichtung folgt";
 
 /** Bump when badge artwork changes so CDNs / browsers refetch. */
 const BADGE_CACHE = "v=20260805b";
@@ -85,51 +86,46 @@ export function TicketWalletButtons({
   className = "",
   size = "sm",
 }: Props) {
-  const applePreview = !appleEnabled;
-  const googlePreview = !googleEnabled;
-  const anyPreview = applePreview || googlePreview;
-
   const badgeLink =
     "inline-flex w-fit shrink-0 items-center transition-opacity duration-200 hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]";
   const badgeDisabled =
-    "inline-flex w-fit shrink-0 cursor-not-allowed items-center opacity-60";
+    "inline-flex w-fit shrink-0 cursor-not-allowed items-center opacity-55";
 
   return (
-    <div className={`flex flex-col gap-1.5 ${className}`.trim()}>
-      <div className="flex flex-col items-start gap-2.5">
-        {googleEnabled ? (
-          <a
-            href={withToken(`/api/v1/tickets/${ticketId}/google-wallet`, accessToken)}
-            className={badgeLink}
-            rel="noreferrer"
-            target="_blank"
-            aria-label={GOOGLE_BADGE.alt}
-          >
-            <BadgeImg badge={GOOGLE_BADGE} size={size} />
-          </a>
-        ) : (
-          <span className={badgeDisabled} aria-disabled="true" title={PREVIEW_HINT}>
-            <BadgeImg badge={GOOGLE_BADGE} size={size} />
-          </span>
-        )}
-        {appleEnabled ? (
-          <a
-            href={withToken(`/api/v1/tickets/${ticketId}/apple-wallet`, accessToken)}
-            className={badgeLink}
-            rel="noreferrer"
-            aria-label={APPLE_BADGE.alt}
-          >
-            <BadgeImg badge={APPLE_BADGE} size={size} />
-          </a>
-        ) : (
-          <span className={badgeDisabled} aria-disabled="true" title={PREVIEW_HINT}>
-            <BadgeImg badge={APPLE_BADGE} size={size} />
-          </span>
-        )}
-      </div>
-      {anyPreview ? (
-        <p className="text-xs text-[var(--tf-text-secondary)]">{PREVIEW_HINT}</p>
-      ) : null}
+    <div
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2.5 ${className}`.trim()}
+      role="group"
+      aria-label="Wallet"
+    >
+      {googleEnabled ? (
+        <a
+          href={withToken(`/api/v1/tickets/${ticketId}/google-wallet`, accessToken)}
+          className={badgeLink}
+          rel="noreferrer"
+          target="_blank"
+          aria-label={GOOGLE_BADGE.alt}
+        >
+          <BadgeImg badge={GOOGLE_BADGE} size={size} />
+        </a>
+      ) : (
+        <span className={badgeDisabled} aria-disabled="true" title={PREVIEW_TITLE}>
+          <BadgeImg badge={GOOGLE_BADGE} size={size} />
+        </span>
+      )}
+      {appleEnabled ? (
+        <a
+          href={withToken(`/api/v1/tickets/${ticketId}/apple-wallet`, accessToken)}
+          className={badgeLink}
+          rel="noreferrer"
+          aria-label={APPLE_BADGE.alt}
+        >
+          <BadgeImg badge={APPLE_BADGE} size={size} />
+        </a>
+      ) : (
+        <span className={badgeDisabled} aria-disabled="true" title={PREVIEW_TITLE}>
+          <BadgeImg badge={APPLE_BADGE} size={size} />
+        </span>
+      )}
     </div>
   );
 }

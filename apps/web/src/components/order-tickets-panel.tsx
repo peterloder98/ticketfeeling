@@ -4,7 +4,6 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { ChevronDown, Mail, Send } from "lucide-react";
 import { TicketQrImage } from "@/components/ticket-qr-image";
-import { TicketResendButton } from "@/components/ticket-resend-button";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 
 export type OrderTicketView = {
@@ -384,56 +383,58 @@ export function OrderTicketsPanel({
                         ) : null}
                       </div>
 
-                      <div className="flex flex-wrap gap-2">
-                        {showQr ? (
-                          <a
+                      <div className="space-y-5">
+                        <div className="flex flex-wrap gap-2">
+                          {showQr ? (
+                            <a
+                              href={
+                                accessToken
+                                  ? `/api/v1/tickets/${ticket.id}/pdf?t=${encodeURIComponent(accessToken)}`
+                                  : `/api/v1/tickets/${ticket.id}/pdf`
+                              }
+                              className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              PDF speichern
+                            </a>
+                          ) : null}
+                          <Link
                             href={
                               accessToken
-                                ? `/api/v1/tickets/${ticket.id}/pdf?t=${encodeURIComponent(accessToken)}`
-                                : `/api/v1/tickets/${ticket.id}/pdf`
+                                ? `${ticketPathPrefix}/${ticket.id}?t=${encodeURIComponent(accessToken)}`
+                                : `${ticketPathPrefix}/${ticket.id}`
                             }
-                            className="tf-btn tf-btn-primary !min-h-10 text-sm"
-                            target="_blank"
-                            rel="noreferrer"
+                            className="tf-btn tf-btn-secondary !min-h-10 text-sm"
                           >
-                            PDF speichern
-                          </a>
-                        ) : null}
-                        <Link
-                          href={
-                            accessToken
-                              ? `${ticketPathPrefix}/${ticket.id}?t=${encodeURIComponent(accessToken)}`
-                              : `${ticketPathPrefix}/${ticket.id}`
-                          }
-                          className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-                        >
-                          Ticket öffnen
-                        </Link>
-                        {showQr ? <TicketResendButton ticketId={ticket.id} /> : null}
-                      </div>
-                      {showQr ? (
-                        <TicketWalletButtons
-                          ticketId={ticket.id}
-                          accessToken={accessToken}
-                          appleEnabled={appleWalletEnabled}
-                          googleEnabled={googleWalletEnabled}
-                        />
-                      ) : null}
+                            Ticket öffnen
+                          </Link>
+                        </div>
 
-                      {canForward ? (
-                        <TicketForwardForm
-                          ticketId={ticket.id}
-                          lockedRecipient={lockedRecipient}
-                          onDone={(h) => {
-                            setHolders((prev) => ({
-                              ...prev,
-                              [ticket.id]: `${h.firstName} ${h.lastName}`.trim(),
-                            }));
-                            setRecipients((prev) => ({ ...prev, [ticket.id]: h }));
-                            setTransferredIds((prev) => ({ ...prev, [ticket.id]: true }));
-                          }}
-                        />
-                      ) : null}
+                        {showQr ? (
+                          <TicketWalletButtons
+                            ticketId={ticket.id}
+                            accessToken={accessToken}
+                            appleEnabled={appleWalletEnabled}
+                            googleEnabled={googleWalletEnabled}
+                          />
+                        ) : null}
+
+                        {canForward ? (
+                          <TicketForwardForm
+                            ticketId={ticket.id}
+                            lockedRecipient={lockedRecipient}
+                            onDone={(h) => {
+                              setHolders((prev) => ({
+                                ...prev,
+                                [ticket.id]: `${h.firstName} ${h.lastName}`.trim(),
+                              }));
+                              setRecipients((prev) => ({ ...prev, [ticket.id]: h }));
+                              setTransferredIds((prev) => ({ ...prev, [ticket.id]: true }));
+                            }}
+                          />
+                        ) : null}
+                      </div>
                     </div>
                   </details>
                 </li>
