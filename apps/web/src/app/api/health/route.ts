@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
 import {
   isAppleWalletConfigured,
   isGoogleWalletConfigured,
@@ -21,10 +22,8 @@ export async function GET() {
     process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA?.trim() ||
     null;
   const deploymentId = process.env.VERCEL_DEPLOYMENT_ID?.trim() || null;
-  const appHost =
-    hostnameOnly(process.env.APP_URL) ||
-    hostnameOnly(process.env.NEXTAUTH_URL) ||
-    hostnameOnly(process.env.AUTH_URL);
+  const resolvedAppUrl = getPublicAppUrl();
+  const appHost = hostnameOnly(resolvedAppUrl);
 
   try {
     await prisma.$queryRaw`SELECT 1`;

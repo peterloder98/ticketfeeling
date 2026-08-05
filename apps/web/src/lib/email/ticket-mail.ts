@@ -1,6 +1,7 @@
 import { readFileSync, existsSync } from "fs";
 import path from "path";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { isAppleWalletConfigured, isGoogleWalletConfigured } from "@/lib/wallet/config";
 import {
   DEFAULT_LEGAL_PERSON_LINE,
@@ -9,10 +10,7 @@ import {
 } from "@/lib/legal/company-address";
 
 function appBaseUrl() {
-  return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
-    /\/$/,
-    "",
-  );
+  return getPublicAppUrl();
 }
 
 function escapeHtml(value: string) {
@@ -244,7 +242,13 @@ export function buildOrderPaidTicketsMail(input: {
        invoiceNumber ? ` · Rechnung ${escapeHtml(invoiceNumber)}` : ""
      }</span>`,
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
-    `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a>`,
+    // Primary CTA + raw absolute URL (some clients strip button styles / rewrite hrefs).
+    `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a><br/><span style="font-size:13px;line-height:1.5;color:#64748B;font-family:system-ui,sans-serif;word-break:break-all">Link: <a href="${escapeHtml(orderUrl)}" style="color:#0D9488;text-decoration:underline">${escapeHtml(orderUrl)}</a></span>`,
+    ...(ticketOpenUrl
+      ? [
+          `<a href="${escapeHtml(ticketOpenUrl)}" style="display:inline-block;background:#0F2747;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px">Ticket öffnen</a><br/><span style="font-size:13px;line-height:1.5;color:#64748B;font-family:system-ui,sans-serif;word-break:break-all">Ticket-Link: <a href="${escapeHtml(ticketOpenUrl)}" style="color:#0D9488;text-decoration:underline">${escapeHtml(ticketOpenUrl)}</a></span>`,
+        ]
+      : []),
     ...(ticketPdfUrl
       ? [
           `<a href="${escapeHtml(ticketPdfUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1">Ticket als PDF</a>${
@@ -353,11 +357,14 @@ export function buildTicketsResentMail(input: {
   orderId: string;
   ticketId: string;
   hasAttachment?: boolean;
+  accessToken?: string | null;
 }): TicketMailContent {
   const name = input.firstName?.trim();
   const greeting = name ? `Hallo ${name},` : "Hallo,";
-  const orderUrl = `${appBaseUrl()}/konto/bestellung/${input.orderId}`;
-  const ticketUrl = `${appBaseUrl()}/ticket/${input.ticketId}`;
+  const base = appBaseUrl();
+  const token = input.accessToken ?? null;
+  const orderUrl = `${base}${withAccessToken(`/konto/bestellung/${input.orderId}`, token)}`;
+  const ticketUrl = `${base}${withAccessToken(`/ticket/${input.ticketId}`, token)}`;
   const hasAttachment = input.hasAttachment !== false;
 
   const lines = [
@@ -386,7 +393,8 @@ export function buildTicketsResentMail(input: {
           ? "hier ist dein Ticket erneut als <strong>PDF im Anhang</strong>."
           : "hier ist der Link zu deinem Ticket erneut — <strong>kein PDF-Anhang</strong>.",
         `<strong>${escapeHtml(input.eventName)}</strong><br/>Ticketnr. ${escapeHtml(input.ticketNumber)}`,
-        `<a href="${escapeHtml(ticketUrl)}" style="color:#0D9488;font-weight:600">Ticket ansehen</a> · <a href="${escapeHtml(orderUrl)}" style="color:#0D9488;font-weight:600">Bestellung</a>`,
+        `<a href="${escapeHtml(ticketUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Ticket ansehen</a><br/><span style="font-size:13px;color:#64748B;font-family:system-ui,sans-serif;word-break:break-all"><a href="${escapeHtml(ticketUrl)}" style="color:#0D9488;text-decoration:underline">${escapeHtml(ticketUrl)}</a></span>`,
+        `<a href="${escapeHtml(orderUrl)}" style="color:#0D9488;font-weight:600">Bestellung öffnen</a>`,
         "Dein Ticketfeeling-Team",
       ],
       { hasAttachment },

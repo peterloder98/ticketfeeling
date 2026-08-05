@@ -11,6 +11,7 @@ import {
   resolveOrderNotificationRecipients,
 } from "@/lib/email/order-staff-mail";
 import { withOrderAccessQuery } from "@/lib/commerce/order-access";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
@@ -539,9 +540,7 @@ export async function fulfillPaidOrder(orderId: string) {
         },
       });
 
-      const appBase = (
-        process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
-      ).replace(/\/$/, "");
+      const appBase = getPublicAppUrl();
 
       // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand an Käufer
       if (fresh?.customer.email && fresh.channel !== "box_office" && !fresh.ticketSentAt) {

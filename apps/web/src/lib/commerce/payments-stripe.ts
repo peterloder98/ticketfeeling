@@ -14,12 +14,10 @@ import {
 } from "@/lib/email/ticket-mail";
 import { formatEuroFromCents } from "@/lib/money";
 import { invalidateWalletPassesForOrder } from "@/lib/wallet/invalidate";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
 
 function appBaseUrl() {
-  return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
-    /\/$/,
-    "",
-  );
+  return getPublicAppUrl();
 }
 
 async function markInbox(providerEventId: string, payload: unknown, status: string, error?: string) {

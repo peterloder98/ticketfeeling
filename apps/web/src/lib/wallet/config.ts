@@ -5,6 +5,8 @@
  * Email wallet links stay omitted until configured.
  */
 
+import { getPublicAppUrl } from "@/lib/embed/public-url";
+
 function env(name: string): string {
   return process.env[name]?.trim() || "";
 }
@@ -14,10 +16,7 @@ function envPem(name: string): string {
 }
 
 function appBaseUrl() {
-  return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
-    /\/$/,
-    "",
-  );
+  return getPublicAppUrl();
 }
 
 export type AppleWalletConfig = {

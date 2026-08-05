@@ -4,6 +4,8 @@ import { writeAudit } from "@/lib/audit";
 import { createSecureToken, hashToken } from "@/lib/crypto-token";
 import { enqueueTransactionalEmail } from "@/lib/email/outbox";
 import { buildTicketsResentMail } from "@/lib/email/ticket-mail";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { signOrderAccessToken } from "@/lib/commerce/order-access";
 
 const GENERIC_MESSAGE =
   "Falls zu dieser E-Mail-Adresse eine passende bezahlte Bestellung existiert, senden wir dir in Kürze einen sicheren Link. Bitte prüfe auch deinen Spam-Ordner.";
@@ -104,7 +106,7 @@ export async function requestForgottenTicket(input: {
       },
     });
     recoveryPath = `/hilfe/ticket-vergessen/zugang?token=${encodeURIComponent(token)}`;
-    const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+    const appUrl = getPublicAppUrl();
 
     await enqueueTransactionalEmail({
       organizationId,
@@ -199,6 +201,7 @@ export async function resendTicketMail(input: {
     },
   });
 
+  const accessToken = signOrderAccessToken(ticket.orderId, 30 * 24 * 60 * 60 * 1000);
   const mail = buildTicketsResentMail({
     firstName: ticket.holder.firstName,
     eventName: ticket.eventNameSnapshot || ticket.event.name,
@@ -206,6 +209,7 @@ export async function resendTicketMail(input: {
     orderId: ticket.orderId,
     ticketId: ticket.id,
     hasAttachment: false,
+    accessToken,
   });
 
   await enqueueTransactionalEmail({
@@ -229,7 +233,7 @@ export async function resendTicketMail(input: {
     action: "ticket.resent",
     entityType: "ticket",
     entityId: ticket.id,
-    after: { channel: input.channel ?? "account", pdfAttached: true },
+    after: { channel: input.channel ?? "account", pdfAttached: false },
   });
 
   return { ok: true };

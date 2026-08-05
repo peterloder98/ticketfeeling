@@ -14,17 +14,57 @@ export const EMBED_FRAME_MAX_HEIGHT = 780;
  */
 export const LIVE_APP_URL = "https://ticketfeeling-web.vercel.app";
 
+function isLoopbackHost(hostname: string) {
+  const host = hostname.toLowerCase();
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "::1" ||
+    host.endsWith(".local")
+  );
+}
+
+/** Absolute http(s) URL suitable for buyer-facing emails / redirects. */
+export function isUsablePublicAppUrl(raw: string | undefined | null): boolean {
+  const value = raw?.trim();
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    if (!url.hostname) return false;
+    // On Vercel, never emit localhost links (emails / redirects would be dead).
+    if (process.env.VERCEL && isLoopbackHost(url.hostname)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Public site URL for embeds, emails, absolute links.
- * Priority: NEXT_PUBLIC_APP_URL → LIVE_APP_URL (current Vercel).
+ * Priority: explicit env → Vercel production URL → LIVE_APP_URL.
+ * Never falls back to localhost on Vercel (that broke confirmation-mail links).
  */
 export function getPublicAppUrl() {
-  const explicit =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.APP_URL?.trim() ||
-    process.env.NEXTAUTH_URL?.trim() ||
-    "";
-  if (explicit) return stripTrailingSlash(explicit);
+  const candidates = [
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.APP_URL,
+    process.env.NEXTAUTH_URL,
+    process.env.AUTH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "",
+    // Last resort on any Vercel deploy (preview/prod) before hard-coded LIVE.
+    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "",
+  ];
+  for (const candidate of candidates) {
+    if (isUsablePublicAppUrl(candidate)) {
+      return stripTrailingSlash(candidate!.trim());
+    }
+  }
+  if (!process.env.VERCEL && process.env.NODE_ENV === "development") {
+    return "http://localhost:3000";
+  }
   return LIVE_APP_URL;
 }
 

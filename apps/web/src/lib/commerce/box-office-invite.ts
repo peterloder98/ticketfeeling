@@ -3,13 +3,14 @@ import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { enqueueTransactionalEmail } from "@/lib/email/outbox";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
 
 function hashInviteToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
 }
 
 function appUrl() {
-  return process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000";
+  return getPublicAppUrl();
 }
 
 export async function createBoxOfficeInvite(input: {

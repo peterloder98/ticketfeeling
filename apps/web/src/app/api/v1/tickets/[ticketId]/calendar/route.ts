@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeTicketWalletDownload } from "@/lib/wallet/access";
 import { prisma } from "@/lib/db";
 import { buildTicketIcs } from "@/lib/commerce/ticket-calendar";
+import { getPublicAppUrl } from "@/lib/embed/public-url";
 
 type Params = { params: Promise<{ ticketId: string }> };
 
@@ -37,9 +38,7 @@ export async function GET(request: Request, { params }: Params) {
         .join(", ")
     : null;
 
-  const appBase = (
-    process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000"
-  ).replace(/\/$/, "");
+  const appBase = getPublicAppUrl();
   const accessToken = new URL(request.url).searchParams.get("t");
   const ticketUrl = accessToken
     ? `${appBase}/ticket/${ticket.id}?t=${encodeURIComponent(accessToken)}`
