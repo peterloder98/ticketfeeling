@@ -156,7 +156,7 @@ export async function uploadStripeOriginalAction(formData: FormData) {
       mimeType: file.type || "application/octet-stream",
       checksumSha256: checksum,
       byteSize: buf.length,
-      data: buf,
+      data: new Uint8Array(buf),
       periodLabel: String(formData.get("periodLabel") ?? "") || null,
       notes: String(formData.get("notes") ?? "") || null,
       uploadedByUserId: session.user.id,

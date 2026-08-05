@@ -190,7 +190,7 @@ export async function createPayoutDocumentPreview(
       status: "preview",
       generatedByUserId: userId ?? null,
       checksumSha256: checksum,
-      pdfData: pdf,
+      pdfData: new Uint8Array(pdf),
       immutableStoragePath: `preview/${localPayoutId}/${documentType}/${checksum.slice(0, 12)}.pdf`,
     },
   });
@@ -254,7 +254,7 @@ export async function finalizePayoutDocuments(localPayoutId: string, userId: str
         status: "finalized",
         generatedByUserId: userId,
         checksumSha256: checksum,
-        pdfData: pdf,
+        pdfData: new Uint8Array(pdf),
         immutableStoragePath: path,
       },
     });
