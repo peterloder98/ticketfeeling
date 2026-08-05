@@ -40,14 +40,21 @@ export const stripePaymentProvider: PaymentProvider = {
           receipt_email: input.customerEmail,
           metadata: {
             orderId: order.id,
+            order_id: order.id,
             eventId,
+            event_id: eventId,
             feePercentage: String(order.administrationFeePercentageBasisPoints),
             ticketSubtotalCents: String(order.ticketSubtotalCents),
             administrationFeeCents: String(
               order.administrationFeeGrossCents || order.feeGrossCents,
             ),
             totalGrossCents: String(order.customerTotalCents || order.grossCents),
-            environment: process.env.NODE_ENV ?? "development",
+            environment:
+              process.env.STRIPE_SECRET_KEY?.startsWith("sk_test") ||
+              process.env.STRIPE_SECRET_KEY?.startsWith("rk_test")
+                ? "test"
+                : "live",
+            application_name: "ticketfeeling",
           },
           description: `Ticketfeeling ${order.orderNumber}`,
           ...(methodTypes.includes("klarna")

@@ -441,6 +441,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         break;
       }
       case "charge.dispute.created":
+      case "charge.dispute.updated":
       case "charge.dispute.closed": {
         const dispute = event.data.object as Stripe.Dispute;
         const piId =
@@ -454,7 +455,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         if (!order) break;
         await writeAudit({
           organizationId: order.organizationId,
-          action: `payment.dispute.${event.type === "charge.dispute.created" ? "created" : "closed"}`,
+          action: `payment.dispute.${event.type.split(".").pop()}`,
           entityType: "order",
           entityId: order.id,
           after: {
@@ -481,6 +482,20 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           });
           await sendSepaDisputeEmail(order.id);
         }
+        break;
+      }
+      case "payout.created":
+      case "payout.updated":
+      case "payout.paid":
+      case "payout.failed":
+      case "payout.canceled":
+      case "balance.available":
+      case "charge.updated":
+      case "refund.created":
+      case "refund.updated":
+      case "refund.failed": {
+        const { processQueuedPayoutWebhook } = await import("@/lib/stripe-payout/sync");
+        await processQueuedPayoutWebhook(event);
         break;
       }
       default:

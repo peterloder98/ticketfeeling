@@ -117,6 +117,14 @@ model Organization {
   boxOfficeInvites BoxOfficeInvite[]
   boxOfficeSellerGrants BoxOfficeSellerGrant[]
   uploadedAssets UploadedAsset[]
+  stripePayouts StripePayout[]
+  stripeBalanceTransactions StripeBalanceTransaction[]
+  stripeWebhookEvents StripeWebhookEvent[]
+  payoutDocuments PayoutDocument[]
+  payoutAuditLogs PayoutAuditLog[]
+  stripeOriginalUploads StripeOriginalUpload[]
+  payoutDocumentSequences PayoutDocumentSequence[]
+  stripePayoutReconcileRuns StripePayoutReconcileRun[]
 
   @@map("organizations")
 }
@@ -1526,5 +1534,228 @@ model BoxOfficeSession {
 
   @@index([organizationId, status])
   @@map("box_office_sessions")
+}
+
+/// Stripe automatic payout reconciliation (Finanzen → Stripe → Auszahlungen)
+model StripePayout {
+  id                               String    @id @default(uuid()) @db.Uuid
+  organizationId                   String?   @map("organization_id") @db.Uuid
+  stripePayoutId                   String    @unique @map("stripe_payout_id")
+  stripeAccountId                  String?   @map("stripe_account_id")
+  environment                      String    @default("live")
+  amountCents                      Int       @map("amount_cents")
+  currency                         String    @default("eur")
+  status                           String
+  method                           String?
+  type                             String?
+  automatic                        Boolean   @default(true)
+  arrivalDate                      DateTime? @map("arrival_date")
+  createdAtStripe                  DateTime? @map("created_at_stripe")
+  paidAtStripe                     DateTime? @map("paid_at_stripe")
+  failedAtStripe                   DateTime? @map("failed_at_stripe")
+  failureCode                      String?   @map("failure_code")
+  failureMessage                   String?   @map("failure_message") @db.Text
+  destinationLast4                 String?   @map("destination_last4")
+  /// announced|importing|in_progress|awaiting_stripe_data|partially_mapped|unreconciled|reconciled|review_required|payout_failed|unsupported_manual_payout
+  transactionReconciliationStatus  String    @default("announced") @map("transaction_reconciliation_status")
+  transactionReconciliationCompletedAt DateTime? @map("transaction_reconciliation_completed_at")
+  importedAt                       DateTime  @default(now()) @map("imported_at")
+  lastSyncedAt                     DateTime? @map("last_synced_at")
+  importAttemptCount               Int       @default(0) @map("import_attempt_count")
+  lastImportError                  String?   @map("last_import_error") @db.Text
+  reconciliationDifferenceCents    Int?      @map("reconciliation_difference_cents")
+  balanceTransactionCount          Int       @default(0) @map("balance_transaction_count")
+  paginationComplete               Boolean   @default(false) @map("pagination_complete")
+  /// draft|preview|finalized
+  documentStatus                   String    @default("draft") @map("document_status")
+  finalizedAt                      DateTime? @map("finalized_at")
+  finalizedByUserId                String?   @map("finalized_by_user_id") @db.Uuid
+  /// none|marked|uploaded
+  lexofficeStatus                  String    @default("none") @map("lexoffice_status")
+  lexofficeMarkedAt                DateTime? @map("lexoffice_marked_at")
+  lexofficeReference               String?   @map("lexoffice_reference")
+  adminNote                        String?   @map("admin_note") @db.Text
+  summaryJson                      Json      @default("{}") @map("summary_json")
+  createdAt                        DateTime  @default(now()) @map("created_at")
+  updatedAt                        DateTime  @updatedAt @map("updated_at")
+
+  organization         Organization?             @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  balanceTransactions  StripeBalanceTransaction[]
+  documents            PayoutDocument[]
+  auditLogs            PayoutAuditLog[]
+
+  @@index([organizationId, arrivalDate])
+  @@index([transactionReconciliationStatus, lastSyncedAt])
+  @@index([documentStatus])
+  @@map("stripe_payouts")
+}
+
+model StripeBalanceTransaction {
+  id                          String    @id @default(uuid()) @db.Uuid
+  organizationId              String?   @map("organization_id") @db.Uuid
+  stripeBalanceTransactionId  String    @unique @map("stripe_balance_transaction_id")
+  stripePayoutId              String?   @map("stripe_payout_id")
+  localPayoutId               String?   @map("local_payout_id") @db.Uuid
+  stripeSourceId              String?   @map("stripe_source_id")
+  stripeSourceType            String?   @map("stripe_source_type")
+  stripeChargeId              String?   @map("stripe_charge_id")
+  stripePaymentIntentId       String?   @map("stripe_payment_intent_id")
+  stripeRefundId              String?   @map("stripe_refund_id")
+  stripeDisputeId             String?   @map("stripe_dispute_id")
+  ticketfeelingOrderId        String?   @map("ticketfeeling_order_id") @db.Uuid
+  ticketfeelingInvoiceId      String?   @map("ticketfeeling_invoice_id") @db.Uuid
+  type                        String
+  reportingCategory           String?   @map("reporting_category")
+  amountCents                 Int       @map("amount_cents")
+  feeCents                    Int       @default(0) @map("fee_cents")
+  netCents                    Int       @map("net_cents")
+  currency                    String    @default("eur")
+  exchangeRate                Decimal?  @map("exchange_rate") @db.Decimal(18, 10)
+  availableOn                 DateTime? @map("available_on")
+  createdAtStripe             DateTime? @map("created_at_stripe")
+  description                 String?   @db.Text
+  /// payment|stripe_fee|refund|dispute|dispute_fee|adjustment|reserve|fee_refund|payout|unknown
+  classification              String    @default("unknown")
+  /// pending|mapped|unmapped|manual|awaiting_balance
+  mappingStatus               String    @default("pending") @map("mapping_status")
+  rawStripeObject             Json?     @map("raw_stripe_object")
+  importedAt                  DateTime  @default(now()) @map("imported_at")
+  updatedAt                   DateTime  @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  payout       StripePayout? @relation(fields: [localPayoutId], references: [id], onDelete: SetNull)
+
+  @@index([localPayoutId])
+  @@index([stripePayoutId])
+  @@index([stripePaymentIntentId])
+  @@index([stripeChargeId])
+  @@index([ticketfeelingOrderId])
+  @@index([classification, mappingStatus])
+  @@map("stripe_balance_transactions")
+}
+
+model StripeWebhookEvent {
+  id               String    @id @default(uuid()) @db.Uuid
+  organizationId   String?   @map("organization_id") @db.Uuid
+  stripeEventId    String    @unique @map("stripe_event_id")
+  eventType        String    @map("event_type")
+  environment      String    @default("live")
+  objectId         String?   @map("object_id")
+  receivedAt       DateTime  @default(now()) @map("received_at")
+  /// received|queued|processed|failed|ignored
+  processingStatus String    @default("received") @map("processing_status")
+  processedAt      DateTime? @map("processed_at")
+  retryCount       Int       @default(0) @map("retry_count")
+  lastError        String?   @map("last_error") @db.Text
+  payloadHash      String?   @map("payload_hash")
+  createdAt        DateTime  @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([processingStatus, receivedAt])
+  @@index([eventType, receivedAt])
+  @@map("stripe_webhook_events")
+}
+
+model PayoutDocumentSequence {
+  id             String @id @default(uuid()) @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+  year           Int
+  documentType   String @map("document_type")
+  lastNumber     Int    @default(0) @map("last_number")
+  prefix         String @default("TF-PO")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, year, documentType])
+  @@map("payout_document_sequences")
+}
+
+model PayoutDocument {
+  id                    String    @id @default(uuid()) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  localPayoutId         String    @map("local_payout_id") @db.Uuid
+  /// revenue_collective|stripe_costs|payout_reconciliation
+  documentType          String    @map("document_type")
+  documentNumber        String?   @map("document_number")
+  version               Int       @default(1)
+  /// preview|finalized|superseded
+  status                String    @default("preview")
+  generatedAt           DateTime  @default(now()) @map("generated_at")
+  generatedByUserId     String?   @map("generated_by_user_id") @db.Uuid
+  checksumSha256        String?   @map("checksum_sha256")
+  immutableStoragePath  String?   @map("immutable_storage_path")
+  /// Fallback when Blob unavailable — finalized bytes only
+  pdfData               Bytes?    @map("pdf_data")
+  supersedesDocumentId  String?   @map("supersedes_document_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  payout       StripePayout @relation(fields: [localPayoutId], references: [id], onDelete: Cascade)
+
+  @@index([localPayoutId, documentType])
+  @@unique([organizationId, documentNumber])
+  @@map("payout_documents")
+}
+
+model PayoutAuditLog {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  localPayoutId  String   @map("local_payout_id") @db.Uuid
+  action         String
+  oldValue       Json?    @map("old_value")
+  newValue       Json?    @map("new_value")
+  actorType      String   @default("system") @map("actor_type")
+  actorId        String?  @map("actor_id")
+  reason         String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  payout       StripePayout  @relation(fields: [localPayoutId], references: [id], onDelete: Cascade)
+
+  @@index([localPayoutId, createdAt])
+  @@map("payout_audit_logs")
+}
+
+model StripeOriginalUpload {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  localPayoutId  String?  @map("local_payout_id") @db.Uuid
+  /// fee_invoice|reconciliation_report|other
+  kind           String   @default("other")
+  fileName       String   @map("file_name")
+  mimeType       String   @map("mime_type")
+  checksumSha256 String   @map("checksum_sha256")
+  byteSize       Int      @map("byte_size")
+  data           Bytes
+  periodLabel    String?  @map("period_label")
+  notes          String?  @db.Text
+  uploadedByUserId String? @map("uploaded_by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, localPayoutId])
+  @@map("stripe_original_uploads")
+}
+
+model StripePayoutReconcileRun {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String?   @map("organization_id") @db.Uuid
+  /// daily|monthly|manual
+  kind           String
+  startedAt      DateTime  @default(now()) @map("started_at")
+  finishedAt     DateTime? @map("finished_at")
+  status         String    @default("running")
+  lookbackDays   Int       @map("lookback_days")
+  payoutsSeen    Int       @default(0) @map("payouts_seen")
+  payoutsUpdated Int       @default(0) @map("payouts_updated")
+  errorMessage   String?   @map("error_message") @db.Text
+  summaryJson    Json      @default("{}") @map("summary_json")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  @@index([startedAt])
+  @@map("stripe_payout_reconcile_runs")
 }
 

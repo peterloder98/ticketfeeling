@@ -32,6 +32,11 @@ export const ADMIN_TOP_NAV: AdminNavItem[] = [
     ],
   },
   {
+    href: "/admin/finanzen/stripe",
+    label: "Finanzen",
+    match: ["/admin/finanzen"],
+  },
+  {
     href: "/admin/einstellungen",
     label: "Einstellungen",
     match: ["/admin/einstellungen", "/admin/stammdaten"],
@@ -110,6 +115,23 @@ export const ADMIN_SUBNAV = {
       href: "/admin/einstellungen/recht",
       label: "Rechtstexte",
       description: "AGB, Datenschutz, Versionen",
+    },
+  ] satisfies AdminSubNavItem[],
+  finanzen: [
+    {
+      href: "/admin/finanzen/stripe",
+      label: "Stripe-Auszahlungen",
+      description: "Payout-Abgleich & Buchungsunterlagen",
+    },
+    {
+      href: "/admin/finanzen/stripe/system",
+      label: "Systemzustand",
+      description: "Cron, Webhooks, Warnungen",
+    },
+    {
+      href: "/admin/einstellungen/zahlungen",
+      label: "Zahlungsauswertung",
+      description: "Umsatz nach Zahlungsart",
     },
   ] satisfies AdminSubNavItem[],
   system: [

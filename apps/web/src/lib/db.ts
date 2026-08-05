@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 
 /** Bump after Prisma schema changes so HMR drops a stale global client. */
-const PRISMA_CLIENT_EPOCH = 11;
+const PRISMA_CLIENT_EPOCH = 12;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -23,7 +23,8 @@ function isFreshClient(client: PrismaClient) {
     typeof c.boxOfficeInvite?.findMany === "function" &&
     typeof c.organizationEmailAccount?.count === "function" &&
     typeof c.eventSeat?.findMany === "function" &&
-    typeof c.venuePlan?.findMany === "function"
+    typeof c.venuePlan?.findMany === "function" &&
+    typeof c.stripePayout?.findMany === "function"
   );
 }
 

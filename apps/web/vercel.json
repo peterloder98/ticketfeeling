@@ -2,5 +2,15 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "installCommand": "cd ../.. && npm install",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "crons": [
+    {
+      "path": "/api/v1/cron/stripe-payout-reconcile?kind=daily",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/v1/cron/stripe-payout-reconcile?kind=monthly",
+      "schedule": "30 3 1 * *"
+    }
+  ]
 }
