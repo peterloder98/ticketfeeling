@@ -65,7 +65,34 @@ function eurosToCents(raw: string) {
   return Math.round(n * 100);
 }
 
-export async function createEventAction(formData: FormData) {
+export type CreateEventActionResult =
+  | { ok: true; redirectTo: string }
+  | { ok: false; error: string };
+
+/**
+ * Create event from the admin wizard.
+ * Returns a result (no redirect()) so the client can clear drafts and navigate
+ * without catching NEXT_REDIRECT — which surfaces as a production Application error.
+ */
+export async function createEventAction(
+  formData: FormData,
+): Promise<CreateEventActionResult> {
+  try {
+    return await createEventFromFormData(formData);
+  } catch (err) {
+    // Auth redirects from requireEventWrite must propagate.
+    const { isRedirectError } = await import(
+      "next/dist/client/components/redirect-error"
+    );
+    if (isRedirectError(err)) throw err;
+    const message = err instanceof Error ? err.message : "CREATE_FAILED";
+    return { ok: false, error: message };
+  }
+}
+
+async function createEventFromFormData(
+  formData: FormData,
+): Promise<CreateEventActionResult> {
   const { session, membership } = await requireEventWrite();
 
   const name = String(formData.get("name") ?? "").trim();
@@ -438,13 +465,15 @@ export async function createEventAction(formData: FormData) {
   if (tourId) {
     revalidatePath(`/admin/tours/${tourId}`);
     revalidatePath("/admin/tours");
-    redirect(`/admin/tours/${tourId}?termin=1`);
+    return { ok: true, redirectTo: `/admin/tours/${tourId}?termin=1` };
   }
-  redirect(
-    event.venuePlanId && event.seatingBookingMode !== "none"
-      ? `/admin/events/${event.id}?saved=1#zuordnung`
-      : `/admin/events/${event.id}?saved=1`,
-  );
+  return {
+    ok: true,
+    redirectTo:
+      event.venuePlanId && event.seatingBookingMode !== "none"
+        ? `/admin/events/${event.id}?saved=1#zuordnung`
+        : `/admin/events/${event.id}?saved=1`,
+  };
 }
 
 export async function updateEventAction(formData: FormData) {

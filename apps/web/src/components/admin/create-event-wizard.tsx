@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useFormStatus } from "react-dom";
-import { isRedirectError } from "next/dist/client/components/redirect-error";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import {
   shiftDateTimeLocal,
@@ -300,6 +299,10 @@ function WizardSubmitButton({
   );
 }
 
+type CreateEventActionResult =
+  | { ok: true; redirectTo: string }
+  | { ok: false; error: string };
+
 type Props = {
   organizationId: string;
   locations: WizardLocation[];
@@ -307,7 +310,7 @@ type Props = {
   tours?: WizardTour[];
   artists?: LibraryArtist[];
   initialTourId?: string;
-  action: (formData: FormData) => Promise<void>;
+  action: (formData: FormData) => Promise<CreateEventActionResult>;
 };
 
 export function CreateEventWizard({
@@ -942,16 +945,18 @@ export function CreateEventWizard({
   async function submitWizard(formData: FormData) {
     // Flush latest state first — never clear storage until create succeeds.
     persistDraftNow();
+    setStepError(null);
     try {
-      await action(formData);
-      // Success without redirect (unusual) — only then clear.
-      clearDraftStorage();
-    } catch (err) {
-      if (isRedirectError(err)) {
-        // Successful create → redirect. Clear draft only now.
+      // createEventAction returns a result (no redirect()) so we never catch
+      // NEXT_REDIRECT — that pattern caused production Application errors.
+      const result = await action(formData);
+      if (result.ok) {
         clearDraftStorage();
-        throw err;
+        window.location.assign(result.redirectTo);
+        return;
       }
+      setStepError(humanizeCreateEventError(new Error(result.error)));
+    } catch (err) {
       setStepError(humanizeCreateEventError(err));
     }
   }
