@@ -5,17 +5,28 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-function authorize(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const auth = request.headers.get("authorization");
-  if (auth === `Bearer ${secret}`) return true;
+function authorize(request: Request): "ok" | "missing" | "unauthorized" {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) return "missing";
+  const auth = request.headers.get("authorization")?.trim();
+  if (auth === `Bearer ${secret}`) return "ok";
   const url = new URL(request.url);
-  return url.searchParams.get("secret") === secret;
+  if (url.searchParams.get("secret")?.trim() === secret) return "ok";
+  return "unauthorized";
 }
 
 export async function GET(request: Request) {
-  if (!authorize(request)) {
+  const auth = authorize(request);
+  if (auth === "missing") {
+    return NextResponse.json(
+      {
+        error: "CRON_SECRET_NOT_CONFIGURED",
+        hint: "In Vercel Environment Variables CRON_SECRET setzen und Production neu deployen.",
+      },
+      { status: 503 },
+    );
+  }
+  if (auth !== "ok") {
     return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
   }
   const url = new URL(request.url);
