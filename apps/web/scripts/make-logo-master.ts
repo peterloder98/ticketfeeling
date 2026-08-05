@@ -1,6 +1,11 @@
 /**
  * Soft-knockout solid black plate from original ChatGPT/JPEG logo artwork → PNG+alpha.
  *
+ * ONLY for black-plate JPEG/PNG sources. If the artwork is already freigestellt
+ * (removebg / transparent RGBA), do NOT run this — soft-knockout fringes edges.
+ * For removebg masters: copy 1:1 (optional light trim of empty transparent padding),
+ * write logo-ticketfeeling.png, and lanczos-resize email/lockup derivatives only.
+ *
  * Source is typically a 1024×682 JPEG *plate* (no alpha); logo content is much smaller
  * inside that frame (~430×280). We:
  *  1) flood-fill near-black from corners → transparency (protects navy wordmark)

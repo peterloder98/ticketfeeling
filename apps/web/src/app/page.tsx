@@ -71,7 +71,7 @@ export default async function HomePage() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--tf-teal)]">
               Ticketfeeling
             </p>
-            <BrandLogo href={null} variant="full" priority className="!h-[5.5rem] sm:!h-24 md:!h-[6.5rem]" />
+            <BrandLogo href={null} variant="full" priority className="!h-20 sm:!h-[5.25rem] md:!h-[5.5rem]" />
             <h1 className="max-w-xl text-3xl font-bold leading-[1.1] tracking-tight text-[var(--tf-navy)] md:text-5xl lg:text-[3.25rem]">
               Vorfreude beginnt beim Buchen.
             </h1>

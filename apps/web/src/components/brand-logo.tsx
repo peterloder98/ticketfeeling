@@ -10,20 +10,20 @@ type BrandLogoProps = {
 };
 
 /** Cache-bust so browsers pick up the latest artwork. */
-const V = "20260805a";
+const V = "20260805-freigestellt1";
 
 /**
- * Full lockup = high-res original raster (soft-knockout PNG, 2× content).
+ * Full lockup = freigestellt removebg raster 1:1 (trimmed empty padding only).
  * Intrinsic pixels match `public/brand/logo-ticketfeeling.png`.
- * Height-driven `w-auto object-contain` — never stretch / never point at 1× preview.
+ * Height-driven `w-auto object-contain` — never stretch / never soft-knockout / never SVG lockup.
  *
  * Display guidance (2× screens): CSS height ≲ half of source height.
- * Master is 654px tall → keep CSS height ≤ ~280px (hero 88–104px / footer 56px are safe).
+ * Master is 184px tall → keep CSS height ≤ ~92px (hero ≤88px / footer 56px are safe).
  */
 const FULL = {
   src: `/brand/logo-ticketfeeling.png?v=${V}`,
-  width: 930,
-  height: 654,
+  width: 271,
+  height: 184,
   className: "h-14 w-auto sm:h-16 md:h-[4.5rem]",
 } as const;
 
