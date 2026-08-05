@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
 import { BrandLogo } from "@/components/brand-logo";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
+import { RequestInvoiceForm } from "@/components/request-invoice-form";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
@@ -83,6 +84,14 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
   const taxPercentLabel = (taxRateBps / 100)
     .toFixed(taxRateBps % 100 === 0 ? 0 : 2)
     .replace(".", ",");
+  const billing =
+    order.billingSnapshot &&
+    typeof order.billingSnapshot === "object" &&
+    !Array.isArray(order.billingSnapshot)
+      ? (order.billingSnapshot as Record<string, unknown>)
+      : {};
+  const billingText = (key: string) =>
+    typeof billing[key] === "string" ? String(billing[key]) : "";
 
   const ticketsByItem = new Map<string, typeof order.tickets>();
   for (const ticket of order.tickets) {
@@ -295,6 +304,19 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
                   </a>
                 ) : null}
               </div>
+            ) : null}
+            {paid &&
+            !order.invoiceRequested &&
+            !isStaff &&
+            (isOwner || hasAccessToken) ? (
+              <RequestInvoiceForm
+                orderId={order.id}
+                accessToken={hasAccessToken ? sp.t : null}
+                defaultStreet={order.invoiceStreet || billingText("street")}
+                defaultHouseNumber={order.invoiceHouseNumber || billingText("houseNumber")}
+                defaultPostalCode={order.invoicePostalCode || billingText("postalCode")}
+                defaultCity={order.invoiceCity || billingText("city")}
+              />
             ) : null}
             {paid && (isOwner || isStaff) ? (
               <p className="mt-4 rounded-xl bg-[rgba(20,184,166,0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--tf-navy)]">

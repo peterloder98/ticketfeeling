@@ -38,7 +38,7 @@ export default async function AccountPage() {
       <div className="mt-8 space-y-3">
         {orders.map((order) => {
           const invoice = order.invoices[0];
-          const showInvoice = Boolean(invoice && (order.invoiceRequested || invoice));
+          const showInvoice = Boolean(order.invoiceRequested && invoice);
           return (
             <Link key={order.id} href={`/konto/bestellung/${order.id}`} className="tf-card block">
               <div className="flex flex-wrap justify-between gap-2">

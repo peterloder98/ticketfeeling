@@ -25,13 +25,16 @@ async function ensureUploadedAssetsTable() {
   ensuredTable = true;
 }
 
-/** Persist cover bytes in Postgres and return a public URL that works on Vercel. */
+/** Persist image bytes in Postgres and return a public URL that works on Vercel. */
 export async function storeCoverAsset(input: {
   organizationId: string;
   buffer: Buffer;
   mimeType?: string;
+  /** cover | image — assets GET allows both public kinds */
+  kind?: "cover" | "image";
 }): Promise<{ url: string; assetId: string; byteSize: number }> {
   const mimeType = input.mimeType ?? "image/webp";
+  const kind = input.kind ?? "cover";
 
   try {
     await ensureUploadedAssetsTable();
@@ -39,7 +42,7 @@ export async function storeCoverAsset(input: {
       data: {
         id: randomUUID(),
         organizationId: input.organizationId,
-        kind: "cover",
+        kind,
         mimeType,
         byteSize: input.buffer.length,
         data: new Uint8Array(input.buffer),

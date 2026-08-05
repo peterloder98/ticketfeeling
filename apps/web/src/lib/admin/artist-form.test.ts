@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeHomepageUrl,
   normalizeOptionalHttpUrl,
+  normalizeOptionalImageUrl,
   normalizeYoutubeInput,
   parseArtistProfileForm,
   parseArtistsJson,
@@ -19,6 +20,15 @@ describe("artist-form helpers", () => {
     expect(normalizeOptionalHttpUrl("")).toBeNull();
     expect(normalizeOptionalHttpUrl("instagram.com/foo")).toBe("https://instagram.com/foo");
     expect(() => normalizeOptionalHttpUrl("not a url")).toThrow("INVALID_URL");
+  });
+
+  it("accepts uploaded asset paths and static image paths", () => {
+    expect(normalizeOptionalImageUrl("/api/assets/2003cbc4-30c8-47e3-ab7b-4d38592d4b93")).toBe(
+      "/api/assets/2003cbc4-30c8-47e3-ab7b-4d38592d4b93",
+    );
+    expect(normalizeOptionalImageUrl("/artists/anni-perka.jpg")).toBe("/artists/anni-perka.jpg");
+    expect(normalizeOptionalImageUrl("cdn.example.com/a.webp")).toBe("https://cdn.example.com/a.webp");
+    expect(() => normalizeOptionalImageUrl("not a url")).toThrow("INVALID_URL");
   });
 
   it("accepts youtube watch urls and bare ids", () => {

@@ -8,6 +8,7 @@ import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { ARTIST_TYPES } from "@/lib/admin/artist-form";
 import { deleteArtistAction, updateArtistAction } from "@/app/admin/artists/actions";
+import { ArtistImageField } from "@/components/admin/artist-image-field";
 
 export const dynamic = "force-dynamic";
 
@@ -201,29 +202,23 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
           <div>
             <h3 className="text-sm font-semibold text-[var(--tf-navy)]">Bilder</h3>
             <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-              Öffentliche Bild-URLs (https://…). Upload folgt später.
+              Hochladen — wir optimieren automatisch fürs Web. Optional bleibt eine URL möglich.
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm">
-                <span className="text-[var(--tf-text-secondary)]">Profilbild-URL</span>
-                <input
-                  name="profileImageUrl"
-                  className="tf-input"
-                  defaultValue={artist.profileImageUrl ?? ""}
-                  placeholder="https://…"
-                  inputMode="url"
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span className="text-[var(--tf-text-secondary)]">Headerbild-URL</span>
-                <input
-                  name="headerImageUrl"
-                  className="tf-input"
-                  defaultValue={artist.headerImageUrl ?? ""}
-                  placeholder="https://…"
-                  inputMode="url"
-                />
-              </label>
+            <div className="mt-3 grid gap-5 sm:grid-cols-2">
+              <ArtistImageField
+                kind="profile"
+                name="profileImageUrl"
+                label="Profilbild"
+                artistId={artist.id}
+                initialUrl={artist.profileImageUrl}
+              />
+              <ArtistImageField
+                kind="header"
+                name="headerImageUrl"
+                label="Headerbild"
+                artistId={artist.id}
+                initialUrl={artist.headerImageUrl}
+              />
             </div>
           </div>
 

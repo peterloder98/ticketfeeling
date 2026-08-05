@@ -55,7 +55,10 @@ export default async function RecoveryAccessPage({ searchParams }: Props) {
           <div className="flex flex-wrap justify-between gap-2">
             <p className="font-semibold">{order.orderNumber}</p>
             <p className="text-sm text-[var(--muted)]">
-              {formatEuroFromCents(order.grossCents)} · {order.invoices[0]?.invoiceNumber ?? "—"}
+              {formatEuroFromCents(order.grossCents)}
+              {order.invoiceRequested && order.invoices[0]?.invoiceNumber
+                ? ` · Rechnung ${order.invoices[0].invoiceNumber}`
+                : ""}
             </p>
           </div>
           {order.tickets.map((ticket) => (

@@ -51,6 +51,11 @@ export async function GET(request: Request, { params }: Params) {
     return NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 });
   }
 
+  // Customers/guests only get the PDF after explicitly requesting an invoice.
+  if (!isStaff && !invoice.order.invoiceRequested) {
+    return NextResponse.json({ error: { code: "INVOICE_NOT_REQUESTED" } }, { status: 403 });
+  }
+
   try {
     // Always regenerate from invoice/order DB data — never serve/store pdf_data blobs.
     const pdf = await getOrCreateInvoicePdf(invoiceId);

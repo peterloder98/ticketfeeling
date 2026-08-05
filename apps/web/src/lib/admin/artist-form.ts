@@ -58,6 +58,17 @@ export function normalizeOptionalHttpUrl(raw: string | null | undefined): string
   return normalized;
 }
 
+/**
+ * Image fields: uploaded assets (`/api/assets/…`), static public paths, or http(s) URLs.
+ */
+export function normalizeOptionalImageUrl(raw: string | null | undefined): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  if (/^\/api\/assets\/[0-9a-f-]{36}$/i.test(value)) return value;
+  if (/^\/[a-z0-9][a-z0-9/_-]*\.(jpe?g|png|webp|gif)$/i.test(value)) return value;
+  return normalizeOptionalHttpUrl(value);
+}
+
 /** Returns normalized URL/ID, or null if empty. Throws on clearly invalid input. */
 export function normalizeYoutubeInput(raw: string | null | undefined): string | null {
   const value = String(raw ?? "").trim();
@@ -114,23 +125,25 @@ export function parseArtistProfileForm(
     throw new Error("INVALID_YOUTUBE");
   }
 
-  const urlFields = [
-    "profileImageUrl",
-    "headerImageUrl",
-    "instagram",
-    "facebook",
-    "tiktok",
-    "spotify",
-  ] as const;
-  const urls: Record<(typeof urlFields)[number], string | null> = {
-    profileImageUrl: null,
-    headerImageUrl: null,
-    instagram: null,
-    facebook: null,
-    tiktok: null,
-    spotify: null,
-  };
-  for (const key of urlFields) {
+  const imageFields = ["profileImageUrl", "headerImageUrl"] as const;
+  const linkFields = ["instagram", "facebook", "tiktok", "spotify"] as const;
+  const urls: Record<(typeof imageFields)[number] | (typeof linkFields)[number], string | null> =
+    {
+      profileImageUrl: null,
+      headerImageUrl: null,
+      instagram: null,
+      facebook: null,
+      tiktok: null,
+      spotify: null,
+    };
+  for (const key of imageFields) {
+    try {
+      urls[key] = normalizeOptionalImageUrl(String(formData.get(key) ?? ""));
+    } catch {
+      throw new Error("INVALID_URL");
+    }
+  }
+  for (const key of linkFields) {
     try {
       urls[key] = normalizeOptionalHttpUrl(String(formData.get(key) ?? ""));
     } catch {
