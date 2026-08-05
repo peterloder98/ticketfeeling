@@ -6,7 +6,11 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TicketQrImage } from "@/components/ticket-qr-image";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { canUseTicketEntry, isTicketParty, isTicketTransferred } from "@/lib/tickets/access";
+import {
+  canUseTicketEntryWithGuestToken,
+  isTicketParty,
+  isTicketTransferred,
+} from "@/lib/tickets/access";
 import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { getWalletUiFlags } from "@/lib/wallet/config";
@@ -65,24 +69,25 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
   const accessToken = hasAccessToken ? sp.t! : null;
   const orderHref = withOrderAccessQuery(`/embed/bestellung/${ticket.orderId}`, accessToken);
   const pdfHref = withOrderAccessQuery(`/api/v1/tickets/${ticket.id}/pdf`, accessToken);
+  const calendarHref = withOrderAccessQuery(
+    `/api/v1/tickets/${ticket.id}/calendar`,
+    accessToken,
+  );
 
   const transferred = isTicketTransferred({
     holderCustomerId: ticket.holderCustomerId,
     orderCustomerId: ticket.order.customerId,
   });
-  const canEntry =
-    isStaff ||
-    canUseTicketEntry({
-      sessionUserId: session?.user?.id,
-      sessionEmail: session?.user?.email,
-      holder: ticket.holder,
-      isStaff,
-    });
+  const canEntry = canUseTicketEntryWithGuestToken({
+    sessionUserId: session?.user?.id,
+    sessionEmail: session?.user?.email,
+    holder: ticket.holder,
+    isStaff,
+    hasAccessToken,
+    transferred,
+  });
 
-  // Guest checkout token = buyer view; after transfer only holder/staff see QR.
-  const showQr =
-    Boolean(ticket.qrTokens[0]?.token) &&
-    (isStaff || (hasAccessToken && !transferred) || canEntry);
+  const showQr = Boolean(ticket.qrTokens[0]?.token && canEntry);
 
   const token = ticket.qrTokens[0]?.token ?? "";
   const walletFlags = getWalletUiFlags();
@@ -177,6 +182,11 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
               <a href={pdfHref} className="tf-btn tf-btn-primary w-full !min-h-10 text-sm" target="_blank" rel="noreferrer">
                 PDF speichern
               </a>
+              {ticket.event.eventStartsAt ? (
+                <a href={calendarHref} className="tf-btn tf-btn-secondary w-full !min-h-10 text-sm">
+                  Zum Kalender
+                </a>
+              ) : null}
               <TicketWalletButtons
                 ticketId={ticket.id}
                 accessToken={accessToken}

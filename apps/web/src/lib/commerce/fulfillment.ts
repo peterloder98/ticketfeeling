@@ -565,37 +565,7 @@ export async function fulfillPaidOrder(orderId: string) {
           : fresh.items[0]?.locationSnapshot ?? null;
         const eventDateLabel = formatEventDateForSubject(startsAt);
 
-        const ticketIds = fresh.tickets.map((t) => t.id);
-        const pdfAttachments: { filename: string; content: Buffer }[] = [];
-        try {
-          const { renderOrderTicketsPdf, renderTicketPdf } = await import(
-            "@/lib/commerce/ticket-pdf"
-          );
-          try {
-            const pdf = await renderOrderTicketsPdf(fresh.id);
-            if (pdf.buffer.length > 0) {
-              pdfAttachments.push({ filename: pdf.filename, content: pdf.buffer });
-            }
-          } catch (error) {
-            console.error("[fulfillment] combined pdf failed, trying singles", fresh.id, error);
-          }
-          if (pdfAttachments.length === 0) {
-            for (const ticketId of ticketIds) {
-              try {
-                const pdf = await renderTicketPdf(ticketId, { compact: true });
-                if (pdf.buffer.length > 0) {
-                  pdfAttachments.push({ filename: pdf.filename, content: pdf.buffer });
-                }
-              } catch (error) {
-                console.error("[fulfillment] ticket pdf failed", ticketId, error);
-              }
-            }
-          }
-        } catch (error) {
-          console.error("[fulfillment] pdf module load failed", error);
-        }
-
-        // Invoice: link only — never attach/store PDF blobs
+        // Tickets + invoice: link-only (tokenized) — never attach ticket PDF blobs
         const invoiceRow = fresh.invoices[0];
         let invoiceAttachmentNumber: string | null = null;
         let invoiceDownloadUrl: string | null = null;
@@ -624,7 +594,7 @@ export async function fulfillPaidOrder(orderId: string) {
           orderId: fresh.id,
           orderNumber: fresh.orderNumber,
           ticketCount: fresh.tickets.length,
-          hasAttachment: pdfAttachments.length > 0,
+          hasAttachment: false,
           invoiceNumber: invoiceAttachmentNumber,
           invoiceDownloadUrl,
           firstTicketId: fresh.tickets[0]?.id ?? null,
@@ -643,17 +613,10 @@ export async function fulfillPaidOrder(orderId: string) {
             eventName,
             eventDate: eventDateLabel,
           },
-          pdfAttachments,
-          orderIdForCombinedPdf: pdfAttachments.length ? undefined : fresh.id,
-          ticketIds: pdfAttachments.length ? undefined : ticketIds,
           text: mail.text,
           html: mail.html,
-          compactPdf: true,
           embedLogo: true,
         });
-        if (sendResult.attachments < 1) {
-          console.error("[fulfillment] ticket mail sent without PDF attachments", fresh.id);
-        }
         // Only mark emailed when SMTP actually accepted the message (not stub).
         if (sendResult.provider === "smtp") {
           await prisma.order.update({
@@ -784,6 +747,7 @@ export async function fulfillPaidOrder(orderId: string) {
                 after: {
                   to: recipients.to,
                   source: recipients.source,
+                  skipped: recipients.skipped,
                   provider: staffSend.provider,
                   reason: "reason" in staffSend ? staffSend.reason : null,
                 },
@@ -794,7 +758,11 @@ export async function fulfillPaidOrder(orderId: string) {
                 action: "email.order_staff_skipped",
                 entityType: "order",
                 entityId: fresh.id,
-                after: { reason: "no_recipients" },
+                after: {
+                  reason: "no_recipients",
+                  skipped: recipients.skipped,
+                  source: recipients.source,
+                },
               });
             }
           }

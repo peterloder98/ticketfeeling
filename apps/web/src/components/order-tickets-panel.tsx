@@ -405,6 +405,18 @@ export function OrderTicketsPanel({
                           >
                             Ticket öffnen
                           </Link>
+                          {showQr ? (
+                            <a
+                              href={
+                                accessToken
+                                  ? `/api/v1/tickets/${ticket.id}/calendar?t=${encodeURIComponent(accessToken)}`
+                                  : `/api/v1/tickets/${ticket.id}/calendar`
+                              }
+                              className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                            >
+                              Zum Kalender
+                            </a>
+                          ) : null}
                         </div>
 
                         {showQr ? (

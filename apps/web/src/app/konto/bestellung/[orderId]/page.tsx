@@ -7,7 +7,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { BrandLogo } from "@/components/brand-logo";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
+import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
@@ -127,14 +127,14 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
           holderCustomerId: ticket.holderCustomerId,
           orderCustomerId: order.customerId,
         });
-        const canEntry =
-          isStaff ||
-          canUseTicketEntry({
-            sessionUserId: session?.user?.id,
-            sessionEmail: session?.user?.email,
-            holder: ticket.holder,
-            isStaff,
-          });
+        const canEntry = canUseTicketEntryWithGuestToken({
+          sessionUserId: session?.user?.id,
+          sessionEmail: session?.user?.email,
+          holder: ticket.holder,
+          isStaff,
+          hasAccessToken,
+          transferred,
+        });
         return {
           id: ticket.id,
           ticketNumber: ticket.ticketNumber,
@@ -175,7 +175,7 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
               {paid
                 ? `vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei ${eventName} dabei sind. Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass${
                     emailSent
-                      ? " — zusätzlich senden wir Ihnen die Tickets per E-Mail als PDF."
+                      ? " — die Bestätigungs-E-Mail mit Links zu PDF, Wallet und Kalender ist unterwegs."
                       : hasRealEmail
                         ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (bitte SMTP unter Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
                         : "."

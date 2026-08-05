@@ -1,7 +1,9 @@
+import { promises as dns } from "dns";
 import { prisma } from "@/lib/db";
 import { paymentMethodLabel, channelLabel } from "@/lib/commerce/channels";
 import { formatEuroFromCents } from "@/lib/money";
 import { EMAIL_LOGO_CID, emailLogoRemoteUrl } from "@/lib/email/ticket-mail";
+import { resolveOutboundSmtp } from "@/lib/email/accounts";
 
 function appBaseUrl() {
   return (process.env.APP_URL ?? process.env.NEXTAUTH_URL ?? "http://localhost:3000").replace(
@@ -22,6 +24,16 @@ function isEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && !value.endsWith("@ticketfeeling.local");
 }
 
+/** Seed / placeholder org contacts — never use as staff notify unless explicitly set in orderNotificationEmail. */
+const PLACEHOLDER_ORG_NOTIFY_EMAILS = new Set([
+  "info@ticketfeeling.de",
+  "support@ticketfeeling.de",
+]);
+
+function isPlaceholderOrgNotifyEmail(email: string) {
+  return PLACEHOLDER_ORG_NOTIFY_EMAILS.has(email.trim().toLowerCase());
+}
+
 function emailsFromSettingsData(data: unknown): string[] {
   if (!data || typeof data !== "object" || Array.isArray(data)) return [];
   const raw = (data as Record<string, unknown>).orderNotificationEmail;
@@ -40,32 +52,130 @@ function emailsFromSettingsData(data: unknown): string[] {
   return [];
 }
 
+const domainMxCache = new Map<string, { ok: boolean; checkedAt: number }>();
+const DOMAIN_CACHE_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * True when the mailbox domain has MX (preferred) or at least an A/AAAA record.
+ * Avoids staff notify bounces to placeholder addresses on dead / misconfigured domains.
+ */
+export async function isEmailDomainDeliverable(email: string): Promise<boolean> {
+  const at = email.lastIndexOf("@");
+  if (at < 0) return false;
+  const domain = email.slice(at + 1).toLowerCase().trim();
+  if (!domain || domain === "ticketfeeling.local") return false;
+
+  const cached = domainMxCache.get(domain);
+  if (cached && Date.now() - cached.checkedAt < DOMAIN_CACHE_TTL_MS) {
+    return cached.ok;
+  }
+
+  let ok = false;
+  try {
+    const mx = await dns.resolveMx(domain);
+    ok = Array.isArray(mx) && mx.length > 0;
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    try {
+      const a = await dns.resolve4(domain);
+      ok = Array.isArray(a) && a.length > 0;
+    } catch {
+      try {
+        const aaaa = await dns.resolve6(domain);
+        ok = Array.isArray(aaaa) && aaaa.length > 0;
+      } catch {
+        ok = false;
+      }
+    }
+  }
+
+  domainMxCache.set(domain, { ok, checkedAt: Date.now() });
+  return ok;
+}
+
+async function filterDeliverable(emails: string[]): Promise<string[]> {
+  const unique = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(isEmail))];
+  const live: string[] = [];
+  for (const email of unique) {
+    if (await isEmailDomainDeliverable(email)) live.push(email);
+    else {
+      console.warn("[order-staff-mail] skip non-deliverable notification address", email);
+    }
+  }
+  return live;
+}
+
 /**
  * Resolve who should receive „Neue Bestellung“ staff notifications.
- * Priority: settings.data.orderNotificationEmail → settings.email →
- * supportEmail → active organizer_admin / system_admin members.
+ * Priority (first source with live/deliverable addresses wins):
+ * settings.data.orderNotificationEmail → SMTP from → supportEmail →
+ * settings.email → active organizer_admin / system_admin members.
+ *
+ * Addresses on domains without MX/A are skipped so placeholder
+ * info@ticketfeeling.de (etc.) cannot bounce when DNS is incomplete.
  */
 export async function resolveOrderNotificationRecipients(
   organizationId: string,
-): Promise<{ to: string[]; source: string }> {
+): Promise<{ to: string[]; source: string; skipped: string[] }> {
   const settings = await prisma.organizationSettings.findUnique({
     where: { organizationId },
     select: { email: true, supportEmail: true, data: true },
   });
 
-  const fromData = emailsFromSettingsData(settings?.data);
-  if (fromData.length) {
-    return { to: [...new Set(fromData)], source: "settings.data.orderNotificationEmail" };
-  }
+  const skipped: string[] = [];
+  const trySource = async (
+    source: string,
+    candidates: string[],
+  ): Promise<{ to: string[]; source: string; skipped: string[] } | null> => {
+    const unique = [...new Set(candidates.map((e) => e.trim().toLowerCase()).filter(isEmail))];
+    if (!unique.length) return null;
+    const live = await filterDeliverable(unique);
+    for (const e of unique) {
+      if (!live.includes(e)) skipped.push(e);
+    }
+    if (live.length) return { to: live, source, skipped };
+    return null;
+  };
 
-  const orgEmail = settings?.email?.trim().toLowerCase();
-  if (orgEmail && isEmail(orgEmail)) {
-    return { to: [orgEmail], source: "settings.email" };
+  const envNotify = (process.env.ORDER_NOTIFICATION_EMAIL ?? "")
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().toLowerCase())
+    .filter(isEmail);
+  const hitEnv = await trySource("env.ORDER_NOTIFICATION_EMAIL", envNotify);
+  if (hitEnv) return hitEnv;
+
+  const fromData = emailsFromSettingsData(settings?.data);
+  const hitData = await trySource("settings.data.orderNotificationEmail", fromData);
+  if (hitData) return hitData;
+
+  let smtpFrom: string | null = null;
+  try {
+    const smtp = await resolveOutboundSmtp(organizationId);
+    smtpFrom = smtp?.fromEmail?.trim().toLowerCase() || null;
+  } catch {
+    smtpFrom = null;
+  }
+  if (smtpFrom && isEmail(smtpFrom)) {
+    const hitSmtp = await trySource("smtp.fromEmail", [smtpFrom]);
+    if (hitSmtp) return hitSmtp;
   }
 
   const support = settings?.supportEmail?.trim().toLowerCase();
-  if (support && isEmail(support)) {
-    return { to: [support], source: "settings.supportEmail" };
+  if (support && !isPlaceholderOrgNotifyEmail(support)) {
+    const hitSupport = await trySource("settings.supportEmail", [support]);
+    if (hitSupport) return hitSupport;
+  } else if (support) {
+    skipped.push(support);
+  }
+
+  const orgEmail = settings?.email?.trim().toLowerCase();
+  if (orgEmail && !isPlaceholderOrgNotifyEmail(orgEmail)) {
+    const hitOrg = await trySource("settings.email", [orgEmail]);
+    if (hitOrg) return hitOrg;
+  } else if (orgEmail) {
+    skipped.push(orgEmail);
   }
 
   const memberships = await prisma.membership.findMany({
@@ -81,14 +191,11 @@ export async function resolveOrderNotificationRecipients(
     include: { user: { select: { email: true } } },
   });
 
-  const adminEmails = [
-    ...new Set(
-      memberships
-        .map((m) => m.user.email.trim().toLowerCase())
-        .filter(isEmail),
-    ),
-  ];
-  return { to: adminEmails, source: "organizer_admin" };
+  const adminEmails = memberships.map((m) => m.user.email.trim().toLowerCase());
+  const hitAdmins = await trySource("organizer_admin", adminEmails);
+  if (hitAdmins) return hitAdmins;
+
+  return { to: [], source: "none", skipped };
 }
 
 export type StaffOrderCategoryLine = {

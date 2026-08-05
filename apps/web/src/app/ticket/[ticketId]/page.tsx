@@ -1,27 +1,31 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CalendarPlus } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { TicketQrImage } from "@/components/ticket-qr-image";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
-  canUseTicketEntry,
+  canUseTicketEntryWithGuestToken,
   isTicketParty,
   isTicketTransferred,
 } from "@/lib/tickets/access";
+import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ ticketId: string }> };
+type Props = {
+  params: Promise<{ ticketId: string }>;
+  searchParams: Promise<{ t?: string }>;
+};
 
-export default async function TicketViewPage({ params }: Props) {
+export default async function TicketViewPage({ params, searchParams }: Props) {
   const session = await getServerSession(authOptions);
-  if (!session?.user) redirect("/login");
   const { ticketId } = await params;
+  const sp = await searchParams;
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
@@ -35,7 +39,7 @@ export default async function TicketViewPage({ params }: Props) {
   if (!ticket) notFound();
 
   let isStaff = false;
-  if (session.user) {
+  if (session?.user) {
     const membership = await getDefaultOrganizationForUser(session.user.id);
     if (membership?.organizationId === ticket.organizationId) {
       isStaff =
@@ -44,28 +48,43 @@ export default async function TicketViewPage({ params }: Props) {
     }
   }
 
-  const allowed =
-    isStaff ||
+  const hasAccessToken = verifyOrderAccessToken(ticket.orderId, sp.t);
+  const isParty =
+    Boolean(session?.user) &&
     isTicketParty({
-      sessionUserId: session.user.id,
-      sessionEmail: session.user.email,
+      sessionUserId: session!.user!.id,
+      sessionEmail: session!.user!.email,
       holder: ticket.holder,
       orderCustomer: ticket.order.customer,
     });
-  if (!allowed) redirect("/konto");
+
+  if (!isStaff && !isParty && !hasAccessToken) {
+    redirect("/login");
+  }
+
+  const accessToken = hasAccessToken ? sp.t! : null;
+  const orderHref = withOrderAccessQuery(`/konto/bestellung/${ticket.orderId}`, accessToken);
+  const pdfHref = withOrderAccessQuery(`/api/v1/tickets/${ticket.id}/pdf`, accessToken);
+  const calendarHref = withOrderAccessQuery(
+    `/api/v1/tickets/${ticket.id}/calendar`,
+    accessToken,
+  );
 
   const transferred = isTicketTransferred({
     holderCustomerId: ticket.holderCustomerId,
     orderCustomerId: ticket.order.customerId,
   });
-  const canEntry = canUseTicketEntry({
-    sessionUserId: session.user.id,
-    sessionEmail: session.user.email,
+  const canEntry = canUseTicketEntryWithGuestToken({
+    sessionUserId: session?.user?.id,
+    sessionEmail: session?.user?.email,
     holder: ticket.holder,
     isStaff,
+    hasAccessToken,
+    transferred,
   });
 
   const token = ticket.qrTokens[0]?.token ?? "";
+  const showQr = Boolean(token && canEntry);
   const walletFlags = getWalletUiFlags();
   const when = ticket.event.eventStartsAt
     ? ticket.event.eventStartsAt.toLocaleString("de-DE", {
@@ -87,7 +106,7 @@ export default async function TicketViewPage({ params }: Props) {
     <div className="border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.9)]">
       <div className="tf-container py-8 md:py-12">
         <Link
-          href={`/konto/bestellung/${ticket.orderId}`}
+          href={orderHref}
           className="mb-6 inline-flex items-center gap-2 text-sm font-semibold text-[var(--tf-navy)] transition hover:text-[var(--tf-teal-hover)]"
         >
           <ArrowLeft className="h-4 w-4" aria-hidden />
@@ -160,7 +179,7 @@ export default async function TicketViewPage({ params }: Props) {
               </dl>
 
               <div className="flex flex-col items-center justify-center rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-5">
-                {canEntry && token ? (
+                {showQr ? (
                   <>
                     <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
                       QR-Code zum Einlass
@@ -191,7 +210,7 @@ export default async function TicketViewPage({ params }: Props) {
           <aside className="space-y-3 lg:sticky lg:top-28">
             {canEntry ? (
               <a
-                href={`/api/v1/tickets/${ticket.id}/pdf`}
+                href={pdfHref}
                 className="tf-btn tf-btn-primary flex w-full !min-h-12 justify-center"
                 target="_blank"
                 rel="noreferrer"
@@ -204,16 +223,26 @@ export default async function TicketViewPage({ params }: Props) {
                 {holder ? ` an ${holder}` : ""}.
               </p>
             )}
-            {canEntry && token ? (
+            {canEntry && ticket.event.eventStartsAt ? (
+              <a
+                href={calendarHref}
+                className="tf-btn tf-btn-secondary flex w-full !min-h-12 items-center justify-center gap-2"
+              >
+                <CalendarPlus className="h-4 w-4" aria-hidden />
+                Zum Kalender
+              </a>
+            ) : null}
+            {showQr ? (
               <TicketWalletButtons
                 ticketId={ticket.id}
+                accessToken={accessToken}
                 appleEnabled={walletFlags.apple}
                 googleEnabled={walletFlags.google}
                 size="md"
               />
             ) : null}
             <Link
-              href={`/konto/bestellung/${ticket.orderId}`}
+              href={orderHref}
               className="tf-btn tf-btn-secondary flex w-full !min-h-12 justify-center"
             >
               Zur Bestellung

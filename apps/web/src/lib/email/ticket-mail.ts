@@ -63,9 +63,11 @@ function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
         : "<br/>",
     )
     .join("");
-  const attachHint = opts?.hasAttachment === false
-    ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#B45309;font-family:system-ui,sans-serif">Hinweis: Die PDF-Anhänge konnten nicht erzeugt werden — öffne deine Tickets über den Link unten.</p>`
-    : "";
+  // Legacy: only when a caller still expects attachments and generation failed.
+  const attachHint =
+    opts?.hasAttachment === false
+      ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#B45309;font-family:system-ui,sans-serif">Hinweis: Die PDF-Anhänge konnten nicht erzeugt werden — öffne deine Tickets über den Link unten.</p>`
+      : "";
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#EEF2F7">
   <div style="padding:28px 16px">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #E2E8F0">
@@ -93,6 +95,12 @@ function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
   </div>
   </div>
 </body></html>`;
+}
+
+function withAccessToken(path: string, accessToken?: string | null) {
+  if (!accessToken) return path;
+  const join = path.includes("?") ? "&" : "?";
+  return `${path}${join}t=${encodeURIComponent(accessToken)}`;
 }
 
 export type TicketMailContent = {
@@ -125,14 +133,15 @@ export function buildOrderPaidTicketsMail(input: {
   orderId: string;
   orderNumber: string;
   ticketCount: number;
+  /** @deprecated Ticket PDFs are link-based; attachments are no longer used. */
   hasAttachment?: boolean;
   /** Invoice number when a Rechnung exists / was requested */
   invoiceNumber?: string | null;
   /** Absolute URL to on-demand invoice PDF (tokenized for guests) */
   invoiceDownloadUrl?: string | null;
-  /** Optional first ticket id for direct wallet deep-links in email */
+  /** Optional first ticket id for direct wallet / PDF / calendar links in email */
   firstTicketId?: string | null;
-  /** Guest access token appended to wallet API links in email */
+  /** Guest access token appended to order + ticket links in email */
   accessToken?: string | null;
 }): TicketMailContent {
   const greeting = formalGermanGreeting({
@@ -141,32 +150,34 @@ export function buildOrderPaidTicketsMail(input: {
     firstName: input.firstName,
     lastName: input.lastName,
   });
-  const orderUrl = `${appBaseUrl()}/konto/bestellung/${input.orderId}`;
+  const base = appBaseUrl();
+  const token = input.accessToken ?? null;
+  const orderUrl = `${base}${withAccessToken(`/konto/bestellung/${input.orderId}`, token)}`;
   const place = input.locationLabel?.trim();
-  const hasAttachment = input.hasAttachment !== false;
   const invoiceNumber = input.invoiceNumber?.trim() || null;
   const invoiceUrl = input.invoiceDownloadUrl?.trim() || null;
   const appleOn = isAppleWalletConfigured();
   const googleOn = isGoogleWalletConfigured();
   const ticketId = input.firstTicketId?.trim() || null;
-  const accessQ = input.accessToken
-    ? `?t=${encodeURIComponent(input.accessToken)}`
-    : "";
+  const ticketPdfUrl = ticketId
+    ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/pdf`, token)}`
+    : null;
+  const ticketOpenUrl = ticketId
+    ? `${base}${withAccessToken(`/ticket/${ticketId}`, token)}`
+    : null;
+  const calendarUrl = ticketId
+    ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/calendar`, token)}`
+    : null;
   const appleUrl =
     appleOn && ticketId
-      ? `${appBaseUrl()}/api/v1/tickets/${ticketId}/apple-wallet${accessQ}`
+      ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/apple-wallet`, token)}`
       : null;
   const googleUrl =
     googleOn && ticketId
-      ? `${appBaseUrl()}/api/v1/tickets/${ticketId}/google-wallet${accessQ}`
+      ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/google-wallet`, token)}`
       : null;
-  const walletNote =
-    appleOn || googleOn
-      ? "Auf dem Handy kannst du Tickets außerdem zu Apple Wallet oder Google Wallet hinzufügen — über den Link zur Bestellung."
-      : null;
-  const attachLine = hasAttachment
-    ? "Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass — als PDF im Anhang."
-    : `Ihre Tickets finden Sie über den Link unten (der PDF-Anhang konnte leider nicht erzeugt werden).`;
+  const ticketCountLabel =
+    input.ticketCount === 1 ? "Ihr Ticket" : `Ihre ${input.ticketCount} Tickets`;
   const invoiceLine =
     invoiceNumber && invoiceUrl
       ? `Rechnung ${invoiceNumber} können Sie jederzeit als PDF herunterladen: ${invoiceUrl}`
@@ -183,7 +194,7 @@ export function buildOrderPaidTicketsMail(input: {
     "",
     "vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei diesem Event dabei sind.",
     "",
-    attachLine,
+    `${ticketCountLabel} samt QR-Codes finden Sie über die Links unten — PDF bei Bedarf herunterladen, kein Anhang nötig.`,
     "",
     `Event: ${input.eventName}`,
     `Termin: ${input.whenLabel}`,
@@ -192,11 +203,13 @@ export function buildOrderPaidTicketsMail(input: {
     ...(invoiceLine ? [invoiceLine] : []),
     "",
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
-    ...(walletNote ? ["", walletNote] : []),
+    "",
+    `Bestellung & Tickets öffnen: ${orderUrl}`,
+    ...(ticketOpenUrl ? [`Ticket öffnen: ${ticketOpenUrl}`] : []),
+    ...(ticketPdfUrl ? [`Ticket als PDF: ${ticketPdfUrl}`] : []),
+    ...(calendarUrl ? [`Zum Kalender (.ics): ${calendarUrl}`] : []),
     ...(appleUrl ? [`Apple Wallet: ${appleUrl}`] : []),
     ...(googleUrl ? [`Google Wallet: ${googleUrl}`] : []),
-    "",
-    `Ihre Bestellung im Konto: ${orderUrl}`,
     "",
     "Ihr Ticketfeeling-Team",
   ];
@@ -204,13 +217,13 @@ export function buildOrderPaidTicketsMail(input: {
   const walletHtmlButtons: string[] = [];
   // Official badge PNGs (Google DE stacked + Apple US from brand kits). Height-driven.
   if (googleUrl) {
-    const src = `${appBaseUrl()}/wallet/add-to-google-wallet.png?v=20260805b`;
+    const src = `${base}/wallet/add-to-google-wallet.png?v=20260805b`;
     walletHtmlButtons.push(
       `<a href="${escapeHtml(googleUrl)}" style="display:inline-block;line-height:0;text-decoration:none;margin:0 10px 10px 0" target="_blank" rel="noreferrer"><img src="${escapeHtml(src)}" alt="Zu Google Wallet hinzufügen" height="40" style="height:40px;width:auto;border:0;display:block" /></a>`,
     );
   }
   if (appleUrl) {
-    const src = `${appBaseUrl()}/wallet/add-to-apple-wallet.png?v=20260805b`;
+    const src = `${base}/wallet/add-to-apple-wallet.png?v=20260805b`;
     walletHtmlButtons.push(
       `<a href="${escapeHtml(appleUrl)}" style="display:inline-block;line-height:0;text-decoration:none;margin:0 10px 10px 0"><img src="${escapeHtml(src)}" alt="Zu Apple Wallet hinzufügen" height="40" style="height:40px;width:auto;border:0;display:block" /></a>`,
     );
@@ -219,11 +232,7 @@ export function buildOrderPaidTicketsMail(input: {
   const htmlParas = [
     escapeHtml(`${greeting},`),
     "vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei diesem Event dabei sind.",
-    hasAttachment
-      ? `Nachfolgend finden Sie Ihre <strong>${
-          input.ticketCount === 1 ? "Ticket-PDF" : `${input.ticketCount} Tickets`
-        }</strong> samt QR-Codes zum Einlass — als <strong>PDF im Anhang</strong>.`
-      : "Öffnen Sie Ihre Tickets über den Link unten.",
+    `${escapeHtml(ticketCountLabel)} samt QR-Codes finden Sie über die Links unten — <strong>PDF bei Bedarf herunterladen</strong>, kein Anhang nötig.`,
     `<strong style="font-size:18px">${escapeHtml(input.eventName)}</strong><br/>
      <span style="color:#334155">${escapeHtml(input.whenLabel)}</span>${
        place ? `<br/><span style="color:#334155">${escapeHtml(place)}</span>` : ""
@@ -232,16 +241,22 @@ export function buildOrderPaidTicketsMail(input: {
      }</span>`,
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
     `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a>`,
+    ...(ticketPdfUrl
+      ? [
+          `<a href="${escapeHtml(ticketPdfUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1">Ticket als PDF</a>${
+            calendarUrl
+              ? ` <a href="${escapeHtml(calendarUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1;margin-left:8px">Zum Kalender</a>`
+              : ""
+          }`,
+        ]
+      : []),
     ...(invoiceUrl
       ? [
           `<a href="${escapeHtml(invoiceUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1">Rechnung als PDF herunterladen</a>`,
         ]
       : []),
     ...(walletHtmlButtons.length
-      ? [
-          "Tickets zum Wallet hinzufügen (Anmeldung bzw. Bestellzugang nötig):",
-          walletHtmlButtons.join(""),
-        ]
+      ? ["Tickets zum Wallet hinzufügen:", walletHtmlButtons.join("")]
       : []),
     "Ihr Ticketfeeling-Team",
   ];
@@ -249,7 +264,7 @@ export function buildOrderPaidTicketsMail(input: {
   return {
     subject,
     text: lines.join("\n"),
-    html: wrapHtml(htmlParas, { hasAttachment }),
+    html: wrapHtml(htmlParas),
   };
 }
 

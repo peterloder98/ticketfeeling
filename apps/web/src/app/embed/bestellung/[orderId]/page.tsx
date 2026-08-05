@@ -6,7 +6,7 @@ import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { canUseTicketEntry, isTicketTransferred } from "@/lib/tickets/access";
+import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
@@ -116,14 +116,14 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
           holderCustomerId: ticket.holderCustomerId,
           orderCustomerId: order.customerId,
         });
-        const canEntry =
-          isStaff ||
-          canUseTicketEntry({
-            sessionUserId: session?.user?.id,
-            sessionEmail: session?.user?.email,
-            holder: ticket.holder,
-            isStaff,
-          });
+        const canEntry = canUseTicketEntryWithGuestToken({
+          sessionUserId: session?.user?.id,
+          sessionEmail: session?.user?.email,
+          holder: ticket.holder,
+          isStaff,
+          hasAccessToken,
+          transferred,
+        });
         return {
           id: ticket.id,
           ticketNumber: ticket.ticketNumber,
@@ -166,7 +166,7 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
             <p>
               Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass
               {emailSent
-                ? " — zusätzlich senden wir Ihnen die Tickets per E-Mail als PDF."
+                ? " — die Bestätigungs-E-Mail mit Links zu PDF, Wallet und Kalender ist unterwegs."
                 : hasRealEmail
                   ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (SMTP in den Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
                   : "."}

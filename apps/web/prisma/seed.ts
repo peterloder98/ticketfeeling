@@ -114,6 +114,8 @@ async function main() {
     taxOffice: "Finanzamt Landshut (ergänzen)",
     publicCompanyAddress,
     billingCompanyAddress,
+    /** Staff „Neue Bestellung“ — must be a live mailbox, not a placeholder domain contact */
+    orderNotificationEmail: "mail@peter-loder.de",
   };
 
   const org = await prisma.organization.upsert({

@@ -75,3 +75,25 @@ export function canUseTicketEntry(input: {
     holder: input.holder,
   });
 }
+
+/**
+ * Entry media for logged-in holders/staff, or guests with a valid order access token
+ * (buyer view). After transfer, the token alone is not enough — only the holder/staff.
+ */
+export function canUseTicketEntryWithGuestToken(input: {
+  sessionUserId?: string | null;
+  sessionEmail?: string | null;
+  holder?: HolderLike;
+  isStaff?: boolean;
+  hasAccessToken?: boolean;
+  transferred?: boolean;
+}) {
+  if (input.isStaff) return true;
+  if (input.hasAccessToken && !input.transferred) return true;
+  return canUseTicketEntry({
+    sessionUserId: input.sessionUserId,
+    sessionEmail: input.sessionEmail,
+    holder: input.holder,
+    isStaff: input.isStaff,
+  });
+}
