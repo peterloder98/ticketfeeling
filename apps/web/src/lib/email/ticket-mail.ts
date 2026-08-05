@@ -192,14 +192,17 @@ export function buildOrderPaidTicketsMail(input: {
   ];
 
   const walletHtmlButtons: string[] = [];
-  if (appleUrl) {
+  // Official badge PNGs (Google DE stacked + Apple US from brand kits). Height-driven.
+  if (googleUrl) {
+    const src = `${appBaseUrl()}/wallet/add-to-google-wallet.png`;
     walletHtmlButtons.push(
-      `<a href="${escapeHtml(appleUrl)}" style="display:inline-block;background:#0F2747;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 16px;border-radius:12px;margin:0 8px 8px 0">Zu Apple Wallet</a>`,
+      `<a href="${escapeHtml(googleUrl)}" style="display:inline-block;line-height:0;text-decoration:none;margin:0 10px 10px 0" target="_blank" rel="noreferrer"><img src="${escapeHtml(src)}" alt="Zu Google Wallet hinzufügen" height="40" style="height:40px;width:auto;border:0;display:block" /></a>`,
     );
   }
-  if (googleUrl) {
+  if (appleUrl) {
+    const src = `${appBaseUrl()}/wallet/add-to-apple-wallet.png`;
     walletHtmlButtons.push(
-      `<a href="${escapeHtml(googleUrl)}" style="display:inline-block;background:#0F2747;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 16px;border-radius:12px;margin:0 8px 8px 0">Zu Google Wallet</a>`,
+      `<a href="${escapeHtml(appleUrl)}" style="display:inline-block;line-height:0;text-decoration:none;margin:0 10px 10px 0"><img src="${escapeHtml(src)}" alt="Zu Apple Wallet hinzufügen" height="40" style="height:40px;width:auto;border:0;display:block" /></a>`,
     );
   }
 
