@@ -5,17 +5,26 @@ import { usePathname } from "next/navigation";
 import { BrandLogo } from "@/components/brand-logo";
 import { ADMIN_TOP_NAV, isAdminNavActive } from "@/lib/admin/nav";
 
+const BOX_OFFICE_NAV: { href: string; label: string; match?: string[] }[] = [
+  { href: "/kasse", label: "Tageskasse", match: ["/kasse"] },
+];
+
 export function AdminShell({
   email,
   children,
   fullBleedMobile = false,
+  /** Vorverkaufsstelle: only Tageskasse in the sidebar. */
+  boxOfficeOnly = false,
 }: {
   email: string;
   children: React.ReactNode;
   /** Mobile: no sidebar / padding (e.g. scanner fullscreen). Desktop unchanged. */
   fullBleedMobile?: boolean;
+  boxOfficeOnly?: boolean;
 }) {
   const pathname = usePathname();
+  const navItems = boxOfficeOnly ? BOX_OFFICE_NAV : ADMIN_TOP_NAV;
+  const homeHref = boxOfficeOnly ? "/kasse" : "/admin";
 
   return (
     <div
@@ -40,14 +49,14 @@ export function AdminShell({
           }
         >
           <div className="tf-card !p-5">
-            <BrandLogo variant="app" href="/admin" />
+            <BrandLogo variant="app" href={homeHref} />
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-text-secondary)]">
-              Betrieb
+              {boxOfficeOnly ? "Vorverkauf" : "Betrieb"}
             </p>
             <p className="mt-1 truncate text-sm text-[var(--tf-text-secondary)]">{email}</p>
 
             <nav className="mt-5 space-y-0.5" aria-label="Admin-Navigation">
-              {ADMIN_TOP_NAV.map((item) => {
+              {navItems.map((item) => {
                 const active = isAdminNavActive(pathname, item);
                 return (
                   <Link
@@ -65,14 +74,16 @@ export function AdminShell({
               })}
             </nav>
 
-            <div className="mt-6 border-t border-[var(--tf-line)] pt-4">
-              <Link
-                href="/"
-                className="block rounded-[12px] px-3 py-2 text-sm text-[var(--tf-text-secondary)] hover:bg-[var(--tf-overlay)] hover:text-[var(--tf-navy)]"
-              >
-                Zur Website
-              </Link>
-            </div>
+            {!boxOfficeOnly ? (
+              <div className="mt-6 border-t border-[var(--tf-line)] pt-4">
+                <Link
+                  href="/"
+                  className="block rounded-[12px] px-3 py-2 text-sm text-[var(--tf-text-secondary)] hover:bg-[var(--tf-overlay)] hover:text-[var(--tf-navy)]"
+                >
+                  Zur Website
+                </Link>
+              </div>
+            ) : null}
           </div>
         </aside>
 

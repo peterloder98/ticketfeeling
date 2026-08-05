@@ -12,21 +12,26 @@ const navLinkClass =
 export function SiteHeaderClient({
   signedIn,
   canAdmin,
+  canKasse = false,
+  boxOfficeOnly = false,
 }: {
   signedIn: boolean;
   canAdmin: boolean;
+  canKasse?: boolean;
+  boxOfficeOnly?: boolean;
 }) {
   const pathname = usePathname() ?? "";
   const isAdminChrome =
     pathname.startsWith("/admin") ||
     pathname.startsWith("/kasse") ||
     pathname.startsWith("/scanner");
+  const homeHref = boxOfficeOnly || (isAdminChrome && canKasse && !canAdmin) ? "/kasse" : isAdminChrome ? "/admin" : "/";
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.96)] backdrop-blur-xl">
       <div className="tf-container flex min-h-[76px] items-center justify-between gap-3 py-2 md:gap-4">
         <div className="shrink-0">
-          <BrandLogo variant="app" href={isAdminChrome ? "/admin" : "/"} priority />
+          <BrandLogo variant="app" href={homeHref} priority />
         </div>
 
         {!isAdminChrome ? (
@@ -46,8 +51,12 @@ export function SiteHeaderClient({
           </form>
         ) : (
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-[var(--tf-navy)]">Admin</p>
-            <p className="truncate text-xs text-[var(--tf-text-secondary)]">Betrieb & Verkauf</p>
+            <p className="truncate text-sm font-semibold text-[var(--tf-navy)]">
+              {boxOfficeOnly ? "Tageskasse" : "Admin"}
+            </p>
+            <p className="truncate text-xs text-[var(--tf-text-secondary)]">
+              {boxOfficeOnly ? "Vorverkaufsstelle" : "Betrieb & Verkauf"}
+            </p>
           </div>
         )}
 
@@ -101,6 +110,18 @@ export function SiteHeaderClient({
                   }`}
                 >
                   {isAdminChrome ? "Übersicht" : "Admin"}
+                </Link>
+              ) : null}
+              {canKasse && !canAdmin ? (
+                <Link
+                  href="/kasse"
+                  className={`${navLinkClass} ${
+                    isAdminChrome
+                      ? "bg-[rgba(20,184,166,0.14)] text-[var(--tf-teal-hover)]"
+                      : ""
+                  }`}
+                >
+                  Tageskasse
                 </Link>
               ) : null}
               <Link

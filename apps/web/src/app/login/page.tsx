@@ -10,7 +10,7 @@ export default function LoginPage() {
         <BrandLogo variant="app" href="/" className="mb-8" />
         <h1 className="tf-display text-4xl">Willkommen zurück</h1>
         <p className="mt-3 text-[var(--tf-text-secondary)]">
-          Melde dich an, um Tickets, Kasse und Einlass zu verwalten.
+          Melde dich an — Admin, Tageskasse oder Vorverkaufsstelle.
         </p>
         <div className="tf-card mt-8">
           <LoginForm />

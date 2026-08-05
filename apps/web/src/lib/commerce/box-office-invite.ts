@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { enqueueTransactionalEmail } from "@/lib/email/outbox";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { ensureVorverkaufRole } from "@/lib/commerce/box-office-access";
 
 function hashInviteToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -32,6 +33,9 @@ export async function createBoxOfficeInvite(input: {
     select: { id: true, name: true },
   });
   if (events.length !== input.eventIds.length) throw new Error("EVENT_NOT_FOUND");
+
+  // Sync Rolle „Vorverkaufsstelle“ (Tageskasse-only) before invite.
+  await ensureVorverkaufRole(input.organizationId);
 
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date();
@@ -128,6 +132,8 @@ export async function acceptBoxOfficeInvite(input: {
   const passwordHash = await bcrypt.hash(input.password, 12);
   const name = `${invite.firstName} ${invite.lastName}`.trim();
 
+  await ensureVorverkaufRole(invite.organizationId);
+
   const result = await prisma.$transaction(async (tx) => {
     let user = await tx.user.findUnique({ where: { email: invite.emailNormalized } });
     if (user) {
@@ -175,13 +181,15 @@ export async function acceptBoxOfficeInvite(input: {
       });
     }
 
-    const role =
-      (await tx.role.findFirst({
-        where: { key: "box_office", organizationId: invite.organizationId },
-      })) ??
-      (await tx.role.findFirst({
+    // Role ensured outside tx below if missing; prefer org-scoped Vorverkaufsstelle.
+    let role = await tx.role.findFirst({
+      where: { key: "box_office", organizationId: invite.organizationId },
+    });
+    if (!role) {
+      role = await tx.role.findFirst({
         where: { key: "box_office", organizationId: null },
-      }));
+      });
+    }
     if (!role) throw new Error("ROLE_MISSING");
 
     await tx.membershipRole.upsert({

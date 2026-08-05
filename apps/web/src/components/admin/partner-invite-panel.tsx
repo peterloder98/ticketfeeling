@@ -109,10 +109,13 @@ export function PartnerInvitePanel({
     <div className="space-y-8">
       <form onSubmit={onSubmit} className="tf-card space-y-4">
         <div>
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Partner einladen</h2>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
+            Vorverkaufsstelle einladen
+          </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Location / Vorverkaufsstelle erhält eine E-Mail mit Link zum Anlegen von Zugang und
-            Passwort. Danach nur freigegebene Events in der Tageskasse.
+            Die Person erhält eine E-Mail mit Link für Zugang und Passwort. Rolle:
+            „Vorverkaufsstelle“ — Login führt direkt zur Tageskasse, nur freigegebene Events,
+            kein Admin-Menü.
           </p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">

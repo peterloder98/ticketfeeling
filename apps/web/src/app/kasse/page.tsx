@@ -4,7 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { BoxOfficeForm } from "@/components/box-office-form";
+import { BoxOfficeNewSaleButton } from "@/components/box-office-new-sale-button";
 import { BoxOfficeSessionPanel } from "@/components/box-office-session-panel";
 import { formatEuroFromCents } from "@/lib/money";
 import { ChannelBadge } from "@/components/channel-badge";
@@ -96,10 +96,9 @@ export default async function BoxOfficePage({ searchParams }: Props) {
   if (fromKey) createdAtFilter.gte = startOfDay(new Date(`${fromKey}T12:00:00`));
   if (toKey) createdAtFilter.lt = endOfDay(new Date(`${toKey}T12:00:00`));
 
-  const today = startOfDay(new Date());
   const partnerSaleFilter = fullAccess ? {} : { soldByUserId: session.user.id };
 
-  const [orgSettings, events, todaySales, filterEvents, orders] = await Promise.all([
+  const [orgSettings, events, filterEvents, orders] = await Promise.all([
     canSell
       ? prisma.organizationSettings.findUnique({
           where: { organizationId: membership.organizationId },
@@ -124,21 +123,6 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           orderBy: { eventStartsAt: "asc" },
         })
       : Promise.resolve([]),
-    prisma.order.findMany({
-      where: {
-        organizationId: membership.organizationId,
-        channel: "box_office",
-        createdAt: { gte: today },
-        voidedAt: null,
-        ...partnerSaleFilter,
-      },
-      select: {
-        id: true,
-        customerTotalCents: true,
-        grossCents: true,
-        tickets: { select: { id: true } },
-      },
-    }),
     prisma.event.findMany({
       where: { organizationId: membership.organizationId },
       select: { id: true, name: true },
@@ -158,7 +142,19 @@ export default async function BoxOfficePage({ searchParams }: Props) {
       include: {
         customer: true,
         items: true,
-        tickets: { select: { id: true } },
+        tickets: {
+          select: {
+            id: true,
+            ticketNumber: true,
+            categorySnapshot: true,
+            status: true,
+            presence: true,
+            seatLabel: true,
+            seatRow: true,
+            seatNumber: true,
+            blockLabel: true,
+          },
+        },
         payments: { orderBy: { createdAt: "desc" }, take: 1 },
       },
     }),
@@ -166,18 +162,6 @@ export default async function BoxOfficePage({ searchParams }: Props) {
 
   const hasMoreSales = orders.length > SALES_LIMIT;
   const salesList = hasMoreSales ? orders.slice(0, SALES_LIMIT) : orders;
-  const activeOrders = salesList.filter((o) => !o.voidedAt);
-  const ticketCount = activeOrders.reduce((s, o) => s + o.tickets.length, 0);
-  const grossWithFee = activeOrders.reduce(
-    (s, o) => s + (o.customerTotalCents || o.grossCents),
-    0,
-  );
-
-  const todayGross = todaySales.reduce(
-    (s, o) => s + (o.customerTotalCents || o.grossCents),
-    0,
-  );
-  const todayTickets = todaySales.reduce((s, o) => s + o.tickets.length, 0);
 
   const feeConfig = resolveActivePlatformFeeConfig(orgSettings?.platformFeeConfig);
   const now = Date.now();
@@ -246,49 +230,29 @@ export default async function BoxOfficePage({ searchParams }: Props) {
             {isPartner
               ? "Dein Vorverkaufszugang — verkaufen und eigene Verkäufe einsehen."
               : canSell
-                ? `Verkaufen, alle Tageskasse-Verkäufe einsehen, drucken und stornieren. ${channelShortHint("box_office")}.`
+                ? `Verkäufe einsehen, drucken und stornieren. ${channelShortHint("box_office")}.`
                 : "Übersicht aller Tageskasse-Verkäufe."}
           </p>
         </div>
-        {fullAccess ? (
-          <Link href="/admin/partner" className="tf-btn tf-btn-secondary !py-2 text-sm">
-            Partner einladen
-          </Link>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {canSell ? (
+            <BoxOfficeNewSaleButton
+              events={payload}
+              feeConfig={{
+                enabled: feeConfig.enabled,
+                percentageBasisPoints: feeConfig.percentageBasisPoints,
+                displayName: feeConfig.displayName,
+              }}
+            />
+          ) : null}
+          {fullAccess ? (
+            <Link href="/admin/partner" className="tf-btn tf-btn-secondary !py-2 text-sm">
+              Partner einladen
+            </Link>
+          ) : null}
+        </div>
       </div>
       {!isPartner ? <AdminSubnav items={ADMIN_SUBNAV.verkauf} /> : null}
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-          <p className="text-sm text-[var(--tf-text-secondary)]">
-            {isPartner ? "Meine Verkäufe heute" : "Verkäufe heute"}
-          </p>
-          <p className="mt-1 text-2xl font-semibold text-[var(--tf-navy)]">{todaySales.length}</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-          <p className="text-sm text-[var(--tf-text-secondary)]">Tickets heute</p>
-          <p className="mt-1 text-2xl font-semibold text-[var(--tf-navy)]">{todayTickets}</p>
-        </div>
-        <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-          <p className="text-sm text-[var(--tf-text-secondary)]">Umsatz heute</p>
-          <p className="mt-1 text-2xl font-semibold text-[var(--tf-navy)]">
-            {formatEuroFromCents(todayGross)}
-          </p>
-        </div>
-      </div>
-
-      {canSell ? (
-        <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.05)] md:p-6">
-          <BoxOfficeForm
-            events={payload}
-            feeConfig={{
-              enabled: feeConfig.enabled,
-              percentageBasisPoints: feeConfig.percentageBasisPoints,
-              displayName: feeConfig.displayName,
-            }}
-          />
-        </div>
-      ) : null}
 
       <section id="verkaeufe" className="w-full space-y-4 scroll-mt-6">
         <div>
@@ -300,7 +264,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                 : "Meine Verkäufe"}
           </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Vollständige Übersicht{rangeHint}. Optional nach Zeitraum und Event filtern.
+            Standard: alle Verkäufe{rangeHint}. Optional nach Zeitraum und Event filtern.
           </p>
         </div>
 
@@ -330,32 +294,13 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           </button>
           {fromKey || toKey || eventId ? (
             <Link href="/kasse#verkaeufe" className="tf-btn tf-btn-secondary !py-2 text-sm">
-              Filter zurücksetzen
+              Alle anzeigen
             </Link>
           ) : null}
         </form>
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-            <p className="text-sm text-[var(--tf-text-secondary)]">Verkäufe (aktiv)</p>
-            <p className="mt-1 text-2xl font-semibold text-[var(--tf-navy)]">
-              {activeOrders.length}
-            </p>
-          </div>
-          <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-            <p className="text-sm text-[var(--tf-text-secondary)]">Tickets</p>
-            <p className="mt-1 text-2xl font-semibold text-[var(--tf-navy)]">{ticketCount}</p>
-          </div>
-          <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-            <p className="text-sm text-[var(--tf-text-secondary)]">Umsatz inkl. Gebühr</p>
-            <p className="mt-1 text-2xl font-semibold text-[var(--tf-navy)]">
-              {formatEuroFromCents(grossWithFee)}
-            </p>
-          </div>
-        </div>
-
         <div className="w-full overflow-x-auto rounded-2xl border border-[var(--tf-line)] bg-white">
-          <table className="w-full min-w-[960px] text-left text-sm">
+          <table className="w-full min-w-[880px] text-left text-sm">
             <thead className="border-b border-[var(--tf-line)] bg-[#f8fafc] text-[var(--tf-text-secondary)]">
               <tr>
                 <th className="px-3 py-3 font-medium">Zeit</th>
@@ -366,7 +311,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                 <th className="px-3 py-3 font-medium">Zahlung</th>
                 <th className="px-3 py-3 font-medium">Status</th>
                 <th className="px-3 py-3 font-medium text-right">Betrag</th>
-                <th className="px-3 py-3 font-medium text-right">Aktionen</th>
+                <th className="px-3 py-3 font-medium text-right">Öffnen</th>
                 <th className="px-3 py-3 text-center font-medium">Storno</th>
               </tr>
             </thead>
@@ -385,6 +330,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                 const customerEmail = order.customer.email.includes("@ticketfeeling.local")
                   ? null
                   : order.customer.email;
+                const activeTickets = order.tickets.filter((t) => t.status !== "voided");
 
                 return (
                   <tr
@@ -416,7 +362,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                         {order.orderNumber}
                       </Link>
                       <p className="text-xs text-[var(--tf-text-secondary)]">
-                        {order.tickets.length} Ticket{order.tickets.length === 1 ? "" : "s"}
+                        {activeTickets.length} Ticket{activeTickets.length === 1 ? "" : "s"}
                       </p>
                     </td>
                     <td className={`px-3 py-3 ${strike}`}>
@@ -473,17 +419,14 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                       {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
                     </td>
                     <td className="px-3 py-3 text-right">
-                      <BoxOfficeSaleRowActions
-                        orderId={order.id}
-                        ticketIds={order.tickets.map((t) => t.id)}
-                        voided={voided}
-                      />
+                      <BoxOfficeSaleRowActions orderId={order.id} />
                     </td>
                     <td className="px-3 py-3 text-center">
                       <BoxOfficeVoidButton
                         orderId={order.id}
+                        orderNumber={order.orderNumber}
                         voided={voided}
-                        deliveryStatus={order.deliveryStatus}
+                        tickets={order.tickets}
                       />
                     </td>
                   </tr>

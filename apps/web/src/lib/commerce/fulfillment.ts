@@ -537,6 +537,7 @@ export async function fulfillPaidOrder(orderId: string) {
           invoices: true,
           items: true,
           payments: true,
+          soldByUser: { select: { name: true, email: true } },
         },
       });
 
@@ -722,6 +723,8 @@ export async function fulfillPaidOrder(orderId: string) {
                 locationLabel,
                 buyerName,
                 buyerEmail: fresh.customer.email,
+                sellerName: fresh.soldByUser?.name ?? null,
+                sellerEmail: fresh.soldByUser?.email ?? null,
                 ticketCount: fresh.tickets.length || categories.reduce((n, c) => n + c.quantity, 0),
                 categories,
                 totalCents: fresh.customerTotalCents || fresh.grossCents,

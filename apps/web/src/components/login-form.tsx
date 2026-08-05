@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 
 export function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("admin@ticketfeeling.local");
-  const [password, setPassword] = useState("TicketfeelingAdmin!2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -20,13 +20,20 @@ export function LoginForm() {
       password,
       redirect: false,
     });
-    setLoading(false);
     if (result?.error) {
+      setLoading(false);
       setError("Anmeldung fehlgeschlagen. Bitte Zugangsdaten prüfen.");
       return;
     }
-    router.push("/admin");
+    try {
+      const home = await fetch("/api/v1/auth/home");
+      const data = (await home.json()) as { path?: string };
+      router.push(data.path || "/admin");
+    } catch {
+      router.push("/admin");
+    }
     router.refresh();
+    setLoading(false);
   }
 
   return (
@@ -42,6 +49,7 @@ export function LoginForm() {
           className="tf-input"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
+          autoComplete="username"
         />
       </div>
       <div>
@@ -55,6 +63,7 @@ export function LoginForm() {
           className="tf-input"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
+          autoComplete="current-password"
         />
       </div>
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}

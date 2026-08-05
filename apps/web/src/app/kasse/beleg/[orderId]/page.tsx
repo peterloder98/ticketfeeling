@@ -15,6 +15,7 @@ import {
   paymentMethodLabel,
 } from "@/lib/commerce/channels";
 import { canSellAllBoxOfficeEvents } from "@/lib/commerce/box-office-access";
+import { formatBoxOfficeTicketLines } from "@/lib/commerce/box-office-ticket-label";
 
 export const dynamic = "force-dynamic";
 
@@ -130,9 +131,21 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
       <div id="ausgabe">
         <BoxOfficeDeliveryActions
           orderId={order.id}
+          orderNumber={order.orderNumber}
           deliveryStatus={order.deliveryStatus}
           customerEmail={order.customer.email}
           ticketIds={order.tickets.filter((t) => t.status !== "voided").map((t) => t.id)}
+          tickets={order.tickets.map((t) => ({
+            id: t.id,
+            ticketNumber: t.ticketNumber,
+            categorySnapshot: t.categorySnapshot,
+            status: t.status,
+            presence: t.presence,
+            seatLabel: t.seatLabel,
+            seatRow: t.seatRow,
+            seatNumber: t.seatNumber,
+            blockLabel: t.blockLabel,
+          }))}
           voided={voided}
         />
       </div>
@@ -198,11 +211,10 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
           ) : (
             <div id="storno" className="space-y-3">
               <h2 className="text-xl font-semibold text-[var(--tf-navy)]">
-                Einzelne Tickets ({order.tickets.filter((t) => t.status !== "voided").length})
+                Tickets ({order.tickets.filter((t) => t.status !== "voided").length})
               </h2>
               <p className="text-sm text-[var(--tf-text-secondary)]">
-                Jede Karte einzeln — stornieren Sie nur die, die zurückgehen sollen. Der Rest bleibt
-                gültig.
+                Storno über „Storno…“ oben — ganzer Vorgang oder einzelne Karten mit Platzangabe.
               </p>
               <BoxOfficeTicketVoidPanel
                 orderId={order.id}
@@ -214,20 +226,24 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
                   status: t.status,
                   presence: t.presence,
                   seatLabel: t.seatLabel,
+                  seatRow: t.seatRow,
+                  seatNumber: t.seatNumber,
+                  blockLabel: t.blockLabel,
                 }))}
               />
               <div className="space-y-3">
                 <h3 className="text-lg font-semibold text-[var(--tf-navy)]">QR-Codes</h3>
                 {order.tickets
                   .filter((t) => t.status !== "voided")
-                  .map((ticket) => (
+                  .map((ticket) => {
+                    const lines = formatBoxOfficeTicketLines(ticket);
+                    return (
                     <div key={ticket.id} className="tf-card space-y-3">
-                      <div className="flex justify-between gap-2 text-sm">
-                        <span className="font-mono">{ticket.ticketNumber}</span>
-                        <span className="text-[var(--tf-text-secondary)]">
-                          {ticket.categorySnapshot}
-                          {ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""}
-                        </span>
+                      <div className="text-sm">
+                        <p className="font-semibold text-[var(--tf-navy)]">{lines.title}</p>
+                        <p className="font-mono text-xs text-[var(--tf-text-secondary)]">
+                          {lines.detail}
+                        </p>
                       </div>
                       <TicketQrImage
                         key={ticket.qrTokens[0]?.token ?? ticket.id}
@@ -241,7 +257,8 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
                         Ticketansicht öffnen
                       </Link>
                     </div>
-                  ))}
+                    );
+                  })}
               </div>
             </div>
           )}
@@ -272,8 +289,8 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
           Zur Übersicht
         </Link>
         {!voided && order.tickets.length > 0 ? (
-          <Link href={`#storno`} className="tf-btn tf-btn-secondary">
-            Einzelstorno
+          <Link href={`#ausgabe`} className="tf-btn tf-btn-secondary">
+            Drucken / E-Mail / Storno
           </Link>
         ) : null}
       </div>

@@ -68,7 +68,8 @@ const ROLE_PERMISSIONS: Record<string, string[]> = {
     "support:inbox",
     "audit:read",
   ],
-  box_office: ["org:read", "events:read", "box_office:sell", "checkin:scan"],
+  /** Vorverkaufsstelle — nur Tageskasse, kein Admin. */
+  box_office: ["box_office:sell"],
   gate_manager: [
     "org:read",
     "events:read",
@@ -185,7 +186,7 @@ async function main() {
     { key: "accounting", name: "Buchhaltung", isSystem: true },
     { key: "marketing", name: "Marketing", isSystem: true },
     { key: "customer_service", name: "Kundenservice", isSystem: true },
-    { key: "box_office", name: "Tageskasse", isSystem: true },
+    { key: "box_office", name: "Vorverkaufsstelle", isSystem: true },
     { key: "gate_manager", name: "Einlassleitung", isSystem: true },
     { key: "scanner", name: "Scannerpersonal", isSystem: true },
     { key: "read_only", name: "Lesender Zugriff", isSystem: true },

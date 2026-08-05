@@ -2,27 +2,36 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  BoxOfficeStornoDialog,
+  type StornoTicket,
+} from "@/components/box-office-storno-dialog";
 
 export function BoxOfficeDeliveryActions({
   orderId,
+  orderNumber,
   deliveryStatus,
   customerEmail,
   ticketIds,
+  tickets,
   voided,
 }: {
   orderId: string;
+  orderNumber: string;
   deliveryStatus: string;
   customerEmail: string | null;
   ticketIds: string[];
+  tickets: StornoTicket[];
   voided: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState(
     customerEmail && !customerEmail.includes("@ticketfeeling.local") ? customerEmail : "",
   );
-  const [busy, setBusy] = useState<"print" | "email" | "void" | null>(null);
+  const [busy, setBusy] = useState<"print" | "email" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [stornoOpen, setStornoOpen] = useState(false);
 
   if (voided) {
     return (
@@ -84,32 +93,6 @@ export function BoxOfficeDeliveryActions({
     }
   }
 
-  async function voidSale() {
-    if (!confirm("Verkauf wirklich stornieren? Tickets werden entwertet.")) return;
-    setBusy("void");
-    setError(null);
-    try {
-      const res = await fetch("/api/v1/box-office/void", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(
-          data?.error?.code === "DELIVERED_NEEDS_ADMIN"
-            ? "Bereits gedruckt/versendet — nur Admin kann stornieren."
-            : (data?.error?.code ?? "Storno fehlgeschlagen"),
-        );
-        return;
-      }
-      setMessage("Storniert.");
-      router.refresh();
-    } finally {
-      setBusy(null);
-    }
-  }
-
   return (
     <div className="space-y-4 rounded-2xl border border-[var(--tf-line)] bg-white p-5">
       <div>
@@ -159,25 +142,27 @@ export function BoxOfficeDeliveryActions({
         Tickets als PDF im Anhang. Erneut senden oder drucken jederzeit möglich.
       </p>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+      <div>
         <button
           type="button"
           className="text-sm text-[var(--danger)] underline-offset-2 hover:underline"
           disabled={busy !== null}
-          onClick={() => void voidSale()}
+          onClick={() => setStornoOpen(true)}
         >
-          Gesamten Verkauf stornieren
+          Storno…
         </button>
-        <a
-          href="#storno"
-          className="text-sm text-[var(--tf-navy)] underline-offset-2 hover:underline"
-        >
-          Einzelne Tickets stornieren
-        </a>
       </div>
 
       {message ? <p className="text-sm text-[var(--tf-teal)]">{message}</p> : null}
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+
+      <BoxOfficeStornoDialog
+        orderId={orderId}
+        orderNumber={orderNumber}
+        tickets={tickets}
+        open={stornoOpen}
+        onClose={() => setStornoOpen(false)}
+      />
     </div>
   );
 }

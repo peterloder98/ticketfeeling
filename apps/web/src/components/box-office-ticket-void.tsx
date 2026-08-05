@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatBoxOfficeTicketLines } from "@/lib/commerce/box-office-ticket-label";
 
 export type VoidableTicket = {
   id: string;
@@ -10,6 +11,9 @@ export type VoidableTicket = {
   status: string;
   presence: string;
   seatLabel?: string | null;
+  seatRow?: string | null;
+  seatNumber?: string | null;
+  blockLabel?: string | null;
 };
 
 function voidErrorMessage(code: string | undefined) {
@@ -71,12 +75,17 @@ export function BoxOfficeTicketVoidPanel({
       >
         <h3 className="text-sm font-semibold text-[var(--tf-navy)]">Tickets</h3>
         <ul className="space-y-1 text-sm text-[var(--tf-text-secondary)]">
-          {voidedTickets.map((t) => (
-            <li key={t.id} className="line-through">
-              {t.ticketNumber}
-              {t.seatLabel ? ` · ${t.seatLabel}` : ""} — storniert
-            </li>
-          ))}
+          {voidedTickets.map((t) => {
+            const lines = formatBoxOfficeTicketLines(t);
+            return (
+              <li key={t.id} className="line-through">
+                <span className="font-medium">{lines.title}</span>
+                <span className="block text-xs">
+                  {lines.detail} — storniert
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </div>
     );
@@ -138,8 +147,6 @@ export function BoxOfficeTicketVoidPanel({
   }
 
   async function voidOne(ticketId: string) {
-    setSelected(new Set([ticketId]));
-    // Defer so state isn't required — call API directly
     if (
       !confirm(
         activeTickets.length <= 1
@@ -187,13 +194,14 @@ export function BoxOfficeTicketVoidPanel({
           Einzelne Tickets stornieren
         </h3>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          Bei Paketen (z. B. 20–30 Karten) einzelne Karten zurücknehmen — der Rest bleibt gültig.
+          Bei Saalplan: Block, Reihe und Platz stehen oben — darunter Ticketnummer und Kategorie.
         </p>
       </div>
 
       <ul className="divide-y divide-[var(--tf-line)] rounded-xl border border-[var(--tf-line)]">
         {activeTickets.map((t) => {
           const checkedIn = t.presence === "in";
+          const lines = formatBoxOfficeTicketLines(t);
           return (
             <li
               key={t.id}
@@ -208,12 +216,11 @@ export function BoxOfficeTicketVoidPanel({
                   onChange={() => toggle(t.id)}
                 />
                 <span className="min-w-0">
-                  <span className="font-mono font-medium text-[var(--tf-navy)]">
-                    {t.ticketNumber}
+                  <span className="block font-semibold text-[var(--tf-navy)]">
+                    {lines.title}
                   </span>
-                  <span className="block text-[var(--tf-text-secondary)]">
-                    {t.categorySnapshot}
-                    {t.seatLabel ? ` · ${t.seatLabel}` : ""}
+                  <span className="mt-0.5 block font-mono text-xs text-[var(--tf-text-secondary)]">
+                    {lines.detail}
                     {checkedIn ? " · eingecheckt" : ""}
                   </span>
                 </span>

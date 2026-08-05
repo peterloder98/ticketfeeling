@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { ensureVorverkaufRole } from "@/lib/commerce/box-office-access";
 import { PartnerInvitePanel } from "@/components/admin/partner-invite-panel";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
@@ -23,6 +24,9 @@ export default async function AdminPartnersPage() {
   if (!allowed) {
     return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
   }
+
+  // Keep Rolle „Vorverkaufsstelle“ (key: box_office) synced — Tageskasse only.
+  await ensureVorverkaufRole(membership.organizationId);
 
   const [events, invites, grants] = await Promise.all([
     prisma.event.findMany({
@@ -57,12 +61,13 @@ export default async function AdminPartnersPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
-          Vorverkaufs-Partner
+          Vorverkaufsstellen
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
-          Locations und Vorverkaufsstellen einladen, die vor Ort für Sie verkaufen. Partner sehen
-          nur freigegebene Events und können eigene Verkäufe stornieren, solange Tickets weder
-          gedruckt noch versendet wurden.
+          Vorverkaufsstellen per E-Mail einladen. Nach Annahme erhalten sie die Rolle
+          „Vorverkaufsstelle“ und landen in der Tageskasse — ohne Admin (keine Events, Finanzen
+          oder Einstellungen). Sie sehen nur freigegebene Events und eigene Verkäufe; Storno
+          eigener Verkäufe ist möglich, solange Tickets weder gedruckt noch versendet wurden.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.verkauf} />

@@ -212,6 +212,12 @@ export type StaffOrderMailInput = {
   locationLabel?: string | null;
   buyerName: string;
   buyerEmail: string;
+  /**
+   * Staff who completed a Tageskasse sale (soldByUser).
+   * Always shown for box_office channel.
+   */
+  sellerName?: string | null;
+  sellerEmail?: string | null;
   ticketCount: number;
   categories: StaffOrderCategoryLine[];
   totalCents: number;
@@ -255,14 +261,28 @@ function wrapStaffHtml(bodyInner: string) {
 </body></html>`;
 }
 
+function formatSellerLabel(input: StaffOrderMailInput): string | null {
+  const name = input.sellerName?.trim() || null;
+  const email = input.sellerEmail?.trim() || null;
+  if (name && email && name.toLowerCase() !== email.toLowerCase()) {
+    return `${name} (${email})`;
+  }
+  return name || email || null;
+}
+
 export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): TicketMailContent {
-  const adminOrderUrl = `${appBaseUrl()}/admin/orders/${input.orderId}`;
+  const isBoxOffice = input.channel === "box_office";
+  const orderUrl = isBoxOffice
+    ? `${appBaseUrl()}/kasse/beleg/${input.orderId}`
+    : `${appBaseUrl()}/admin/orders/${input.orderId}`;
   const totalLabel = formatEuroFromCents(input.totalCents, input.currency ?? "EUR");
   const payLabel = paymentMethodLabel(input.paymentMethod);
   const channel = channelLabel(input.channel);
   const place = input.locationLabel?.trim() || null;
   const invoiceNumber = input.invoiceNumber?.trim() || null;
   const invoiceUrl = input.invoiceDownloadUrl?.trim() || null;
+  const sellerLabel = formatSellerLabel(input);
+  const showSeller = isBoxOffice || Boolean(sellerLabel);
 
   const categoryLines = input.categories.map(
     (c) =>
@@ -271,10 +291,12 @@ export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): Tic
   const categoryText =
     categoryLines.length > 0 ? categoryLines.join("\n") : `${input.ticketCount} Ticket(s)`;
 
-  const subject = `Neue Bestellung: ${input.eventName} · ${input.orderNumber}`;
+  const subject = isBoxOffice
+    ? `Tageskasse-Verkauf: ${input.eventName} · ${input.orderNumber}`
+    : `Neue Bestellung: ${input.eventName} · ${input.orderNumber}`;
 
   const textLines = [
-    "Neue Bestellung eingegangen",
+    isBoxOffice ? "Neuer Tageskasse-Verkauf" : "Neue Bestellung eingegangen",
     "",
     `Event: ${input.eventName}`,
     `Termin: ${input.whenLabel}`,
@@ -282,6 +304,9 @@ export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): Tic
     "",
     `Käufer: ${input.buyerName}`,
     `E-Mail: ${input.buyerEmail}`,
+    ...(showSeller
+      ? [`Verkäufer: ${sellerLabel ?? "nicht zugeordnet"}`]
+      : []),
     "",
     `Tickets: ${input.ticketCount}`,
     "Kategorien:",
@@ -294,7 +319,7 @@ export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): Tic
     ...(invoiceNumber ? [`Rechnung: ${invoiceNumber}`] : []),
     ...(invoiceUrl ? [`Rechnung als PDF herunterladen: ${invoiceUrl}`] : []),
     "",
-    `Im Admin öffnen: ${adminOrderUrl}`,
+    isBoxOffice ? `Beleg öffnen: ${orderUrl}` : `Im Admin öffnen: ${orderUrl}`,
     "",
     "Ticketfeeling",
   ];
@@ -309,8 +334,15 @@ export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): Tic
     )
     .join("");
 
+  const sellerRow = showSeller
+    ? `<tr>
+        <td style="padding:10px 0;border-top:1px solid #E2E8F0;font-family:system-ui,sans-serif;font-size:13px;color:#64748B">Verkäufer</td>
+        <td style="padding:10px 0;border-top:1px solid #E2E8F0;font-family:system-ui,sans-serif;font-size:15px;color:#0F2747">${escapeHtml(sellerLabel ?? "nicht zugeordnet")}</td>
+      </tr>`
+    : "";
+
   const bodyInner = `
-    <p style="margin:0 0 8px;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;color:#0D9488;font-family:system-ui,sans-serif;font-weight:600">Neue Bestellung</p>
+    <p style="margin:0 0 8px;font-size:13px;letter-spacing:0.04em;text-transform:uppercase;color:#0D9488;font-family:system-ui,sans-serif;font-weight:600">${isBoxOffice ? "Tageskasse" : "Neue Bestellung"}</p>
     <p style="margin:0 0 20px;font-size:22px;line-height:1.35;color:#0F2747;font-family:system-ui,sans-serif;font-weight:700">Es ist was verkauft worden.</p>
     <p style="margin:0 0 20px;font-size:16px;line-height:1.55;color:#0F2747;font-family:Georgia,'Times New Roman',serif">
       <strong style="font-size:18px;font-family:system-ui,sans-serif">${escapeHtml(input.eventName)}</strong><br/>
@@ -322,6 +354,7 @@ export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): Tic
         <td style="padding:10px 0;border-top:1px solid #E2E8F0;font-family:system-ui,sans-serif;font-size:13px;color:#64748B;width:38%">Käufer</td>
         <td style="padding:10px 0;border-top:1px solid #E2E8F0;font-family:system-ui,sans-serif;font-size:15px;color:#0F2747">${escapeHtml(input.buyerName)}<br/><span style="font-size:13px;color:#64748B">${escapeHtml(input.buyerEmail)}</span></td>
       </tr>
+      ${sellerRow}
       <tr>
         <td style="padding:10px 0;border-top:1px solid #E2E8F0;font-family:system-ui,sans-serif;font-size:13px;color:#64748B">Tickets</td>
         <td style="padding:10px 0;border-top:1px solid #E2E8F0;font-family:system-ui,sans-serif;font-size:15px;color:#0F2747">${input.ticketCount}</td>
@@ -346,7 +379,7 @@ export function buildOrderStaffNotificationMail(input: StaffOrderMailInput): Tic
       </tr>
     </table>
     <p style="margin:0 0 12px">
-      <a href="${escapeHtml(adminOrderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung im Admin öffnen</a>
+      <a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">${isBoxOffice ? "Beleg in der Tageskasse öffnen" : "Bestellung im Admin öffnen"}</a>
     </p>
     ${
       invoiceUrl

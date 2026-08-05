@@ -58,7 +58,11 @@ export const ADMIN_SUBNAV = {
   verkauf: [
     { href: "/admin/verkauf", label: "Übersicht", description: "Alle Verkaufswerkzeuge" },
     { href: "/kasse", label: "Tageskasse", description: "Verkauf & alle Verkäufe" },
-    { href: "/admin/partner", label: "Vorverkaufs-Partner", description: "Partner & Einladungen" },
+    {
+      href: "/admin/partner",
+      label: "Vorverkaufsstellen",
+      description: "Einladen · Rolle Vorverkaufsstelle · nur Tageskasse",
+    },
     { href: "/scanner", label: "Einlass-Scanner", description: "Check-in vor Ort" },
     { href: "/admin/discounts", label: "Rabatte", description: "Codes & Aktionen" },
   ] satisfies AdminSubNavItem[],
