@@ -6,44 +6,158 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+import { createArtistAction } from "@/app/admin/artists/actions";
 
 export const dynamic = "force-dynamic";
+export const metadata = { title: "Künstler" };
 
 export default async function AdminArtistsPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
-  const allowed = await userHasPermission(session.user.id, membership.organizationId, "artists:read");
+  const allowed = await userHasPermission(
+    session.user.id,
+    membership.organizationId,
+    "artists:read",
+  );
   if (!allowed) return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
+
+  const canWrite = await userHasPermission(
+    session.user.id,
+    membership.organizationId,
+    "artists:write",
+  );
 
   const artists = await prisma.artist.findMany({
     where: { organizationId: membership.organizationId },
-    orderBy: { sortOrder: "asc" },
+    include: { _count: { select: { eventLinks: true } } },
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-[family-name:var(--font-display)] text-3xl text-[var(--gold-soft)]">
-          Künstler
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Künstler</h1>
+        <p className="mt-1 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
+          Namen anlegen, Profile pflegen und später bei Events ins Line-up hängen. Du kannst auch nur
+          den Namen speichern und Bio oder YouTube später nachziehen.
+        </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.katalog} />
-      <div className="space-y-3">
-        {artists.map((artist) => (
-          <div key={artist.id} className="tf-card flex justify-between gap-3">
-            <div>
-              <p className="font-semibold">{artist.name}</p>
-              <p className="text-sm text-[var(--muted)]">
-                {artist.artistType} · {artist.visibility}
-              </p>
-            </div>
-            <Link href={`/kuenstler/${artist.slug}`} className="tf-btn tf-btn-secondary !py-2 text-sm">
-              Öffentlich
-            </Link>
+
+      {canWrite ? (
+        <form action={createArtistAction} className="tf-card space-y-4">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Schnell anlegen</h2>
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Nur der Name ist Pflicht — der Rest ist optional.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1 text-sm sm:col-span-2">
+              <span className="text-[var(--tf-text-secondary)]">Name</span>
+              <input
+                name="name"
+                required
+                className="tf-input"
+                placeholder="z. B. Anni Perka"
+                autoComplete="off"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-[var(--tf-text-secondary)]">Sichtbarkeit</span>
+              <select name="visibility" className="tf-input" defaultValue="published">
+                <option value="published">Veröffentlicht</option>
+                <option value="draft">Entwurf</option>
+              </select>
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="text-[var(--tf-text-secondary)]">Link-Name (optional)</span>
+              <input name="slug" className="tf-input" placeholder="wird aus dem Namen erzeugt" />
+            </label>
+            <details className="sm:col-span-2 rounded-xl border border-[var(--tf-line)] p-3">
+              <summary className="cursor-pointer text-sm font-medium text-[var(--tf-navy)]">
+                Details hinzufügen (optional)
+              </summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="grid gap-1 text-sm">
+                  <span className="text-[var(--tf-text-secondary)]">Homepage</span>
+                  <input
+                    name="homepage"
+                    className="tf-input"
+                    placeholder="https://…"
+                    inputMode="url"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  <span className="text-[var(--tf-text-secondary)]">YouTube-Link</span>
+                  <input
+                    name="youtube"
+                    className="tf-input"
+                    placeholder="https://youtube.com/watch?v=…"
+                    inputMode="url"
+                  />
+                </label>
+                <label className="grid gap-1 text-sm sm:col-span-2">
+                  <span className="text-[var(--tf-text-secondary)]">Bio</span>
+                  <textarea
+                    name="biography"
+                    rows={3}
+                    className="tf-input"
+                    placeholder="Kurz vorstellen — darf auch später kommen."
+                  />
+                </label>
+              </div>
+            </details>
           </div>
-        ))}
+          <button type="submit" className="tf-btn tf-btn-primary !py-2 text-sm">
+            Künstler speichern
+          </button>
+        </form>
+      ) : null}
+
+      <div className="space-y-3">
+        {artists.length === 0 ? (
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Noch keine Künstler — leg den ersten oben an oder direkt im Event-Wizard.
+          </p>
+        ) : (
+          artists.map((artist) => (
+            <div key={artist.id} className="tf-card flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-semibold text-[var(--tf-navy)]">{artist.name}</p>
+                <p className="text-sm text-[var(--tf-text-secondary)]">
+                  {artist.visibility === "published" ? "Veröffentlicht" : "Entwurf"}
+                  {" · "}
+                  {artist._count.eventLinks === 1
+                    ? "1 Event"
+                    : `${artist._count.eventLinks} Events`}
+                  {artist.homepage || artist.youtube || artist.shortBio
+                    ? " · Profil mit Infos"
+                    : " · nur Name"}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {canWrite ? (
+                  <Link
+                    href={`/admin/artists/${artist.id}`}
+                    className="tf-btn tf-btn-primary !py-2 text-sm"
+                  >
+                    Bearbeiten
+                  </Link>
+                ) : null}
+                {artist.visibility === "published" ? (
+                  <Link
+                    href={`/kuenstler/${artist.slug}`}
+                    className="tf-btn tf-btn-secondary !py-2 text-sm"
+                    target="_blank"
+                  >
+                    Öffentlich
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );

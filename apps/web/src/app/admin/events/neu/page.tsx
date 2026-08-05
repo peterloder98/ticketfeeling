@@ -40,7 +40,7 @@ export default async function NewEventPage({ searchParams }: Props) {
 
   const { tourId: tourIdParam } = await searchParams;
 
-  const [locationsRaw, templates, tours] = await Promise.all([
+  const [locationsRaw, templates, tours, artists] = await Promise.all([
     prisma.location.findMany({
       where: { organizationId: membership.organizationId },
       select: {
@@ -83,6 +83,17 @@ export default async function NewEventPage({ searchParams }: Props) {
       },
       orderBy: { name: "asc" },
     }),
+    prisma.artist.findMany({
+      where: { organizationId: membership.organizationId },
+      select: {
+        id: true,
+        name: true,
+        homepage: true,
+        youtube: true,
+        shortBio: true,
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    }),
   ]);
 
   const locations = locationsRaw.map((loc) => ({
@@ -117,6 +128,7 @@ export default async function NewEventPage({ searchParams }: Props) {
         locations={locations}
         templates={templates}
         tours={tours}
+        artists={artists}
         initialTourId={initialTourId || undefined}
         action={createEventAction}
       />

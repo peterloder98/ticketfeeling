@@ -13,6 +13,8 @@ import {
   EVENT_STATUSES,
   slugify,
 } from "@/lib/admin/event-form";
+import { parseArtistsJson } from "@/lib/admin/artist-form";
+import { syncEventArtistsInTx } from "@/lib/admin/artist-sync";
 import { allocateUniqueEventSlug } from "@/lib/admin/unique-event-slug";
 import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
@@ -390,6 +392,16 @@ export async function createEventAction(formData: FormData) {
       });
     }
 
+    const artistDrafts = parseArtistsJson(formData.get("artistsJson"));
+    if (artistDrafts.length > 0) {
+      await syncEventArtistsInTx(
+        tx,
+        membership.organizationId,
+        created.id,
+        artistDrafts,
+      );
+    }
+
     return created;
   });
 
@@ -406,6 +418,7 @@ export async function createEventAction(formData: FormData) {
       locationId,
       venuePlanId,
       categoryCount: categories.length,
+      artistCount: parseArtistsJson(formData.get("artistsJson")).length,
     },
   });
 

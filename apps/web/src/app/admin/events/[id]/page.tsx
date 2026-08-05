@@ -16,7 +16,9 @@ import { SalesPieChart, SalesTimelineChart } from "@/components/admin/sales-char
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
 import { EventEditForm } from "@/components/admin/event-edit-form";
+import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
+import { emptyLineupArtist } from "@/components/admin/artist-lineup-editor";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -76,11 +78,25 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         orderBy: { sortOrder: "asc" },
         include: { pools: true },
       },
+      artists: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          artist: {
+            select: {
+              id: true,
+              name: true,
+              homepage: true,
+              youtube: true,
+              shortBio: true,
+            },
+          },
+        },
+      },
     },
   });
   if (!event) notFound();
 
-  const [report, locations, venuePlans, templates, tours] = await Promise.all([
+  const [report, locations, venuePlans, templates, tours, orgArtists] = await Promise.all([
     getEventSalesReport(event.id),
     prisma.location.findMany({
       where: { organizationId: membership.organizationId },
@@ -110,6 +126,17 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       where: { organizationId: membership.organizationId },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
+    }),
+    prisma.artist.findMany({
+      where: { organizationId: membership.organizationId },
+      select: {
+        id: true,
+        name: true,
+        homepage: true,
+        youtube: true,
+        shortBio: true,
+      },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),
   ]);
 
@@ -403,6 +430,41 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               <dd className="font-medium">{event.shortDescription ?? "—"}</dd>
             </div>
           </dl>
+        )}
+      </section>
+
+      <section id="lineup" className="tf-card !p-5 scroll-mt-24">
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Line-up / Künstler</h2>
+        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+          Wer tritt auf? Namen reichen — Profile ergänzt du hier oder unter Künstler.
+        </p>
+        {canWrite ? (
+          <EventLineupForm
+            eventId={event.id}
+            library={orgArtists}
+            initialLineup={event.artists.map((link) =>
+              emptyLineupArtist({
+                key: link.id,
+                id: link.artist.id,
+                name: link.artist.name,
+                homepage: link.artist.homepage ?? "",
+                youtube: link.artist.youtube ?? "",
+                bio: link.artist.shortBio ?? "",
+              }),
+            )}
+          />
+        ) : (
+          <ul className="mt-4 space-y-1 text-sm">
+            {event.artists.length === 0 ? (
+              <li className="text-[var(--tf-text-secondary)]">Noch kein Line-up.</li>
+            ) : (
+              event.artists.map((link) => (
+                <li key={link.id} className="font-medium text-[var(--tf-navy)]">
+                  {link.artist.name}
+                </li>
+              ))
+            )}
+          </ul>
         )}
       </section>
 

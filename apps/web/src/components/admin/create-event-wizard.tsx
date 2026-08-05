@@ -12,6 +12,11 @@ import {
   discardVenuePlanQuietAction,
   prepareWizardLocationPlanAction,
 } from "@/app/admin/saalplan/actions";
+import {
+  ArtistLineupEditor,
+  type LibraryArtist,
+  type LineupArtistRow,
+} from "@/components/admin/artist-lineup-editor";
 import { CREATE_EVENT_STATUSES, slugify } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import {
@@ -161,6 +166,7 @@ type Props = {
   locations: WizardLocation[];
   templates: WizardCategoryTemplate[];
   tours?: WizardTour[];
+  artists?: LibraryArtist[];
   initialTourId?: string;
   action: (formData: FormData) => Promise<void>;
 };
@@ -169,6 +175,7 @@ export function CreateEventWizard({
   locations,
   templates,
   tours = [],
+  artists: artistLibrary = [],
   initialTourId = "",
   action,
 }: Props) {
@@ -235,6 +242,7 @@ export function CreateEventWizard({
   const [planBusy, startPlanBusy] = useTransition();
 
   const [categories, setCategories] = useState<CategoryRow[]>([]);
+  const [lineup, setLineup] = useState<LineupArtistRow[]>([]);
   const [stepError, setStepError] = useState<string | null>(null);
 
   function clearDraftStorage() {
@@ -316,6 +324,9 @@ export function CreateEventWizard({
     if (typeof draft.newLocCapacity === "string") setNewLocCapacity(draft.newLocCapacity);
     if (Array.isArray(draft.categories) && draft.categories.length > 0) {
       setCategories(draft.categories as CategoryRow[]);
+    }
+    if (Array.isArray(draft.lineup)) {
+      setLineup(draft.lineup as LineupArtistRow[]);
     }
   }
 
@@ -463,6 +474,7 @@ export function CreateEventWizard({
       newLocHomepage,
       newLocCapacity,
       categories,
+      lineup,
     };
     writeDraftRaw(JSON.stringify(draft));
   }, [
@@ -501,6 +513,7 @@ export function CreateEventWizard({
     newLocHomepage,
     newLocCapacity,
     categories,
+    lineup,
     draftGate,
   ]);
 
@@ -760,6 +773,7 @@ export function CreateEventWizard({
             newLocHomepage,
             newLocCapacity,
             categories,
+            lineup,
           }),
         );
         window.open(saalplanEditorUrl(result.venuePlanId), "_blank", "noopener,noreferrer");
@@ -791,6 +805,11 @@ export function CreateEventWizard({
         : "Mindestens 1 Ticketkategorie",
     },
     { ok: true, label: "Cover (empfohlen)", soft: true },
+    {
+      ok: lineup.some((a) => a.name.trim()),
+      label: "Künstler (optional)",
+      soft: true,
+    },
   ];
 
   return (
@@ -1072,6 +1091,20 @@ export function CreateEventWizard({
               label="Vorverkaufsstart"
               value={presaleStartsAt}
               onChange={setPresaleStartsAt}
+            />
+          </div>
+
+          <div className="border-t border-[var(--tf-line)] pt-6">
+            <h2 className="text-base font-semibold text-[var(--tf-navy)]">Künstler</h2>
+            <p className="mt-1 mb-3 text-sm text-[var(--tf-text-secondary)]">
+              Wer steht auf der Bühne? Namen reichen erstmal — Bio, Homepage und YouTube kannst du
+              bei Bedarf gleich mitnehmen.
+            </p>
+            <ArtistLineupEditor
+              value={lineup}
+              onChange={setLineup}
+              library={artistLibrary}
+              hint="Name tippen, Enter — fertig. Über „Details hinzufügen“ optional mehr Infos."
             />
           </div>
         </div>
@@ -1617,6 +1650,12 @@ export function CreateEventWizard({
                 <dt className="inline font-medium text-[var(--tf-navy)]">Kategorien: </dt>
                 <dd className="inline">
                   {categories.map((c) => c.name).filter(Boolean).join(", ") || "—"}
+                </dd>
+              </div>
+              <div>
+                <dt className="inline font-medium text-[var(--tf-navy)]">Künstler: </dt>
+                <dd className="inline">
+                  {lineup.map((a) => a.name).filter(Boolean).join(", ") || "—"}
                 </dd>
               </div>
               <div>
