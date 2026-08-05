@@ -27,11 +27,11 @@ export const metadata: Metadata = {
   description: "Mehr als ein Ticket. Vorfreude, Erinnerungen und Live-Erlebnisse.",
   icons: {
     icon: [
-      { url: "/brand/icon-app-clear.png", type: "image/png", sizes: "512x512" },
+      { url: "/brand/icon-app-clear.png?v=20260805-tfmark", type: "image/png", sizes: "535x535" },
       { url: "/icon.png", type: "image/png", sizes: "512x512" },
     ],
-    apple: [{ url: "/brand/icon-app-clear.png", type: "image/png", sizes: "512x512" }],
-    shortcut: "/brand/icon-app-clear.png",
+    apple: [{ url: "/brand/icon-app-clear.png?v=20260805-tfmark", type: "image/png", sizes: "535x535" }],
+    shortcut: "/brand/icon-app-clear.png?v=20260805-tfmark",
   },
 };
 

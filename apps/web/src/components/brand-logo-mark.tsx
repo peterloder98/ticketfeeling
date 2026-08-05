@@ -1,4 +1,9 @@
-/** Shared TF monogram — navy T + teal F, italic slant. Transparent, no plate. */
+/**
+ * DEPRECATED for UI mark/app — BrandLogo mark/app use raster `/brand/icon-tf.png`
+ * (from `make-icon-master.ts`). Kept for color tokens / optional SVG lockup only.
+ */
+
+/** Shared brand color tokens + legacy SVG monogram (do not use in BrandLogo). */
 
 export const BRAND_NAVY = "#0F2747";
 export const BRAND_TEAL = "#14B8A6";

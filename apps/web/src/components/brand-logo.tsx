@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { BrandLogoMark } from "@/components/brand-logo-mark";
 
 type BrandLogoProps = {
   href?: string | null;
@@ -10,7 +9,7 @@ type BrandLogoProps = {
 };
 
 /** Cache-bust so browsers pick up the latest artwork. */
-const V = "20260805-plate2x";
+const V = "20260805-tfmark";
 
 /**
  * Full lockup = soft-knockout from black-plate JPEG, native content resolution.
@@ -27,12 +26,29 @@ const FULL = {
   className: "h-14 w-auto sm:h-16 md:h-[4.5rem]",
 } as const;
 
-const MARK_CLASS = "aspect-[520/220] h-8 w-auto md:h-9";
-const APP_CLASS = "aspect-[520/220] h-9 w-auto md:h-10";
+/**
+ * TF mark = soft-knockout from original icon plate (`make-icon-master.ts`).
+ * Intrinsic matches `public/brand/icon-tf.png` / `icon-mark-clear.png` (535×329).
+ * Mark/app share the same raster; app chrome uses the same aspect for UI consistency.
+ * Favicon/apple use square `icon-app-clear.png` separately.
+ */
+const MARK = {
+  src: `/brand/icon-tf.png?v=${V}`,
+  width: 535,
+  height: 329,
+  className: "aspect-[535/329] h-8 w-auto md:h-9",
+} as const;
+
+const APP = {
+  src: `/brand/icon-tf.png?v=${V}`,
+  width: 535,
+  height: 329,
+  className: "aspect-[535/329] h-9 w-auto md:h-10",
+} as const;
 
 /**
  * Official Ticketfeeling artwork — never distort / recolor / outline / shadow / 3D.
- * Full lockup uses the original raster; mark/app use crisp SVG monogram.
+ * Full lockup + mark/app all use original rasters (not SVG recreations).
  */
 export function BrandLogo({
   href = "/",
@@ -40,25 +56,20 @@ export function BrandLogo({
   className = "",
   priority = false,
 }: BrandLogoProps) {
-  const graphic =
-    variant === "full" ? (
-      <Image
-        src={FULL.src}
-        alt="Ticketfeeling"
-        width={FULL.width}
-        height={FULL.height}
-        priority={priority}
-        quality={100}
-        unoptimized
-        className={`object-contain ${FULL.className} ${className}`}
-      />
-    ) : (
-      <BrandLogoMark
-        className={`block max-w-full object-contain ${
-          variant === "app" ? APP_CLASS : MARK_CLASS
-        } ${className}`}
-      />
-    );
+  const asset = variant === "full" ? FULL : variant === "app" ? APP : MARK;
+
+  const graphic = (
+    <Image
+      src={asset.src}
+      alt="Ticketfeeling"
+      width={asset.width}
+      height={asset.height}
+      priority={priority}
+      quality={100}
+      unoptimized
+      className={`object-contain ${asset.className} ${className}`}
+    />
+  );
 
   if (!href) return graphic;
   return (

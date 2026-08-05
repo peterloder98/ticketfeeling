@@ -30,7 +30,7 @@ Nur **Inter** (`next/font`). Weights: 400 / 500 / 600 / 700.
 | `.tf-btn-secondary` | Weiß, Navy-Border |
 | `.tf-card` | Weiß, Soft Shadow, Radius 20 |
 | `.tf-input` | Radius 14, großer Touch |
-| `BrandLogo` | Offizielles Lockup (Raster: `/brand/logo-ticketfeeling.png`); Mark/App: SVG |
+| `BrandLogo` | Offizielles Lockup (Raster: `/brand/logo-ticketfeeling.png`); Mark/App: Raster `/brand/icon-tf.png` |
 | `EventCard` | Event-Kachel mit Bild, Datum, Ort, CTA |
 
 ## Logo-Regeln
@@ -40,7 +40,7 @@ Nur **Inter** (`next/font`). Weights: 400 / 500 / 600 / 700.
 - Web full lockup: original Raster (`BrandLogo` → `/brand/logo-ticketfeeling.png`), gebaut mit `npx tsx scripts/make-logo-master.ts`
 - E-Mail/PDF: PNGs aus demselben Master (nicht aus der SVG-Rekonstruktion)
 - Transparenter Hintergrund (soft-knockout der schwarzen Plate)
-- Mark/App (kleine Nav-Icons): `BrandLogoMark` / SVG — optional schärfer bei winzigen Größen
+- Mark/App (Nav/Admin): original Raster (`BrandLogo` mark/app → `/brand/icon-tf.png`), gebaut mit `npx tsx scripts/make-icon-master.ts` — nicht die SVG-Rekonstruktion
 
 ## Sprache
 

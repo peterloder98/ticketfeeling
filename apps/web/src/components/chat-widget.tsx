@@ -26,7 +26,7 @@ function Avatar() {
   return (
     <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[rgba(20,184,166,0.15)] ring-2 ring-white">
       <Image
-        src="/brand/icon-app-clear.png?v=20260731b"
+        src="/brand/icon-app-clear.png?v=20260805-tfmark"
         alt=""
         width={36}
         height={36}
