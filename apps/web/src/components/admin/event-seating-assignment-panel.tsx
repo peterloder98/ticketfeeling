@@ -14,12 +14,13 @@ import {
   readableScalePxPerCm,
 } from "@/lib/saalplan/view-zoom";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
-import { sellableSeatCountsByCategory } from "@/lib/seating/sync-category-capacity";
+import { isPlanBackedTicketCategory, sellableSeatCountsByCategory } from "@/lib/seating/sync-category-capacity";
 import {
   buildSaalplanEditorHref,
   openSaalplanEditorWindow,
   SAALPLAN_WINDOW_NAME,
 } from "@/lib/saalplan/popup";
+import { useUnassignedSeatsReporter } from "@/components/admin/unassigned-seats-banner";
 
 export type AssignmentCategory = {
   id: string;
@@ -73,6 +74,8 @@ export function EventSeatingAssignmentPanel({
   onCategoryCreated,
   /** Live Kontingent from assigned, not-locked seats — keeps Preiskategorien in sync. */
   onCapacitiesChange,
+  /** Bump after Preiskategorie Stehplatz-Kontingent save — reload EventSeat units. */
+  seatsReloadToken = 0,
 }: {
   eventId: string;
   canWrite: boolean;
@@ -81,6 +84,7 @@ export function EventSeatingAssignmentPanel({
   /** Full API category after quick-create — populates the edit section below. */
   onCategoryCreated?: (category: CreatedEventCategory) => void;
   onCapacitiesChange?: (capacities: Record<string, number>) => void;
+  seatsReloadToken?: number;
 }) {
   const [loading, setLoading] = useState(true);
   const [enabled, setEnabled] = useState(false);
@@ -127,8 +131,12 @@ export function EventSeatingAssignmentPanel({
 
   const seatingCategories = useMemo(
     () =>
-      categories.filter(
-        (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
+      categories.filter((c) =>
+        isPlanBackedTicketCategory({
+          freeSeating: c.freeSeating,
+          categoryKind: c.categoryKind,
+          seatingEnabled: true,
+        }),
       ),
     [categories],
   );
@@ -162,6 +170,11 @@ export function EventSeatingAssignmentPanel({
 
   const assignedCount = seats.filter((s) => s.categoryId).length;
   const unassignedCount = seats.length - assignedCount;
+  const unassignedReporter = useUnassignedSeatsReporter();
+  useEffect(() => {
+    if (!enabled || !initialLoadDone.current) return;
+    unassignedReporter?.setUnassignedCount(unassignedCount);
+  }, [enabled, unassignedCount, unassignedReporter]);
   const lockedCount = seats.filter((s) => s.locked).length;
   /** Assigned + unlocked + not sold — seats customers can buy from. */
   const onSaleCount = seats.filter(
@@ -209,8 +222,12 @@ export function EventSeatingAssignmentPanel({
       } else if (data.venuePlan === null) {
         setVenuePlanId(null);
       }
-      const seatingCats = (data.categories ?? categories).filter(
-        (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
+      const seatingCats = (data.categories ?? categories).filter((c) =>
+        isPlanBackedTicketCategory({
+          freeSeating: c.freeSeating,
+          categoryKind: c.categoryKind,
+          seatingEnabled: true,
+        }),
       );
       // Never auto-pick a category — accidental clicks would paint the wrong seats.
       setSelectedCategoryId((prev) =>
@@ -256,6 +273,11 @@ export function EventSeatingAssignmentPanel({
   useEffect(() => {
     void load({ silent: false });
   }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps -- initial load only
+
+  useEffect(() => {
+    if (!seatsReloadToken) return;
+    void load({ silent: true });
+  }, [seatsReloadToken]); // eslint-disable-line react-hooks/exhaustive-deps -- explicit reload signal
 
   useEffect(() => {
     return () => {
@@ -1080,14 +1102,13 @@ export function EventSeatingAssignmentPanel({
               if (obj.type === "standing_area") {
                 const standingSeats = seatsByBlock.get(obj.id) ?? [];
                 const standingCap = standingSeats.length;
-                const assignedStanding = standingSeats.filter((s) => s.categoryId).length;
                 const lockedStanding = standingSeats.filter((s) => s.locked).length;
                 const catIds = [
                   ...new Set(standingSeats.map((s) => s.categoryId).filter(Boolean)),
                 ] as string[];
                 const fill =
                   catIds.length === 1
-                    ? `${colorById.get(catIds[0]!) ?? "#14B8A6"}33`
+                    ? `${colorById.get(catIds[0]!) ?? "#14B8A6"}66`
                     : catIds.length > 1
                       ? "rgba(15,39,71,0.08)"
                       : "rgba(15,39,71,0.05)";
@@ -1106,6 +1127,7 @@ export function EventSeatingAssignmentPanel({
                       height={toS(obj.heightCm)}
                       fill={fill}
                       stroke={stroke}
+                      strokeWidth={catIds.length === 1 ? 2 : 1.25}
                       strokeDasharray="6 4"
                       rx={4}
                       {...(target === "block" ? { "data-saalplan-interactive": "" } : {})}
@@ -1119,27 +1141,9 @@ export function EventSeatingAssignmentPanel({
                       dominantBaseline="auto"
                       style={{ fontSize: 11, fontWeight: 700, fill: "#0F2747", pointerEvents: "none" }}
                     >
-                      {obj.label || "Stehbereich"}
-                      {standingCap > 0
-                        ? ` · ${assignedStanding}/${standingCap}`
-                        : ""}
+                      {standingCap > 0 ? `Stehplätze ${standingCap}` : "Stehplätze"}
                       {lockedStanding > 0 ? " · gesperrt" : ""}
                     </text>
-                    {standingCap > 0 && Math.min(toS(obj.widthCm), toS(obj.heightCm)) >= 36 ? (
-                      <text
-                        x={toX(obj.xCm)}
-                        y={toY(obj.yCm) + 4}
-                        textAnchor="middle"
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          fill: "var(--tf-text-secondary)",
-                          pointerEvents: "none",
-                        }}
-                      >
-                        {standingCap} Stehplätze
-                      </text>
-                    ) : null}
                   </g>
                 );
               }

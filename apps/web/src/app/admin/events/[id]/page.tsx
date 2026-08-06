@@ -18,6 +18,10 @@ import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
 import { EventAdminHeaderActions } from "@/components/admin/event-admin-header-actions";
+import {
+  UnassignedSeatsBanner,
+  UnassignedSeatsProvider,
+} from "@/components/admin/unassigned-seats-banner";
 import { canCreateEventCategories, effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
@@ -294,6 +298,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   }
 
   return (
+    <UnassignedSeatsProvider initialCount={seatingEnabled ? unassignedSeatCount : 0}>
     <div className="space-y-6">
       <div>
         <Link
@@ -347,22 +352,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               : "Änderungen gespeichert."}
           </p>
         ) : null}
-        {needsSeatAssignment ? (
-          <div className="mt-3 rounded-xl border border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.12)] px-4 py-3">
-            <p className="text-sm font-semibold text-[var(--tf-navy)]">
-              Nächster Schritt: Saalplan zuordnen
-            </p>
-            <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-              {unassignedSeatCount} Plätze ohne Kategorie — unter „Saalplan-Zuordnung“ Kategorie
-              wählen und Bereich oder Plätze antippen
-              {seatingCategories.length === 0
-                ? " — bei Bedarf dort eine Preiskategorie anlegen."
-                : ". Preise kannst du darunter bearbeiten."}
-            </p>
-            <a href="#zuordnung" className="tf-btn tf-btn-primary mt-3 inline-flex !min-h-10 text-sm">
-              Jetzt zuordnen
-            </a>
-          </div>
+        {seatingEnabled ? (
+          <UnassignedSeatsBanner seatingCategoriesCount={seatingCategories.length} />
         ) : null}
       </div>
 
@@ -592,5 +583,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         </div>
       </section>
     </div>
+    </UnassignedSeatsProvider>
   );
 }

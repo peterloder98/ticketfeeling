@@ -2,14 +2,60 @@ import type { PrismaClient } from "@prisma/client";
 
 type Db = Pick<PrismaClient, "eventTicketCategory" | "eventSeat" | "inventoryPool">;
 
-/** Plan-backed categories: Kontingent comes from assigned, unlocked seats. */
+export function eventHasReservedSeating(mode: string | null | undefined): boolean {
+  return mode === "best_available" || mode === "seat_map_and_best";
+}
+
+/**
+ * Plan-backed categories: Kontingent comes from assigned, unlocked EventSeat rows.
+ * - Sitzplatz / VIP / Rollstuhl: numbered (and standing) places painted in Saalplan
+ * - Stehplatz: standing places assigned on Saalplan (when seating is enabled);
+ *   after assignment, Preiskategorie Kontingent may rematerialize units (geometry
+ *   capacity is only the initial recommendation)
+ * - Freie Platzwahl / Freiverkauf without seating: manual capacity
+ */
 export function isPlanBackedTicketCategory(cat: {
   freeSeating?: boolean | null;
   categoryKind?: string | null;
+  seatingBookingMode?: string | null;
+  seatingEnabled?: boolean;
 }): boolean {
-  if (cat.freeSeating) return false;
   const kind = cat.categoryKind ?? "standard";
-  return kind !== "standing" && kind !== "free_choice";
+  if (kind === "free_choice") return false;
+  if (kind === "standing") {
+    if (typeof cat.seatingEnabled === "boolean") return cat.seatingEnabled;
+    if (cat.seatingBookingMode != null) {
+      return eventHasReservedSeating(cat.seatingBookingMode);
+    }
+    // syncPlanBackedCategoryCapacities only runs for seating events.
+    return true;
+  }
+  if (cat.freeSeating) return false;
+  return true;
+}
+
+/**
+ * Effective Kontingent for availability checks.
+ * When plan-backed seat counts are known, they win over a stale category.capacity
+ * (e.g. Stehplatz still at wizard default while nothing is assigned).
+ */
+export function resolveSellableCategoryCapacity(input: {
+  categoryCapacity: number;
+  categoryKind?: string | null;
+  freeSeating?: boolean | null;
+  seatingBookingMode?: string | null;
+  seatingEnabled?: boolean;
+  assignedUnlockedSeatCount?: number | null;
+}): number {
+  const planBacked = isPlanBackedTicketCategory(input);
+  const seatingOn =
+    typeof input.seatingEnabled === "boolean"
+      ? input.seatingEnabled
+      : eventHasReservedSeating(input.seatingBookingMode);
+  if (planBacked && seatingOn && typeof input.assignedUnlockedSeatCount === "number") {
+    return Math.max(0, input.assignedUnlockedSeatCount);
+  }
+  return Math.max(0, input.categoryCapacity);
 }
 
 /** Count seats assigned to a category that are not gesperrt (locked). */
@@ -39,10 +85,36 @@ export function sellableSeatCountsByCategory(
   return counts;
 }
 
+/** DB groupBy: assigned unlocked seats per category (missing → 0). */
+export async function assignedUnlockedSeatCounts(
+  db: Pick<PrismaClient, "eventSeat">,
+  eventId: string,
+  categoryIds: string[],
+): Promise<Record<string, number>> {
+  const result: Record<string, number> = {};
+  for (const id of categoryIds) result[id] = 0;
+  if (categoryIds.length === 0) return result;
+
+  const grouped = await db.eventSeat.groupBy({
+    by: ["categoryId"],
+    where: {
+      eventId,
+      locked: false,
+      categoryId: { in: categoryIds },
+    },
+    _count: { _all: true },
+  });
+  for (const row of grouped) {
+    if (row.categoryId) result[row.categoryId] = row._count._all;
+  }
+  return result;
+}
+
 /**
  * Persist Kontingent for plan-backed categories from EventSeat rows:
  * capacity = seats with that categoryId and locked = false.
- * Freiverkauf / Stehplatz / freie Platzwahl are left unchanged.
+ * Freiverkauf / freie Platzwahl are left unchanged.
+ * Stehplatz on seating events is included (assigned standing places).
  */
 export async function syncPlanBackedCategoryCapacities(
   db: Db,

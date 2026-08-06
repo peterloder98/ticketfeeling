@@ -809,30 +809,13 @@ export function SaalplanEditor({
                         />
                       ) : null}
 
-                      {obj.type === "seat_block" &&
+                      {obj.type === "standing_area" ? null : obj.type === "seat_block" &&
                       (obj.rows ?? 0) > 0 &&
                       (obj.seatsPerRow ?? 0) > 0
                         ? renderSeatDots(obj, x, y, w, h)
                         : null}
 
-                      {obj.type === "standing_area" && Math.min(w, h) >= 28 ? (
-                        <text
-                          x={cx}
-                          y={cy + 4}
-                          textAnchor="middle"
-                          style={{
-                            fontSize: labelFont,
-                            fontWeight: 600,
-                            fill: "var(--tf-text-secondary)",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {obj.standingMode === "standing_tables" ? "Stehtische" : "Stehend"}
-                          {standingCap > 0 ? ` · ${standingCap}` : ""}
-                        </text>
-                      ) : null}
-
-                      {/* Stage: label inside, scaled. Blocks: above border so seats stay clear. */}
+                      {/* Stage: label inside. Blocks / Stehplätze: above border. */}
                       {obj.type === "stage" || Math.min(w, h) >= 24 ? (
                         <text
                           x={cx}
@@ -846,16 +829,18 @@ export function SaalplanEditor({
                             pointerEvents: "none",
                           }}
                         >
-                          {obj.label || objectTypeLabel(obj.type)}
+                          {obj.type === "standing_area"
+                            ? standingCap > 0
+                              ? `Stehplätze ${standingCap}`
+                              : "Stehplätze"
+                            : obj.label || objectTypeLabel(obj.type)}
                           {obj.type === "seat_block"
                             ? numbered
                               ? ` · ${seats}`
                               : w >= 90
                                 ? " · freie Platzwahl"
                                 : ""
-                            : obj.type === "standing_area" && standingCap > 0
-                              ? ` · ${standingCap}`
-                              : ""}
+                            : ""}
                         </text>
                       ) : null}
                     </g>
@@ -1009,19 +994,20 @@ export function SaalplanEditor({
                   <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-xs text-[var(--tf-text-secondary)]">
                     Fläche ca.{" "}
                     {areaSqm(selected.widthCm, selected.heightCm).toFixed(1).replace(".", ",")} m² ·
-                    Vorschlag aus Fläche:{" "}
+                    Empfehlung aus Fläche:{" "}
                     <strong className="text-[var(--tf-navy)]">
                       {estimateStandingCapacity(
                         selected.widthCm,
                         selected.heightCm,
                         selected.standingMode ?? "standing",
                       )}{" "}
-                      Plätze
+                      Stehplätze
                     </strong>
                     {selected.capacityManual
                       ? " · manuell überschrieben"
                       : " · wird bei Größenänderung angepasst"}
-                    . Keine Preiskategorie hier — zuweisen am Event.
+                    . Nach Zuordnung am Event kannst du das Kontingent in der Preiskategorie
+                    anpassen.
                   </p>
                   {selected.capacityManual ? (
                     <button
@@ -1118,7 +1104,7 @@ export function SaalplanEditor({
                       ? " (freie Wahl)"
                       : ` (${seatCountOfObject(o)})`
                     : o.type === "standing_area"
-                      ? ` (${resolveStandingCapacity(o)})`
+                      ? ` (Stehplätze ${resolveStandingCapacity(o)})`
                       : ""}
                 </button>
               </li>

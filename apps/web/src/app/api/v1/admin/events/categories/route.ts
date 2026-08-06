@@ -7,6 +7,10 @@ import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canCreateEventCategories } from "@/lib/commerce/event-sale";
 import {
+  adjustStandingCategoryCapacity,
+  StandingCapacityError,
+} from "@/lib/seating/adjust-standing-capacity";
+import {
   isPlanBackedTicketCategory,
   syncPlanBackedCategoryCapacities,
 } from "@/lib/seating/sync-category-capacity";
@@ -74,7 +78,11 @@ export async function PUT(request: Request) {
       categoryKind === "standing" ||
       categoryKind === "free_choice" ||
       event.seatingBookingMode === "none";
-    const planBacked = isPlanBackedTicketCategory({ freeSeating, categoryKind });
+    const planBacked = isPlanBackedTicketCategory({
+      freeSeating,
+      categoryKind,
+      seatingBookingMode: event.seatingBookingMode,
+    });
     // Plan-backed: Kontingent is derived from Saalplan; ignore manual input on create.
     const capacity = planBacked ? 0 : body.capacity;
 
@@ -85,7 +93,9 @@ export async function PUT(request: Request) {
       });
       if (!category) return NextResponse.json({ error: { code: "NOT_FOUND" } }, { status: 404 });
 
-      // Keep submitted capacity for freiverkauf; plan-backed is overwritten by seat sync below.
+      // Freiverkauf: manual capacity. Numbered plan seats: sync from Saalplan.
+      // Stehplatz (plan-backed): rematerialize units from submitted capacity after assignment.
+      const standingPlanBacked = planBacked && categoryKind === "standing";
       const nextCapacity = planBacked ? category.capacity : body.capacity;
 
       await prisma.$transaction(async (tx) => {
@@ -114,7 +124,19 @@ export async function PUT(request: Request) {
         }
       });
 
-      if (planBacked) {
+      if (standingPlanBacked) {
+        try {
+          await adjustStandingCategoryCapacity(prisma, event.id, category.id, body.capacity);
+        } catch (err) {
+          if (err instanceof StandingCapacityError) {
+            return NextResponse.json(
+              { error: { code: err.code, message: err.message } },
+              { status: err.code === "CAPACITY_BELOW_SOLD" ? 409 : 400 },
+            );
+          }
+          throw err;
+        }
+      } else if (planBacked) {
         await syncPlanBackedCategoryCapacities(prisma, event.id);
       }
 
@@ -124,7 +146,7 @@ export async function PUT(request: Request) {
         action: "event.category.updated",
         entityType: "event_ticket_category",
         entityId: category.id,
-        after: { name: body.name, priceGrossCents, planBacked },
+        after: { name: body.name, priceGrossCents, planBacked, standingPlanBacked },
       });
 
       const updated = await prisma.eventTicketCategory.findUniqueOrThrow({

@@ -311,18 +311,9 @@ export function SeatMap({
                   textAnchor="middle"
                   style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
                 >
-                  {area.label}
                   {(area.capacity ?? area.estimatedCapacity) > 0
-                    ? ` · ${area.capacity ?? area.estimatedCapacity} Plätze`
-                    : ""}
-                </text>
-                <text
-                  x={toX(area.xCm)}
-                  y={toY(area.yCm) + 4}
-                  textAnchor="middle"
-                  style={{ fontSize: 11, fontWeight: 600, fill: "#64748B", pointerEvents: "none" }}
-                >
-                  {area.standingMode === "standing_tables" ? "Stehtische" : "Stehplatz"}
+                    ? `Stehplätze ${area.capacity ?? area.estimatedCapacity}`
+                    : "Stehplätze"}
                 </text>
               </g>
             );

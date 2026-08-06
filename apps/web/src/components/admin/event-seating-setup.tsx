@@ -76,6 +76,7 @@ export function EventSeatingSetup({
   seatingEnabled?: boolean;
 }) {
   const [categories, setCategories] = useState(initialCategories);
+  const [seatsReloadToken, setSeatsReloadToken] = useState(0);
 
   useEffect(() => {
     setCategories(initialCategories);
@@ -139,6 +140,12 @@ export function EventSeatingSetup({
     });
   }, []);
 
+  const onCategorySaved = useCallback((cat: EventCategoryRow) => {
+    if (cat.categoryKind === "standing") {
+      setSeatsReloadToken((t) => t + 1);
+    }
+  }, []);
+
   return (
     <div className="space-y-4">
       <EventSeatingAssignmentPanel
@@ -148,11 +155,13 @@ export function EventSeatingSetup({
         onCategoriesChange={onAssignmentCategoriesChange}
         onCategoryCreated={onCategoryCreated}
         onCapacitiesChange={seatingEnabled ? onCapacitiesChange : undefined}
+        seatsReloadToken={seatsReloadToken}
       />
       <EventCategoriesPanel
         eventId={eventId}
         categories={categories}
         onCategoriesChange={setCategories}
+        onCategorySaved={onCategorySaved}
         templates={templates}
         canWrite={canWrite}
         categoriesCreateLocked={categoriesCreateLocked}

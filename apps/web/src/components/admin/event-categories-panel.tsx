@@ -146,13 +146,20 @@ function CategoryKindFields({
 function ContingentField({
   capacity,
   planBacked,
+  standingEditable = false,
+  minCapacity = 0,
+  hint,
   compact = false,
 }: {
   capacity: number;
   planBacked: boolean;
+  /** Stehplatz after Saalplan assignment — editable with sold floor. */
+  standingEditable?: boolean;
+  minCapacity?: number;
+  hint?: string;
   compact?: boolean;
 }) {
-  if (planBacked) {
+  if (planBacked && !standingEditable) {
     return (
       <label className="grid gap-1">
         <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
@@ -166,6 +173,9 @@ function ContingentField({
           readOnly
           aria-readonly="true"
         />
+        {hint ? (
+          <span className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">{hint}</span>
+        ) : null}
       </label>
     );
   }
@@ -179,9 +189,13 @@ function ContingentField({
         type="number"
         className="tf-input"
         defaultValue={capacity}
-        min={0}
+        key={`${capacity}-${minCapacity}`}
+        min={Math.max(0, minCapacity)}
         required
       />
+      {hint ? (
+        <span className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">{hint}</span>
+      ) : null}
     </label>
   );
 }
@@ -193,6 +207,7 @@ function NewCategoryCapacityFields({ seatingEnabled }: { seatingEnabled: boolean
     isPlanBackedTicketCategory({
       freeSeating: kind === "standing" || kind === "free_choice",
       categoryKind: kind,
+      seatingEnabled,
     });
 
   return (
@@ -245,6 +260,7 @@ export function EventCategoriesPanel({
   eventId,
   categories: initialCategories,
   onCategoriesChange,
+  onCategorySaved,
   templates,
   canWrite,
   categoriesCreateLocked = false,
@@ -254,6 +270,8 @@ export function EventCategoriesPanel({
   categories: Category[];
   /** When set, category list is shared with Saalplan assignment above. */
   onCategoriesChange?: Dispatch<SetStateAction<Category[]>>;
+  /** After successful save — e.g. reload standing EventSeat units. */
+  onCategorySaved?: (category: Category) => void;
   templates: Template[];
   canWrite: boolean;
   /** True after first sold/held ticket — no new categories allowed */
@@ -302,10 +320,17 @@ export function EventCategoriesPanel({
       });
       const data = await response.json();
       if (!response.ok) {
+        const code = data?.error?.code as string | undefined;
         setError(
-          data?.error?.code === "CATEGORIES_LOCKED"
+          code === "CATEGORIES_LOCKED"
             ? "Nach erstem Ticketverkauf keine neuen Kategorien."
-            : (data?.error?.code ?? "Speichern fehlgeschlagen"),
+            : code === "CAPACITY_BELOW_SOLD"
+              ? (data?.error?.message ??
+                "Kontingent darf nicht unter bereits verkaufte oder reservierte Tickets sinken.")
+              : code === "STANDING_NOT_ASSIGNED"
+                ? (data?.error?.message ??
+                  "Zuerst Stehplätze im Saalplan zuordnen — danach Kontingent anpassen.")
+                : (data?.error?.message ?? code ?? "Speichern fehlgeschlagen"),
         );
         return;
       }
@@ -324,6 +349,7 @@ export function EventCategoriesPanel({
         form.reset();
         setNewFormKey((k) => k + 1);
       }
+      onCategorySaved?.(cat);
       // Soft refresh for KPIs / sales table — do not scroll.
       router.refresh();
     } finally {
@@ -400,7 +426,7 @@ export function EventCategoriesPanel({
           {categoriesCreateLocked
             ? "Erstes Ticket verkauft oder reserviert — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
             : seatingEnabled
-              ? "Preis, Name, Farbe und Art hier bearbeiten."
+              ? "Preis, Name, Farbe und Art hier bearbeiten. Stehplatz-Kontingent kannst du nach der Saalplan-Zuordnung anpassen."
               : "Preis, Kontingent, Name und Art bearbeiten."}
         </p>
       </div>
@@ -421,7 +447,17 @@ export function EventCategoriesPanel({
             isPlanBackedTicketCategory({
               freeSeating: cat.freeSeating,
               categoryKind: cat.categoryKind,
+              seatingEnabled,
             });
+          const standingEditable = planBacked && cat.categoryKind === "standing";
+          const committed = sold + held;
+          const contingentHint = standingEditable
+            ? committed > 0
+              ? `Verkaufbares Kontingent — mindestens ${committed} (verkauft/reserviert). Fläche im Saalplan ist nur der Startwert.`
+              : "Verkaufbares Kontingent — Fläche im Saalplan ist nur der Startwert. Nach Zuordnung frei erhöhbar."
+            : planBacked
+              ? "Kommt aus der Saalplan-Zuordnung."
+              : undefined;
           return (
             <div key={cat.id} className="tf-card !p-4">
               {canWrite ? (
@@ -459,7 +495,13 @@ export function EventCategoriesPanel({
                       required
                     />
                   </label>
-                  <ContingentField capacity={cat.capacity} planBacked={planBacked} />
+                  <ContingentField
+                    capacity={cat.capacity}
+                    planBacked={planBacked}
+                    standingEditable={standingEditable}
+                    minCapacity={standingEditable ? committed : 0}
+                    hint={contingentHint}
+                  />
                   <label className="grid gap-1">
                     <span className="text-xs text-[var(--tf-text-secondary)]">Max./Best.</span>
                     <input
