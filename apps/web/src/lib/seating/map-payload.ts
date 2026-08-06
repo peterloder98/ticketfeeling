@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/db";
 import {
-  estimateStandingCapacity,
+  isStandingSeatKey,
   parseVenuePlanObjects,
+  resolveStandingCapacity,
 } from "@/lib/saalplan/types";
 import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materialize";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
@@ -87,6 +88,7 @@ export async function getSeatMapPayload(
   for (const obj of objects) {
     if (obj.type === "standing_area") {
       const mode = obj.standingMode === "standing_tables" ? "standing_tables" : "standing";
+      const capacity = resolveStandingCapacity(obj);
       standingAreas.push({
         objectId: obj.id,
         label: obj.label ?? "Stehbereich",
@@ -96,7 +98,8 @@ export async function getSeatMapPayload(
         heightCm: obj.heightCm,
         rotationDeg: obj.rotationDeg,
         standingMode: mode,
-        estimatedCapacity: estimateStandingCapacity(obj.widthCm, obj.heightCm, mode),
+        estimatedCapacity: capacity,
+        capacity,
       });
       continue;
     }
@@ -141,11 +144,14 @@ export async function getSeatMapPayload(
   }
 
   // Count only pickable free seats (assigned categories when the plan is assigned).
-  // Matches per-category "Verfügbar" on the purchase UI — not unassigned / non-sellable rows.
-  const availableCount = countSellableAvailableSeats(seats, {
-    categoryId: opts?.categoryId,
-    assignedCategoryIds: seatingCategories.map((c) => c.id),
-  });
+  // Standing inventory units are not seat-map pickable — sold via best-available / Kontingent.
+  const availableCount = countSellableAvailableSeats(
+    seats.filter((s) => !isStandingSeatKey(s.seatKey)),
+    {
+      categoryId: opts?.categoryId,
+      assignedCategoryIds: seatingCategories.map((c) => c.id),
+    },
+  );
 
   return {
     eventId,

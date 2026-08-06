@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
-import { ensureEventSeatsIfNeeded } from "@/lib/seating/materialize";
+import { ensureEventSeats } from "@/lib/seating/materialize";
 import {
   parseSeatingLayoutConfig,
   type SeatingLayoutConfig,
@@ -81,8 +81,8 @@ export async function GET(request: Request) {
     });
   }
 
-  // Hot path: only materialize when empty — full sync runs on plan save.
-  await ensureEventSeatsIfNeeded(event.id);
+  // Full sync so standing capacity changes show up in Zuordnung without a separate plan save.
+  await ensureEventSeats(event.id);
   const seats = await prisma.eventSeat.findMany({
     where: { eventId: event.id },
     orderBy: [{ blockLabel: "asc" }, { rowIndex: "asc" }, { seatIndex: "asc" }],

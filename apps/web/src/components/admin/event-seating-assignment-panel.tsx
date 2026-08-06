@@ -701,8 +701,9 @@ export function EventSeatingAssignmentPanel({
         <div className="min-w-0">
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
           <p className="mt-1 max-w-xl text-sm text-[var(--tf-text-secondary)]">
-            Kategorie wählen, Aktion und Auswahl festlegen — dann auf dem Plan tippen. Reihen und
-            Blöcke lassen sich sperren und später freigeben.
+            Kategorie wählen, Aktion und Auswahl festlegen — dann auf dem Plan tippen. Sitzblöcke und
+            Stehbereiche zählen als Inventar. Reihen und Blöcke lassen sich sperren und später
+            freigeben.
           </p>
         </div>
         {editorHref ? (
@@ -1077,6 +1078,25 @@ export function EventSeatingAssignmentPanel({
                 );
               }
               if (obj.type === "standing_area") {
+                const standingSeats = seatsByBlock.get(obj.id) ?? [];
+                const standingCap = standingSeats.length;
+                const assignedStanding = standingSeats.filter((s) => s.categoryId).length;
+                const lockedStanding = standingSeats.filter((s) => s.locked).length;
+                const catIds = [
+                  ...new Set(standingSeats.map((s) => s.categoryId).filter(Boolean)),
+                ] as string[];
+                const fill =
+                  catIds.length === 1
+                    ? `${colorById.get(catIds[0]!) ?? "#14B8A6"}33`
+                    : catIds.length > 1
+                      ? "rgba(15,39,71,0.08)"
+                      : "rgba(15,39,71,0.05)";
+                const stroke =
+                  lockedStanding === standingCap && standingCap > 0
+                    ? "#94a3b8"
+                    : catIds.length === 1
+                      ? (colorById.get(catIds[0]!) ?? "#0F2747")
+                      : "#0F2747";
                 return (
                   <g key={obj.id} transform={`rotate(${obj.rotationDeg} ${toX(obj.xCm)} ${toY(obj.yCm)})`}>
                     <rect
@@ -1084,20 +1104,42 @@ export function EventSeatingAssignmentPanel({
                       y={toY(obj.yCm) - toS(obj.heightCm) / 2}
                       width={toS(obj.widthCm)}
                       height={toS(obj.heightCm)}
-                      fill="rgba(15,39,71,0.05)"
-                      stroke="#0F2747"
+                      fill={fill}
+                      stroke={stroke}
                       strokeDasharray="6 4"
                       rx={4}
+                      {...(target === "block" ? { "data-saalplan-interactive": "" } : {})}
+                      style={{ cursor: target === "block" && canWrite ? "pointer" : "default" }}
+                      onClick={() => onBlockClick(obj.id)}
                     />
                     <text
                       x={toX(obj.xCm)}
                       y={toY(obj.yCm) - toS(obj.heightCm) / 2 - 3}
                       textAnchor="middle"
                       dominantBaseline="auto"
-                      style={{ fontSize: 11, fontWeight: 700, fill: "#0F2747" }}
+                      style={{ fontSize: 11, fontWeight: 700, fill: "#0F2747", pointerEvents: "none" }}
                     >
                       {obj.label || "Stehbereich"}
+                      {standingCap > 0
+                        ? ` · ${assignedStanding}/${standingCap}`
+                        : ""}
+                      {lockedStanding > 0 ? " · gesperrt" : ""}
                     </text>
+                    {standingCap > 0 && Math.min(toS(obj.widthCm), toS(obj.heightCm)) >= 36 ? (
+                      <text
+                        x={toX(obj.xCm)}
+                        y={toY(obj.yCm) + 4}
+                        textAnchor="middle"
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          fill: "var(--tf-text-secondary)",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {standingCap} Stehplätze
+                      </text>
+                    ) : null}
                   </g>
                 );
               }

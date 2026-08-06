@@ -1,5 +1,9 @@
 import { prisma } from "@/lib/db";
-import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import {
+  parseVenuePlanObjects,
+  resolveStandingCapacity,
+  standingSeatKey,
+} from "@/lib/saalplan/types";
 import { parseSeatingLayoutConfig } from "@/lib/seating/layout-config";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { syncPlanBackedCategoryCapacities } from "@/lib/seating/sync-category-capacity";
@@ -24,10 +28,28 @@ function buildDesiredSeats(
 ): DesiredSeat[] {
   const rows: DesiredSeat[] = [];
   for (const block of objects) {
+    if (block.type === "standing_area") {
+      const cap = resolveStandingCapacity(block);
+      const blockLabel = (block.label ?? "Stehbereich").trim() || "Stehbereich";
+      for (let s = 1; s <= cap; s += 1) {
+        rows.push({
+          eventId,
+          venuePlanId,
+          blockObjectId: block.id,
+          blockLabel,
+          rowIndex: 1,
+          seatIndex: s,
+          rowLabel: "Steh",
+          seatNumber: String(s),
+          seatKey: standingSeatKey(block.id, s),
+          status: "available",
+        });
+      }
+      continue;
+    }
     if (block.type !== "seat_block") continue;
     // Free-choice / unnumbered blocks are geometry only — no EventSeat inventory.
     if (block.numberedSeats === false) continue;
-    // Standing areas are never materialized into seats (geometry / capacity estimate only).
     const rowCount = Math.max(0, Math.round(block.rows ?? 0));
     const colCount = Math.max(0, Math.round(block.seatsPerRow ?? 0));
     const blockLabel = (block.label ?? "Block").trim() || "Block";
@@ -52,14 +74,14 @@ function buildDesiredSeats(
 }
 
 /**
- * Expand / sync venue plan seat_blocks into EventSeat rows.
+ * Expand / sync venue plan seat_blocks and standing_areas into EventSeat rows.
  * - Adds missing seats with categoryId null (assign later in Preiskategorie-Zuordnung)
  * - Updates geometry labels for existing keys
  * - Never invents categories from plan geometry / standing zones / legacy slots
  * - Does not wipe event-assigned categoryId on available seats when saving plan geometry
  * - Removes only `available` seats that no longer exist in the plan
  * - Never deletes held/sold seats
- * - Standing areas and free-choice blocks stay geometry-only (no EventSeat rows)
+ * - Standing areas become capacity inventory units (not pickable seat dots on the public map)
  */
 export async function ensureEventSeats(eventId: string) {
   await ensureSeatingAssignmentSchema(prisma);
@@ -184,7 +206,8 @@ export async function ensureEventSeats(eventId: string) {
 const eventsKnownToHaveSeats = new Set<string>();
 
 /**
- * Hot-path guard: only materialize when this event has no seats yet.
+ * Hot-path guard: only materialize when this event has no seats yet,
+ * or when standing capacity was added/changed without a full plan sync.
  * Full sync stays on admin plan save via syncSeatsForVenuePlan.
  */
 export async function ensureEventSeatsIfNeeded(eventId: string) {
@@ -193,7 +216,7 @@ export async function ensureEventSeatsIfNeeded(eventId: string) {
   }
   const event = await prisma.event.findUnique({
     where: { id: eventId },
-    select: { venuePlanId: true, seatingBookingMode: true },
+    select: { venuePlanId: true, seatingBookingMode: true, venuePlan: { select: { objects: true } } },
   });
   if (!event?.venuePlanId || event.seatingBookingMode === "none") {
     return { created: 0, updated: 0, removed: 0, total: 0, skipped: true as const };
@@ -201,7 +224,23 @@ export async function ensureEventSeatsIfNeeded(eventId: string) {
   const total = await prisma.eventSeat.count({
     where: { eventId, venuePlanId: event.venuePlanId },
   });
+  const objects = parseVenuePlanObjects(event.venuePlan?.objects);
+  const desiredStanding = objects.reduce((sum, o) => sum + resolveStandingCapacity(o), 0);
   if (total > 0) {
+    if (desiredStanding > 0) {
+      const standingCount = await prisma.eventSeat.count({
+        where: {
+          eventId,
+          venuePlanId: event.venuePlanId,
+          rowLabel: "Steh",
+        },
+      });
+      if (standingCount !== desiredStanding) {
+        const result = await ensureEventSeats(eventId);
+        if (result.total > 0) eventsKnownToHaveSeats.add(eventId);
+        return { ...result, skipped: false as const };
+      }
+    }
     eventsKnownToHaveSeats.add(eventId);
     return { created: 0, updated: 0, removed: 0, total, skipped: true as const };
   }

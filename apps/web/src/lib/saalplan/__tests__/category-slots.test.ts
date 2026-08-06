@@ -103,6 +103,8 @@ describe("category slots", () => {
       rotationDeg: 0,
       label: "Stehbereich",
       standingMode: "standing",
+      capacity: 16,
+      capacityManual: false,
     };
     expect(stripPlanCategoryPaint(standing)).toEqual(standing);
   });

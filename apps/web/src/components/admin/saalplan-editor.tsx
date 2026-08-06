@@ -19,6 +19,7 @@ import {
   objectTypeLabel,
   planSeatCapacity,
   planStandingEstimate,
+  resolveStandingCapacity,
   seatCountOfObject,
   visualSeatCountOfObject,
 } from "@/lib/saalplan/types";
@@ -165,7 +166,24 @@ export function SaalplanEditor({
   function updateSelected(patch: Partial<VenuePlanObject>, notice?: string | null) {
     if (geometryFrozen || !selectedId) return;
     setObjects((prev) => {
-      const next = prev.map((o) => (o.id === selectedId ? { ...o, ...patch } : o));
+      const next = prev.map((o) => {
+        if (o.id !== selectedId) return o;
+        const merged = { ...o, ...patch };
+        if (merged.type === "standing_area" && !merged.capacityManual) {
+          const sizeOrModeChanged =
+            patch.widthCm !== undefined ||
+            patch.heightCm !== undefined ||
+            patch.standingMode !== undefined;
+          if (sizeOrModeChanged || patch.capacity === undefined) {
+            merged.capacity = estimateStandingCapacity(
+              merged.widthCm,
+              merged.heightCm,
+              merged.standingMode ?? "standing",
+            );
+          }
+        }
+        return merged;
+      });
       return next;
     });
     setDirty(true);
@@ -556,7 +574,7 @@ export function SaalplanEditor({
         <div className="flex flex-wrap items-center gap-2">
           <p className="rounded-full bg-[rgba(15,39,71,0.06)] px-3 py-1.5 text-sm font-medium text-[var(--tf-navy)]">
             {capacity} nummerierte Sitze
-            {standingEstimate > 0 ? ` · ca. ${standingEstimate} stehend` : ""}
+            {standingEstimate > 0 ? ` · ${standingEstimate} stehend` : ""}
           </p>
           <button
             type="button"
@@ -591,8 +609,8 @@ export function SaalplanEditor({
       ) : null}
 
       <p className="text-sm text-[var(--tf-text-secondary)]">
-        Hier nur Geometrie: Bühne, Sitzblöcke und Stehbereiche. Preiskategorien ordnest du danach am
-        Event zu.
+        Hier nur Geometrie: Bühne, Sitzblöcke und Stehbereiche (mit Kapazität). Preiskategorien
+        ordnest du danach am Event zu.
       </p>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
@@ -744,13 +762,7 @@ export function SaalplanEditor({
                   const seats = visualSeatCountOfObject(obj);
                   const numbered = obj.type === "seat_block" && obj.numberedSeats !== false;
                   const standingCap =
-                    obj.type === "standing_area"
-                      ? estimateStandingCapacity(
-                          obj.widthCm,
-                          obj.heightCm,
-                          obj.standingMode ?? "standing",
-                        )
-                      : 0;
+                    obj.type === "standing_area" ? resolveStandingCapacity(obj) : 0;
                   const labelFont = Math.max(
                     9,
                     Math.min(13, Math.min(w, h) * (obj.type === "stage" ? 0.22 : 0.14)),
@@ -816,7 +828,7 @@ export function SaalplanEditor({
                           }}
                         >
                           {obj.standingMode === "standing_tables" ? "Stehtische" : "Stehend"}
-                          {standingCap > 0 ? ` · ca. ${standingCap}` : ""}
+                          {standingCap > 0 ? ` · ${standingCap}` : ""}
                         </text>
                       ) : null}
 
@@ -842,7 +854,7 @@ export function SaalplanEditor({
                                 ? " · freie Platzwahl"
                                 : ""
                             : obj.type === "standing_area" && standingCap > 0
-                              ? ` · ca. ${standingCap}`
+                              ? ` · ${standingCap}`
                               : ""}
                         </text>
                       ) : null}
@@ -881,8 +893,9 @@ export function SaalplanEditor({
             <Plus className="mr-1 inline h-4 w-4" /> Stehbereich einfügen
           </button>
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Sitzblöcke: nummeriert oder freie Platzwahl. Stehbereiche: nur Geometrie (Form, grobe
-            Kapazität) — keine Preiskategorie. Preise und Zuordnung legst du später am Event fest.
+            Sitzblöcke: nummeriert oder freie Platzwahl. Stehbereiche: Kapazität aus der Fläche
+            (änderbar) — keine automatische Preiskategorie. Zuordnung und Preise legst du danach am
+            Event fest.
           </p>
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>
@@ -977,20 +990,55 @@ export function SaalplanEditor({
                       <option value="standing_tables">Mit Stehtischen</option>
                     </select>
                   </label>
+                  <label className="grid gap-1">
+                    <span className="text-xs text-[var(--tf-text-secondary)]">
+                      Kapazität (Stehplätze)
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="tf-input !min-h-10"
+                      value={resolveStandingCapacity(selected)}
+                      onChange={(e) => {
+                        const n = Math.max(0, Math.round(Number(e.target.value) || 0));
+                        updateSelected({ capacity: n, capacityManual: true });
+                      }}
+                    />
+                  </label>
                   <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-xs text-[var(--tf-text-secondary)]">
-                    Fläche ca. {areaSqm(selected.widthCm, selected.heightCm).toFixed(1).replace(".", ",")}{" "}
-                    m² · grobe Orientierung:{" "}
+                    Fläche ca.{" "}
+                    {areaSqm(selected.widthCm, selected.heightCm).toFixed(1).replace(".", ",")} m² ·
+                    Vorschlag aus Fläche:{" "}
                     <strong className="text-[var(--tf-navy)]">
-                      ca.{" "}
                       {estimateStandingCapacity(
                         selected.widthCm,
                         selected.heightCm,
                         selected.standingMode ?? "standing",
                       )}{" "}
-                      Personen
+                      Plätze
                     </strong>
-                    . Nur Geometrie — keine Preiskategorie. Preise und Kontingent legst du am Event fest.
+                    {selected.capacityManual
+                      ? " · manuell überschrieben"
+                      : " · wird bei Größenänderung angepasst"}
+                    . Keine Preiskategorie hier — zuweisen am Event.
                   </p>
+                  {selected.capacityManual ? (
+                    <button
+                      type="button"
+                      className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                      onClick={() => {
+                        const auto = estimateStandingCapacity(
+                          selected.widthCm,
+                          selected.heightCm,
+                          selected.standingMode ?? "standing",
+                        );
+                        updateSelected({ capacity: auto, capacityManual: false });
+                      }}
+                    >
+                      Aus Fläche berechnen
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
 
@@ -1070,7 +1118,7 @@ export function SaalplanEditor({
                       ? " (freie Wahl)"
                       : ` (${seatCountOfObject(o)})`
                     : o.type === "standing_area"
-                      ? ` (ca. ${estimateStandingCapacity(o.widthCm, o.heightCm, o.standingMode ?? "standing")})`
+                      ? ` (${resolveStandingCapacity(o)})`
                       : ""}
                 </button>
               </li>

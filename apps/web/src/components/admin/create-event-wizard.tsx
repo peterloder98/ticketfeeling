@@ -1684,8 +1684,8 @@ export function CreateEventWizard({
               </p>
               <p className="mt-1 text-[var(--tf-text-secondary)]">
                 Nach dem Anlegen landest du bei der Saalplan-Zuordnung — dort Preiskategorien
-                anlegen und Sitze zuweisen. Stehbereiche aus dem Plan sind nur Geometrie, keine
-                Kategorie. Kontingent kommt aus den zugewiesenen Plätzen.
+                anlegen und Sitze sowie Stehplätze zuweisen. Stehbereiche erzeugen keine
+                Kategorie automatisch; ihr Kontingent kommt aus der Zuordnung am Event.
               </p>
             </div>
           ) : (

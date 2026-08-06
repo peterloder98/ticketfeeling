@@ -45,7 +45,10 @@ export type PublicStandingArea = {
   heightCm: number;
   rotationDeg: number;
   standingMode: "standing" | "standing_tables";
+  /** @deprecated use capacity — kept for older clients */
   estimatedCapacity: number;
+  /** Assignable standing places for this zone */
+  capacity: number;
 };
 
 export type SeatMapPayload = {
@@ -72,7 +75,11 @@ export function formatSeatLabel(input: {
   blockLabel: string;
   rowLabel: string;
   seatNumber: string;
+  seatKey?: string;
 }) {
+  if (input.rowLabel === "Steh" || (input.seatKey && input.seatKey.includes(":ST:"))) {
+    return `${input.blockLabel} · Stehplatz ${input.seatNumber}`;
+  }
   return `${input.blockLabel} · Reihe ${input.rowLabel} · Platz ${input.seatNumber}`;
 }
 

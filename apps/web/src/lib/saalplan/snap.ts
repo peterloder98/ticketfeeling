@@ -1,4 +1,5 @@
 import type { VenuePlanObject } from "@/lib/saalplan/types";
+import { estimateStandingCapacity } from "@/lib/saalplan/types";
 
 export type SnapGuide = {
   orientation: "v" | "h";
@@ -121,10 +122,16 @@ export function createSeatBlock(
 export function createStandingArea(
   hallWidthCm: number,
   hallDepthCm: number,
-  opts?: { label?: string; standingMode?: "standing" | "standing_tables" },
+  opts?: { label?: string; standingMode?: "standing" | "standing_tables"; capacity?: number },
 ): VenuePlanObject {
   const widthCm = Math.min(800, Math.round(hallWidthCm * 0.55));
   const heightCm = Math.min(400, Math.round(hallDepthCm * 0.22));
+  const standingMode = opts?.standingMode ?? "standing";
+  const autoCap = estimateStandingCapacity(widthCm, heightCm, standingMode);
+  const capacity =
+    typeof opts?.capacity === "number" && Number.isFinite(opts.capacity)
+      ? Math.max(0, Math.floor(opts.capacity))
+      : autoCap;
   return {
     id: newObjectId(),
     type: "standing_area",
@@ -135,7 +142,9 @@ export function createStandingArea(
     rotationDeg: 0,
     // Geometry label only — not a Preiskategorie name.
     label: opts?.label ?? "Stehbereich",
-    standingMode: opts?.standingMode ?? "standing",
+    standingMode,
+    capacity,
+    capacityManual: typeof opts?.capacity === "number",
     zIndex: 2,
   };
 }

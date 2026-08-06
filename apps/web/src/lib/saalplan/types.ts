@@ -41,8 +41,15 @@ export type VenuePlanObject = {
   rowCategoryKeys?: Record<string, string>;
   /** seat_block: "R{row}:S{seat}" → category slot key (legacy) */
   seatCategoryKeys?: Record<string, string>;
-  /** standing_area only — geometry / density estimate, never a Preiskategorie */
+  /** standing_area only — density mode for auto capacity */
   standingMode?: StandingMode;
+  /**
+   * standing_area only — assignable place count (inventory).
+   * Defaults from area × density; may be overridden manually (higher or lower).
+   */
+  capacity?: number;
+  /** When true, resizing / mode changes do not overwrite `capacity`. */
+  capacityManual?: boolean;
 };
 
 export type VenuePlanData = {
@@ -64,7 +71,7 @@ export function areaSqm(widthCm: number, heightCm: number) {
   return Math.max(0, (widthCm / 100) * (heightCm / 100));
 }
 
-/** Non-binding capacity estimate for standing areas. */
+/** Density-based capacity estimate for standing areas (auto default). */
 export function estimateStandingCapacity(
   widthCm: number,
   heightCm: number,
@@ -72,6 +79,24 @@ export function estimateStandingCapacity(
 ) {
   const density = STANDING_DENSITY_PER_M2[mode] ?? STANDING_DENSITY_PER_M2.standing;
   return Math.max(0, Math.floor(areaSqm(widthCm, heightCm) * density));
+}
+
+/** Effective standing inventory (manual override or area estimate). */
+export function resolveStandingCapacity(o: VenuePlanObject): number {
+  if (o.type !== "standing_area") return 0;
+  if (typeof o.capacity === "number" && Number.isFinite(o.capacity)) {
+    return Math.max(0, Math.floor(o.capacity));
+  }
+  return estimateStandingCapacity(o.widthCm, o.heightCm, o.standingMode ?? "standing");
+}
+
+/** EventSeat seatKey marker for standing inventory units (`blockId:ST:n`). */
+export function isStandingSeatKey(seatKey: string) {
+  return seatKey.includes(":ST:");
+}
+
+export function standingSeatKey(blockObjectId: string, placeIndex: number) {
+  return `${blockObjectId}:ST:${placeIndex}`;
 }
 
 export function isNumberedSeatBlock(o: VenuePlanObject) {
@@ -98,10 +123,12 @@ export function planSeatCapacity(objects: VenuePlanObject[]): number {
 }
 
 export function planStandingEstimate(objects: VenuePlanObject[]): number {
-  return objects.reduce((sum, o) => {
-    if (o.type !== "standing_area") return sum;
-    return sum + estimateStandingCapacity(o.widthCm, o.heightCm, o.standingMode ?? "standing");
-  }, 0);
+  return objects.reduce((sum, o) => sum + resolveStandingCapacity(o), 0);
+}
+
+/** Numbered seats + standing places — total assignable plan inventory. */
+export function planAssignableCapacity(objects: VenuePlanObject[]): number {
+  return planSeatCapacity(objects) + planStandingEstimate(objects);
 }
 
 export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
@@ -165,6 +192,12 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
     }
     if (type === "standing_area") {
       obj.standingMode = o.standingMode === "standing_tables" ? "standing_tables" : "standing";
+      if (typeof o.capacity === "number" && Number.isFinite(o.capacity)) {
+        obj.capacity = Math.max(0, Math.floor(o.capacity));
+      } else {
+        obj.capacity = estimateStandingCapacity(obj.widthCm, obj.heightCm, obj.standingMode);
+      }
+      obj.capacityManual = o.capacityManual === true;
     }
     out.push(obj);
   }

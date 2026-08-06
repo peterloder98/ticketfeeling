@@ -17,20 +17,34 @@ type SeatRow = Pick<
 /**
  * Best-available: prefer contiguous seats in the same row (closest to center),
  * then pairs, then fill remaining singles near the best cluster.
+ * Standing inventory (`:ST:` keys) is used only after numbered seats are exhausted.
  */
 export function pickBestAvailableSeats(seats: SeatRow[], quantity: number): SeatRow[] {
   if (quantity < 1) return [];
-  const available = seats
-    .filter((s) => s.status === "available")
-    .sort((a, b) => {
-      if (a.blockObjectId !== b.blockObjectId) {
-        return a.blockLabel.localeCompare(b.blockLabel) || a.blockObjectId.localeCompare(b.blockObjectId);
-      }
-      if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
-      return a.seatIndex - b.seatIndex;
-    });
+  const numbered = seats.filter((s) => s.status === "available" && !s.seatKey.includes(":ST:"));
+  const standing = seats.filter((s) => s.status === "available" && s.seatKey.includes(":ST:"));
+  const fromNumbered = pickBestAvailableFromPool(numbered, quantity);
+  if (fromNumbered.length === quantity) return fromNumbered;
+  const need = quantity - fromNumbered.length;
+  const fromStanding = pickBestAvailableFromPool(standing, need);
+  if (fromNumbered.length + fromStanding.length < quantity) return [];
+  return [...fromNumbered, ...fromStanding];
+}
 
-  if (available.length < quantity) return [];
+function pickBestAvailableFromPool(seats: SeatRow[], quantity: number): SeatRow[] {
+  if (quantity < 1) return [];
+  const available = [...seats].sort((a, b) => {
+    if (a.blockObjectId !== b.blockObjectId) {
+      return a.blockLabel.localeCompare(b.blockLabel) || a.blockObjectId.localeCompare(b.blockObjectId);
+    }
+    if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+    return a.seatIndex - b.seatIndex;
+  });
+
+  if (available.length < quantity) {
+    // Partial fill — caller may combine pools.
+    if (available.length === 0) return [];
+  }
 
   const rows = new Map<string, SeatRow[]>();
   for (const seat of available) {
@@ -98,7 +112,7 @@ export function pickBestAvailableSeats(seats: SeatRow[], quantity: number): Seat
     }
   }
 
-  return picked.slice(0, quantity);
+  return picked.slice(0, Math.min(quantity, picked.length));
 }
 
 /**
@@ -108,7 +122,7 @@ export function pickBestAvailableSeats(seats: SeatRow[], quantity: number): Seat
 export function pickBestAvailablePairs(seats: SeatRow[], pairCount: number): SeatRow[] {
   if (pairCount < 1) return [];
   const available = seats
-    .filter((s) => s.status === "available")
+    .filter((s) => s.status === "available" && !s.seatKey.includes(":ST:"))
     .sort((a, b) => {
       if (a.blockObjectId !== b.blockObjectId) {
         return a.blockLabel.localeCompare(b.blockLabel) || a.blockObjectId.localeCompare(b.blockObjectId);

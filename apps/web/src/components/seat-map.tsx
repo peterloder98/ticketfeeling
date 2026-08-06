@@ -312,8 +312,8 @@ export function SeatMap({
                   style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
                 >
                   {area.label}
-                  {area.estimatedCapacity > 0
-                    ? ` · ca. ${area.estimatedCapacity} Pers.`
+                  {(area.capacity ?? area.estimatedCapacity) > 0
+                    ? ` · ${area.capacity ?? area.estimatedCapacity} Plätze`
                     : ""}
                 </text>
                 <text
