@@ -36,6 +36,15 @@ import {
   pruneCategoryAssignments,
   type PlanCategorySlot,
 } from "@/lib/saalplan/category-slots";
+import {
+  DEFAULT_VIEW_ZOOM,
+  MAX_VIEW_ZOOM,
+  MIN_VIEW_ZOOM,
+  VIEW_ZOOM_STEP,
+  clampViewZoom,
+  fitViewZoom,
+  readableScalePxPerCm,
+} from "@/lib/saalplan/view-zoom";
 
 type Props = {
   planId: string;
@@ -60,9 +69,6 @@ type DragState = {
   origY: number;
 };
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
-const ZOOM_STEP = 0.25;
 /** Hard caps for block layout — real halls need more than the old silent max of 80. */
 const MAX_ROWS = 200;
 const MAX_SEATS_PER_ROW = 200;
@@ -89,7 +95,7 @@ export function SaalplanEditor({
   const [selectedId, setSelectedId] = useState<string | null>(
     initialObjects[0]?.id ?? null,
   );
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_VIEW_ZOOM);
   const [guides, setGuides] = useState<SnapGuide[]>([]);
   const [dirty, setDirty] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -132,7 +138,10 @@ export function SaalplanEditor({
     (viewport.w - pad * 2) / Math.max(1, widthCm),
     (viewport.h - pad * 2) / Math.max(1, depthCm),
   );
-  const scale = Math.max(0.01, fitScale * zoom);
+  const readableScale = readableScalePxPerCm();
+  const fitZoom = fitViewZoom(fitScale, readableScale);
+  // 100% = readable seat labels; fit remains available via the % control.
+  const scale = Math.max(0.01, readableScale * zoom);
   scaleRef.current = scale;
 
   const hallW = widthCm * scale;
@@ -547,8 +556,8 @@ export function SaalplanEditor({
               <button
                 type="button"
                 className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
-                disabled={zoom <= MIN_ZOOM}
-                onClick={() => setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100))}
+                disabled={zoom <= MIN_VIEW_ZOOM}
+                onClick={() => setZoom((z) => clampViewZoom(z - VIEW_ZOOM_STEP))}
                 aria-label="Verkleinern"
               >
                 <ZoomOut className="h-4 w-4" />
@@ -556,7 +565,7 @@ export function SaalplanEditor({
               <button
                 type="button"
                 className="min-w-[3.25rem] rounded-md px-1 py-1 text-center text-xs tabular-nums hover:bg-[rgba(15,39,71,0.06)]"
-                onClick={() => setZoom(1)}
+                onClick={() => setZoom(fitZoom)}
                 title="Saal auf Fläche einpassen"
               >
                 {Math.round(zoom * 100)}%
@@ -564,8 +573,8 @@ export function SaalplanEditor({
               <button
                 type="button"
                 className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
-                disabled={zoom >= MAX_ZOOM}
-                onClick={() => setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + ZOOM_STEP) * 100) / 100))}
+                disabled={zoom >= MAX_VIEW_ZOOM}
+                onClick={() => setZoom((z) => clampViewZoom(z + VIEW_ZOOM_STEP))}
                 aria-label="Vergrößern"
               >
                 <ZoomIn className="h-4 w-4" />

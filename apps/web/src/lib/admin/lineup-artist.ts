@@ -7,6 +7,8 @@ export type LineupArtistRow = {
   homepage: string;
   youtube: string;
   bio: string;
+  profileImageUrl: string;
+  headerImageUrl: string;
   detailsOpen: boolean;
 };
 
@@ -16,6 +18,8 @@ export type LibraryArtist = {
   homepage: string | null;
   youtube: string | null;
   shortBio: string | null;
+  profileImageUrl?: string | null;
+  headerImageUrl?: string | null;
 };
 
 function newKey() {
@@ -30,6 +34,8 @@ export function emptyLineupArtist(partial?: Partial<LineupArtistRow>): LineupArt
     homepage: "",
     youtube: "",
     bio: "",
+    profileImageUrl: "",
+    headerImageUrl: "",
     detailsOpen: false,
     ...partial,
   };
@@ -45,5 +51,7 @@ export function lineupToJsonPayload(rows: LineupArtistRow[]) {
       homepage: r.homepage.trim(),
       youtube: r.youtube.trim(),
       bio: r.bio.trim(),
+      profileImageUrl: r.profileImageUrl.trim(),
+      headerImageUrl: r.headerImageUrl.trim(),
     }));
 }

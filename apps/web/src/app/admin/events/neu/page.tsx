@@ -91,6 +91,8 @@ export default async function NewEventPage({ searchParams }: Props) {
         homepage: true,
         youtube: true,
         shortBio: true,
+        profileImageUrl: true,
+        headerImageUrl: true,
       },
       orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
     }),

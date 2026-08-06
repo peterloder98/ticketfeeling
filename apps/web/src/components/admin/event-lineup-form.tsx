@@ -27,7 +27,7 @@ export function EventLineupForm({ eventId, initialLineup, library }: Props) {
         value={lineup}
         onChange={setLineup}
         library={library}
-        hint="Aus der Bibliothek wählen oder neuen Namen tippen. Details sind optional."
+        hint="Aus der Bibliothek wählen oder neuen Namen tippen. Bilder und Details sind optional."
       />
       <button type="submit" className="tf-btn tf-btn-primary !py-2 text-sm">
         Line-up speichern

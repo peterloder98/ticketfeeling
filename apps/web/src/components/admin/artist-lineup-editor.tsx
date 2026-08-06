@@ -7,6 +7,8 @@ import {
   type LibraryArtist,
   type LineupArtistRow,
 } from "@/lib/admin/lineup-artist";
+import { ArtistImageField } from "@/components/admin/artist-image-field";
+import { ResponsiveImage } from "@/components/responsive-image";
 
 export type { LibraryArtist, LineupArtistRow };
 export { emptyLineupArtist, lineupToJsonPayload };
@@ -27,7 +29,7 @@ export function ArtistLineupEditor({
   onChange,
   library = [],
   formFieldName = "artistsJson",
-  hint = "Nur den Namen reicht — Details kannst du jetzt oder später ergänzen.",
+  hint = "Nur den Namen reicht — Details und Bilder kannst du jetzt oder später ergänzen.",
 }: Props) {
   const [draftName, setDraftName] = useState("");
   const [libraryQuery, setLibraryQuery] = useState("");
@@ -64,6 +66,9 @@ export function ArtistLineupEditor({
         homepage: fromLib?.homepage ?? "",
         youtube: fromLib?.youtube ?? "",
         bio: fromLib?.shortBio ?? "",
+        profileImageUrl: fromLib?.profileImageUrl ?? "",
+        headerImageUrl: fromLib?.headerImageUrl ?? "",
+        detailsOpen: true,
       }),
     ]);
     setDraftName("");
@@ -79,6 +84,9 @@ export function ArtistLineupEditor({
         homepage: artist.homepage ?? "",
         youtube: artist.youtube ?? "",
         bio: artist.shortBio ?? "",
+        profileImageUrl: artist.profileImageUrl ?? "",
+        headerImageUrl: artist.headerImageUrl ?? "",
+        detailsOpen: true,
       }),
     ]);
     setLibraryQuery("");
@@ -118,6 +126,21 @@ export function ArtistLineupEditor({
             >
               <div className="flex flex-wrap items-center gap-2">
                 <span className="tf-badge tf-badge-teal !text-[10px]">{index + 1}</span>
+                {row.profileImageUrl ? (
+                  <ResponsiveImage
+                    src={row.profileImageUrl}
+                    alt=""
+                    className="h-9 w-9 shrink-0 rounded-lg"
+                    fallback="person"
+                  />
+                ) : (
+                  <span
+                    className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[rgba(15,39,71,0.06)] text-xs font-semibold text-[var(--tf-text-secondary)]"
+                    aria-hidden
+                  >
+                    {row.name.trim().slice(0, 1).toUpperCase() || "?"}
+                  </span>
+                )}
                 <input
                   className="tf-input min-w-[10rem] flex-1 !py-1.5 text-sm"
                   value={row.name}
@@ -130,7 +153,7 @@ export function ArtistLineupEditor({
                     className="tf-btn tf-btn-ghost !min-h-8 !px-2 text-xs"
                     onClick={() => updateRow(row.key, { detailsOpen: !row.detailsOpen })}
                   >
-                    {row.detailsOpen ? "Weniger" : "Details hinzufügen"}
+                    {row.detailsOpen ? "Weniger" : "Details & Bild"}
                   </button>
                   <button
                     type="button"
@@ -192,6 +215,26 @@ export function ArtistLineupEditor({
                       placeholder="Kurz was über den Künstler — darf später kommen."
                     />
                   </label>
+                  <div className="sm:col-span-1">
+                    <ArtistImageField
+                      kind="profile"
+                      label="Profilbild"
+                      artistId={row.id ?? undefined}
+                      initialUrl={row.profileImageUrl || null}
+                      hint="Für Line-up und Eventseite. WebP, ca. 1000 px."
+                      onUrlChange={(url) => updateRow(row.key, { profileImageUrl: url })}
+                    />
+                  </div>
+                  <div className="sm:col-span-1">
+                    <ArtistImageField
+                      kind="header"
+                      label="Header-Bild"
+                      artistId={row.id ?? undefined}
+                      initialUrl={row.headerImageUrl || null}
+                      hint="Für die Künstlerseite. WebP, ca. 1800 px — optional."
+                      onUrlChange={(url) => updateRow(row.key, { headerImageUrl: url })}
+                    />
+                  </div>
                 </div>
               ) : null}
             </li>
@@ -242,9 +285,17 @@ export function ArtistLineupEditor({
                 <li key={a.id}>
                   <button
                     type="button"
-                    className="tf-badge tf-badge-teal cursor-pointer !px-3 !py-1.5 text-sm hover:opacity-90"
+                    className="tf-badge tf-badge-teal inline-flex cursor-pointer items-center gap-1.5 !px-2.5 !py-1.5 text-sm hover:opacity-90"
                     onClick={() => addFromLibrary(a)}
                   >
+                    {a.profileImageUrl ? (
+                      <ResponsiveImage
+                        src={a.profileImageUrl}
+                        alt=""
+                        className="h-5 w-5 rounded-md"
+                        fallback="person"
+                      />
+                    ) : null}
                     + {a.name}
                   </button>
                 </li>

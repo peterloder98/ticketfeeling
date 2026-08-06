@@ -7,11 +7,14 @@ import { ResponsiveImage } from "@/components/responsive-image";
 
 type Props = {
   kind: "profile" | "header";
-  name: string;
+  /** Hidden form field — omit when wiring via onUrlChange (e.g. lineup JSON). */
+  name?: string;
   label: string;
   artistId?: string;
   initialUrl?: string | null;
   hint?: string;
+  /** Controlled URL updates (wizard / lineup editor). */
+  onUrlChange?: (url: string) => void;
 };
 
 const KIND_HINT: Record<Props["kind"], string> = {
@@ -26,6 +29,7 @@ export function ArtistImageField({
   artistId,
   initialUrl,
   hint,
+  onUrlChange,
 }: Props) {
   const router = useRouter();
   const [url, setUrl] = useState(initialUrl ?? "");
@@ -38,6 +42,11 @@ export function ArtistImageField({
   useEffect(() => {
     setUrl(initialUrl ?? "");
   }, [initialUrl]);
+
+  function commitUrl(next: string) {
+    setUrl(next);
+    onUrlChange?.(next);
+  }
 
   async function uploadFile(file: File) {
     if (!file.type.startsWith("image/")) {
@@ -73,7 +82,7 @@ export function ArtistImageField({
       if (!res.ok) throw new Error(data?.error?.code ?? "UPLOAD_FAILED");
       const nextUrl = String(data.url ?? "");
       if (!nextUrl) throw new Error("UPLOAD_FAILED");
-      setUrl(nextUrl);
+      commitUrl(nextUrl);
       if (artistId) router.refresh();
     } catch (e) {
       if (e instanceof Error && e.name === "AbortError") {
@@ -98,7 +107,7 @@ export function ArtistImageField({
         const res = await fetch("/api/v1/admin/uploads/artist", { method: "POST", body });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error?.code ?? "CLEAR_FAILED");
-        setUrl("");
+        commitUrl("");
         router.refresh();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Entfernen fehlgeschlagen");
@@ -107,12 +116,12 @@ export function ArtistImageField({
       }
       return;
     }
-    setUrl("");
+    commitUrl("");
   }
 
   return (
     <div className="space-y-2">
-      <input type="hidden" name={name} value={url} />
+      {name ? <input type="hidden" name={name} value={url} /> : null}
       <p className="text-sm font-medium text-[var(--tf-navy)]">{label}</p>
       <p className="text-xs text-[var(--tf-text-secondary)]">{hint ?? KIND_HINT[kind]}</p>
 
@@ -209,7 +218,7 @@ export function ArtistImageField({
           <input
             className="tf-input"
             value={url}
-            onChange={(e) => setUrl(e.target.value.trim())}
+            onChange={(e) => commitUrl(e.target.value.trim())}
             placeholder="https://… oder /api/assets/…"
             inputMode="url"
           />

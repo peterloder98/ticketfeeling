@@ -9,6 +9,8 @@ export type ArtistLineupDraft = {
   homepage?: string;
   youtube?: string;
   bio?: string;
+  profileImageUrl?: string;
+  headerImageUrl?: string;
 };
 
 export const ARTIST_TYPES = ["solo", "band", "duo", "ensemble", "other"] as const;
@@ -200,6 +202,8 @@ export function parseArtistsJson(raw: FormDataEntryValue | null): ArtistLineupDr
           homepage: typeof r.homepage === "string" ? r.homepage : "",
           youtube: typeof r.youtube === "string" ? r.youtube : "",
           bio: typeof r.bio === "string" ? r.bio : "",
+          profileImageUrl: typeof r.profileImageUrl === "string" ? r.profileImageUrl : "",
+          headerImageUrl: typeof r.headerImageUrl === "string" ? r.headerImageUrl : "",
         };
       })
       .filter((r): r is ArtistLineupDraft => Boolean(r));

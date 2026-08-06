@@ -14,7 +14,11 @@ import {
   prepareWizardLocationPlanAction,
 } from "@/app/admin/saalplan/actions";
 import { ArtistLineupEditor } from "@/components/admin/artist-lineup-editor";
-import type { LibraryArtist, LineupArtistRow } from "@/lib/admin/lineup-artist";
+import {
+  emptyLineupArtist,
+  type LibraryArtist,
+  type LineupArtistRow,
+} from "@/lib/admin/lineup-artist";
 import { CREATE_EVENT_STATUSES, slugify } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import {
@@ -560,7 +564,16 @@ export function CreateEventWizard({
       );
     }
     if (Array.isArray(draft.lineup)) {
-      setLineup(draft.lineup as LineupArtistRow[]);
+      setLineup(
+        (draft.lineup as Partial<LineupArtistRow>[]).map((row) =>
+          emptyLineupArtist({
+            ...row,
+            ...(typeof row.key === "string" && row.key ? { key: row.key } : {}),
+            profileImageUrl: row.profileImageUrl ?? "",
+            headerImageUrl: row.headerImageUrl ?? "",
+          }),
+        ),
+      );
     }
   }
 
@@ -1250,7 +1263,7 @@ export function CreateEventWizard({
               value={lineup}
               onChange={setLineup}
               library={artistLibrary}
-              hint="Name tippen, Enter — fertig. Über „Details hinzufügen“ optional mehr Infos."
+              hint="Name tippen, Enter — fertig. Über „Details & Bild“ Profilbild und Infos ergänzen."
             />
           </div>
         </div>

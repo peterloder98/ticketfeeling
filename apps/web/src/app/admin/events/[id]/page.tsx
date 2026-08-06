@@ -115,6 +115,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
                 homepage: true,
                 youtube: true,
                 shortBio: true,
+                profileImageUrl: true,
+                headerImageUrl: true,
               },
             },
           },
@@ -219,6 +221,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           homepage: true,
           youtube: true,
           shortBio: true,
+          profileImageUrl: true,
+          headerImageUrl: true,
         },
         orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
       }),
@@ -544,6 +548,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               homepage: link.artist.homepage ?? "",
               youtube: link.artist.youtube ?? "",
               bio: link.artist.shortBio ?? "",
+              profileImageUrl: link.artist.profileImageUrl ?? "",
+              headerImageUrl: link.artist.headerImageUrl ?? "",
               detailsOpen: false,
             }))}
           />

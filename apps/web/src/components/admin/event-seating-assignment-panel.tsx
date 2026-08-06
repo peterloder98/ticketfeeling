@@ -4,6 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lock, Unlock, Paintbrush, Plus, ZoomIn, ZoomOut } from "lucide-react";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
+import {
+  DEFAULT_VIEW_ZOOM,
+  MAX_VIEW_ZOOM,
+  MIN_VIEW_ZOOM,
+  VIEW_ZOOM_STEP,
+  clampViewZoom,
+  fitViewZoom,
+  readableScalePxPerCm,
+} from "@/lib/saalplan/view-zoom";
 import { sellableSeatCountsByCategory } from "@/lib/seating/sync-category-capacity";
 
 export type AssignmentCategory = {
@@ -35,9 +44,6 @@ const QUICK_COLORS = ["#14B8A6", "#0F2747", "#3B82F6", "#D6A642", ...DEFAULT_CAT
   (c, i, arr) => arr.indexOf(c) === i,
 );
 
-const MIN_ZOOM = 0.5;
-const MAX_ZOOM = 4;
-const ZOOM_STEP = 0.25;
 
 /**
  * Assign ticket categories on the event plan (block / row / seat),
@@ -85,13 +91,21 @@ export function EventSeatingAssignmentPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatColor, setNewCatColor] = useState("#14B8A6");
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(DEFAULT_VIEW_ZOOM);
   const [viewport, setViewport] = useState({ w: 720, h: 420 });
   const canvasRef = useRef<HTMLDivElement>(null);
   const initialLoadDone = useRef(false);
+  const seatsRef = useRef(seats);
+  seatsRef.current = seats;
+  const patchQueueRef = useRef<
+    Array<{ seatIds: string[]; categoryId?: string | null; locked?: boolean }>
+  >([]);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushingRef = useRef(false);
 
   const categories = controlledCategories ?? localCategories;
 
@@ -238,6 +252,12 @@ export function EventSeatingAssignmentPanel({
   }, [eventId]); // eslint-disable-line react-hooks/exhaustive-deps -- initial load only
 
   useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     const el = canvasRef.current;
     if (!el) return;
     const update = () => {
@@ -260,7 +280,7 @@ export function EventSeatingAssignmentPanel({
   }): string[] {
     if (patch.seatIds?.length) return patch.seatIds;
     if (patch.blockObjectId) {
-      return seats
+      return seatsRef.current
         .filter(
           (s) =>
             s.blockObjectId === patch.blockObjectId &&
@@ -272,7 +292,113 @@ export function EventSeatingAssignmentPanel({
     return [];
   }
 
-  async function applyPatch(
+  const flushPatchQueue = useCallback(async () => {
+    if (flushingRef.current) return;
+    flushingRef.current = true;
+    setSaving(true);
+    try {
+      while (patchQueueRef.current.length > 0) {
+        const batch = patchQueueRef.current.splice(0);
+        const groups = new Map<
+          string,
+          { seatIds: Set<string>; categoryId?: string | null; locked?: boolean }
+        >();
+        for (const item of batch) {
+          const key =
+            item.locked !== undefined ? `L:${item.locked}` : `C:${item.categoryId ?? "null"}`;
+          let group = groups.get(key);
+          if (!group) {
+            group = {
+              seatIds: new Set(),
+              categoryId: item.categoryId,
+              locked: item.locked,
+            };
+            groups.set(key, group);
+          }
+          for (const id of item.seatIds) group.seatIds.add(id);
+        }
+
+        let updatedTotal = 0;
+        let lastKind: "lock" | "unlock" | "assign" = "assign";
+        for (const group of groups.values()) {
+          const body: Record<string, unknown> = {
+            eventId,
+            seatIds: [...group.seatIds],
+          };
+          if (group.locked !== undefined) {
+            body.locked = group.locked;
+            lastKind = group.locked ? "lock" : "unlock";
+          }
+          if (group.categoryId !== undefined) {
+            body.categoryId = group.categoryId;
+            lastKind = "assign";
+          }
+          try {
+            const res = await fetch("/api/v1/admin/events/seating", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+              setError(data?.error?.code ?? "Speichern fehlgeschlagen");
+              void load({ silent: true, seatsOnly: true });
+              continue;
+            }
+            updatedTotal += Number(data.updated ?? 0);
+            if (data.capacities && onCapacitiesChange) {
+              onCapacitiesChange(data.capacities as Record<string, number>);
+            }
+          } catch {
+            setError("Speichern fehlgeschlagen");
+            void load({ silent: true, seatsOnly: true });
+          }
+        }
+
+        if (lastKind === "lock") {
+          setMessage(
+            updatedTotal === 0
+              ? "Keine freien Plätze zum Sperren."
+              : `${updatedTotal} Plätze gesperrt.`,
+          );
+        } else if (lastKind === "unlock") {
+          setMessage(
+            updatedTotal === 0
+              ? "Keine gesperrten Plätze freigegeben."
+              : `${updatedTotal} Plätze freigegeben.`,
+          );
+        } else if (updatedTotal > 0) {
+          setMessage(`${updatedTotal} Plätze aktualisiert.`);
+        }
+      }
+      // Soft sync after the burst — never remount the canvas.
+      void load({ silent: true, seatsOnly: true });
+    } finally {
+      flushingRef.current = false;
+      if (patchQueueRef.current.length > 0) {
+        void flushPatchQueue();
+      } else {
+        setSaving(false);
+      }
+    }
+  }, [eventId, load, onCapacitiesChange]);
+
+  function enqueuePatchSave(item: {
+    seatIds: string[];
+    categoryId?: string | null;
+    locked?: boolean;
+  }) {
+    if (item.seatIds.length === 0) return;
+    patchQueueRef.current.push(item);
+    setSaving(true);
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => {
+      flushTimerRef.current = null;
+      void flushPatchQueue();
+    }, 90);
+  }
+
+  function applyPatch(
     patch: {
       seatIds?: string[];
       blockObjectId?: string;
@@ -287,75 +413,43 @@ export function EventSeatingAssignmentPanel({
       return;
     }
 
-    const body: Record<string, unknown> = { eventId, ...patch };
     let nextCategoryId: string | null | undefined;
     let nextLocked: boolean | undefined;
     if (opts?.locked !== undefined) {
-      body.locked = opts.locked;
       nextLocked = opts.locked;
     } else if (mode === "assign") {
       nextCategoryId = opts?.categoryId !== undefined ? opts.categoryId : selectedCategoryId;
-      body.categoryId = nextCategoryId;
     } else if (mode === "lock") {
-      body.locked = true;
       nextLocked = true;
     } else if (mode === "unlock") {
-      body.locked = false;
       nextLocked = false;
     }
 
     const targetIds = new Set(resolveTargetSeatIds(patch));
-    const prevSeats = seats;
-    if (targetIds.size > 0) {
-      setSeats((curr) =>
-        curr.map((s) => {
-          if (!targetIds.has(s.id)) return s;
-          if (nextLocked === true && s.status !== "available") return s;
-          if (nextLocked === false && s.status === "sold") return s;
-          if (nextCategoryId !== undefined && s.status !== "available") return s;
-          return {
-            ...s,
-            ...(nextCategoryId !== undefined ? { categoryId: nextCategoryId } : {}),
-            ...(nextLocked !== undefined ? { locked: nextLocked } : {}),
-          };
-        }),
-      );
-    }
+    if (targetIds.size === 0) return;
 
-    setBusy(true);
+    // Optimistic paint — never wait on the network before the next click.
+    setSeats((curr) =>
+      curr.map((s) => {
+        if (!targetIds.has(s.id)) return s;
+        if (nextLocked === true && s.status !== "available") return s;
+        if (nextLocked === false && s.status === "sold") return s;
+        if (nextCategoryId !== undefined && s.status !== "available") return s;
+        return {
+          ...s,
+          ...(nextCategoryId !== undefined ? { categoryId: nextCategoryId } : {}),
+          ...(nextLocked !== undefined ? { locked: nextLocked } : {}),
+        };
+      }),
+    );
+
     setError(null);
     if (!opts?.silent) setMessage(null);
-    try {
-      const res = await fetch("/api/v1/admin/events/seating", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setSeats(prevSeats);
-        setError(data?.error?.code ?? "Speichern fehlgeschlagen");
-        return;
-      }
-      const n = data.updated ?? 0;
-      if (body.locked === true) {
-        setMessage(n === 0 ? "Keine freien Plätze zum Sperren." : `${n} Plätze gesperrt.`);
-      } else if (body.locked === false) {
-        setMessage(n === 0 ? "Keine gesperrten Plätze freigegeben." : `${n} Plätze freigegeben.`);
-      } else {
-        setMessage(`${n} Plätze aktualisiert.`);
-      }
-      if (data.capacities && onCapacitiesChange) {
-        onCapacitiesChange(data.capacities as Record<string, number>);
-      }
-      // Soft sync seats — keep canvas mounted; never full loading remount.
-      void load({ silent: true, seatsOnly: true });
-    } catch {
-      setSeats(prevSeats);
-      setError("Speichern fehlgeschlagen");
-    } finally {
-      setBusy(false);
-    }
+    enqueuePatchSave({
+      seatIds: [...targetIds],
+      ...(nextCategoryId !== undefined ? { categoryId: nextCategoryId } : {}),
+      ...(nextLocked !== undefined ? { locked: nextLocked } : {}),
+    });
   }
 
   function seatEligibleForPaint(seat: SeatRow) {
@@ -365,7 +459,7 @@ export function EventSeatingAssignmentPanel({
   }
 
   function onSeatClick(seat: SeatRow) {
-    if (busy || !canWrite) return;
+    if (!canWrite) return;
     if (mode === "lock" || mode === "unlock") {
       if (target === "seat") {
         if (!seatEligibleForPaint(seat)) {
@@ -380,7 +474,7 @@ export function EventSeatingAssignmentPanel({
         return;
       }
       if (target === "row") {
-        const ids = seats
+        const ids = seatsRef.current
           .filter(
             (s) =>
               s.blockObjectId === seat.blockObjectId &&
@@ -399,7 +493,7 @@ export function EventSeatingAssignmentPanel({
         void applyPatch({ seatIds: ids });
         return;
       }
-      const ids = seats
+      const ids = seatsRef.current
         .filter((s) => s.blockObjectId === seat.blockObjectId && seatEligibleForPaint(s))
         .map((s) => s.id);
       if (ids.length === 0) {
@@ -441,9 +535,9 @@ export function EventSeatingAssignmentPanel({
   }
 
   function onBlockClick(blockObjectId: string) {
-    if (busy || !canWrite || target !== "block") return;
+    if (!canWrite || target !== "block") return;
     if (mode === "lock" || mode === "unlock") {
-      const ids = seats
+      const ids = seatsRef.current
         .filter((s) => s.blockObjectId === blockObjectId && seatEligibleForPaint(s))
         .map((s) => s.id);
       if (ids.length === 0) {
@@ -562,7 +656,10 @@ export function EventSeatingAssignmentPanel({
     (viewport.w - pad * 2) / Math.max(1, planSize.widthCm),
     (viewport.h - pad * 2) / Math.max(1, planSize.depthCm),
   );
-  const scale = Math.max(0.01, fitScale * zoom);
+  const readableScale = readableScalePxPerCm();
+  const fitZoom = fitViewZoom(fitScale, readableScale);
+  // 100% = readable seats; fit is a separate (usually lower) zoom.
+  const scale = Math.max(0.01, readableScale * zoom);
   const hallW = planSize.widthCm * scale;
   const hallH = planSize.depthCm * scale;
   const viewW = Math.max(viewport.w, Math.ceil(hallW + pad * 2));
@@ -842,17 +939,15 @@ export function EventSeatingAssignmentPanel({
       <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
         <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Scrollen / ziehen = verschieben · Zoom für Einzelplätze
-            {busy ? " · speichert…" : ""}
+            Scrollen = verschieben · 100 % = lesbare Platznummern
+            {saving ? " · speichert…" : ""}
           </p>
           <div className="flex items-center gap-1">
             <button
               type="button"
               className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
-              disabled={zoom <= MIN_ZOOM}
-              onClick={() =>
-                setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - ZOOM_STEP) * 100) / 100))
-              }
+              disabled={zoom <= MIN_VIEW_ZOOM}
+              onClick={() => setZoom((z) => clampViewZoom(z - VIEW_ZOOM_STEP))}
               aria-label="Verkleinern"
             >
               <ZoomOut className="h-4 w-4" />
@@ -860,7 +955,7 @@ export function EventSeatingAssignmentPanel({
             <button
               type="button"
               className="min-w-[3.25rem] rounded-md px-1 py-1 text-center text-xs tabular-nums hover:bg-[rgba(15,39,71,0.06)]"
-              onClick={() => setZoom(1)}
+              onClick={() => setZoom(fitZoom)}
               title="Saal auf Fläche einpassen"
             >
               {Math.round(zoom * 100)}%
@@ -868,10 +963,8 @@ export function EventSeatingAssignmentPanel({
             <button
               type="button"
               className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
-              disabled={zoom >= MAX_ZOOM}
-              onClick={() =>
-                setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + ZOOM_STEP) * 100) / 100))
-              }
+              disabled={zoom >= MAX_VIEW_ZOOM}
+              onClick={() => setZoom((z) => clampViewZoom(z + VIEW_ZOOM_STEP))}
               aria-label="Vergrößern"
             >
               <ZoomIn className="h-4 w-4" />

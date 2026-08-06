@@ -2,11 +2,23 @@ import type { Prisma } from "@prisma/client";
 import {
   allocateUniqueArtistSlug,
   normalizeHomepageUrl,
+  normalizeOptionalImageUrl,
   normalizeYoutubeInput,
   type ArtistLineupDraft,
 } from "@/lib/admin/artist-form";
 
 type Tx = Prisma.TransactionClient;
+
+function draftImageUrls(draft: ArtistLineupDraft) {
+  try {
+    return {
+      profileImageUrl: normalizeOptionalImageUrl(draft.profileImageUrl),
+      headerImageUrl: normalizeOptionalImageUrl(draft.headerImageUrl),
+    };
+  } catch {
+    throw new Error("INVALID_URL");
+  }
+}
 
 async function resolveArtistId(
   tx: Tx,
@@ -19,6 +31,7 @@ async function resolveArtistId(
   const homepage = normalizeHomepageUrl(draft.homepage);
   if (draft.homepage?.trim() && !homepage) throw new Error("INVALID_HOMEPAGE");
   const youtube = normalizeYoutubeInput(draft.youtube);
+  const { profileImageUrl, headerImageUrl } = draftImageUrls(draft);
 
   const bio = String(draft.bio ?? "").trim() || null;
   const shortBio = bio ? bio.slice(0, 280) : null;
@@ -36,6 +49,13 @@ async function resolveArtistId(
     if (bio && bio !== existing.biography) {
       patch.biography = bio;
       patch.shortBio = shortBio;
+    }
+    // Apply uploaded URLs from wizard/lineup. Clears go through ArtistImageField + artistId.
+    if (profileImageUrl && profileImageUrl !== existing.profileImageUrl) {
+      patch.profileImageUrl = profileImageUrl;
+    }
+    if (headerImageUrl && headerImageUrl !== existing.headerImageUrl) {
+      patch.headerImageUrl = headerImageUrl;
     }
     if (Object.keys(patch).length > 0) {
       await tx.artist.update({ where: { id: existing.id }, data: patch });
@@ -57,6 +77,12 @@ async function resolveArtistId(
       patch.biography = bio;
       patch.shortBio = shortBio;
     }
+    if (profileImageUrl && profileImageUrl !== nameMatch.profileImageUrl) {
+      patch.profileImageUrl = profileImageUrl;
+    }
+    if (headerImageUrl && headerImageUrl !== nameMatch.headerImageUrl) {
+      patch.headerImageUrl = headerImageUrl;
+    }
     if (Object.keys(patch).length > 0) {
       await tx.artist.update({ where: { id: nameMatch.id }, data: patch });
     }
@@ -74,6 +100,8 @@ async function resolveArtistId(
       youtube,
       biography: bio,
       shortBio,
+      profileImageUrl,
+      headerImageUrl,
       visibility: "published",
       publishedAt: new Date(),
     },
