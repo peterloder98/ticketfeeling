@@ -133,7 +133,8 @@ export function createStandingArea(
     widthCm,
     heightCm,
     rotationDeg: 0,
-    label: opts?.label ?? "Stehplatz",
+    // Geometry label only — not a Preiskategorie name.
+    label: opts?.label ?? "Stehbereich",
     standingMode: opts?.standingMode ?? "standing",
     zIndex: 2,
   };

@@ -32,16 +32,16 @@ export type VenuePlanObject = {
    */
   numberedSeats?: boolean;
   /**
-   * seat_block: named category slot key (VenuePlan.categorySlots).
-   * Mapped to EventTicketCategory by name when seats materialize.
-   * Overrides: seatCategoryKeys → rowCategoryKeys → categoryKey.
+   * seat_block: legacy named category slot keys (VenuePlan.categorySlots).
+   * Geometry editor no longer paints these — pricing is assigned on the event.
+   * Kept on the type for older stored plans until the next geometry save strips them.
    */
   categoryKey?: string | null;
-  /** seat_block: rowIndex (1-based string) → category slot key */
+  /** seat_block: rowIndex (1-based string) → category slot key (legacy) */
   rowCategoryKeys?: Record<string, string>;
-  /** seat_block: "R{row}:S{seat}" → category slot key */
+  /** seat_block: "R{row}:S{seat}" → category slot key (legacy) */
   seatCategoryKeys?: Record<string, string>;
-  /** standing_area only */
+  /** standing_area only — geometry / density estimate, never a Preiskategorie */
   standingMode?: StandingMode;
 };
 

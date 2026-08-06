@@ -209,6 +209,28 @@ export function pruneCategoryAssignments(block: VenuePlanObject): VenuePlanObjec
   };
 }
 
+/**
+ * Geometry-only save: drop plan slot paint (categoryKey / row / seat).
+ * Pricing lives on the event (Preiskategorie-Zuordnung), not in venue geometry.
+ * Standing areas never carry category paint — this is a no-op for them.
+ */
+export function stripPlanCategoryPaint(obj: VenuePlanObject): VenuePlanObject {
+  if (obj.type !== "seat_block") return obj;
+  if (
+    obj.categoryKey == null &&
+    !obj.rowCategoryKeys &&
+    !obj.seatCategoryKeys
+  ) {
+    return obj;
+  }
+  return {
+    ...obj,
+    categoryKey: undefined,
+    rowCategoryKeys: undefined,
+    seatCategoryKeys: undefined,
+  };
+}
+
 export function colorForSlotKey(
   slots: PlanCategorySlot[],
   key: string | null | undefined,

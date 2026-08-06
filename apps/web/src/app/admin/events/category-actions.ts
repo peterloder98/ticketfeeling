@@ -197,7 +197,7 @@ export async function upsertEventCategoryAction(formData: FormData) {
     after: { eventId: event.id, name, priceGrossCents, capacity },
   });
 
-  // Rematerialize so plan category slots map onto newly named EventTicketCategories.
+  // Sync seat geometry only — categoryId stays null until Preiskategorie-Zuordnung.
   const { ensureEventSeats } = await import("@/lib/seating/materialize");
   await ensureEventSeats(event.id);
 
@@ -275,6 +275,7 @@ export async function applyCategoryTemplateAction(formData: FormData) {
     after: { templateId, name: template.name },
   });
 
+  // Sync seat geometry only — does not map template names onto plan slots.
   const { ensureEventSeats } = await import("@/lib/seating/materialize");
   await ensureEventSeats(event.id);
 

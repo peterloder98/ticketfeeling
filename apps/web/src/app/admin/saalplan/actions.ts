@@ -8,7 +8,10 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { parseVenuePlanObjects, metersToCm } from "@/lib/saalplan/types";
-import { parsePlanCategorySlots } from "@/lib/saalplan/category-slots";
+import {
+  parsePlanCategorySlots,
+  stripPlanCategoryPaint,
+} from "@/lib/saalplan/category-slots";
 import { createStage } from "@/lib/saalplan/snap";
 import {
   STREET_NO_NUMBERS_MESSAGE,
@@ -214,16 +217,9 @@ export async function saveVenuePlanAction(
         return [];
       }
     })(),
-  );
-  const categorySlots = parsePlanCategorySlots(
-    (() => {
-      try {
-        return JSON.parse(String(formData.get("categorySlots") ?? "[]"));
-      } catch {
-        return [];
-      }
-    })(),
-  );
+  ).map(stripPlanCategoryPaint);
+  // Geometry save never invents Preiskategorien from standing zones or painted slots.
+  const categorySlots = parsePlanCategorySlots([]);
 
   const plan = await prisma.venuePlan.findFirst({
     where: { id: planId, organizationId: membership.organizationId },
@@ -278,7 +274,7 @@ export async function saveVenuePlanAction(
     },
   });
 
-  // Keep event seat inventory + plan category mapping in sync
+  // Keep event seat inventory in sync (new seats stay unassigned until Preiskategorie-Zuordnung).
   const { syncSeatsForVenuePlan } = await import("@/lib/seating/materialize");
   await syncSeatsForVenuePlan(plan.id);
 

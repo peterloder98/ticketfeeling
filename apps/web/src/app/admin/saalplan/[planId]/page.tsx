@@ -7,7 +7,6 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { SaalplanEditor } from "@/components/admin/saalplan-editor";
 import { SaalplanReturnButton } from "@/components/admin/saalplan-return-button";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
-import { parsePlanCategorySlots } from "@/lib/saalplan/category-slots";
 import { saveVenuePlanAction } from "@/app/admin/saalplan/actions";
 import {
   checkVenuePlanGeometryFrozen,
@@ -142,7 +141,6 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
         initialWidthCm={plan.widthCm}
         initialDepthCm={plan.depthCm}
         initialObjects={parseVenuePlanObjects(plan.objects)}
-        initialCategorySlots={parsePlanCategorySlots(plan.categorySlots)}
         saveAction={saveVenuePlanAction}
         geometryFrozen={geometryFrozen}
         geometryFrozenMessage={geometryFrozen ? GEOMETRY_FROZEN_MESSAGE : null}

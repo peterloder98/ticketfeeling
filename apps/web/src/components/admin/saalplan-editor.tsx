@@ -32,9 +32,8 @@ import {
   type SnapGuide,
 } from "@/lib/saalplan/snap";
 import {
-  parsePlanCategorySlots,
   pruneCategoryAssignments,
-  type PlanCategorySlot,
+  stripPlanCategoryPaint,
 } from "@/lib/saalplan/category-slots";
 import {
   DEFAULT_VIEW_ZOOM,
@@ -54,8 +53,6 @@ type Props = {
   initialWidthCm: number;
   initialDepthCm: number;
   initialObjects: VenuePlanObject[];
-  /** Preserved on save for legacy plans; not editable in the geometry editor. */
-  initialCategorySlots?: PlanCategorySlot[];
   saveAction: (
     formData: FormData,
   ) => Promise<void | { ok: true } | { ok: false; error: string; code?: string }>;
@@ -86,7 +83,6 @@ export function SaalplanEditor({
   initialWidthCm,
   initialDepthCm,
   initialObjects,
-  initialCategorySlots,
   saveAction,
   geometryFrozen = false,
   geometryFrozenMessage = null,
@@ -97,10 +93,6 @@ export function SaalplanEditor({
   const [widthCm, setWidthCm] = useState(initialWidthCm);
   const [depthCm, setDepthCm] = useState(initialDepthCm);
   const [objects, setObjects] = useState<VenuePlanObject[]>(initialObjects);
-  // Keep legacy slots for save round-trip; geometry editor does not paint categories.
-  const [categorySlots] = useState<PlanCategorySlot[]>(() =>
-    parsePlanCategorySlots(initialCategorySlots ?? []),
-  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialObjects[0]?.id ?? null,
   );
@@ -368,8 +360,12 @@ export function SaalplanEditor({
     fd.set("name", name);
     fd.set("widthCm", String(widthCm));
     fd.set("depthCm", String(depthCm));
-    fd.set("objects", JSON.stringify(objects.map((o) => pruneCategoryAssignments(o))));
-    fd.set("categorySlots", JSON.stringify(categorySlots));
+    // Geometry only: never persist plan category paint / slots (incl. standing labels).
+    fd.set(
+      "objects",
+      JSON.stringify(objects.map((o) => stripPlanCategoryPaint(pruneCategoryAssignments(o)))),
+    );
+    fd.set("categorySlots", JSON.stringify([]));
     startTransition(async () => {
       try {
         const result = await saveAction(fd);
@@ -382,7 +378,7 @@ export function SaalplanEditor({
         setMessage(
           geometryFrozen
             ? "Name gespeichert. Die Geometrie bleibt gesperrt, solange der Verkauf läuft."
-            : "Gespeichert — der Plan ist bereit. Kategorien ordnest du am Event zu.",
+            : "Gespeichert — Geometrie bereit. Preiskategorien und Zuordnung machst du am Event.",
         );
       } catch (err) {
         setMessage(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
@@ -885,8 +881,8 @@ export function SaalplanEditor({
             <Plus className="mr-1 inline h-4 w-4" /> Stehbereich einfügen
           </button>
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Sitzblöcke können nummeriert oder freie Platzwahl sein. Stehbereiche nach Länge × Breite —
-            Kapazität nur als grobe Orientierung.
+            Sitzblöcke: nummeriert oder freie Platzwahl. Stehbereiche: nur Geometrie (Form, grobe
+            Kapazität) — keine Preiskategorie. Preise und Zuordnung legst du später am Event fest.
           </p>
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>
@@ -993,7 +989,7 @@ export function SaalplanEditor({
                       )}{" "}
                       Personen
                     </strong>
-                    . Keine rechtliche Kapazitätsangabe — nur Schätzung für die Planung.
+                    . Nur Geometrie — keine Preiskategorie. Preise und Kontingent legst du am Event fest.
                   </p>
                 </div>
               ) : null}

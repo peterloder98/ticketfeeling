@@ -7,6 +7,7 @@ import {
   parsePlanCategorySlots,
   resolveSeatCategoryKey,
   slotKeyFromName,
+  stripPlanCategoryPaint,
 } from "@/lib/saalplan/category-slots";
 import type { VenuePlanObject } from "@/lib/saalplan/types";
 
@@ -79,5 +80,30 @@ describe("category slots", () => {
     expect(b.seatCategoryKeys?.["R1:S2"]).toBe("vip");
     expect(resolveSeatCategoryKey(b, 1, 2)).toBe("vip");
     expect(resolveSeatCategoryKey(b, 1, 3)).toBe("rang");
+  });
+
+  it("stripPlanCategoryPaint clears seat_block paint and leaves standing alone", () => {
+    const painted = block({
+      categoryKey: "parkett",
+      rowCategoryKeys: { "1": "rang" },
+      seatCategoryKeys: { "R1:S1": "vip" },
+    });
+    const stripped = stripPlanCategoryPaint(painted);
+    expect(stripped.categoryKey).toBeUndefined();
+    expect(stripped.rowCategoryKeys).toBeUndefined();
+    expect(stripped.seatCategoryKeys).toBeUndefined();
+
+    const standing: VenuePlanObject = {
+      id: "stand_1",
+      type: "standing_area",
+      xCm: 0,
+      yCm: 0,
+      widthCm: 400,
+      heightCm: 200,
+      rotationDeg: 0,
+      label: "Stehbereich",
+      standingMode: "standing",
+    };
+    expect(stripPlanCategoryPaint(standing)).toEqual(standing);
   });
 });
