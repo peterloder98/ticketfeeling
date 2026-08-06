@@ -27,7 +27,7 @@ function applyStats(
 
 describe("checkin presence", () => {
   it("check-out decrements Im Haus and increments OUT", () => {
-    let tickets: Array<"not_arrived" | "in" | "out"> = ["in", "in", "in", "not_arrived"];
+    const tickets: Array<"not_arrived" | "in" | "out"> = ["in", "in", "in", "not_arrived"];
     const before = applyStats(tickets);
     expect(before.currentlyIn).toBe(3);
 
@@ -43,7 +43,7 @@ describe("checkin presence", () => {
   });
 
   it("re-check-in after out increments Im Haus again", () => {
-    let tickets: Array<"not_arrived" | "in" | "out"> = ["out", "in"];
+    const tickets: Array<"not_arrived" | "in" | "out"> = ["out", "in"];
     const flip = nextPresence("in", tickets[0]!);
     expect(flip.ok).toBe(true);
     if (flip.ok) tickets[0] = flip.next;

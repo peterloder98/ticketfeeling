@@ -61,7 +61,8 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
         orderBy: { createdAt: "desc" },
         include: {
           items: true,
-          tickets: { select: { id: true } },
+          // Include status so voided/cancelled tickets are not counted as "aktiv".
+          tickets: { select: { id: true, status: true } },
           invoices: { take: 1, orderBy: { createdAt: "desc" } },
         },
       },
@@ -81,7 +82,11 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
     (sum, o) => sum + (o.customerTotalCents || o.grossCents),
     0,
   );
-  const ticketCount = revenueOrders.reduce((sum, o) => sum + o.tickets.length, 0);
+  // Only this buyer's active tickets on paid/fulfilled orders (not voided/cancelled rows).
+  const ticketCount = revenueOrders.reduce(
+    (sum, o) => sum + o.tickets.filter((t) => isActiveTicketStatus(t.status)).length,
+    0,
+  );
   const eventNames = new Set(
     customer.orders.flatMap((o) => o.items.map((i) => i.eventNameSnapshot).filter(Boolean)),
   );
@@ -175,6 +180,9 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
             const strike = orderCancelledStrikeClass(cancelled);
             const detailHref = `/admin/orders/${order.id}`;
             const events = [...new Set(order.items.map((i) => i.eventNameSnapshot))].join(", ");
+            const activeTicketCount = order.tickets.filter((t) =>
+              isActiveTicketStatus(t.status),
+            ).length;
 
             return (
               <div
@@ -193,7 +201,7 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
                 <p className={`mt-1 text-[var(--muted)] ${strike}`}>
                   {events || "—"} ·{" "}
                   {formatEuroFromCents(order.customerTotalCents || order.grossCents)} ·{" "}
-                  {order.tickets.length} Tickets
+                  {activeTicketCount} Tickets
                 </p>
                 <p className="text-xs text-[var(--muted)]">{berlin(order.createdAt)}</p>
                 <div className="mt-2 flex flex-wrap gap-3">
