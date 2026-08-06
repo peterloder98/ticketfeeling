@@ -37,6 +37,7 @@ export default async function EventsPage({ searchParams }: Props) {
       name: true,
       subtitle: true,
       status: true,
+      presaleStartsAt: true,
       eventStartsAt: true,
       showRemainingAvailability: true,
       coverImageUrl: true,

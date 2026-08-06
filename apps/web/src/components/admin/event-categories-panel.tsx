@@ -166,9 +166,6 @@ function ContingentField({
           readOnly
           aria-readonly="true"
         />
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          Automatisch aus zugewiesenen, nicht gesperrten Plätzen im Saalplan.
-        </span>
       </label>
     );
   }
@@ -403,7 +400,7 @@ export function EventCategoriesPanel({
           {salesReleased
             ? "Verkauf ist freigegeben — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
             : seatingEnabled
-              ? "Preis, Name, Farbe und Art hier bearbeiten. Kontingent kommt automatisch aus zugewiesenen, nicht gesperrten Plätzen im Saalplan oben."
+              ? "Preis, Name, Farbe und Art hier bearbeiten."
               : "Preis, Kontingent, Name und Art bearbeiten."}
         </p>
       </div>

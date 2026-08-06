@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BrandLogo } from "@/components/brand-logo";
 import { ADMIN_TOP_NAV, isAdminNavActive } from "@/lib/admin/nav";
 
 const BOX_OFFICE_NAV: { href: string; label: string; match?: string[] }[] = [
@@ -24,8 +23,7 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const navItems = boxOfficeOnly ? BOX_OFFICE_NAV : ADMIN_TOP_NAV;
-  // Logo leaves admin → public shop home (sidebar “Zur Website” stays as text fallback).
-  const homeHref = boxOfficeOnly ? "/kasse" : "/";
+  // Single logo lives in SiteHeader (top); click → public `/` (or /kasse for Vorverkauf).
 
   return (
     <div
@@ -50,8 +48,7 @@ export function AdminShell({
           }
         >
           <div className="tf-card !p-5">
-            <BrandLogo variant="app" href={homeHref} />
-            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-text-secondary)]">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-text-secondary)]">
               {boxOfficeOnly ? "Vorverkauf" : "Betrieb"}
             </p>
             <p className="mt-1 truncate text-sm text-[var(--tf-text-secondary)]">{email}</p>

@@ -26,6 +26,7 @@ import {
   BoxOfficeVoidButton,
 } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
+import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tageskasse" };
@@ -75,6 +76,9 @@ export default async function BoxOfficePage({ searchParams }: Props) {
       </p>
     );
   }
+
+  // Due Vorverkaufsstart → Im Verkauf so Kasse query (presale_active/published) sees them.
+  await releaseDuePresales({ organizationId: membership.organizationId });
 
   const sellableIds = canSell
     ? await getBoxOfficeSellableEventIds(session.user.id, membership.organizationId)

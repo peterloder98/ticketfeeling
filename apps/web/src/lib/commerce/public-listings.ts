@@ -1,4 +1,5 @@
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 
 export type ListingEvent = {
   id: string;
@@ -6,6 +7,8 @@ export type ListingEvent = {
   name: string;
   subtitle: string | null;
   status: string;
+  /** Used so listing badges flip to on-sale when Vorverkaufsstart is reached. */
+  presaleStartsAt?: Date | null;
   eventStartsAt: Date | null;
   showRemainingAvailability: boolean;
   coverImageUrl: string | null;
@@ -74,6 +77,18 @@ function sortByStart(a: ListingEvent, b: ListingEvent) {
   return at - bt;
 }
 
+/** Prefer on-sale effective status for tour/group cards. */
+function listingDisplayStatus(dates: ListingEvent[], now = new Date()): string {
+  const statuses = dates.map((d) =>
+    effectiveEventStatus({ status: d.status, presaleStartsAt: d.presaleStartsAt }, now),
+  );
+  if (statuses.some((s) => s === "presale_active" || s === "published")) {
+    return statuses.find((s) => s === "presale_active" || s === "published")!;
+  }
+  if (statuses.some((s) => s === "sold_out")) return "sold_out";
+  return statuses[0] ?? "announcement";
+}
+
 export type ListingLinkMode = "public" | "embed";
 
 function eventHref(slug: string, mode: ListingLinkMode) {
@@ -116,7 +131,7 @@ function cardFromDates(
     key: opts.key,
     href: opts.href,
     name: opts.name,
-    status: first.status,
+    status: listingDisplayStatus(ordered),
     coverImageUrl: cover,
     whenLabel,
     locationName:
@@ -142,7 +157,7 @@ function cardFromSingle(event: ListingEvent): PublicListingCard {
     key: `event-${event.id}`,
     href: `/event/${event.slug}`,
     name: event.name,
-    status: event.status,
+    status: listingDisplayStatus([event]),
     coverImageUrl: resolveEventCoverUrl(event),
     whenLabel: formatWhen(event.eventStartsAt),
     locationName: event.location?.name ?? null,

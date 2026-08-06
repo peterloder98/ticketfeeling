@@ -35,6 +35,7 @@ export default async function HomePage() {
       name: true,
       subtitle: true,
       status: true,
+      presaleStartsAt: true,
       eventStartsAt: true,
       showRemainingAvailability: true,
       coverImageUrl: true,

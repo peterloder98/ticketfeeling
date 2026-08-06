@@ -52,6 +52,16 @@ export default async function EmbedEventShopPage({ params }: Props) {
       </div>
     );
   }
+
+  const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
+  const released = await ensurePresaleAutoRelease({
+    id: event.id,
+    organizationId: event.organizationId,
+    status: event.status,
+    presaleStartsAt: event.presaleStartsAt,
+  });
+  if (released.flipped) event.status = released.status;
+
   if (
     event.status === "draft" ||
     event.status === "cancelled" ||

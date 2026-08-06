@@ -8,6 +8,7 @@ import { parseEventListFilters } from "@/lib/admin/event-list-filters";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { AdminEventsList } from "@/components/admin/admin-events-list";
+import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Events" };
@@ -28,6 +29,9 @@ export default async function AdminEventsPage({ searchParams }: Props) {
     membership.organizationId,
     "events:write",
   );
+
+  // Persist due Vorverkaufsstart → Im Verkauf before listing (closes cron lag).
+  await releaseDuePresales({ organizationId: membership.organizationId });
 
   const sp = await searchParams;
   const activeFilters = parseEventListFilters(sp.f);

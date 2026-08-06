@@ -677,26 +677,13 @@ export function EventSeatingAssignmentPanel({
 
   return (
     <section id="zuordnung" className="tf-card !p-5 scroll-mt-24">
+      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0">
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Saalplan-Zuordnung</h2>
-          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Preiskategorie wählen, dann Block, Reihe oder Plätze antippen.
-          </p>
-          <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-            Nicht alle Plätze müssen verkauft werden — Reihen/Blöcke sperren und später freigeben.
-          </p>
-          <p className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm font-medium text-[var(--tf-navy)]">
-            <span>Im Verkauf: {onSaleCount}</span>
-            <span>Gesperrt: {lockedCount}</span>
-            <span>
-              Zugewiesen: {assignedCount} / {seats.length}
-              {unassignedCount > 0 ? (
-                <span className="ml-1 font-normal text-[var(--tf-text-secondary)]">
-                  ({unassignedCount} offen)
-                </span>
-              ) : null}
-            </span>
+          <p className="mt-1 max-w-xl text-sm text-[var(--tf-text-secondary)]">
+            Kategorie wählen, Aktion und Auswahl festlegen — dann auf dem Plan tippen. Reihen und
+            Blöcke lassen sich sperren und später freigeben.
           </p>
         </div>
         {editorHref ? (
@@ -704,25 +691,49 @@ export function EventSeatingAssignmentPanel({
             href={editorHref}
             target="_blank"
             rel="noreferrer"
-            className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+            className="tf-btn tf-btn-secondary !min-h-10 shrink-0 text-sm"
           >
             Geometrie bearbeiten
           </a>
         ) : null}
       </div>
 
+      {/* Stats — one calm row */}
+      <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-[var(--tf-line)] pb-3 text-sm">
+        <span className="tabular-nums text-[var(--tf-navy)]">
+          <span className="text-[var(--tf-text-secondary)]">Im Verkauf</span>{" "}
+          <span className="font-semibold">{onSaleCount}</span>
+        </span>
+        <span className="tabular-nums text-[var(--tf-navy)]">
+          <span className="text-[var(--tf-text-secondary)]">Gesperrt</span>{" "}
+          <span className="font-semibold">{lockedCount}</span>
+        </span>
+        <span className="tabular-nums text-[var(--tf-navy)]">
+          <span className="text-[var(--tf-text-secondary)]">Zugewiesen</span>{" "}
+          <span className="font-semibold">
+            {assignedCount} / {seats.length}
+          </span>
+          {unassignedCount > 0 ? (
+            <span className="ml-1 text-[var(--tf-text-secondary)]">({unassignedCount} offen)</span>
+          ) : null}
+        </span>
+        {unassignedCount === 0 && seats.length > 0 ? (
+          <span className="text-sm font-medium text-[var(--tf-teal)]">Alles zugeordnet</span>
+        ) : null}
+      </div>
+
       {canWrite && seatingCategories.length === 1 && unassignedCount > 0 ? (
-        <div className="mt-4 rounded-xl border border-[rgba(20,184,166,0.45)] bg-[rgba(20,184,166,0.1)] px-4 py-3">
-          <p className="text-sm font-semibold text-[var(--tf-navy)]">
-            Optional — {unassignedCount} Plätze noch offen
-          </p>
-          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Mit einer Kategorie kannst du den ganzen Plan auf einmal zuweisen — oder gezielt
-            Bereiche auf dem Plan antippen.
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-4 py-3">
+          <p className="text-sm text-[var(--tf-navy)]">
+            <span className="font-semibold">{unassignedCount} Plätze offen</span>
+            <span className="text-[var(--tf-text-secondary)]">
+              {" "}
+              — optional den ganzen Plan auf einmal zuweisen.
+            </span>
           </p>
           <button
             type="button"
-            className="tf-btn tf-btn-primary mt-3 !min-h-10 text-sm"
+            className="tf-btn tf-btn-primary !min-h-10 shrink-0 text-sm"
             disabled={busy}
             onClick={() => void assignAllToSingleCategory()}
           >
@@ -731,212 +742,221 @@ export function EventSeatingAssignmentPanel({
         </div>
       ) : null}
 
-      {unassignedCount === 0 && seats.length > 0 ? (
-        <p className="mt-4 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-          Alles zugeordnet — Preise darunter bearbeiten; Kontingent folgt aus dem Plan.
-        </p>
-      ) : null}
-
-      <div className="mt-4">
-        <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-          Preiskategorien
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {seatingCategories.map((c, i) => {
-            const color = resolveCategoryColor(c.color, i);
-            const active = mode === "assign" && selectedCategoryId === c.id;
-            const count = seats.filter((s) => s.categoryId === c.id).length;
-            return (
+      {/* Structured toolbar: A categories · B action · C grain · D bulk */}
+      <div className="mt-4 space-y-0 overflow-hidden rounded-xl border border-[var(--tf-line)] bg-[#f8fafc]">
+        {/* A — Preiskategorien */}
+        <div className="border-b border-[var(--tf-line)] px-4 py-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-text-secondary)]">
+            Preiskategorien
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {seatingCategories.map((c, i) => {
+              const color = resolveCategoryColor(c.color, i);
+              const active = mode === "assign" && selectedCategoryId === c.id;
+              const count = seats.filter((s) => s.categoryId === c.id).length;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => {
+                    setMode("assign");
+                    setSelectedCategoryId(c.id);
+                  }}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
+                    active
+                      ? "border-[var(--tf-navy)] bg-white text-[var(--tf-navy)] ring-2 ring-[rgba(15,39,71,0.12)]"
+                      : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)] hover:border-[var(--tf-teal)]"
+                  }`}
+                >
+                  <span className="h-3 w-3 rounded-full" style={{ background: color }} />
+                  {c.name}
+                  <span className="text-xs font-normal text-[var(--tf-text-secondary)]">{count}</span>
+                </button>
+              );
+            })}
+            {canWrite ? (
               <button
-                key={c.id}
                 type="button"
+                className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[var(--tf-teal)] bg-white px-3 py-1.5 text-sm font-semibold text-[var(--tf-navy)] hover:bg-[rgba(20,184,166,0.08)]"
                 onClick={() => {
-                  setMode("assign");
-                  setSelectedCategoryId(c.id);
+                  setShowAddCategory((v) => !v);
+                  setNewCatColor(QUICK_COLORS[seatingCategories.length % QUICK_COLORS.length]!);
                 }}
-                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold ${
-                  active
-                    ? "border-[var(--tf-navy)] ring-2 ring-[rgba(15,39,71,0.15)]"
-                    : "border-[var(--tf-line)]"
-                }`}
               >
-                <span className="h-3 w-3 rounded-full" style={{ background: color }} />
-                {c.name}
-                <span className="text-xs font-normal text-[var(--tf-text-secondary)]">{count}</span>
+                <Plus className="h-3.5 w-3.5" />
+                Hinzufügen
               </button>
-            );
-          })}
-          {canWrite ? (
-            <button
-              type="button"
-              className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[var(--tf-teal)] px-3 py-1.5 text-sm font-semibold text-[var(--tf-navy)]"
-              onClick={() => {
-                setShowAddCategory((v) => !v);
-                setNewCatColor(QUICK_COLORS[seatingCategories.length % QUICK_COLORS.length]!);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Preiskategorie hinzufügen
-            </button>
+            ) : null}
+          </div>
+          {seatingCategories.length === 0 ? (
+            <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+              Noch keine Preiskategorie — lege eine an, dann tippst du Bereiche auf dem Plan an.
+            </p>
           ) : null}
         </div>
-      </div>
 
-      {showAddCategory && canWrite ? (
-        <div className="mt-3 grid gap-3 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-4 sm:grid-cols-[1fr_auto_auto]">
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-[var(--tf-navy)]">Name</span>
-            <input
-              className="tf-input"
-              placeholder="z. B. Parkett, Rang, VIP"
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  void createCategory();
-                }
-              }}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            <span className="font-medium text-[var(--tf-navy)]">Farbe</span>
-            <div className="flex items-center gap-2">
+        {showAddCategory && canWrite ? (
+          <div className="grid gap-3 border-b border-[var(--tf-line)] bg-white px-4 py-3 sm:grid-cols-[1fr_auto_auto]">
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-[var(--tf-navy)]">Name</span>
               <input
-                type="color"
-                className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--tf-line)] bg-white p-1"
-                value={newCatColor}
-                onChange={(e) => setNewCatColor(e.target.value)}
+                className="tf-input"
+                placeholder="z. B. Parkett, Rang, VIP"
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void createCategory();
+                  }
+                }}
               />
-              <div className="flex flex-wrap gap-1">
-                {QUICK_COLORS.slice(0, 5).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    className="h-6 w-6 rounded-full border border-[var(--tf-line)]"
-                    style={{ background: c }}
-                    onClick={() => setNewCatColor(c)}
-                    title={c}
-                  />
-                ))}
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium text-[var(--tf-navy)]">Farbe</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--tf-line)] bg-white p-1"
+                  value={newCatColor}
+                  onChange={(e) => setNewCatColor(e.target.value)}
+                />
+                <div className="flex flex-wrap gap-1">
+                  {QUICK_COLORS.slice(0, 5).map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      className="h-6 w-6 rounded-full border border-[var(--tf-line)]"
+                      style={{ background: c }}
+                      onClick={() => setNewCatColor(c)}
+                      title={c}
+                    />
+                  ))}
+                </div>
+              </div>
+            </label>
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                disabled={busy}
+                onClick={() => void createCategory()}
+              >
+                Anlegen
+              </button>
+              <button
+                type="button"
+                className="tf-btn !min-h-10 text-sm"
+                onClick={() => setShowAddCategory(false)}
+              >
+                Abbrechen
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* B + C + D — action / grain / bulk in one toolbar row */}
+        <div className="grid gap-4 px-4 py-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)_auto] md:items-end md:gap-6">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-text-secondary)]">
+              Aktion
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: "assign", label: "Zuweisen", icon: Paintbrush },
+                  { id: "lock", label: "Sperren", icon: Lock },
+                  { id: "unlock", label: "Freigeben", icon: Unlock },
+                ] as const
+              ).map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${
+                    mode === m.id
+                      ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
+                      : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)] hover:border-[var(--tf-navy)]"
+                  }`}
+                  onClick={() => {
+                    setMode(m.id);
+                    setError(null);
+                  }}
+                >
+                  <m.icon className="h-3.5 w-3.5" />
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-text-secondary)]">
+              Auswahl
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: "block", label: "Bereich / Block" },
+                  { id: "row", label: "Reihe(n)" },
+                  { id: "seat", label: "Einzelplätze" },
+                ] as const
+              ).map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                    target === t.id
+                      ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.14)] text-[var(--tf-navy)]"
+                      : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)] hover:border-[var(--tf-teal)] hover:text-[var(--tf-navy)]"
+                  }`}
+                  onClick={() => setTarget(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {canWrite ? (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-text-secondary)]">
+                Sammelaktion
+              </p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                  disabled={busy || lockableSeatIds.length === 0}
+                  onClick={() => void bulkLock(true)}
+                >
+                  Alle sperren
+                  {lockableSeatIds.length > 0 ? ` (${lockableSeatIds.length})` : ""}
+                </button>
+                <button
+                  type="button"
+                  className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                  disabled={busy || unlockableSeatIds.length === 0}
+                  onClick={() => void bulkLock(false)}
+                >
+                  Alle freigeben
+                  {unlockableSeatIds.length > 0 ? ` (${unlockableSeatIds.length})` : ""}
+                </button>
               </div>
             </div>
-          </label>
-          <div className="flex items-end gap-2">
-            <button
-              type="button"
-              className="tf-btn tf-btn-primary !min-h-10 text-sm"
-              disabled={busy}
-              onClick={() => void createCategory()}
-            >
-              Anlegen
-            </button>
-            <button
-              type="button"
-              className="tf-btn !min-h-10 text-sm"
-              onClick={() => setShowAddCategory(false)}
-            >
-              Abbrechen
-            </button>
-          </div>
-          <p className="sm:col-span-3 text-xs text-[var(--tf-text-secondary)]">
-            Preis setzt du unter dem Plan — Kontingent zählt zugewiesene, nicht gesperrte Plätze.
+          ) : null}
+        </div>
+
+        {mode === "lock" || mode === "unlock" ? (
+          <p className="border-t border-[var(--tf-line)] px-4 py-2 text-sm text-[var(--tf-text-secondary)]">
+            {mode === "lock"
+              ? "Tippe Block, Reihe oder Platz — verkaufte und reservierte Plätze bleiben unberührt."
+              : "Tippe Block, Reihe oder Platz zum Freigeben — verkaufte Plätze bleiben gesperrt/verkauft."}
           </p>
-        </div>
-      ) : null}
-
-      {seatingCategories.length === 0 ? (
-        <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
-          Noch keine Preiskategorie — lege oben eine an, dann tippst du Bereiche auf dem Plan an.
-        </p>
-      ) : null}
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-          Aktion
-        </span>
-        {(
-          [
-            { id: "assign", label: "Zuweisen", icon: Paintbrush },
-            { id: "lock", label: "Sperren", icon: Lock },
-            { id: "unlock", label: "Freigeben", icon: Unlock },
-          ] as const
-        ).map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold ${
-              mode === m.id
-                ? "border-[var(--tf-navy)] bg-[var(--tf-navy)] text-white"
-                : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)]"
-            }`}
-            onClick={() => {
-              setMode(m.id);
-              setError(null);
-            }}
-          >
-            <m.icon className="h-3.5 w-3.5" />
-            {m.label}
-          </button>
-        ))}
+        ) : null}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-2">
-        {(
-          [
-            { id: "block", label: "Bereich / Block" },
-            { id: "row", label: "Reihe(n)" },
-            { id: "seat", label: "Einzelplätze" },
-          ] as const
-        ).map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`rounded-full border px-3 py-1.5 text-sm font-medium ${
-              target === t.id
-                ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.12)] text-[var(--tf-navy)]"
-                : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)]"
-            }`}
-            onClick={() => setTarget(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {mode === "lock" || mode === "unlock" ? (
-        <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-          {mode === "lock"
-            ? "Tippe Block, Reihe oder Platz — verkaufte und reservierte Plätze bleiben unberührt."
-            : "Tippe Block, Reihe oder Platz zum Freigeben — verkaufte Plätze bleiben gesperrt/verkauft."}
-        </p>
-      ) : null}
-
-      {canWrite ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-            disabled={busy || lockableSeatIds.length === 0}
-            onClick={() => void bulkLock(true)}
-          >
-            Alle sperren
-            {lockableSeatIds.length > 0 ? ` (${lockableSeatIds.length})` : ""}
-          </button>
-          <button
-            type="button"
-            className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-            disabled={busy || unlockableSeatIds.length === 0}
-            onClick={() => void bulkLock(false)}
-          >
-            Alle freigeben
-            {unlockableSeatIds.length > 0 ? ` (${unlockableSeatIds.length})` : ""}
-          </button>
-        </div>
-      ) : null}
-
-      {message ? <p className="mt-2 text-sm text-[var(--tf-teal)]">{message}</p> : null}
-      {error ? <p className="mt-2 text-sm text-[var(--danger)]">{error}</p> : null}
+      {message ? <p className="mt-3 text-sm text-[var(--tf-teal)]">{message}</p> : null}
+      {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
 
       <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
         <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
