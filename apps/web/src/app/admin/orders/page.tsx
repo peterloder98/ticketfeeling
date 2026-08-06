@@ -15,6 +15,7 @@ import {
   orderStatusToneClass,
   paymentMethodLabel,
 } from "@/lib/commerce/channels";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -112,8 +113,7 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
           const strike = orderCancelledStrikeClass(cancelled);
           const item = order.items[0];
           const termin = item?.eventStartsAtSnapshot
-            ? item.eventStartsAtSnapshot.toLocaleString("de-DE", {
-                timeZone: "Europe/Berlin",
+            ? formatDeDateTime(item.eventStartsAtSnapshot, {
                 dateStyle: "medium",
                 timeStyle: "short",
               })

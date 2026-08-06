@@ -18,10 +18,12 @@ import {
   orderCancelledStrikeClass,
   paymentMethodLabel,
 } from "@/lib/commerce/channels";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
+import { resolveSellableCategoryCapacity } from "@/lib/seating/sync-category-capacity";
 import { BoxOfficeVoidButton } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
@@ -220,6 +222,32 @@ export default async function BoxOfficePage({ searchParams }: Props) {
   const feeConfig = resolveActivePlatformFeeConfig(orgSettings?.platformFeeConfig);
   const now = Date.now();
 
+  const seatingEventIds = events
+    .filter(
+      (event) =>
+        Boolean(event.venuePlanId) &&
+        (event.seatingBookingMode === "best_available" ||
+          event.seatingBookingMode === "seat_map_and_best"),
+    )
+    .map((e) => e.id);
+  const assignedSeats =
+    seatingEventIds.length > 0
+      ? await prisma.eventSeat.findMany({
+          where: {
+            eventId: { in: seatingEventIds },
+            locked: false,
+            categoryId: { not: null },
+          },
+          select: { eventId: true, categoryId: true },
+        })
+      : [];
+  const seatCountByEventCategory = new Map<string, number>();
+  for (const seat of assignedSeats) {
+    if (!seat.categoryId) continue;
+    const key = `${seat.eventId}:${seat.categoryId}`;
+    seatCountByEventCategory.set(key, (seatCountByEventCategory.get(key) ?? 0) + 1);
+  }
+
   const payload = events.map((event) => {
     const hasReservedSeating =
       Boolean(event.venuePlanId) &&
@@ -229,8 +257,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
       id: event.id,
       name: event.name,
       whenLabel: event.eventStartsAt
-        ? event.eventStartsAt.toLocaleString("de-DE", {
-            timeZone: "Europe/Berlin",
+        ? formatDeDateTime(event.eventStartsAt, {
             weekday: "short",
             day: "numeric",
             month: "short",
@@ -248,15 +275,21 @@ export default async function BoxOfficePage({ searchParams }: Props) {
         | "best_available"
         | "seat_map_and_best",
       categories: event.ticketCategories.map((category) => {
+        const sellableCapacity = resolveSellableCategoryCapacity({
+          categoryCapacity: category.capacity,
+          categoryKind: category.categoryKind,
+          freeSeating: category.freeSeating,
+          seatingBookingMode: event.seatingBookingMode,
+          assignedUnlockedSeatCount: hasReservedSeating
+            ? (seatCountByEventCategory.get(`${event.id}:${category.id}`) ?? 0)
+            : null,
+        });
+        const channel = category.pools.some((p) => p.channel === "box_office")
+          ? "box_office"
+          : "online";
         const available = category.pools.length
-          ? channelAvailableQuantity(
-              category.pools,
-              category.pools.some((p) => p.channel === "box_office")
-                ? "box_office"
-                : "online",
-              category.capacity,
-            )
-          : Math.max(0, category.capacity - category.safetyReserve);
+          ? channelAvailableQuantity(category.pools, channel, sellableCapacity)
+          : Math.max(0, sellableCapacity - category.safetyReserve);
         let saleLabel: string | null = null;
         if (category.saleEndsAt && category.saleEndsAt.getTime() > now) {
           saleLabel = "Zeitlich begrenzt";
@@ -455,17 +488,13 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                       </p>
                       {order.items[0]?.eventStartsAtSnapshot ? (
                         <p className="text-[11px] text-[var(--tf-text-secondary)]">
-                          {new Date(order.items[0].eventStartsAtSnapshot).toLocaleString(
-                            "de-DE",
-                            {
-                              timeZone: "Europe/Berlin",
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            },
-                          )}
+                          {formatDeDateTime(new Date(order.items[0].eventStartsAtSnapshot), {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </p>
                       ) : null}
                     </td>

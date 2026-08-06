@@ -1,5 +1,6 @@
 import PDFDocument from "pdfkit";
 import { prisma } from "@/lib/db";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
 import { qrDataUrl } from "@/lib/qr-server";
 
@@ -10,8 +11,7 @@ const INK = "#0B1421";
 
 function formatWhen(date: Date | null | undefined) {
   if (!date) return null;
-  return date.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(date, {
     weekday: "long",
     day: "numeric",
     month: "long",
@@ -21,6 +21,7 @@ function formatWhen(date: Date | null | undefined) {
   });
 }
 
+/** Time only without "Uhr" — callers add "Uhr" in prose (e.g. "ab 18:00 Uhr"). */
 function formatTime(date: Date | null | undefined) {
   if (!date) return null;
   return date.toLocaleTimeString("de-DE", {

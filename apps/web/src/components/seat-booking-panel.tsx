@@ -90,7 +90,7 @@ export function SeatBookingPanel({
   const [addedSeatLabels, setAddedSeatLabels] = useState<string[]>([]);
   const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
   const [freeQty, setFreeQty] = useState<Record<string, number>>(
-    Object.fromEntries(freeCategories.map((c) => [c.id, 1])),
+    Object.fromEntries(freeCategories.map((c) => [c.id, c.available < 1 ? 0 : 1])),
   );
 
   const useExternalMap = Boolean(mapHostId);
@@ -246,7 +246,15 @@ export function SeatBookingPanel({
         });
         const data = await response.json();
         if (!response.ok) {
-          setError(cartErrorMessage(String(data?.error?.code ?? "")));
+          const code = String(data?.error?.code ?? "");
+          const available =
+            typeof data?.error?.available === "number" ? data.error.available : null;
+          if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
+            setQty(Math.min(selectedCategory.maxPerOrder, available));
+            setError(cartErrorMessage(code, { available }));
+          } else {
+            setError(cartErrorMessage(code, { available }));
+          }
           void loadMap();
           return;
         }
@@ -362,7 +370,20 @@ export function SeatBookingPanel({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(cartErrorMessage(String(data?.error?.code ?? "")));
+        const code = String(data?.error?.code ?? "");
+        const available =
+          typeof data?.error?.available === "number" ? data.error.available : null;
+        if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
+          const cat = freeCategories.find((c) => c.id === catId);
+          const max = Math.min(cat?.maxPerOrder ?? available, available);
+          setFreeQty((p) => ({ ...p, [catId]: Math.min(max, available) }));
+          setError(cartErrorMessage(code, { available }));
+          return;
+        }
+        if ((code === "SOLD_OUT" || code === "INSUFFICIENT_STOCK") && available === 0) {
+          setFreeQty((p) => ({ ...p, [catId]: 0 }));
+        }
+        setError(cartErrorMessage(code, { available }));
         return;
       }
       applyCartBump(data);
@@ -610,7 +631,7 @@ export function SeatBookingPanel({
           {freeCategories.map((category) => {
             const max = Math.min(category.maxPerOrder, Math.max(0, category.available));
             const soldOut = category.available < 1;
-            const current = freeQty[category.id] ?? 1;
+            const current = freeQty[category.id] ?? (soldOut ? 0 : 1);
             return (
               <div
                 key={category.id}
@@ -650,7 +671,7 @@ export function SeatBookingPanel({
                       onClick={() =>
                         setFreeQty((p) => ({
                           ...p,
-                          [category.id]: Math.min(max, current + 1),
+                          [category.id]: Math.min(max, Math.max(1, current + 1)),
                         }))
                       }
                     >
@@ -660,10 +681,10 @@ export function SeatBookingPanel({
                   <button
                     type="button"
                     className="tf-btn tf-btn-primary !min-h-11 flex-1 text-sm"
-                    disabled={soldOut || loading}
+                    disabled={soldOut || current < 1 || loading}
                     onClick={() => void addFree(category.id)}
                   >
-                    In den Warenkorb
+                    {soldOut ? "Ausverkauft" : "In den Warenkorb"}
                   </button>
                 </div>
               </div>

@@ -4,6 +4,7 @@ import {
   sharedRemainingQuantity,
 } from "@/lib/commerce/inventory-availability";
 import { effectiveEventStatus } from "@/lib/commerce/event-sale";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type ListingEvent = {
   id: string;
@@ -64,8 +65,7 @@ function formatShortDate(d: Date) {
 
 function formatWhen(d: Date | null) {
   if (!d) return "Termin folgt";
-  return d.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(d, {
     weekday: "short",
     day: "numeric",
     month: "short",

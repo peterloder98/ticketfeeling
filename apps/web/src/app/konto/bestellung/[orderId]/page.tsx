@@ -16,6 +16,7 @@ import {
   mergeOrderTicketPositions,
   mergeSameCategoryLines,
 } from "@/lib/commerce/merge-category-lines";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -109,14 +110,12 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
       const itemTickets = ticketsByItem.get(item.id) ?? [];
       const firstTicket = itemTickets[0];
       const whenLabel = item.eventStartsAtSnapshot
-        ? item.eventStartsAtSnapshot.toLocaleString("de-DE", {
-            timeZone: "Europe/Berlin",
+        ? formatDeDateTime(item.eventStartsAtSnapshot, {
             dateStyle: "full",
             timeStyle: "short",
           })
         : firstTicket?.event.eventStartsAt
-          ? firstTicket.event.eventStartsAt.toLocaleString("de-DE", {
-              timeZone: "Europe/Berlin",
+          ? formatDeDateTime(firstTicket.event.eventStartsAt, {
               dateStyle: "full",
               timeStyle: "short",
             })

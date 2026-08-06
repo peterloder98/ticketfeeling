@@ -2,6 +2,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { enqueueTransactionalEmail } from "@/lib/email/outbox";
 import { buildBoxOfficeTicketsMail } from "@/lib/email/ticket-mail";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export async function markBoxOfficePrinted(input: {
   orderId: string;
@@ -73,8 +74,7 @@ export async function emailBoxOfficeTickets(input: {
   const eventName = order.items[0]?.eventNameSnapshot ?? "Event";
   const startsAt = order.items[0]?.eventStartsAtSnapshot;
   const whenLabel = startsAt
-    ? startsAt.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(startsAt, {
         dateStyle: "full",
         timeStyle: "short",
       })

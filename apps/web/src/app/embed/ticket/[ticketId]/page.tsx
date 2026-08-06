@@ -13,6 +13,7 @@ import {
 } from "@/lib/tickets/access";
 import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 
@@ -93,8 +94,7 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
   const token = ticket.qrTokens[0]?.token ?? "";
   const walletFlags = getWalletUiFlags();
   const when = ticket.event.eventStartsAt
-    ? ticket.event.eventStartsAt.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(ticket.event.eventStartsAt, {
         weekday: "long",
         day: "numeric",
         month: "long",

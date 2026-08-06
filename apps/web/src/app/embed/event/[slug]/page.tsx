@@ -13,7 +13,13 @@ import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
+import {
+  assignedUnlockedSeatCounts,
+  isPlanBackedTicketCategory,
+  resolveSellableCategoryCapacity,
+} from "@/lib/seating/sync-category-capacity";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 
 export const dynamic = "force-dynamic";
@@ -100,10 +106,32 @@ export default async function EmbedEventShopPage({ params }: Props) {
     (event.seatingBookingMode === "best_available" ||
       event.seatingBookingMode === "seat_map_and_best");
 
+  const planBackedIds = hasReservedSeating
+    ? event.ticketCategories
+        .filter((c) =>
+          isPlanBackedTicketCategory({
+            freeSeating: c.freeSeating,
+            categoryKind: c.categoryKind,
+            seatingBookingMode: event.seatingBookingMode,
+          }),
+        )
+        .map((c) => c.id)
+    : [];
+  const seatCounts = hasReservedSeating
+    ? await assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
+    : {};
+
   const categories = event.ticketCategories.map((category) => {
+    const sellableCapacity = resolveSellableCategoryCapacity({
+      categoryCapacity: category.capacity,
+      categoryKind: category.categoryKind,
+      freeSeating: category.freeSeating,
+      seatingBookingMode: event.seatingBookingMode,
+      assignedUnlockedSeatCount: hasReservedSeating ? (seatCounts[category.id] ?? 0) : null,
+    });
     const available = category.pools.length
-      ? channelAvailableQuantity(category.pools, "online", category.capacity)
-      : Math.max(0, category.capacity - category.safetyReserve);
+      ? channelAvailableQuantity(category.pools, "online", sellableCapacity)
+      : Math.max(0, sellableCapacity - category.safetyReserve);
     return {
       id: category.id,
       name: category.name,
@@ -136,8 +164,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
       : null;
 
   const when = event.eventStartsAt
-    ? event.eventStartsAt.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(event.eventStartsAt, {
         weekday: "short",
         day: "numeric",
         month: "short",
@@ -176,7 +203,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
             {when ? (
               <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
                 <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                <span>{when} Uhr</span>
+                <span>{when}</span>
               </p>
             ) : null}
             {place ? (

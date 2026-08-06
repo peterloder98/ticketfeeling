@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
 import { qrDataUrl } from "@/lib/qr-server";
 
@@ -43,7 +44,7 @@ export async function renderTicketHtml(ticketId: string) {
     <h1>${escapeHtml(ticket.eventNameSnapshot)}</h1>
     <div class="meta">
       <div><strong>Kategorie:</strong> ${escapeHtml(ticket.categorySnapshot)}</div>
-      <div><strong>Beginn:</strong> ${ticket.event.eventStartsAt ? ticket.event.eventStartsAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" }) : "—"}</div>
+      <div><strong>Beginn:</strong> ${ticket.event.eventStartsAt ? formatDeDateTime(ticket.event.eventStartsAt) : "—"}</div>
       <div><strong>Location:</strong> ${escapeHtml(ticket.event.location ? `${ticket.event.location.name}, ${ticket.event.location.city ?? ""}` : "—")}</div>
       <div><strong>Ticketnr.:</strong> ${escapeHtml(ticket.ticketNumber)}</div>
       <div><strong>Inhaber:</strong> ${escapeHtml(`${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim())}</div>

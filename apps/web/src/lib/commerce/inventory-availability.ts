@@ -11,15 +11,14 @@ export type InventoryPoolQty = {
 
 /**
  * Physical / category Kontingent is shared across Online, Tageskasse, etc.
- * Each InventoryPool may still have a channel cap (≤ category capacity), but
- * pool capacities must never be summed — that double-counts seats.
+ * Category capacity is authoritative — including 0 (unassigned / empty Stehplatz).
+ * Never invent stock from stale per-channel pool caps when category capacity is 0.
  */
 export function categoryInventoryCapacity(
   categoryCapacity: number,
-  pools: { capacity: number }[],
+  _pools?: { capacity: number }[],
 ): number {
-  if (categoryCapacity > 0) return categoryCapacity;
-  return Math.max(0, ...pools.map((p) => p.capacity), 0);
+  return Math.max(0, categoryCapacity);
 }
 
 export function sharedCommittedQuantity(pools: InventoryPoolQty[]): number {
@@ -49,6 +48,24 @@ export function channelAvailableQuantity(
   if (!pool) return shared;
   const channelLocal = Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity);
   return Math.min(channelLocal, shared);
+}
+
+/** Thrown when requested qty exceeds remaining sellable stock. */
+export class InsufficientStockError extends Error {
+  readonly available: number;
+
+  constructor(available: number) {
+    const n = Math.max(0, available);
+    super(n < 1 ? "SOLD_OUT" : "INSUFFICIENT_STOCK");
+    this.name = "InsufficientStockError";
+    this.available = n;
+  }
+}
+
+export function assertSufficientStock(available: number, requested: number): void {
+  if (available < requested) {
+    throw new InsufficientStockError(available);
+  }
 }
 
 type LockedPoolRow = {

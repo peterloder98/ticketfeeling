@@ -38,14 +38,14 @@ export function AddToCartPanel({
 }) {
   const { bump } = useCart();
   const [qty, setQty] = useState<Record<string, number>>(
-    Object.fromEntries(categories.map((c) => [c.id, 1])),
+    Object.fromEntries(categories.map((c) => [c.id, c.available < 1 ? 0 : 1])),
   );
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState(false);
 
   function setQuantity(categoryId: string, next: number, max: number) {
-    const value = Math.max(1, Math.min(max, next));
+    const value = Math.max(max < 1 ? 0 : 1, Math.min(Math.max(0, max), next));
     setQty((prev) => ({ ...prev, [categoryId]: value }));
   }
 
@@ -61,7 +61,20 @@ export function AddToCartPanel({
       });
       const data = await response.json();
       if (!response.ok) {
-        setError(cartErrorMessage(String(data?.error?.code ?? "")));
+        const code = String(data?.error?.code ?? "");
+        const available =
+          typeof data?.error?.available === "number" ? data.error.available : null;
+        if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
+          const cat = categories.find((c) => c.id === categoryId);
+          const max = Math.min(cat?.maxPerOrder ?? available, available);
+          setQuantity(categoryId, available, max);
+          setError(cartErrorMessage(code, { available }));
+          return;
+        }
+        if ((code === "SOLD_OUT" || code === "INSUFFICIENT_STOCK") && available === 0) {
+          setQuantity(categoryId, 0, 0);
+        }
+        setError(cartErrorMessage(code, { available }));
         return;
       }
       try {
@@ -165,7 +178,7 @@ export function AddToCartPanel({
                   }`}
                   aria-label="Weniger"
                   disabled={soldOut || current <= 1}
-                  onClick={() => setQuantity(category.id, current - 1, max || 1)}
+                  onClick={() => setQuantity(category.id, current - 1, max)}
                 >
                   <Minus className="h-4 w-4" strokeWidth={2} />
                 </button>
@@ -183,7 +196,7 @@ export function AddToCartPanel({
                   }`}
                   aria-label="Mehr"
                   disabled={soldOut || current >= max}
-                  onClick={() => setQuantity(category.id, current + 1, max || 1)}
+                  onClick={() => setQuantity(category.id, current + 1, max)}
                 >
                   <Plus className="h-4 w-4" strokeWidth={2} />
                 </button>
@@ -193,7 +206,7 @@ export function AddToCartPanel({
                 className={`tf-btn tf-btn-primary flex-1 text-sm ${
                   compact ? "!min-h-8 !rounded-md !px-2.5 !text-xs" : "!min-h-11"
                 }`}
-                disabled={soldOut || loadingId === category.id}
+                disabled={soldOut || current < 1 || loadingId === category.id}
                 onClick={() => add(category.id)}
               >
                 {soldOut ? "Ausverkauft" : loadingId === category.id ? "…" : "In den Warenkorb"}

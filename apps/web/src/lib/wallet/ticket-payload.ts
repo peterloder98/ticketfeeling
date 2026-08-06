@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type WalletTicketPayload = {
   ticketId: string;
@@ -91,8 +92,7 @@ export function newUpdateTag() {
 
 export function formatBerlinDate(date: Date | null | undefined) {
   if (!date) return null;
-  return date.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(date, {
     weekday: "short",
     day: "numeric",
     month: "short",

@@ -23,6 +23,12 @@ import {
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
+import {
+  assignedUnlockedSeatCounts,
+  isPlanBackedTicketCategory,
+  resolveSellableCategoryCapacity,
+} from "@/lib/seating/sync-category-capacity";
+import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -42,12 +48,7 @@ function formatEventDate(date: Date) {
     month: "long",
     year: "numeric",
   });
-  const time = date.toLocaleTimeString("de-DE", {
-    timeZone: "Europe/Berlin",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  return `${day} · ${time} Uhr`;
+  return `${day} · ${formatDeTime(date)}`;
 }
 
 export default async function EventPage({ params }: Props) {
@@ -86,8 +87,7 @@ export default async function EventPage({ params }: Props) {
 
   if (event.status === "cancelled") {
     const when = event.eventStartsAt
-      ? event.eventStartsAt.toLocaleString("de-DE", {
-          timeZone: "Europe/Berlin",
+      ? formatDeDateTime(event.eventStartsAt, {
           dateStyle: "full",
           timeStyle: "short",
         })
@@ -127,10 +127,32 @@ export default async function EventPage({ params }: Props) {
     (event.seatingBookingMode === "best_available" ||
       event.seatingBookingMode === "seat_map_and_best");
 
+  const planBackedIds = hasReservedSeating
+    ? event.ticketCategories
+        .filter((c) =>
+          isPlanBackedTicketCategory({
+            freeSeating: c.freeSeating,
+            categoryKind: c.categoryKind,
+            seatingBookingMode: event.seatingBookingMode,
+          }),
+        )
+        .map((c) => c.id)
+    : [];
+  const seatCounts = hasReservedSeating
+    ? await assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
+    : {};
+
   const categories = event.ticketCategories.map((category) => {
+    const sellableCapacity = resolveSellableCategoryCapacity({
+      categoryCapacity: category.capacity,
+      categoryKind: category.categoryKind,
+      freeSeating: category.freeSeating,
+      seatingBookingMode: event.seatingBookingMode,
+      assignedUnlockedSeatCount: hasReservedSeating ? (seatCounts[category.id] ?? 0) : null,
+    });
     const available = category.pools.length
-      ? channelAvailableQuantity(category.pools, "online", category.capacity)
-      : Math.max(0, category.capacity - category.safetyReserve);
+      ? channelAvailableQuantity(category.pools, "online", sellableCapacity)
+      : Math.max(0, sellableCapacity - category.safetyReserve);
     return {
       id: category.id,
       name: category.name,
@@ -179,22 +201,14 @@ export default async function EventPage({ params }: Props) {
       ? {
           icon: Clock,
           label: "Beginn",
-          value: event.eventStartsAt.toLocaleTimeString("de-DE", {
-            timeZone: "Europe/Berlin",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
+          value: formatDeTime(event.eventStartsAt),
         }
       : null,
     event.doorsOpenAt
       ? {
           icon: DoorOpen,
           label: "Einlass",
-          value: event.doorsOpenAt.toLocaleTimeString("de-DE", {
-            timeZone: "Europe/Berlin",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
+          value: formatDeTime(event.doorsOpenAt),
         }
       : null,
     place ? { icon: MapPin, label: "Location", value: place } : null,

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type EventCardArtist = {
   name: string;
@@ -66,8 +67,7 @@ export function EventCard({ event }: { event: EventCardData }) {
   const when =
     event.whenLabel ??
     (event.eventStartsAt
-      ? new Date(event.eventStartsAt).toLocaleString("de-DE", {
-          timeZone: "Europe/Berlin",
+      ? formatDeDateTime(new Date(event.eventStartsAt), {
           weekday: "short",
           day: "numeric",
           month: "short",

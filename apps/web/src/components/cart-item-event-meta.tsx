@@ -1,10 +1,11 @@
+import { formatDeDateTime } from "@/lib/datetime-de";
+
 /** German date/time for cart & checkout line items (Europe/Berlin). */
 export function formatCartEventWhen(value: string | Date | null | undefined) {
   if (!value) return null;
   const date = typeof value === "string" ? new Date(value) : value;
   if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(date, {
     weekday: "short",
     day: "numeric",
     month: "long",

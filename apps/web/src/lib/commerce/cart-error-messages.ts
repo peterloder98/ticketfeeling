@@ -1,8 +1,21 @@
 /** Map cart / add-to-cart API error codes to clear German UI copy. */
-export function cartErrorMessage(code: string): string {
+export function cartErrorMessage(
+  code: string,
+  opts?: { available?: number | null },
+): string {
+  const available =
+    typeof opts?.available === "number" && Number.isFinite(opts.available)
+      ? Math.max(0, Math.floor(opts.available))
+      : null;
+
   switch (code) {
     case "SOLD_OUT":
       return "Leider ausverkauft.";
+    case "INSUFFICIENT_STOCK":
+      if (available != null && available > 0) {
+        return `Nur noch ${available} verfügbar — wir haben die Anzahl angepasst.`;
+      }
+      return "Leider nicht mehr so viele Tickets frei.";
     case "SEATS_UNAVAILABLE":
       return "Diese Plätze sind gerade nicht mehr frei — bitte neu wählen.";
     case "COMPANION_SEAT_UNAVAILABLE":

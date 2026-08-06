@@ -16,6 +16,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { invalidateWalletPassesForOrder } from "@/lib/wallet/invalidate";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import type { Prisma } from "@prisma/client";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 function appBaseUrl() {
   return getPublicAppUrl();
@@ -135,8 +136,7 @@ async function sendSepaProcessingEmail(orderId: string) {
   );
   const eventName = order.items[0]?.eventNameSnapshot ?? "dein Event";
   const whenLabel = order.items[0]?.eventStartsAtSnapshot
-    ? order.items[0].eventStartsAtSnapshot.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(order.items[0].eventStartsAtSnapshot, {
         dateStyle: "full",
         timeStyle: "short",
       })

@@ -18,6 +18,7 @@ import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { buildBillingSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
 import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import type { Prisma } from "@prisma/client";
 
 type SeatLike = {
@@ -621,8 +622,7 @@ export async function fulfillPaidOrder(orderId: string) {
           "dein Event";
         const startsAt = event?.eventStartsAt ?? fresh.items[0]?.eventStartsAtSnapshot ?? null;
         const whenLabel = startsAt
-          ? startsAt.toLocaleString("de-DE", {
-              timeZone: "Europe/Berlin",
+          ? formatDeDateTime(startsAt, {
               dateStyle: "full",
               timeStyle: "short",
             })
@@ -749,8 +749,7 @@ export async function fulfillPaidOrder(orderId: string) {
               const startsAt =
                 event?.eventStartsAt ?? fresh.items[0]?.eventStartsAtSnapshot ?? null;
               const whenLabel = startsAt
-                ? startsAt.toLocaleString("de-DE", {
-                    timeZone: "Europe/Berlin",
+                ? formatDeDateTime(startsAt, {
                     dateStyle: "full",
                     timeStyle: "short",
                   })

@@ -145,13 +145,37 @@ export async function createBoxOfficeSale(input: {
       : null;
 
   const result = await prisma.$transaction(async (tx) => {
-    const { channelAvailableQuantity, lockCategoryInventoryPools } = await import(
-      "@/lib/commerce/inventory-availability"
-    );
+    const {
+      assertSufficientStock,
+      channelAvailableQuantity,
+      lockCategoryInventoryPools,
+    } = await import("@/lib/commerce/inventory-availability");
+    const {
+      assignedUnlockedSeatCounts,
+      isPlanBackedTicketCategory,
+      resolveSellableCategoryCapacity,
+    } = await import("@/lib/seating/sync-category-capacity");
     for (const { item, pool, category } of resolved) {
       const lockedPools = await lockCategoryInventoryPools(tx, category.id);
-      const available = channelAvailableQuantity(lockedPools, pool.channel, category.capacity);
-      if (available < item.quantity) throw new Error("SOLD_OUT");
+      const planBacked = isPlanBackedTicketCategory({
+        freeSeating: category.freeSeating,
+        categoryKind: category.categoryKind,
+        seatingBookingMode: event.seatingBookingMode,
+      });
+      let assignedCount: number | null = null;
+      if (planBacked) {
+        const counts = await assignedUnlockedSeatCounts(tx, input.eventId, [category.id]);
+        assignedCount = counts[category.id] ?? 0;
+      }
+      const sellableCapacity = resolveSellableCategoryCapacity({
+        categoryCapacity: category.capacity,
+        categoryKind: category.categoryKind,
+        freeSeating: category.freeSeating,
+        seatingBookingMode: event.seatingBookingMode,
+        assignedUnlockedSeatCount: assignedCount,
+      });
+      const available = channelAvailableQuantity(lockedPools, pool.channel, sellableCapacity);
+      assertSufficientStock(available, item.quantity);
       await tx.inventoryPool.update({
         where: { id: pool.id },
         data: {

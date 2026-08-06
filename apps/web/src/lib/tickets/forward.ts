@@ -8,6 +8,7 @@ import {
   isTicketTransferred,
 } from "@/lib/tickets/access";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
@@ -147,8 +148,7 @@ export async function forwardTicket(input: {
   });
 
   const whenLabel = ticket.event.eventStartsAt
-    ? ticket.event.eventStartsAt.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(ticket.event.eventStartsAt, {
         dateStyle: "full",
         timeStyle: "short",
       })

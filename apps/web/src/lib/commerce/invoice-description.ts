@@ -1,10 +1,11 @@
+import { formatDeDateTime } from "@/lib/datetime-de";
+
 /** Shared invoice line-item description helpers (no PDF deps). */
 
 /** Full event datetime for invoice line detail (German, Berlin). */
 export function formatInvoiceEventWhen(date: Date | null | undefined): string | null {
   if (!date) return null;
-  return date.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(date, {
     weekday: "long",
     day: "numeric",
     month: "long",

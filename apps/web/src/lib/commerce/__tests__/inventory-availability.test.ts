@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertSufficientStock,
   categoryInventoryCapacity,
   channelAvailableQuantity,
+  InsufficientStockError,
   sharedRemainingQuantity,
 } from "@/lib/commerce/inventory-availability";
+import {
+  isPlanBackedTicketCategory,
+  resolveSellableCategoryCapacity,
+} from "@/lib/seating/sync-category-capacity";
 
 const pools = (
   online: { capacity: number; sold: number; held?: number },
@@ -24,12 +30,17 @@ const pools = (
 ];
 
 describe("inventory-availability (shared channel pools)", () => {
-  it("does not sum channel pool capacities", () => {
+  it("does not invent stock when category capacity is 0", () => {
     expect(categoryInventoryCapacity(50, pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }))).toBe(
       50,
     );
+    // Stale pool caps must not override an empty Kontingent (unassigned Stehplatz).
     expect(categoryInventoryCapacity(0, pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }))).toBe(
-      50,
+      0,
+    );
+    expect(sharedRemainingQuantity(pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }), 0)).toBe(0);
+    expect(channelAvailableQuantity(pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }), "online", 0)).toBe(
+      0,
     );
   });
 
@@ -60,5 +71,71 @@ describe("inventory-availability (shared channel pools)", () => {
     const p = pools({ capacity: 50, sold: 10, held: 15 }, { capacity: 50, sold: 5 });
     expect(sharedRemainingQuantity(p, 50)).toBe(20);
     expect(channelAvailableQuantity(p, "box_office", 50)).toBe(20);
+  });
+
+  it("assertSufficientStock exposes remaining for race UX", () => {
+    expect(() => assertSufficientStock(0, 2)).toThrow(InsufficientStockError);
+    try {
+      assertSufficientStock(3, 5);
+    } catch (e) {
+      expect(e).toBeInstanceOf(InsufficientStockError);
+      expect((e as InsufficientStockError).message).toBe("INSUFFICIENT_STOCK");
+      expect((e as InsufficientStockError).available).toBe(3);
+    }
+    expect(() => assertSufficientStock(5, 2)).not.toThrow();
+  });
+});
+
+describe("standing / plan-backed capacity", () => {
+  it("treats Stehplatz as plan-backed only when seating is on", () => {
+    expect(
+      isPlanBackedTicketCategory({
+        categoryKind: "standing",
+        freeSeating: true,
+        seatingEnabled: true,
+      }),
+    ).toBe(true);
+    expect(
+      isPlanBackedTicketCategory({
+        categoryKind: "standing",
+        freeSeating: true,
+        seatingBookingMode: "seat_map_and_best",
+      }),
+    ).toBe(true);
+    expect(
+      isPlanBackedTicketCategory({
+        categoryKind: "standing",
+        freeSeating: true,
+        seatingBookingMode: "none",
+      }),
+    ).toBe(false);
+    expect(
+      isPlanBackedTicketCategory({
+        categoryKind: "standing",
+        freeSeating: true,
+        seatingEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("uses assigned seat count over stale wizard capacity", () => {
+    expect(
+      resolveSellableCategoryCapacity({
+        categoryCapacity: 100,
+        categoryKind: "standing",
+        freeSeating: true,
+        seatingBookingMode: "seat_map_and_best",
+        assignedUnlockedSeatCount: 0,
+      }),
+    ).toBe(0);
+    expect(
+      resolveSellableCategoryCapacity({
+        categoryCapacity: 100,
+        categoryKind: "standing",
+        freeSeating: true,
+        seatingBookingMode: "seat_map_and_best",
+        assignedUnlockedSeatCount: 12,
+      }),
+    ).toBe(12);
   });
 });

@@ -15,14 +15,14 @@ import {
   orderStatusToneClass,
   paymentMethodLabel,
 } from "@/lib/commerce/channels";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ id: string }> };
 
 function berlinDateTime(d: Date) {
-  return d.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(d, {
     dateStyle: "full",
     timeStyle: "short",
   });

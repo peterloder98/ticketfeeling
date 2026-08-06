@@ -15,6 +15,7 @@ import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/ord
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -88,8 +89,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
   const showQr = Boolean(token && canEntry);
   const walletFlags = getWalletUiFlags();
   const when = ticket.event.eventStartsAt
-    ? ticket.event.eventStartsAt.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(ticket.event.eventStartsAt, {
         weekday: "long",
         day: "numeric",
         month: "long",

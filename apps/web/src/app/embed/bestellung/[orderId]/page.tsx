@@ -11,6 +11,7 @@ import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 import { mergeOrderTicketPositions } from "@/lib/commerce/merge-category-lines";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tickets" };
@@ -86,14 +87,12 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
       const itemTickets = ticketsByItem.get(item.id) ?? [];
       const firstTicket = itemTickets[0];
       const whenLabel = item.eventStartsAtSnapshot
-        ? item.eventStartsAtSnapshot.toLocaleString("de-DE", {
-            timeZone: "Europe/Berlin",
+        ? formatDeDateTime(item.eventStartsAtSnapshot, {
             dateStyle: "medium",
             timeStyle: "short",
           })
         : firstTicket?.event.eventStartsAt
-          ? firstTicket.event.eventStartsAt.toLocaleString("de-DE", {
-              timeZone: "Europe/Berlin",
+          ? formatDeDateTime(firstTicket.event.eventStartsAt, {
               dateStyle: "medium",
               timeStyle: "short",
             })

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -170,8 +171,7 @@ export default async function ScannerPage({
                 <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" />
                 <span>
                   {event.eventStartsAt
-                    ? event.eventStartsAt.toLocaleString("de-DE", {
-                        timeZone: "Europe/Berlin",
+                    ? formatDeDateTime(event.eventStartsAt, {
                         dateStyle: "medium",
                         timeStyle: "short",
                       })

@@ -70,14 +70,30 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";
+    const available =
+      error &&
+      typeof error === "object" &&
+      "available" in error &&
+      typeof (error as { available: unknown }).available === "number"
+        ? (error as { available: number }).available
+        : undefined;
     const status =
       message === "SOLD_OUT" ||
+      message === "INSUFFICIENT_STOCK" ||
       message === "QUANTITY_LIMIT" ||
       message === "SEATS_UNAVAILABLE" ||
       message === "COMPANION_SEAT_UNAVAILABLE" ||
       message === "SEATS_REQUIRED"
         ? 409
         : 400;
-    return NextResponse.json({ error: { code: message } }, { status });
+    return NextResponse.json(
+      {
+        error: {
+          code: message,
+          ...(available !== undefined ? { available } : {}),
+        },
+      },
+      { status },
+    );
   }
 }

@@ -452,12 +452,37 @@ export async function addToCart(input: {
   } as const;
 
   await prisma.$transaction(async (tx) => {
-    const { channelAvailableQuantity, lockCategoryInventoryPools } = await import(
-      "@/lib/commerce/inventory-availability"
-    );
+    const {
+      assertSufficientStock,
+      channelAvailableQuantity,
+      lockCategoryInventoryPools,
+    } = await import("@/lib/commerce/inventory-availability");
+    const {
+      assignedUnlockedSeatCounts,
+      isPlanBackedTicketCategory,
+      resolveSellableCategoryCapacity,
+    } = await import("@/lib/seating/sync-category-capacity");
+
     const lockedPools = await lockCategoryInventoryPools(tx, category.id);
-    const available = channelAvailableQuantity(lockedPools, "online", category.capacity);
-    if (available < input.quantity) throw new Error("SOLD_OUT");
+    const planBacked = isPlanBackedTicketCategory({
+      freeSeating: category.freeSeating,
+      categoryKind: category.categoryKind,
+      seatingBookingMode: category.event.seatingBookingMode,
+    });
+    let assignedCount: number | null = null;
+    if (planBacked) {
+      const counts = await assignedUnlockedSeatCounts(tx, category.eventId, [category.id]);
+      assignedCount = counts[category.id] ?? 0;
+    }
+    const sellableCapacity = resolveSellableCategoryCapacity({
+      categoryCapacity: category.capacity,
+      categoryKind: category.categoryKind,
+      freeSeating: category.freeSeating,
+      seatingBookingMode: category.event.seatingBookingMode,
+      assignedUnlockedSeatCount: assignedCount,
+    });
+    const available = channelAvailableQuantity(lockedPools, "online", sellableCapacity);
+    assertSufficientStock(available, input.quantity);
 
     let seatIdsToHold: string[] = [];
     if (needsSeats) {

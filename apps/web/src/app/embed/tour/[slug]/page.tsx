@@ -10,6 +10,7 @@ import { ResponsiveImage } from "@/components/responsive-image";
 import { OrgTracking } from "@/components/org-tracking";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { ExpandableText } from "@/components/expandable-text";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -92,8 +93,7 @@ export default async function EmbedTourPage({ params }: Props) {
           <ul className="mt-3 space-y-2">
             {tour.events.map((event) => {
               const when = event.eventStartsAt
-                ? event.eventStartsAt.toLocaleString("de-DE", {
-                    timeZone: "Europe/Berlin",
+                ? formatDeDateTime(event.eventStartsAt, {
                     weekday: "short",
                     day: "numeric",
                     month: "short",

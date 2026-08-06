@@ -16,6 +16,7 @@ import {
   toggleEventListFilter,
   type EventListFilterKey,
 } from "@/lib/admin/event-list-filters";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type AdminEventListRow = {
   id: string;
@@ -113,8 +114,7 @@ export function AdminEventsList({
       <div className="mt-6 space-y-3">
         {visible.map((event) => {
           const when = event.eventStartsAt
-            ? new Date(event.eventStartsAt).toLocaleString("de-DE", {
-                timeZone: "Europe/Berlin",
+            ? formatDeDateTime(new Date(event.eventStartsAt), {
                 dateStyle: "medium",
                 timeStyle: "short",
               })

@@ -8,6 +8,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -117,8 +118,7 @@ export default async function PublicTourPage({ params }: Props) {
           <ul className="mt-4 space-y-3">
             {tour.events.map((event) => {
               const when = event.eventStartsAt
-                ? event.eventStartsAt.toLocaleString("de-DE", {
-                    timeZone: "Europe/Berlin",
+                ? formatDeDateTime(event.eventStartsAt, {
                     weekday: "long",
                     day: "numeric",
                     month: "long",
@@ -152,7 +152,7 @@ export default async function PublicTourPage({ params }: Props) {
                           strokeWidth={2}
                           aria-hidden
                         />
-                        <span className="min-w-0 break-words">{when} Uhr</span>
+                        <span className="min-w-0 break-words">{when}</span>
                       </p>
                       {place ? (
                         <p className="flex items-start gap-2 text-sm text-[var(--tf-text-secondary)]">
