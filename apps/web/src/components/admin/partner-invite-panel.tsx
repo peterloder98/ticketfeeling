@@ -2,8 +2,16 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Calendar, Check, MapPin } from "lucide-react";
 
-type EventOption = { id: string; name: string };
+type EventOption = {
+  id: string;
+  name: string;
+  whenLabel: string | null;
+  locationLabel: string | null;
+  /** Precomputed disambiguated label for tables / compact lists */
+  optionLabel: string;
+};
 
 type InviteRow = {
   id: string;
@@ -14,14 +22,14 @@ type InviteRow = {
   invitedAt: string;
   expiresAt: string;
   token?: string;
-  events: { event: { id: string; name: string } }[];
+  events: { event: { id: string; name: string; optionLabel?: string } }[];
   invitedBy: { email: string | null; name: string | null };
 };
 
 type GrantRow = {
   id: string;
   user: { id: string; email: string; name: string | null };
-  event: { id: string; name: string };
+  event: { id: string; name: string; optionLabel?: string };
   createdAt: string;
 };
 
@@ -94,7 +102,9 @@ export function PartnerInvitePanel({
             : undefined,
           events: events
             .filter((ev) => sentEvents.includes(ev.id))
-            .map((ev) => ({ event: ev })),
+            .map((ev) => ({
+              event: { id: ev.id, name: ev.name, optionLabel: ev.optionLabel },
+            })),
           invitedBy: { email: "Sie", name: null },
         },
         ...prev,
@@ -148,22 +158,69 @@ export function PartnerInvitePanel({
             onChange={(e) => setEmail(e.target.value)}
           />
         </label>
+
         <fieldset>
-          <legend className="mb-2 text-sm font-medium">Events für den Verkauf</legend>
-          <div className="grid max-h-56 gap-2 overflow-y-auto sm:grid-cols-2">
-            {events.map((ev) => (
-              <label key={ev.id} className="flex items-start gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={eventIds.includes(ev.id)}
-                  onChange={() => toggleEvent(ev.id)}
-                  className="mt-1"
-                />
-                <span>{ev.name}</span>
-              </label>
-            ))}
+          <legend className="mb-1 text-sm font-medium text-[var(--tf-navy)]">
+            Freigabe für die Tageskasse
+          </legend>
+          <p className="mb-3 text-sm text-[var(--tf-text-secondary)]">
+            Tippe die Events an, die diese Vorverkaufsstelle verkaufen darf. Gleichnamige
+            Termine erkennst du an Datum und Ort.
+          </p>
+          <div className="max-h-72 space-y-2 overflow-y-auto pr-0.5">
+            {events.map((ev) => {
+              const selected = eventIds.includes(ev.id);
+              return (
+                <button
+                  key={ev.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleEvent(ev.id)}
+                  className={`flex w-full items-start gap-3 rounded-2xl border px-3 py-3 text-left transition duration-200 ${
+                    selected
+                      ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.22)]"
+                      : "border-[var(--tf-line)] bg-white hover:border-[var(--tf-teal)]"
+                  }`}
+                >
+                  <span
+                    className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
+                      selected
+                        ? "border-[var(--tf-teal)] bg-[var(--tf-teal)] text-white"
+                        : "border-[var(--tf-line)] bg-white text-transparent"
+                    }`}
+                    aria-hidden
+                  >
+                    <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-medium text-[var(--tf-navy)]">{ev.name}</span>
+                    {ev.whenLabel ? (
+                      <span className="mt-1 flex items-start gap-1.5 text-sm text-[var(--tf-text-secondary)]">
+                        <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                        {ev.whenLabel}
+                      </span>
+                    ) : null}
+                    {ev.locationLabel ? (
+                      <span className="mt-0.5 flex items-start gap-1.5 text-sm text-[var(--tf-text-secondary)]">
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                        {ev.locationLabel}
+                      </span>
+                    ) : null}
+                  </span>
+                </button>
+              );
+            })}
+            {events.length === 0 ? (
+              <p className="text-sm text-[var(--tf-text-secondary)]">Keine Events verfügbar.</p>
+            ) : null}
           </div>
+          {eventIds.length > 0 ? (
+            <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
+              {eventIds.length} Event{eventIds.length === 1 ? "" : "s"} ausgewählt
+            </p>
+          ) : null}
         </fieldset>
+
         {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
         {ok ? <p className="text-sm text-[var(--tf-navy)]">{ok}</p> : null}
         <button type="submit" className="tf-btn tf-btn-primary" disabled={busy || eventIds.length < 1}>
@@ -193,7 +250,9 @@ export function PartnerInvitePanel({
                     <p className="text-xs text-[var(--tf-text-secondary)]">{inv.email}</p>
                   </td>
                   <td className="px-3 py-2 text-xs">
-                    {inv.events.map((e) => e.event.name).join(", ") || "—"}
+                    {inv.events
+                      .map((e) => e.event.optionLabel ?? e.event.name)
+                      .join(", ") || "—"}
                   </td>
                   <td className="px-3 py-2">
                     <p>{inv.status}</p>
@@ -229,7 +288,10 @@ export function PartnerInvitePanel({
           {grants.map((g) => (
             <li key={g.id} className="rounded-xl border border-[var(--tf-line)] px-3 py-2">
               <span className="font-medium">{g.user.name ?? g.user.email}</span>
-              <span className="text-[var(--tf-text-secondary)]"> · {g.event.name}</span>
+              <span className="text-[var(--tf-text-secondary)]">
+                {" "}
+                · {g.event.optionLabel ?? g.event.name}
+              </span>
             </li>
           ))}
           {grants.length === 0 ? (

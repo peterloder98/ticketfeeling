@@ -1181,7 +1181,8 @@ export function ScannerClient({
               </p>
             )}
             <p className="mt-1 text-[11px] text-white/80">
-              Testmodus: Ticket-Info ohne echten Einlass.
+              Testmodus: Ticket-Info ohne echten Einlass. Freischalten über Einlassbeginn oder
+              „Verkauf vorzeitig beenden“ am Event.
             </p>
           </div>
         ) : null}

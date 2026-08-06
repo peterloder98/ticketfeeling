@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getEventCheckinStats } from "@/lib/commerce/checkin";
-import { isProductionCheckinOpen } from "@/lib/commerce/checkin-gate";
+import { isProductionCheckinOpen, evaluateCheckinGate } from "@/lib/commerce/checkin-gate";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { ScannerClient } from "@/components/scanner-client";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
@@ -13,6 +13,7 @@ import { MapPin, Calendar } from "lucide-react";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { formatEventOptionLabel } from "@/lib/admin/event-option-label";
 
 export const dynamic = "force-dynamic";
 export const metadata = {
@@ -89,10 +90,16 @@ export default async function ScannerPage({
     : false;
 
   if (selected && canScan && stats) {
+    const eventDisplayName = formatEventOptionLabel({
+      name: selected.name,
+      eventStartsAt: selected.eventStartsAt,
+      locationCity: selected.location?.city,
+      locationName: selected.location?.name,
+    });
     return (
       <ScannerClient
         eventId={selected.id}
-        eventName={selected.name}
+        eventName={eventDisplayName}
         initialStats={stats}
         checkinUnlocked={checkinUnlocked}
         doorsOpenAt={selected.doorsOpenAt?.toISOString() ?? null}
@@ -171,37 +178,59 @@ export default async function ScannerPage({
         </div>
       ) : (
         <div className="mt-6 space-y-3">
-          {events.map((event) => (
-            <Link
-              key={event.id}
-              href={`/scanner?event=${event.id}`}
-              className="block rounded-2xl bg-white/10 p-4 ring-1 ring-white/10 transition hover:bg-white/[0.14] hover:ring-[var(--tf-teal)]/50 md:bg-white md:text-[var(--tf-text)] md:shadow-[var(--tf-shadow)] md:ring-[var(--tf-line)] md:hover:bg-white md:hover:ring-[var(--tf-teal)]"
-            >
-              <p className="text-lg font-semibold leading-snug text-white md:text-[var(--tf-navy)]">
-                {event.name}
-              </p>
-              <p className="mt-2 inline-flex items-start gap-2 text-sm text-white/75 md:text-[var(--tf-text-secondary)]">
-                <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" />
-                <span>
-                  {event.eventStartsAt
-                    ? formatDeDateTime(event.eventStartsAt, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })
-                    : "Termin offen"}
-                </span>
-              </p>
-              {event.location?.name ? (
-                <p className="mt-1 inline-flex items-start gap-2 text-sm text-white/70 md:text-[var(--tf-text-secondary)]">
-                  <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" />
+          {events.map((event) => {
+            const gate = evaluateCheckinGate({
+              doorsOpenAt: event.doorsOpenAt,
+              saleClosedEarly: event.saleClosedEarly,
+            });
+            const statusLabel = gate.open
+              ? gate.reason === "sale_closed_early"
+                ? "Einlass freigeschaltet"
+                : "Einlass geöffnet"
+              : "Testmodus";
+            return (
+              <Link
+                key={event.id}
+                href={`/scanner?event=${event.id}`}
+                className="block rounded-2xl bg-white/10 p-4 ring-1 ring-white/10 transition hover:bg-white/[0.14] hover:ring-[var(--tf-teal)]/50 md:bg-white md:text-[var(--tf-text)] md:shadow-[var(--tf-shadow)] md:ring-[var(--tf-line)] md:hover:bg-white md:hover:ring-[var(--tf-teal)]"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <p className="text-lg font-semibold leading-snug text-white md:text-[var(--tf-navy)]">
+                    {event.name}
+                  </p>
+                  <span
+                    className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium ${
+                      gate.open
+                        ? "bg-[rgba(20,184,166,0.2)] text-[#5eead4] md:bg-[rgba(20,184,166,0.12)] md:text-[var(--tf-teal)]"
+                        : "bg-white/15 text-white/85 md:bg-[rgba(15,39,71,0.06)] md:text-[var(--tf-navy)]"
+                    }`}
+                  >
+                    {statusLabel}
+                  </span>
+                </div>
+                <p className="mt-2 inline-flex items-start gap-2 text-sm text-white/75 md:text-[var(--tf-text-secondary)]">
+                  <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" />
                   <span>
-                    {event.location.name}
-                    {event.location.city ? `, ${event.location.city}` : ""}
+                    {event.eventStartsAt
+                      ? formatDeDateTime(event.eventStartsAt, {
+                          dateStyle: "medium",
+                          timeStyle: "short",
+                        })
+                      : "Termin offen"}
                   </span>
                 </p>
-              ) : null}
-            </Link>
-          ))}
+                {event.location?.name ? (
+                  <p className="mt-1 inline-flex items-start gap-2 text-sm text-white/70 md:text-[var(--tf-text-secondary)]">
+                    <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[var(--tf-teal)]" />
+                    <span>
+                      {event.location.name}
+                      {event.location.city ? `, ${event.location.city}` : ""}
+                    </span>
+                  </p>
+                ) : null}
+              </Link>
+            );
+          })}
           {events.length === 0 ? (
             <p className="text-white/60 md:text-[var(--tf-text-secondary)]">Kein Event verfügbar.</p>
           ) : null}
