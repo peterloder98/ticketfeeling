@@ -31,11 +31,11 @@ const pools = (
 
 describe("inventory-availability (shared channel pools)", () => {
   it("does not invent stock when category capacity is 0", () => {
-    expect(categoryInventoryCapacity(50, pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }))).toBe(
+    expect(categoryInventoryCapacity(50)).toBe(
       50,
     );
     // Stale pool caps must not override an empty Kontingent (unassigned Stehplatz).
-    expect(categoryInventoryCapacity(0, pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }))).toBe(
+    expect(categoryInventoryCapacity(0)).toBe(
       0,
     );
     expect(sharedRemainingQuantity(pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 }), 0)).toBe(0);

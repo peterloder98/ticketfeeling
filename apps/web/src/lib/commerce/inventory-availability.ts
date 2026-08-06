@@ -14,10 +14,7 @@ export type InventoryPoolQty = {
  * Category capacity is authoritative — including 0 (unassigned / empty Stehplatz).
  * Never invent stock from stale per-channel pool caps when category capacity is 0.
  */
-export function categoryInventoryCapacity(
-  categoryCapacity: number,
-  _pools?: { capacity: number }[],
-): number {
+export function categoryInventoryCapacity(categoryCapacity: number): number {
   return Math.max(0, categoryCapacity);
 }
 
@@ -30,7 +27,7 @@ export function sharedRemainingQuantity(
   pools: InventoryPoolQty[],
   categoryCapacity: number,
 ): number {
-  const cap = categoryInventoryCapacity(categoryCapacity, pools);
+  const cap = categoryInventoryCapacity(categoryCapacity);
   return Math.max(0, cap - sharedCommittedQuantity(pools));
 }
 

@@ -265,7 +265,7 @@ export async function createOrderFromCart(input: {
       }
       // Shared Kontingent: Online + Tageskasse must not exceed category capacity.
       const siblings = siblingsByCategory.get(pool.categoryId) ?? [pool];
-      const sharedCap = categoryInventoryCapacity(item.category.capacity, siblings);
+      const sharedCap = categoryInventoryCapacity(item.category.capacity);
       if (sharedCommittedQuantity(siblings) > sharedCap) {
         throw new Error("INVENTORY_INVALID");
       }

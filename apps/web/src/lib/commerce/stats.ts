@@ -178,7 +178,7 @@ export async function getSalesStats(organizationId: string) {
       tickets: row._count._all,
     })),
     inventory: [...byCategory.values()].map((row) => {
-      const capacity = categoryInventoryCapacity(row.categoryCapacity, row.pools);
+      const capacity = categoryInventoryCapacity(row.categoryCapacity);
       const sold = row.pools.reduce((s, p) => s + p.soldQuantity, 0);
       const held = row.pools.reduce((s, p) => s + p.heldQuantity, 0);
       const onlineSold =

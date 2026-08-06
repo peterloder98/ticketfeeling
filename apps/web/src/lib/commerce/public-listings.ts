@@ -266,7 +266,7 @@ export function remainingForCategories(
   let capacity = 0;
   let remaining = 0;
   for (const cat of categories) {
-    const cap = categoryInventoryCapacity(cat.capacity, cat.pools);
+    const cap = categoryInventoryCapacity(cat.capacity);
     capacity += cap;
     remaining += sharedRemainingQuantity(cat.pools, cat.capacity);
   }

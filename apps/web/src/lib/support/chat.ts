@@ -258,7 +258,7 @@ function pickEvents(events: EventWithCats[], message: string, limit = 3) {
 function categoryAvailability(cat: EventWithCats["ticketCategories"][number]) {
   const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
   const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
-  const capacity = categoryInventoryCapacity(cat.capacity, cat.pools);
+  const capacity = categoryInventoryCapacity(cat.capacity);
   const remaining = sharedRemainingQuantity(cat.pools, cat.capacity);
   return { sold, held, capacity, remaining };
 }
