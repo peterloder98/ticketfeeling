@@ -33,6 +33,7 @@ import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
+import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
 
 export const dynamic = "force-dynamic";
@@ -100,6 +101,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     ensureSeatingAssignmentSchema(prisma),
     ensureSepaPaymentSchema(prisma),
     ensureEventPricingSchema(prisma),
+    ensureSaleClosedEarlyColumn(),
   ]);
 
   let event;
@@ -328,6 +330,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               locationName: event.location?.name ?? null,
               locationCity: event.location?.city ?? null,
               whenLabel: when ?? "Termin offen",
+              saleClosedEarly: Boolean(event.saleClosedEarly),
             }}
             meta={
               <div className="mt-1 space-y-0.5 text-sm text-[var(--tf-text-secondary)]">

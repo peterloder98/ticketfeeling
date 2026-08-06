@@ -122,4 +122,17 @@ describe("isEventSaleOpen without cover", () => {
       isEventSaleOpen({ status: "cancelled", presaleStartsAt: past }, now),
     ).toBe(false);
   });
+
+  it("closes sale when saleClosedEarly is set", () => {
+    expect(
+      isEventSaleOpen(
+        {
+          status: "presale_active",
+          presaleStartsAt: past,
+          saleClosedEarly: true,
+        },
+        now,
+      ),
+    ).toBe(false);
+  });
 });

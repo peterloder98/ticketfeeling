@@ -2,6 +2,10 @@ import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/crypto-token";
 import { writeAudit } from "@/lib/audit";
 import { channelLabel } from "@/lib/commerce/channels";
+import {
+  checkinLockedMessage,
+  isProductionCheckinOpen,
+} from "@/lib/commerce/checkin-gate";
 
 function ticketPayload(ticket: {
   ticketNumber: string;
@@ -104,8 +108,9 @@ export async function scanTicket(input: {
     };
   }
 
-  // Infomodus: nur anzeigen, Status unverändert
+  // Infomodus / Testmodus: nur anzeigen, Status unverändert
   if (action === "info") {
+    const checkinOpen = isProductionCheckinOpen(ticket.event);
     await prisma.checkinEvent.create({
       data: {
         eventId: ticket.eventId,
@@ -114,18 +119,47 @@ export async function scanTicket(input: {
         result: "blue",
         previousPresence: ticket.presence,
         newPresence: ticket.presence,
-        reason: "info",
+        reason: checkinOpen ? "info" : "test_mode",
         actorUserId: input.actorUserId,
         deviceLabel: input.deviceLabel,
       },
     });
     return {
       color: "blue" as const,
-      message: "Ticket-Info",
+      message: checkinOpen ? "Ticket-Info" : "Testmodus — Ticket-Info",
       ticket: payload(),
       salesChannel,
       salesChannelLabel,
       stats: await getEventCheckinStats(ticket.eventId),
+    };
+  }
+
+  // Real check-in/out only after doors open or early sale end (server-side gate)
+  if (!isProductionCheckinOpen(ticket.event)) {
+    const lockedMsg = checkinLockedMessage(ticket.event);
+    await prisma.checkinEvent.create({
+      data: {
+        eventId: ticket.eventId,
+        ticketId: ticket.id,
+        action: "lookup",
+        result: "orange",
+        previousPresence: ticket.presence,
+        newPresence: ticket.presence,
+        reason: "doors_not_open",
+        actorUserId: input.actorUserId,
+        deviceLabel: input.deviceLabel,
+      },
+    });
+    return {
+      color: "orange" as const,
+      message: lockedMsg,
+      ticket: payload(),
+      salesChannel,
+      salesChannelLabel,
+      stats: await getEventCheckinStats(ticket.eventId),
+      checkinLocked: true as const,
+      doorsOpenAt: ticket.event.doorsOpenAt?.toISOString() ?? null,
+      saleClosedEarly: Boolean(ticket.event.saleClosedEarly),
     };
   }
 

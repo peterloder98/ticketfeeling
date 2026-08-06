@@ -7,6 +7,8 @@ import {
   deleteOrCancelEventAction,
   pauseEventSalesAction,
   resumeEventSalesAction,
+  closeEventSaleEarlyAction,
+  reopenEventSaleAction,
 } from "@/app/admin/events/actions";
 import { recalledEventListHref } from "@/lib/admin/event-list-filters";
 
@@ -18,9 +20,10 @@ type EventSummary = {
   locationName: string | null;
   locationCity: string | null;
   whenLabel: string;
+  saleClosedEarly?: boolean;
 };
 
-type ConfirmKind = "danger" | "pause";
+type ConfirmKind = "danger" | "pause" | "closeSale";
 
 export function EventAdminHeaderActions({
   event,
@@ -44,7 +47,17 @@ export function EventAdminHeaderActions({
   const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
 
   const isPaused = event.status === "paused";
-  const canPause = event.status === "presale_active" || event.status === "published";
+  const saleClosedEarly = Boolean(event.saleClosedEarly);
+  const canPause =
+    !saleClosedEarly &&
+    (event.status === "presale_active" || event.status === "published");
+  const canCloseSaleEarly =
+    !saleClosedEarly &&
+    (event.status === "presale_active" ||
+      event.status === "published" ||
+      event.status === "paused" ||
+      event.status === "announcement" ||
+      event.status === "sold_out");
   const isCancelMode = ticketsSold > 0;
   const dangerLabel = isCancelMode ? "Event absagen" : "Event löschen";
   const dangerVerb = isCancelMode ? "absagen" : "löschen";
@@ -80,6 +93,13 @@ export function EventAdminHeaderActions({
     setConfirmOpen(true);
   }
 
+  function openCloseSaleConfirm() {
+    setError(null);
+    setConfirmKind("closeSale");
+    setConfirmStep(1);
+    setConfirmOpen(true);
+  }
+
   function closeConfirm() {
     if (pending) return;
     setConfirmOpen(false);
@@ -98,10 +118,35 @@ export function EventAdminHeaderActions({
     });
   }
 
+  function onReopenSale() {
+    setError(null);
+    startTransition(async () => {
+      const result = await reopenEventSaleAction(event.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
   function onConfirmPause() {
     setError(null);
     startTransition(async () => {
       const result = await pauseEventSalesAction(event.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setConfirmOpen(false);
+      router.refresh();
+    });
+  }
+
+  function onConfirmCloseSale() {
+    setError(null);
+    startTransition(async () => {
+      const result = await closeEventSaleEarlyAction(event.id);
       if (!result.ok) {
         setError(result.error);
         return;
@@ -136,7 +181,7 @@ export function EventAdminHeaderActions({
           {event.name}
         </h1>
         <span className="rounded-full bg-[rgba(15,39,71,0.06)] px-2.5 py-0.5 text-xs font-medium text-[var(--tf-navy)]">
-          {statusLabel}
+          {saleClosedEarly ? "Verkauf beendet" : statusLabel}
         </span>
         <a
           href={`/event/${event.slug}`}
@@ -172,6 +217,26 @@ export function EventAdminHeaderActions({
                   : "Verkauf pausieren"}
             </button>
           ) : null}
+          {canCloseSaleEarly ? (
+            <button
+              type="button"
+              className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+              disabled={pending}
+              onClick={openCloseSaleConfirm}
+            >
+              Verkauf vorzeitig beenden
+            </button>
+          ) : null}
+          {saleClosedEarly ? (
+            <button
+              type="button"
+              className="tf-btn tf-btn-primary !min-h-10 text-sm"
+              disabled={pending}
+              onClick={onReopenSale}
+            >
+              {pending ? "Einen Moment…" : "Verkauf wieder öffnen"}
+            </button>
+          ) : null}
           {event.status !== "cancelled" ? (
             <button
               type="button"
@@ -195,6 +260,13 @@ export function EventAdminHeaderActions({
         <p className="mt-3 rounded-xl border border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.12)] px-3 py-2 text-sm text-[var(--tf-navy)]">
           Verkauf pausiert — das Event erscheint nicht auf Startseite, Events-Liste oder
           Embeds. Mit „Verkauf fortsetzen“ geht’s weiter wie zuvor.
+        </p>
+      ) : null}
+
+      {saleClosedEarly ? (
+        <p className="mt-3 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.1)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+          Verkauf vorzeitig beendet — Online und Tageskasse sind zu. Der Einlass-Scanner ist
+          freigeschaltet (auch vor Einlassbeginn), damit ihr früh checken könnt.
         </p>
       ) : null}
 
@@ -237,6 +309,36 @@ export function EventAdminHeaderActions({
                     onClick={onConfirmPause}
                   >
                     {pending ? "Einen Moment…" : "Verkauf pausieren"}
+                  </button>
+                </div>
+              </>
+            ) : confirmKind === "closeSale" ? (
+              <>
+                <h2 id={dialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
+                  Verkauf vorzeitig beenden?
+                </h2>
+                <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+                  Online- und Tageskassen-Verkauf enden sofort. Das Event bleibt sichtbar —
+                  nur der Ticketkauf ist zu. Gleichzeitig wird der Einlass-Scanner
+                  freigeschaltet, auch wenn der Einlassbeginn noch nicht erreicht ist.
+                </p>
+                {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                    disabled={pending}
+                    onClick={closeConfirm}
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                    disabled={pending}
+                    onClick={onConfirmCloseSale}
+                  >
+                    {pending ? "Einen Moment…" : "Verkauf beenden"}
                   </button>
                 </div>
               </>

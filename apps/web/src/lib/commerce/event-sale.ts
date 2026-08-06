@@ -98,6 +98,8 @@ export function isEventSaleOpen(
     status: string;
     presaleStartsAt?: Date | null;
     presaleEndsAt?: Date | null;
+    /** Admin ended online/box-office sale early („Verkauf vorzeitig beenden“). */
+    saleClosedEarly?: boolean | null;
     /** Cover is optional for sale (admin soft-hint only). Kept for callers. */
     coverImageUrl?: string | null;
     tour?: { coverImageUrl?: string | null; visibility?: string | null } | null;
@@ -112,6 +114,7 @@ export function isEventSaleOpen(
   ) {
     return false;
   }
+  if (event.saleClosedEarly) return false;
   // Draft tour = not public / not sellable
   if (event.tour?.visibility === "draft") return false;
   const status = effectiveEventStatus(event, now);

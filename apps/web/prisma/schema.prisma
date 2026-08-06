@@ -679,6 +679,8 @@ model Event {
   status            String    @default("draft")
   /// When status is `paused`, the previous selling status to restore on resume
   statusBeforePause String?   @map("status_before_pause")
+  /// Admin closed online/box-office sale early; also unlocks production check-in before doors
+  saleClosedEarly   Boolean   @default(false) @map("sale_closed_early")
   locale            String    @default("de-DE")
   seoTitle          String?   @map("seo_title")
   seoDescription    String?   @map("seo_description")

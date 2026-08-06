@@ -158,7 +158,13 @@ function presenceDe(presence: string) {
   }
 }
 
-function modeMeta(mode: ScanMode) {
+function modeMeta(mode: ScanMode, checkinUnlocked: boolean) {
+  if (!checkinUnlocked) {
+    return {
+      title: "Testmodus aktiviert",
+      hint: "Nur Ticket-Info — kein echter Einlass",
+    };
+  }
   if (mode === "in") {
     return {
       title: "Check-in aktiviert",
@@ -497,20 +503,52 @@ function scannerEngineConfig() {
   };
 }
 
+function formatDoorsCountdown(doorsOpenAt: string | null, nowMs: number): string | null {
+  if (!doorsOpenAt) return null;
+  const doorsMs = new Date(doorsOpenAt).getTime();
+  if (!Number.isFinite(doorsMs)) return null;
+  const diff = doorsMs - nowMs;
+  if (diff <= 0) return null;
+  const totalSec = Math.ceil(diff / 1000);
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+function formatDoorsLabel(doorsOpenAt: string | null): string | null {
+  if (!doorsOpenAt) return null;
+  const d = new Date(doorsOpenAt);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString("de-DE", {
+    timeZone: "Europe/Berlin",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
 export function ScannerClient({
   eventId,
   eventName,
   initialStats,
   gateLabel = "Eingang Haupt",
+  checkinUnlocked: checkinUnlockedProp = true,
+  doorsOpenAt = null,
+  saleClosedEarly = false,
 }: {
   eventId: string;
   eventName: string;
   initialStats: ScannerStats;
   gateLabel?: string;
+  /** Server-computed: doors open or sale closed early */
+  checkinUnlocked?: boolean;
+  doorsOpenAt?: string | null;
+  saleClosedEarly?: boolean;
 }) {
   const router = useRouter();
   const [token, setToken] = useState("");
-  const [mode, setMode] = useState<ScanMode>("in");
+  const [mode, setMode] = useState<ScanMode>(checkinUnlockedProp ? "in" : "info");
   const [result, setResult] = useState<ScanResult | null>(null);
   const [flash, setFlash] = useState<ScanResult["color"] | null>(null);
   const [history, setHistory] = useState<ScanResult[]>([]);
@@ -527,6 +565,7 @@ export function ScannerClient({
   const [decodeHint, setDecodeHint] = useState<string | null>(null);
   const [cameraPausedUi, setCameraPausedUi] = useState(false);
   const [cameraDead, setCameraDead] = useState(false);
+  const [nowMs, setNowMs] = useState(() => Date.now());
   const sessionHydratedRef = useRef(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const startGenRef = useRef(0);
@@ -549,15 +588,43 @@ export function ScannerClient({
   const scanningSinceRef = useRef(0);
   const softPausedRef = useRef(false);
 
+  const doorsReached =
+    Boolean(doorsOpenAt) && new Date(doorsOpenAt!).getTime() <= nowMs;
+  const checkinUnlocked = checkinUnlockedProp || saleClosedEarly || doorsReached;
+  const doorsLabel = formatDoorsLabel(doorsOpenAt);
+  const countdown = formatDoorsCountdown(doorsOpenAt, nowMs);
+
+  useEffect(() => {
+    if (checkinUnlocked) return;
+    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [checkinUnlocked]);
+
+  useEffect(() => {
+    if (!checkinUnlocked && (mode === "in" || mode === "out")) {
+      setMode("info");
+      modeRef.current = "info";
+    }
+  }, [checkinUnlocked, mode]);
+
   useEffect(() => {
     const saved = loadSession(eventId);
     if (saved) {
-      setMode(saved.mode);
+      const nextMode =
+        !checkinUnlockedProp && !saleClosedEarly && saved.mode !== "info"
+          ? "info"
+          : saved.mode;
+      setMode(nextMode);
       setGate(saved.gate);
-      modeRef.current = saved.mode;
+      modeRef.current = nextMode;
       gateRef.current = saved.gate;
+    } else if (!checkinUnlockedProp && !saleClosedEarly) {
+      setMode("info");
+      modeRef.current = "info";
     }
     sessionHydratedRef.current = true;
+    // Only hydrate once per event — unlock flips handled separately
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
   useEffect(() => {
@@ -1046,11 +1113,12 @@ export function ScannerClient({
     await runScan(token, "manual");
   }
 
-  const meta = modeMeta(mode);
+  const meta = modeMeta(mode, checkinUnlocked);
   const pct =
     stats.sold > 0 ? Math.round((stats.firstCheckedIn / stats.sold) * 100) : 0;
-  const flowLabel =
-    mode === "out"
+  const flowLabel = !checkinUnlocked
+    ? `Testmodus · Im Haus ${stats.currentlyIn}`
+    : mode === "out"
       ? `IN → OUT · Im Haus ${stats.currentlyIn}`
       : mode === "in"
         ? `OUT → IN · Im Haus ${stats.currentlyIn}`
@@ -1077,7 +1145,11 @@ export function ScannerClient({
 
         <div className="mt-2 flex items-center justify-between gap-2 text-sm">
           <p className="min-w-0 truncate font-medium tabular-nums">
-            <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-[#22c55e]" />
+            <span
+              className={`mr-1.5 inline-block h-2 w-2 rounded-full ${
+                checkinUnlocked ? "bg-[#22c55e]" : "bg-[#fb923c]"
+              }`}
+            />
             {flowLabel}
             <span className="text-white/55">
               {" "}
@@ -1094,15 +1166,39 @@ export function ScannerClient({
           </p>
         </div>
 
+        {!checkinUnlocked ? (
+          <div className="mt-2 rounded-xl bg-[#c2410c]/90 px-3 py-2.5 text-center ring-1 ring-white/20">
+            <p className="text-sm font-semibold text-white">Einlass noch nicht geöffnet</p>
+            {doorsLabel ? (
+              <p className="mt-0.5 text-xs text-white/90">
+                Einlassbeginn: {doorsLabel}
+                {doorsLabel.includes("Uhr") ? "" : " Uhr"}
+                {countdown ? ` · noch ${countdown}` : ""}
+              </p>
+            ) : (
+              <p className="mt-0.5 text-xs text-white/90">
+                Einlassbeginn fehlt — Testmodus oder Verkauf vorzeitig beenden.
+              </p>
+            )}
+            <p className="mt-1 text-[11px] text-white/80">
+              Testmodus: Ticket-Info ohne echten Einlass.
+            </p>
+          </div>
+        ) : null}
+
         <div className="mt-2 flex items-center justify-between gap-2 md:justify-center">
           <div className="flex items-center gap-1 md:hidden">
             <button
               type="button"
               className="rounded-lg p-2 text-white/90 hover:bg-white/10"
               aria-label="Modus wechseln"
-              onClick={() =>
-                setMode((m) => (m === "in" ? "out" : m === "out" ? "info" : "in"))
-              }
+              onClick={() => {
+                if (!checkinUnlocked) {
+                  setMode("info");
+                  return;
+                }
+                setMode((m) => (m === "in" ? "out" : m === "out" ? "info" : "in"));
+              }}
             >
               <ArrowLeftRight className="h-5 w-5" />
             </button>
@@ -1310,20 +1406,37 @@ export function ScannerClient({
         <nav className="grid grid-cols-3" aria-label="Scan-Modus">
           {(
             [
-              { id: "in" as const, label: "Check-In", Icon: LogIn },
-              { id: "info" as const, label: "Infomodus", Icon: Info },
-              { id: "out" as const, label: "Check-Out", Icon: LogOut },
+              { id: "in" as const, label: "Check-In", Icon: LogIn, needsUnlock: true },
+              {
+                id: "info" as const,
+                label: checkinUnlocked ? "Infomodus" : "Testmodus",
+                Icon: Info,
+                needsUnlock: false,
+              },
+              { id: "out" as const, label: "Check-Out", Icon: LogOut, needsUnlock: true },
             ] as const
-          ).map(({ id, label, Icon }) => {
+          ).map(({ id, label, Icon, needsUnlock }) => {
+            const locked = needsUnlock && !checkinUnlocked;
             const active = mode === id;
             return (
               <button
                 key={id}
                 type="button"
+                disabled={locked}
+                title={
+                  locked
+                    ? "Einlass noch nicht geöffnet — nur Testmodus möglich"
+                    : undefined
+                }
                 className={`flex flex-col items-center gap-1 px-2 py-3 text-xs font-semibold transition ${
-                  active ? "bg-[rgba(20,184,166,0.12)] text-[var(--tf-teal-hover)]" : "text-slate-500"
+                  locked
+                    ? "cursor-not-allowed text-slate-300"
+                    : active
+                      ? "bg-[rgba(20,184,166,0.12)] text-[var(--tf-teal-hover)]"
+                      : "text-slate-500"
                 }`}
                 onClick={() => {
+                  if (locked) return;
                   getAudioCtx();
                   dismissResult();
                   setMode(id);
@@ -1391,6 +1504,13 @@ export function ScannerClient({
               <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
                 {meta.title} · {flowLabel}
               </p>
+              {!checkinUnlocked ? (
+                <p className="mt-2 rounded-xl border border-[rgba(194,65,12,0.35)] bg-[rgba(194,65,12,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+                  Einlass noch nicht geöffnet
+                  {doorsLabel ? ` — Beginn ${doorsLabel}${doorsLabel.includes("Uhr") ? "" : " Uhr"}` : ""}.
+                  Nur Testmodus (Ticket-Info ohne Statusänderung).
+                </p>
+              ) : null}
             </div>
             <button
               type="button"

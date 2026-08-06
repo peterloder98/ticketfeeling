@@ -28,6 +28,7 @@ import {
   streetContainsDigits,
   postalCodeContainsNonDigits,
 } from "@/lib/commerce/address";
+import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 
 async function requireEventWrite() {
   const session = await getServerSession(authOptions);
@@ -847,6 +848,125 @@ export async function resumeEventSalesAction(eventId: string): Promise<PauseResu
     tourId: event.tourId,
   });
   return { ok: true, status: restoreStatus };
+}
+
+export type CloseSaleEarlyResult =
+  | { ok: true; saleClosedEarly: boolean }
+  | { ok: false; error: string };
+
+/**
+ * End online/box-office sale early while keeping the event ready for check-in.
+ * Also unlocks production scanning before doors open.
+ */
+export async function closeEventSaleEarlyAction(
+  eventId: string,
+): Promise<CloseSaleEarlyResult> {
+  const { session, membership } = await requireEventWrite();
+  await ensureSaleClosedEarlyColumn();
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, organizationId: membership.organizationId },
+    select: {
+      id: true,
+      slug: true,
+      status: true,
+      tourId: true,
+      saleClosedEarly: true,
+      presaleEndsAt: true,
+    },
+  });
+  if (!event) return { ok: false, error: "Event nicht gefunden." };
+  if (event.status === "cancelled" || event.status === "completed") {
+    return { ok: false, error: "Für abgesagte oder beendete Events geht das nicht." };
+  }
+  if (event.saleClosedEarly) {
+    return { ok: false, error: "Der Verkauf ist bereits vorzeitig beendet." };
+  }
+  if (
+    event.status !== "presale_active" &&
+    event.status !== "published" &&
+    event.status !== "paused" &&
+    event.status !== "sold_out" &&
+    event.status !== "announcement"
+  ) {
+    return { ok: false, error: "Nur Events im oder nach dem Verkauf können beendet werden." };
+  }
+
+  const now = new Date();
+  await prisma.event.update({
+    where: { id: event.id },
+    data: {
+      saleClosedEarly: true,
+      // Also close the time window so other sale checks stay consistent
+      ...(event.presaleEndsAt && event.presaleEndsAt.getTime() < now.getTime()
+        ? {}
+        : { presaleEndsAt: now }),
+    },
+  });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "event.sale_closed_early",
+    entityType: "event",
+    entityId: event.id,
+    before: { saleClosedEarly: false, presaleEndsAt: event.presaleEndsAt },
+    after: { saleClosedEarly: true, presaleEndsAt: now },
+  });
+
+  revalidateEventSurfaces({
+    eventId: event.id,
+    slug: event.slug,
+    tourId: event.tourId,
+  });
+  return { ok: true, saleClosedEarly: true };
+}
+
+/** Re-open online/box-office sale after an early close (does not change doors time). */
+export async function reopenEventSaleAction(eventId: string): Promise<CloseSaleEarlyResult> {
+  const { session, membership } = await requireEventWrite();
+  await ensureSaleClosedEarlyColumn();
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, organizationId: membership.organizationId },
+    select: {
+      id: true,
+      slug: true,
+      status: true,
+      tourId: true,
+      saleClosedEarly: true,
+      eventStartsAt: true,
+      doorsOpenAt: true,
+    },
+  });
+  if (!event) return { ok: false, error: "Event nicht gefunden." };
+  if (!event.saleClosedEarly) {
+    return { ok: false, error: "Der Verkauf ist nicht vorzeitig beendet." };
+  }
+
+  await prisma.event.update({
+    where: { id: event.id },
+    data: {
+      saleClosedEarly: false,
+      // Clear early-end timestamp so sale window can reopen
+      presaleEndsAt: null,
+    },
+  });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "event.sale_reopened",
+    entityType: "event",
+    entityId: event.id,
+    before: { saleClosedEarly: true },
+    after: { saleClosedEarly: false, presaleEndsAt: null },
+  });
+
+  revalidateEventSurfaces({
+    eventId: event.id,
+    slug: event.slug,
+    tourId: event.tourId,
+  });
+  return { ok: true, saleClosedEarly: false };
 }
 
 export type DeleteOrCancelResult =

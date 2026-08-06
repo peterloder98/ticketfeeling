@@ -3,6 +3,8 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getEventCheckinStats } from "@/lib/commerce/checkin";
+import { isProductionCheckinOpen } from "@/lib/commerce/checkin-gate";
+import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { ScannerClient } from "@/components/scanner-client";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { isScannerOnlyUser } from "@/lib/admin/staff-access";
@@ -58,6 +60,7 @@ export default async function ScannerPage({
   }
 
   const sp = await searchParams;
+  await ensureSaleClosedEarlyColumn();
   const events = await prisma.event.findMany({
     where: {
       organizationId: orgId,
@@ -69,6 +72,7 @@ export default async function ScannerPage({
       name: true,
       eventStartsAt: true,
       doorsOpenAt: true,
+      saleClosedEarly: true,
       status: true,
       location: { select: { name: true, city: true } },
     },
@@ -77,6 +81,12 @@ export default async function ScannerPage({
   const eventId = sp.event && events.some((e) => e.id === sp.event) ? sp.event : null;
   const selected = events.find((e) => e.id === eventId) ?? null;
   const stats = eventId ? await getEventCheckinStats(eventId) : null;
+  const checkinUnlocked = selected
+    ? isProductionCheckinOpen({
+        doorsOpenAt: selected.doorsOpenAt,
+        saleClosedEarly: selected.saleClosedEarly,
+      })
+    : false;
 
   if (selected && canScan && stats) {
     return (
@@ -84,6 +94,9 @@ export default async function ScannerPage({
         eventId={selected.id}
         eventName={selected.name}
         initialStats={stats}
+        checkinUnlocked={checkinUnlocked}
+        doorsOpenAt={selected.doorsOpenAt?.toISOString() ?? null}
+        saleClosedEarly={Boolean(selected.saleClosedEarly)}
       />
     );
   }

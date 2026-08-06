@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { scanTicket } from "@/lib/commerce/checkin";
+import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { prisma } from "@/lib/db";
 
 const schema = z.object({
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
     }
 
     const body = schema.parse(await request.json());
+    await ensureSaleClosedEarlyColumn();
     const event = await prisma.event.findFirst({
       where: { id: body.eventId, organizationId: membership.organizationId },
       select: { id: true },
