@@ -21,6 +21,10 @@ import { SeatMap } from "@/components/seat-map";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { formatSeatLabel } from "@/lib/seating/types";
 import { cartErrorMessage } from "@/lib/commerce/cart-error-messages";
+import {
+  countAvailableForCategory,
+  multiCategorySelectionCap,
+} from "@/lib/seating/availability";
 
 type Category = {
   id: string;
@@ -135,12 +139,25 @@ export function SeatBookingPanel({
 
   const seatMapMaxSelect = useMemo(
     () =>
-      seatCategories.reduce(
-        (sum, c) => sum + Math.min(c.maxPerOrder, Math.max(0, c.available)),
-        0,
+      multiCategorySelectionCap(seatCategories, selectedByCategory, (id) =>
+        map ? countAvailableForCategory(map, id) : Number.POSITIVE_INFINITY,
       ),
-    [seatCategories],
+    [seatCategories, selectedByCategory, map],
   );
+
+  const uniformMaxPerCategory = useMemo(() => {
+    if (seatCategories.length === 0) return null;
+    const first = seatCategories[0].maxPerOrder;
+    return seatCategories.every((c) => c.maxPerOrder === first) ? first : null;
+  }, [seatCategories]);
+
+  const mapFreeCount = useMemo(() => {
+    if (!map) return 0;
+    return seatCategories.reduce(
+      (sum, c) => sum + countAvailableForCategory(map, c.id),
+      0,
+    );
+  }, [map, seatCategories]);
 
   const loadMap = useCallback(async () => {
     setMapLoading(true);
@@ -367,6 +384,8 @@ export function SeatBookingPanel({
             selectedIds={allSelectedIds}
             onToggle={toggleSeat}
             maxSelect={Math.max(seatMapMaxSelect, allSelectedIds.length, 1)}
+            maxPerCategory={uniformMaxPerCategory}
+            availableCount={mapFreeCount}
             multiCategory
             initialZoom={2.25}
             hint={
@@ -697,19 +716,6 @@ export function SeatBookingPanel({
       </ul>
     </div>
   );
-}
-
-function countAvailableForCategory(map: SeatMapPayload, categoryId: string) {
-  const hasAssignments = map.blocks.some((b) => b.seats.some((s) => s.categoryId));
-  let n = 0;
-  for (const block of map.blocks) {
-    for (const seat of block.seats) {
-      if (seat.status !== "available" || seat.locked) continue;
-      if (hasAssignments && seat.categoryId !== categoryId) continue;
-      n += 1;
-    }
-  }
-  return n;
 }
 
 function seatLabelsFromResponse(data: unknown): string[] {

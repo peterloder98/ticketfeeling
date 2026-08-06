@@ -26,6 +26,13 @@ type Props = {
    * Other categories stay fully visible (not faded).
    */
   multiCategory?: boolean;
+  /**
+   * When multiCategory: show this as the per-category ticket max in the status
+   * line instead of implying a single global X/Y cap (which was summing all categories).
+   */
+  maxPerCategory?: number | null;
+  /** Override free-seat count shown in the status line (defaults to map.availableCount). */
+  availableCount?: number;
   /** Hint under the map, e.g. companion info */
   hint?: string | null;
   /** Higher default zoom for public buy flow */
@@ -39,9 +46,12 @@ export function SeatMap({
   maxSelect,
   activeCategoryId,
   multiCategory = false,
+  maxPerCategory = null,
+  availableCount: availableCountProp,
   hint,
   initialZoom = DEFAULT_BUY_ZOOM,
 }: Props) {
+  const freeCount = availableCountProp ?? map.availableCount;
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [zoom, setZoom] = useState(initialZoom);
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -155,7 +165,11 @@ export function SeatMap({
         <Legend color="#CBD5E1" border="#64748B" dashed label="Gesperrt" />
         <div className="ml-auto flex items-center gap-2">
           <span className="tabular-nums">
-            {selectedIds.length}/{maxSelect} · {map.availableCount} frei
+            {multiCategory
+              ? maxPerCategory != null && maxPerCategory > 0
+                ? `${selectedIds.length} gewählt · max. ${maxPerCategory} pro Kategorie · ${freeCount} frei`
+                : `${selectedIds.length} gewählt · ${freeCount} frei`
+              : `${selectedIds.length}/${maxSelect} · ${freeCount} frei`}
           </span>
           <div className="inline-flex items-center rounded-lg border border-[var(--tf-line)] bg-white">
             <button

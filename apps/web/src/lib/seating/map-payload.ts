@@ -6,6 +6,7 @@ import {
 import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materialize";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
+import { countSellableAvailableSeats } from "@/lib/seating/availability";
 import type {
   PublicSeatBlock,
   PublicStandingArea,
@@ -139,12 +140,12 @@ export async function getSeatMapPayload(
     });
   }
 
-  const hasAssignments = seats.some((s) => s.categoryId);
-  const availableCount = seats.filter((s) => {
-    if (s.status !== "available" || s.locked) return false;
-    if (opts?.categoryId && hasAssignments && s.categoryId !== opts.categoryId) return false;
-    return true;
-  }).length;
+  // Count only pickable free seats (assigned categories when the plan is assigned).
+  // Matches per-category "Verfügbar" on the purchase UI — not unassigned / non-sellable rows.
+  const availableCount = countSellableAvailableSeats(seats, {
+    categoryId: opts?.categoryId,
+    assignedCategoryIds: seatingCategories.map((c) => c.id),
+  });
 
   return {
     eventId,

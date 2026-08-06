@@ -270,6 +270,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           description: category.description,
           priceGrossCents: category.priceGrossCents,
           available,
+          maxPerOrder: category.maxPerOrder,
           saleLabel,
           needsSeats,
           categoryKind: category.categoryKind,

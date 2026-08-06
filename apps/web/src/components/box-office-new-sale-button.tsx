@@ -10,6 +10,7 @@ type Category = {
   description?: string | null;
   priceGrossCents: number;
   available: number;
+  maxPerOrder?: number;
   saleLabel?: string | null;
   needsSeats?: boolean;
   categoryKind?: string;

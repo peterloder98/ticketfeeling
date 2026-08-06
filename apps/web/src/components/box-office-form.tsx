@@ -15,6 +15,10 @@ import {
 import { SeatMap } from "@/components/seat-map";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { formatSeatLabel } from "@/lib/seating/types";
+import {
+  countAvailableForCategory,
+  multiCategorySelectionCap,
+} from "@/lib/seating/availability";
 
 type Category = {
   id: string;
@@ -22,6 +26,7 @@ type Category = {
   description?: string | null;
   priceGrossCents: number;
   available: number;
+  maxPerOrder?: number;
   saleLabel?: string | null;
   needsSeats?: boolean;
   categoryKind?: string;
@@ -135,10 +140,44 @@ export function BoxOfficeForm({
     () => Object.values(selectedByCategory).flat(),
     [selectedByCategory],
   );
+
+  function categoryOrderCap(category: Category) {
+    return Math.max(1, category.maxPerOrder ?? 10);
+  }
+
+  function displayAvailable(category: Category) {
+    if (seatingChoice === "seat_map" && map && category.needsSeats) {
+      return Math.min(category.available, countAvailableForCategory(map, category.id));
+    }
+    return category.available;
+  }
+
   const seatMapMaxSelect = useMemo(() => {
     if (seatingChoice !== "seat_map") return 0;
-    return seatCategories.reduce((sum, c) => sum + Math.min(20, c.available), 0);
-  }, [seatingChoice, seatCategories]);
+    return multiCategorySelectionCap(
+      seatCategories.map((c) => ({
+        id: c.id,
+        maxPerOrder: categoryOrderCap(c),
+        available: c.available,
+      })),
+      selectedByCategory,
+      (id) => (map ? countAvailableForCategory(map, id) : Number.POSITIVE_INFINITY),
+    );
+  }, [seatingChoice, seatCategories, selectedByCategory, map]);
+
+  const uniformMaxPerCategory = useMemo(() => {
+    if (seatCategories.length === 0) return null;
+    const first = categoryOrderCap(seatCategories[0]);
+    return seatCategories.every((c) => categoryOrderCap(c) === first) ? first : null;
+  }, [seatCategories]);
+
+  const mapFreeCount = useMemo(() => {
+    if (!map || seatingChoice !== "seat_map") return map?.availableCount ?? 0;
+    return seatCategories.reduce(
+      (sum, c) => sum + countAvailableForCategory(map, c.id),
+      0,
+    );
+  }, [map, seatingChoice, seatCategories]);
 
   const loadMap = useCallback(async () => {
     if (!eventId || !hasReservedSeating) return;
@@ -192,7 +231,7 @@ export function BoxOfficeForm({
     if (!categoryId) return;
     const category = categories.find((c) => c.id === categoryId);
     if (!category?.needsSeats) return;
-    const max = Math.min(20, category.available);
+    const max = Math.min(categoryOrderCap(category), displayAvailable(category));
     setSelectedByCategory((prev) => {
       const cur = prev[categoryId] ?? [];
       if (cur.includes(seat.id)) {
@@ -528,8 +567,9 @@ export function BoxOfficeForm({
           <div className="space-y-3">
             {categories.map((category) => {
               const current = qty[category.id] ?? 0;
-              const max = Math.min(20, category.available);
-              const soldOut = category.available < 1;
+              const available = displayAvailable(category);
+              const max = Math.min(categoryOrderCap(category), available);
+              const soldOut = available < 1;
               const picked = selectedByCategory[category.id]?.length ?? 0;
               return (
                 <div
@@ -559,7 +599,7 @@ export function BoxOfficeForm({
                         {formatEuroFromCents(category.priceGrossCents)}
                       </p>
                       <p className="text-xs text-[var(--tf-text-secondary)]">
-                        {soldOut ? "Ausverkauft" : `Verfügbar: ${category.available}`}
+                        {soldOut ? "Ausverkauft" : `Verfügbar: ${available}`}
                         {feeConfig.enabled
                           ? ` · zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`
                           : ""}
@@ -645,6 +685,8 @@ export function BoxOfficeForm({
                   selectedIds={allSelectedIds}
                   onToggle={toggleSeat}
                   maxSelect={Math.max(seatMapMaxSelect, allSelectedIds.length, 1)}
+                  maxPerCategory={uniformMaxPerCategory}
+                  availableCount={mapFreeCount}
                   multiCategory
                   initialZoom={2}
                   hint="Türkis = Auswahl. Kategorienfarben zeigen die Preiszugehörigkeit. Verkauft und gesperrt sind grau."
