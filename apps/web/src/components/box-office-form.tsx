@@ -1,17 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatEuroFromCents } from "@/lib/money";
 import { computePlatformFeeGrossCents } from "@/lib/commerce/platform-fee";
 import { formatFeePercentageLabel } from "@/lib/commerce/public-price";
-import { Minus, Plus, ArrowLeft, Check } from "lucide-react";
+import { Minus, Plus, ArrowLeft, Check, Armchair, Map } from "lucide-react";
 import {
   STREET_NO_NUMBERS_MESSAGE,
   POSTAL_CODE_DIGITS_ONLY_MESSAGE,
   filterPostalCodeInput,
   filterStreetNameInput,
 } from "@/lib/commerce/address";
+import { SeatMap } from "@/components/seat-map";
+import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
+import { formatSeatLabel } from "@/lib/seating/types";
 
 type Category = {
   id: string;
@@ -20,6 +23,9 @@ type Category = {
   priceGrossCents: number;
   available: number;
   saleLabel?: string | null;
+  needsSeats?: boolean;
+  categoryKind?: string;
+  companionFree?: boolean;
 };
 
 type EventOption = {
@@ -27,6 +33,8 @@ type EventOption = {
   name: string;
   whenLabel?: string | null;
   locationLabel?: string | null;
+  hasReservedSeating?: boolean;
+  seatingBookingMode?: "none" | "best_available" | "seat_map_and_best";
   categories: Category[];
 };
 
@@ -35,6 +43,8 @@ type FeeConfig = {
   percentageBasisPoints: number;
   displayName: string;
 };
+
+type SeatingChoice = "best_available" | "seat_map";
 
 const STEPS = [
   { id: "event", title: "Event" },
@@ -60,6 +70,11 @@ export function BoxOfficeForm({
   const [step, setStep] = useState(0);
   const [eventId, setEventId] = useState("");
   const [qty, setQty] = useState<Record<string, number>>({});
+  const [seatingChoice, setSeatingChoice] = useState<SeatingChoice>("best_available");
+  const [activeSeatCategoryId, setActiveSeatCategoryId] = useState("");
+  const [selectedByCategory, setSelectedByCategory] = useState<Record<string, string[]>>({});
+  const [map, setMap] = useState<SeatMapPayload | null>(null);
+  const [mapLoading, setMapLoading] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "card_terminal">("cash");
   const [cashGiven, setCashGiven] = useState("");
   const [firstName, setFirstName] = useState("");
@@ -78,6 +93,11 @@ export function BoxOfficeForm({
   const categories = useMemo(
     () => selectedEvent?.categories ?? [],
     [selectedEvent?.categories],
+  );
+  const hasReservedSeating = Boolean(selectedEvent?.hasReservedSeating);
+  const seatCategories = useMemo(
+    () => categories.filter((c) => c.needsSeats),
+    [categories],
   );
 
   const lineItems = useMemo(
@@ -103,19 +123,109 @@ export function BoxOfficeForm({
       ? cashTenderedCents - totalCents
       : null;
 
+  const activeSeatCategory =
+    seatCategories.find((c) => c.id === activeSeatCategoryId) ?? seatCategories[0] ?? null;
+  const activeQty = activeSeatCategory ? (qty[activeSeatCategory.id] ?? 0) : 0;
+  const activeSelected = activeSeatCategory
+    ? (selectedByCategory[activeSeatCategory.id] ?? [])
+    : [];
+
+  const loadMap = useCallback(async () => {
+    if (!eventId || !hasReservedSeating) return;
+    setMapLoading(true);
+    try {
+      const catQs = activeSeatCategoryId
+        ? `?categoryId=${encodeURIComponent(activeSeatCategoryId)}`
+        : "";
+      const res = await fetch(`/api/v1/events/${eventId}/seats${catQs}`);
+      const data = await res.json();
+      if (res.ok) setMap(data.map as SeatMapPayload);
+      else setMap(null);
+    } finally {
+      setMapLoading(false);
+    }
+  }, [eventId, hasReservedSeating, activeSeatCategoryId]);
+
+  useEffect(() => {
+    if (step === 1 && hasReservedSeating && seatingChoice === "seat_map") {
+      void loadMap();
+    }
+  }, [step, hasReservedSeating, seatingChoice, loadMap]);
+
+  useEffect(() => {
+    if (!activeSeatCategoryId && seatCategories[0]) {
+      setActiveSeatCategoryId(seatCategories[0].id);
+    }
+  }, [activeSeatCategoryId, seatCategories]);
+
   function setCategoryQty(categoryId: string, next: number, max: number) {
-    setQty((prev) => ({
-      ...prev,
-      [categoryId]: Math.max(0, Math.min(max, next)),
-    }));
+    const clamped = Math.max(0, Math.min(max, next));
+    setQty((prev) => ({ ...prev, [categoryId]: clamped }));
+    setSelectedByCategory((prev) => {
+      const cur = prev[categoryId] ?? [];
+      if (cur.length <= clamped) return prev;
+      return { ...prev, [categoryId]: cur.slice(0, clamped) };
+    });
   }
 
   function selectEvent(id: string) {
+    const ev = events.find((e) => e.id === id);
     setEventId(id);
     setQty({});
+    setSelectedByCategory({});
+    setMap(null);
+    setSeatingChoice("best_available");
+    setActiveSeatCategoryId(ev?.categories.find((c) => c.needsSeats)?.id ?? "");
     setError(null);
     setStep(1);
   }
+
+  function toggleSeat(seat: PublicSeat) {
+    if (!activeSeatCategory || activeQty < 1) return;
+    if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
+    const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
+    if (hasAssignments && seat.categoryId && seat.categoryId !== activeSeatCategory.id) {
+      return;
+    }
+    if (seat.status !== "available" && seat.status !== "held_by_you") return;
+    setSelectedByCategory((prev) => {
+      const cur = prev[activeSeatCategory.id] ?? [];
+      if (cur.includes(seat.id)) {
+        return { ...prev, [activeSeatCategory.id]: cur.filter((id) => id !== seat.id) };
+      }
+      if (cur.length >= activeQty) {
+        return { ...prev, [activeSeatCategory.id]: [...cur.slice(1), seat.id] };
+      }
+      return { ...prev, [activeSeatCategory.id]: [...cur, seat.id] };
+    });
+  }
+
+  function validateTicketsStep(): string | null {
+    if (lineItems.length === 0) return "Bitte mindestens ein Ticket wählen.";
+    if (!hasReservedSeating || seatingChoice !== "seat_map") return null;
+    for (const line of lineItems) {
+      if (!line.category.needsSeats) continue;
+      const picked = selectedByCategory[line.category.id] ?? [];
+      if (picked.length !== line.quantity) {
+        return `Bitte ${line.quantity} Platz${line.quantity === 1 ? "" : "e"} für „${line.category.name}“ im Saalplan wählen.`;
+      }
+    }
+    return null;
+  }
+
+  const selectedSeatLabels = useMemo(() => {
+    if (!map || seatingChoice !== "seat_map") return [] as string[];
+    const all = map.blocks.flatMap((b) => b.seats);
+    const labels: string[] = [];
+    for (const line of lineItems) {
+      if (!line.category.needsSeats) continue;
+      for (const id of selectedByCategory[line.category.id] ?? []) {
+        const seat = all.find((s) => s.id === id);
+        if (seat) labels.push(formatSeatLabel(seat));
+      }
+    }
+    return labels;
+  }, [map, seatingChoice, lineItems, selectedByCategory]);
 
   async function confirmSale() {
     if (!eventId || lineItems.length === 0) return;
@@ -127,9 +237,15 @@ export function BoxOfficeForm({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId,
+          seatingMode: hasReservedSeating ? seatingChoice : "free",
           items: lineItems.map((l) => ({
             categoryId: l.category.id,
             quantity: l.quantity,
+            ...(hasReservedSeating &&
+            seatingChoice === "seat_map" &&
+            l.category.needsSeats
+              ? { seatIds: selectedByCategory[l.category.id] ?? [] }
+              : {}),
           })),
           paymentMethod,
           cashTenderedCents:
@@ -145,11 +261,17 @@ export function BoxOfficeForm({
       });
       const data = await response.json();
       if (!response.ok) {
+        const code = String(data?.error?.code ?? "");
         setError(
-          data?.error?.code === "SOLD_OUT"
+          code === "SOLD_OUT"
             ? "Nicht genug Tickets verfügbar."
-            : (data?.error?.code ?? "Verkauf fehlgeschlagen"),
+            : code === "SEATS_UNAVAILABLE" || code === "SEATS_REQUIRED"
+              ? "Plätze nicht mehr verfügbar — bitte erneut wählen."
+              : code === "COMPANION_SEAT_UNAVAILABLE"
+                ? "Kein freier Begleitplatz neben dem Rollstuhlplatz."
+                : code || "Verkauf fehlgeschlagen",
         );
+        if (seatingChoice === "seat_map") void loadMap();
         return;
       }
       router.push(data.detailPath);
@@ -223,7 +345,8 @@ export function BoxOfficeForm({
                 ) : null}
                 <p className="mt-2 text-xs font-medium text-[var(--tf-teal)]">
                   {ev.categories.length} Kategorie
-                  {ev.categories.length === 1 ? "" : "n"} · Tippen zum Auswählen
+                  {ev.categories.length === 1 ? "" : "n"}
+                  {ev.hasReservedSeating ? " · mit Saalplan" : ""} · Tippen zum Auswählen
                 </p>
               </button>
             ))}
@@ -244,11 +367,58 @@ export function BoxOfficeForm({
             </button>
           </div>
 
+          {hasReservedSeating && seatCategories.length > 0 ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSeatingChoice("best_available");
+                  setSelectedByCategory({});
+                  setError(null);
+                }}
+                className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                  seatingChoice === "best_available"
+                    ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.2)]"
+                    : "border-[var(--tf-line)] bg-white hover:border-[var(--tf-teal)]"
+                }`}
+              >
+                <Armchair className="mt-0.5 h-5 w-5 shrink-0 text-[var(--tf-navy)]" />
+                <span>
+                  <span className="font-semibold text-[var(--tf-navy)]">Bestplatz</span>
+                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                    System vergibt die besten freien Plätze, möglichst nebeneinander
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSeatingChoice("seat_map");
+                  setError(null);
+                }}
+                className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
+                  seatingChoice === "seat_map"
+                    ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.2)]"
+                    : "border-[var(--tf-line)] bg-white hover:border-[var(--tf-teal)]"
+                }`}
+              >
+                <Map className="mt-0.5 h-5 w-5 shrink-0 text-[var(--tf-navy)]" />
+                <span>
+                  <span className="font-semibold text-[var(--tf-navy)]">Saalplan</span>
+                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                    Kunde wählt Reihe und Platz selbst auf dem Plan
+                  </span>
+                </span>
+              </button>
+            </div>
+          ) : null}
+
           <div className="space-y-3">
             {categories.map((category) => {
               const current = qty[category.id] ?? 0;
               const max = Math.min(20, category.available);
               const soldOut = category.available < 1;
+              const picked = selectedByCategory[category.id]?.length ?? 0;
               return (
                 <div
                   key={category.id}
@@ -281,6 +451,9 @@ export function BoxOfficeForm({
                         {feeConfig.enabled
                           ? ` · zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`
                           : ""}
+                        {seatingChoice === "seat_map" && category.needsSeats && current > 0
+                          ? ` · ${picked}/${current} Plätze gewählt`
+                          : ""}
                       </p>
                     </div>
                     <div className="inline-flex items-center rounded-xl border border-[var(--tf-line)]">
@@ -300,17 +473,79 @@ export function BoxOfficeForm({
                         type="button"
                         className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
                         disabled={soldOut || current >= max}
-                        onClick={() => setCategoryQty(category.id, current + 1, max)}
+                        onClick={() => {
+                          setCategoryQty(category.id, current + 1, max);
+                          if (category.needsSeats) setActiveSeatCategoryId(category.id);
+                        }}
                         aria-label="Mehr"
                       >
                         <Plus className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
+                  {seatingChoice === "seat_map" &&
+                  category.needsSeats &&
+                  current > 0 &&
+                  seatCategories.length > 1 ? (
+                    <button
+                      type="button"
+                      className={`mt-3 text-sm font-semibold ${
+                        activeSeatCategoryId === category.id
+                          ? "text-[var(--tf-teal)]"
+                          : "text-[var(--tf-navy)] underline-offset-2 hover:underline"
+                      }`}
+                      onClick={() => setActiveSeatCategoryId(category.id)}
+                    >
+                      {activeSeatCategoryId === category.id
+                        ? "Aktiv für Saalplan-Auswahl"
+                        : "Plätze für diese Kategorie wählen"}
+                    </button>
+                  ) : null}
                 </div>
               );
             })}
           </div>
+
+          {seatingChoice === "seat_map" && hasReservedSeating && activeQty > 0 ? (
+            <div className="space-y-3 rounded-2xl border border-[var(--tf-line)] bg-white p-4">
+              <div>
+                <h3 className="text-base font-semibold text-[var(--tf-navy)]">Saalplan</h3>
+                <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+                  {activeSeatCategory
+                    ? `${activeSeatCategory.name}: ${activeSelected.length}/${activeQty} gewählt. Tippen zum Auswählen, ziehen zum Verschieben.`
+                    : "Anzahl wählen, dann Plätze tippen."}
+                  {activeSeatCategory?.companionFree
+                    ? " Beim Rollstuhlplatz wird der Begleitplatz automatisch mitreserviert."
+                    : ""}
+                </p>
+              </div>
+              {mapLoading && !map ? (
+                <p className="text-sm text-[var(--tf-text-secondary)]">Saalplan wird geladen…</p>
+              ) : map ? (
+                <SeatMap
+                  map={map}
+                  selectedIds={activeSelected}
+                  onToggle={toggleSeat}
+                  maxSelect={activeQty}
+                  activeCategoryId={activeSeatCategory?.id}
+                  initialZoom={2}
+                  hint={
+                    activeQty < 1
+                      ? "Zuerst eine Stückzahl für eine Sitzplatz-Kategorie wählen."
+                      : "Türkis = Auswahl. Verkauft und gesperrt sind grau."
+                  }
+                />
+              ) : (
+                <p className="text-sm text-[var(--danger)]">Saalplan nicht verfügbar.</p>
+              )}
+            </div>
+          ) : null}
+
+          {seatingChoice === "best_available" && hasReservedSeating && lineItems.some((l) => l.category.needsSeats) ? (
+            <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
+              Bestplatz: Beim Abschluss vergibt das System automatisch die besten freien Plätze.
+            </p>
+          ) : null}
 
           <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
             <div className="flex justify-between text-sm text-[var(--tf-text-secondary)]">
@@ -337,8 +572,9 @@ export function BoxOfficeForm({
             className="tf-btn tf-btn-primary w-full !min-h-12 text-base"
             disabled={lineItems.length === 0}
             onClick={() => {
-              if (lineItems.length === 0) {
-                setError("Bitte mindestens ein Ticket wählen.");
+              const msg = validateTicketsStep();
+              if (msg) {
+                setError(msg);
                 return;
               }
               setError(null);
@@ -359,6 +595,15 @@ export function BoxOfficeForm({
               Standard: Walk-in ohne Kundendaten — direkt zur Zahlung.
             </p>
           </div>
+          {selectedSeatLabels.length > 0 ? (
+            <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-sm text-[var(--tf-navy)]">
+              Gewählte Plätze: {selectedSeatLabels.join(" · ")}
+            </p>
+          ) : hasReservedSeating && seatingChoice === "best_available" ? (
+            <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
+              Bestplatz — Plätze werden bei Zahlung zugewiesen.
+            </p>
+          ) : null}
           <button
             type="button"
             className="tf-btn tf-btn-primary w-full !min-h-12 text-base"
@@ -480,6 +725,11 @@ export function BoxOfficeForm({
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
               {selectedEvent?.name} · {lineItems.reduce((s, l) => s + l.quantity, 0)} Ticket
               {lineItems.reduce((s, l) => s + l.quantity, 0) === 1 ? "" : "s"}
+              {hasReservedSeating
+                ? seatingChoice === "seat_map"
+                  ? " · Saalplan"
+                  : " · Bestplatz"
+                : ""}
             </p>
           </div>
 
@@ -494,6 +744,11 @@ export function BoxOfficeForm({
                 </span>
               </div>
             ))}
+            {selectedSeatLabels.length > 0 ? (
+              <p className="mt-2 border-t border-[var(--tf-line)] pt-2 text-xs text-[var(--tf-text-secondary)]">
+                {selectedSeatLabels.join(" · ")}
+              </p>
+            ) : null}
             {feeGrossCents > 0 ? (
               <div className="mt-1 flex justify-between gap-3 border-t border-[var(--tf-line)] pt-2 text-[var(--tf-text-secondary)]">
                 <span>{feeConfig.displayName}</span>

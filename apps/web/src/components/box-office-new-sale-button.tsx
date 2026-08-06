@@ -11,6 +11,9 @@ type Category = {
   priceGrossCents: number;
   available: number;
   saleLabel?: string | null;
+  needsSeats?: boolean;
+  categoryKind?: string;
+  companionFree?: boolean;
 };
 
 type EventOption = {
@@ -18,6 +21,8 @@ type EventOption = {
   name: string;
   whenLabel?: string | null;
   locationLabel?: string | null;
+  hasReservedSeating?: boolean;
+  seatingBookingMode?: "none" | "best_available" | "seat_map_and_best";
   categories: Category[];
 };
 
@@ -75,7 +80,7 @@ export function BoxOfficeNewSaleButton({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="relative flex max-h-[95vh] w-full max-w-2xl flex-col overflow-hidden rounded-t-2xl border border-[var(--tf-line)] bg-white shadow-[0_20px_50px_rgba(15,39,71,0.25)] sm:rounded-2xl"
+            className="relative flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl border border-[var(--tf-line)] bg-white shadow-[0_20px_50px_rgba(15,39,71,0.25)] sm:rounded-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between gap-3 border-b border-[var(--tf-line)] px-5 py-4 md:px-6">
@@ -84,7 +89,7 @@ export function BoxOfficeNewSaleButton({
                   Neuer Verkauf
                 </h2>
                 <p className="mt-0.5 text-sm text-[var(--tf-text-secondary)]">
-                  Event wählen, Tickets und Zahlung — fertig.
+                  Event, Plätze (Bestplatz oder Saalplan), Zahlung — fertig.
                 </p>
               </div>
               <button

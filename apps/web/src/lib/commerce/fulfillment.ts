@@ -17,6 +17,7 @@ import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-descriptio
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { buildBillingSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
+import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating";
 import type { Prisma } from "@prisma/client";
 
 type SeatLike = {
@@ -344,6 +345,28 @@ export async function fulfillPaidOrder(orderId: string) {
       const cartItemsWithSeats = cartItems;
       const usedCartItemIds = new Set<string>();
 
+      const boxOfficeAssignments =
+        order.channel === "box_office"
+          ? readBoxOfficeSeatAssignments(order.contractSnapshot)
+          : [];
+      const boxOfficeSeatIds = boxOfficeAssignments.flatMap((a) => a.seatIds);
+      const boxOfficeSeats =
+        boxOfficeSeatIds.length > 0
+          ? await tx.eventSeat.findMany({
+              where: { id: { in: boxOfficeSeatIds }, status: "held" },
+              select: {
+                id: true,
+                blockLabel: true,
+                rowLabel: true,
+                seatNumber: true,
+                blockObjectId: true,
+                rowIndex: true,
+                seatIndex: true,
+              },
+            })
+          : [];
+      const boxOfficeSeatById = new Map(boxOfficeSeats.map((s) => [s.id, s]));
+
       const categoryIds = [...new Set(order.items.map((i) => i.categoryId).filter(Boolean))];
       const categories = categoryIds.length
         ? await tx.eventTicketCategory.findMany({
@@ -361,6 +384,9 @@ export async function fulfillPaidOrder(orderId: string) {
         blockLabel: string;
         rowLabel: string;
         seatNumber: string;
+        blockObjectId?: string;
+        rowIndex?: number;
+        seatIndex?: number;
       } | null;
 
       type PlannedTicket = {
@@ -401,7 +427,17 @@ export async function fulfillPaidOrder(orderId: string) {
             !usedCartItemIds.has(ci.id),
         );
         if (matchedCartItem) usedCartItemIds.add(matchedCartItem.id);
-        const cartSeats = matchedCartItem?.seats ?? [];
+        let cartSeats: SeatLike[] = matchedCartItem?.seats ?? [];
+        if (cartSeats.length === 0 && item.categoryId) {
+          const assignment = boxOfficeAssignments.find(
+            (a) => a.categoryId === item.categoryId,
+          );
+          if (assignment) {
+            cartSeats = assignment.seatIds
+              .map((id) => boxOfficeSeatById.get(id))
+              .filter((s): s is NonNullable<typeof s> => Boolean(s));
+          }
+        }
         const cat = item.categoryId ? categoryById.get(item.categoryId) : null;
         const companionFree =
           cat?.categoryKind === "wheelchair" && Boolean(cat.companionFree);

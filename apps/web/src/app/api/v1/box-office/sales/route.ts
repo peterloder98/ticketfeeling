@@ -10,6 +10,7 @@ import { STREET_NO_NUMBERS_MESSAGE, POSTAL_CODE_DIGITS_ONLY_MESSAGE, optionalStr
 const itemSchema = z.object({
   categoryId: z.string().uuid(),
   quantity: z.number().int().min(1).max(20),
+  seatIds: z.array(z.string().uuid()).max(40).optional(),
 });
 
 const schema = z
@@ -21,6 +22,7 @@ const schema = z
     quantity: z.number().int().min(1).max(20).optional(),
     paymentMethod: z.enum(["cash", "card_terminal", "other"]),
     cashTenderedCents: z.number().int().min(0).optional().nullable(),
+    seatingMode: z.enum(["best_available", "seat_map", "free"]).optional(),
     customerEmail: z.string().email().optional().or(z.literal("")),
     customerFirstName: z.string().max(80).optional(),
     customerLastName: z.string().max(80).optional(),
@@ -76,6 +78,7 @@ export async function POST(request: Request) {
       items,
       paymentMethod: body.paymentMethod,
       cashTenderedCents: body.cashTenderedCents,
+      seatingMode: body.seatingMode,
       customerEmail: body.customerEmail || undefined,
       customerFirstName: body.customerFirstName,
       customerLastName: body.customerLastName,

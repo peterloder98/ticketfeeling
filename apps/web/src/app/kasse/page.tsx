@@ -171,46 +171,65 @@ export default async function BoxOfficePage({ searchParams }: Props) {
   const feeConfig = resolveActivePlatformFeeConfig(orgSettings?.platformFeeConfig);
   const now = Date.now();
 
-  const payload = events.map((event) => ({
-    id: event.id,
-    name: event.name,
-    whenLabel: event.eventStartsAt
-      ? event.eventStartsAt.toLocaleString("de-DE", {
-          timeZone: "Europe/Berlin",
-          weekday: "short",
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : null,
-    locationLabel: event.location
-      ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
-      : null,
-    categories: event.ticketCategories.map((category) => {
-      const pool =
-        category.pools.find((p) => p.channel === "box_office") ??
-        category.pools.find((p) => p.channel === "online");
-      const available = pool
-        ? Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity)
-        : Math.max(0, category.capacity - category.safetyReserve);
-      let saleLabel: string | null = null;
-      if (category.saleEndsAt && category.saleEndsAt.getTime() > now) {
-        saleLabel = "Zeitlich begrenzt";
-      } else if (category.saleStartsAt && category.saleStartsAt.getTime() > now) {
-        saleLabel = "Verkauf startet später";
-      }
-      return {
-        id: category.id,
-        name: category.name,
-        description: category.description,
-        priceGrossCents: category.priceGrossCents,
-        available,
-        saleLabel,
-      };
-    }),
-  }));
+  const payload = events.map((event) => {
+    const hasReservedSeating =
+      Boolean(event.venuePlanId) &&
+      (event.seatingBookingMode === "best_available" ||
+        event.seatingBookingMode === "seat_map_and_best");
+    return {
+      id: event.id,
+      name: event.name,
+      whenLabel: event.eventStartsAt
+        ? event.eventStartsAt.toLocaleString("de-DE", {
+            timeZone: "Europe/Berlin",
+            weekday: "short",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : null,
+      locationLabel: event.location
+        ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
+        : null,
+      hasReservedSeating,
+      seatingBookingMode: event.seatingBookingMode as
+        | "none"
+        | "best_available"
+        | "seat_map_and_best",
+      categories: event.ticketCategories.map((category) => {
+        const pool =
+          category.pools.find((p) => p.channel === "box_office") ??
+          category.pools.find((p) => p.channel === "online");
+        const available = pool
+          ? Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity)
+          : Math.max(0, category.capacity - category.safetyReserve);
+        let saleLabel: string | null = null;
+        if (category.saleEndsAt && category.saleEndsAt.getTime() > now) {
+          saleLabel = "Zeitlich begrenzt";
+        } else if (category.saleStartsAt && category.saleStartsAt.getTime() > now) {
+          saleLabel = "Verkauf startet später";
+        }
+        const needsSeats =
+          hasReservedSeating &&
+          !category.freeSeating &&
+          category.categoryKind !== "standing" &&
+          category.categoryKind !== "free_choice";
+        return {
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          priceGrossCents: category.priceGrossCents,
+          available,
+          saleLabel,
+          needsSeats,
+          categoryKind: category.categoryKind,
+          companionFree: category.companionFree,
+        };
+      }),
+    };
+  });
 
   const selectedEventName = eventId
     ? (filterEvents.find((e) => e.id === eventId)?.name ?? null)

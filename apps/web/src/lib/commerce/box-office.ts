@@ -4,11 +4,17 @@ import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 import { writeAudit } from "@/lib/audit";
 import { signBoxOfficeSale } from "@/lib/fiscal/tse";
 import { computeOrderPricing } from "@/lib/commerce/order-pricing";
+import {
+  claimBoxOfficeSeats,
+  type BoxOfficeSeatingMode,
+} from "@/lib/commerce/box-office-seating";
 import type { Prisma } from "@prisma/client";
 
 export type BoxOfficeSaleItem = {
   categoryId: string;
   quantity: number;
+  /** Required for seat_map when category needs reserved seats */
+  seatIds?: string[];
 };
 
 /**
@@ -31,11 +37,16 @@ export async function createBoxOfficeSale(input: {
   customerCity?: string;
   /** Cash received in cents (optional, for change tracking) */
   cashTenderedCents?: number | null;
+  /** best_available | seat_map — only when event has reserved seating */
+  seatingMode?: BoxOfficeSeatingMode;
 }) {
   const items = input.items
     .map((i) => ({
       categoryId: i.categoryId,
       quantity: Math.max(0, Math.round(i.quantity)),
+      seatIds: Array.isArray(i.seatIds)
+        ? i.seatIds.filter((id): id is string => typeof id === "string")
+        : undefined,
     }))
     .filter((i) => i.quantity > 0);
 
@@ -65,11 +76,30 @@ export async function createBoxOfficeSale(input: {
   });
   if (categories.length !== items.length) throw new Error("CATEGORY_UNAVAILABLE");
   const { isEventSalesReleased } = await import("@/lib/commerce/event-sale");
+  const event = categories[0]!.event;
   for (const cat of categories) {
     if (cat.event.organizationId !== input.organizationId) throw new Error("ORG_MISMATCH");
     if (!isEventSalesReleased(cat.event.status) || cat.event.status === "sold_out") {
       throw new Error("SALE_CLOSED");
     }
+  }
+
+  const hasReservedSeating =
+    Boolean(event.venuePlanId) &&
+    (event.seatingBookingMode === "best_available" ||
+      event.seatingBookingMode === "seat_map_and_best");
+
+  let seatingMode: BoxOfficeSeatingMode = input.seatingMode ?? "free";
+  if (hasReservedSeating) {
+    if (seatingMode === "free") seatingMode = "best_available";
+    // Tageskasse may offer Saalplan even when online is best_available-only.
+    if (seatingMode !== "best_available" && seatingMode !== "seat_map") {
+      seatingMode = "best_available";
+    }
+    const { ensureEventSeatsIfNeeded } = await import("@/lib/seating/materialize");
+    await ensureEventSeatsIfNeeded(input.eventId);
+  } else {
+    seatingMode = "free";
   }
 
   const byId = new Map(categories.map((c) => [c.id, c]));
@@ -127,6 +157,25 @@ export async function createBoxOfficeSale(input: {
         },
       });
     }
+
+    const seatHoldExpiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const seatAssignments =
+      hasReservedSeating && seatingMode !== "free"
+        ? await claimBoxOfficeSeats(tx, {
+            eventId: input.eventId,
+            seatingBookingMode: event.seatingBookingMode,
+            seatingMode,
+            holdExpiresAt: seatHoldExpiresAt,
+            items: resolved.map(({ item, category }) => ({
+              categoryId: category.id,
+              quantity: item.quantity,
+              seatIds: item.seatIds,
+              categoryKind: category.categoryKind,
+              freeSeating: category.freeSeating,
+              companionFree: category.companionFree,
+            })),
+          })
+        : [];
 
     const customer = await tx.customer.upsert({
       where: {
@@ -210,6 +259,14 @@ export async function createBoxOfficeSale(input: {
           paymentMethod: input.paymentMethod,
           cashTenderedCents,
           changeCents,
+          ...(seatAssignments.length > 0
+            ? {
+                seating: {
+                  mode: seatingMode,
+                  assignments: seatAssignments,
+                },
+              }
+            : {}),
         },
         soldByUserId: input.actorUserId,
         deliveryStatus: "none",
@@ -309,6 +366,7 @@ export async function createBoxOfficeSale(input: {
     after: {
       paymentMethod: input.paymentMethod,
       items,
+      seatingMode,
       feeGrossCents: priced.administrationFeeGrossCents,
       customerTotalCents: priced.customerTotalCents,
       cashTenderedCents,
