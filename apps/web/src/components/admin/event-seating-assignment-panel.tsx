@@ -207,11 +207,10 @@ export function EventSeatingAssignmentPanel({
       const seatingCats = (data.categories ?? categories).filter(
         (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
       );
-      if (seatingCats.length) {
-        setSelectedCategoryId((prev) =>
-          prev && seatingCats.some((c) => c.id === prev) ? prev : seatingCats[0]!.id,
-        );
-      }
+      // Never auto-pick a category — accidental clicks would paint the wrong seats.
+      setSelectedCategoryId((prev) =>
+        prev && seatingCats.some((c) => c.id === prev) ? prev : null,
+      );
     },
     [categories, onCategoriesChange],
   );
@@ -415,7 +414,7 @@ export function EventSeatingAssignmentPanel({
     if (!canWrite) return;
     const effectiveMode = opts?.locked === true ? "lock" : opts?.locked === false ? "unlock" : mode;
     if (effectiveMode === "assign" && opts?.categoryId === undefined && !selectedCategoryId) {
-      setError("Bitte zuerst eine Preiskategorie wählen oder anlegen.");
+      setError("Zuerst Preiskategorie wählen");
       return;
     }
 
@@ -466,6 +465,10 @@ export function EventSeatingAssignmentPanel({
 
   function onSeatClick(seat: SeatRow) {
     if (!canWrite) return;
+    if (mode === "assign" && !selectedCategoryId) {
+      setError("Zuerst Preiskategorie wählen");
+      return;
+    }
     if (mode === "lock" || mode === "unlock") {
       if (target === "seat") {
         if (!seatEligibleForPaint(seat)) {
@@ -542,6 +545,10 @@ export function EventSeatingAssignmentPanel({
 
   function onBlockClick(blockObjectId: string) {
     if (!canWrite || target !== "block") return;
+    if (mode === "assign" && !selectedCategoryId) {
+      setError("Zuerst Preiskategorie wählen");
+      return;
+    }
     if (mode === "lock" || mode === "unlock") {
       const ids = seatsRef.current
         .filter((s) => s.blockObjectId === blockObjectId && seatEligibleForPaint(s))
@@ -765,6 +772,7 @@ export function EventSeatingAssignmentPanel({
                   onClick={() => {
                     setMode("assign");
                     setSelectedCategoryId(c.id);
+                    setError(null);
                   }}
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold transition ${
                     active
@@ -795,6 +803,10 @@ export function EventSeatingAssignmentPanel({
           {seatingCategories.length === 0 ? (
             <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
               Noch keine Preiskategorie — lege eine an, dann tippst du Bereiche auf dem Plan an.
+            </p>
+          ) : mode === "assign" && !selectedCategoryId ? (
+            <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+              Zuerst Preiskategorie wählen
             </p>
           ) : null}
         </div>
