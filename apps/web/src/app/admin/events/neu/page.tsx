@@ -40,7 +40,7 @@ export default async function NewEventPage({ searchParams }: Props) {
 
   const { tourId: tourIdParam } = await searchParams;
 
-  const [locationsRaw, templates, tours, artists] = await Promise.all([
+  const [locationsRaw, tours, artists] = await Promise.all([
     prisma.location.findMany({
       where: { organizationId: membership.organizationId },
       select: {
@@ -60,19 +60,6 @@ export default async function NewEventPage({ searchParams }: Props) {
       },
       orderBy: { name: "asc" },
     }),
-    typeof prisma.ticketCategoryTemplate?.findMany === "function"
-      ? prisma.ticketCategoryTemplate.findMany({
-          where: { organizationId: membership.organizationId },
-          orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-          select: {
-            id: true,
-            name: true,
-            priceGrossCents: true,
-            capacity: true,
-            maxPerOrder: true,
-          },
-        })
-      : Promise.resolve([]),
     prisma.tour.findMany({
       where: { organizationId: membership.organizationId },
       select: {
@@ -129,7 +116,6 @@ export default async function NewEventPage({ searchParams }: Props) {
       <CreateEventWizard
         organizationId={membership.organizationId}
         locations={locations}
-        templates={templates}
         tours={tours}
         artists={artists}
         initialTourId={initialTourId || undefined}

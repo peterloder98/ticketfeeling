@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
+import { parseDatetimeLocalBerlin, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { formatEuroFromCents } from "@/lib/money";
 
 type CategoryOpt = { id: string; name: string; priceGrossCents: number };
@@ -28,12 +30,12 @@ type AccessibilityState = {
 function toLocalInput(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toDatetimeLocalValue(d);
 }
 
 function fromLocalInput(local: string) {
-  const d = new Date(local);
+  const d = parseDatetimeLocalBerlin(local);
+  if (!d) throw new Error("Bitte gültige Daten für Von und Bis angeben.");
   return d.toISOString();
 }
 
@@ -405,24 +407,20 @@ export function EventDiscountsPanel({
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 />
               </label>
-              <label className="block text-sm">
-                <span className="text-[var(--tf-text-secondary)]">Von</span>
-                <input
-                  type="datetime-local"
-                  className="tf-input mt-1 w-full"
+              <div className="sm:col-span-1">
+                <SmartDateTimeInput
+                  label="Von"
                   value={draft.validFrom}
-                  onChange={(e) => setDraft({ ...draft, validFrom: e.target.value })}
+                  onChange={(validFrom) => setDraft({ ...draft, validFrom })}
                 />
-              </label>
-              <label className="block text-sm">
-                <span className="text-[var(--tf-text-secondary)]">Bis</span>
-                <input
-                  type="datetime-local"
-                  className="tf-input mt-1 w-full"
+              </div>
+              <div className="sm:col-span-1">
+                <SmartDateTimeInput
+                  label="Bis"
                   value={draft.validUntil}
-                  onChange={(e) => setDraft({ ...draft, validUntil: e.target.value })}
+                  onChange={(validUntil) => setDraft({ ...draft, validUntil })}
                 />
-              </label>
+              </div>
               <label className="block text-sm">
                 <span className="text-[var(--tf-text-secondary)]">Art</span>
                 <select

@@ -27,7 +27,6 @@ import {
   filterPostalCodeInput,
   filterStreetNameInput,
 } from "@/lib/commerce/address";
-import { formatEuroFromCents } from "@/lib/money";
 import {
   buildSaalplanEditorHref,
   isSaalplanDoneMessage,
@@ -229,14 +228,6 @@ export type WizardLocation = {
   venuePlans: WizardVenuePlan[];
 };
 
-export type WizardCategoryTemplate = {
-  id: string;
-  name: string;
-  priceGrossCents: number;
-  capacity: number;
-  maxPerOrder: number;
-};
-
 export type WizardTour = {
   id: string;
   name: string;
@@ -315,7 +306,6 @@ type CreateEventActionResult =
 type Props = {
   organizationId: string;
   locations: WizardLocation[];
-  templates: WizardCategoryTemplate[];
   tours?: WizardTour[];
   artists?: LibraryArtist[];
   initialTourId?: string;
@@ -325,7 +315,6 @@ type Props = {
 export function CreateEventWizard({
   organizationId,
   locations,
-  templates,
   tours = [],
   artists: artistLibrary = [],
   initialTourId = "",
@@ -798,22 +787,13 @@ export function CreateEventWizard({
     setCategories((prev) => prev.map((c) => (c.key === key ? { ...c, ...patch } : c)));
   }
 
-  function addCategory(fromTemplate?: WizardCategoryTemplate) {
+  function addCategory() {
     setCategories((prev) => [
       ...prev,
-      newCategoryRow(
-        fromTemplate
-          ? {
-              name: fromTemplate.name,
-              priceEuro: (fromTemplate.priceGrossCents / 100).toFixed(2),
-              capacity: String(fromTemplate.capacity),
-              maxPerOrder: String(fromTemplate.maxPerOrder),
-            }
-          : {
-              name: `Kategorie ${prev.length + 1}`,
-              priceEuro: "0",
-            },
-      ),
+      newCategoryRow({
+        name: `Kategorie ${prev.length + 1}`,
+        priceEuro: "0",
+      }),
     ]);
   }
 
@@ -1694,22 +1674,6 @@ export function CreateEventWizard({
               <p className="text-[var(--tf-text-secondary)]">
                 Ohne Saalplan legst du hier die Verkaufskategorien an. Preise ab 0 € sind ok.
               </p>
-
-              {templates.length > 0 ? (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-[var(--tf-text-secondary)]">Vorlage übernehmen:</span>
-                  {templates.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      className="tf-btn text-xs"
-                      onClick={() => addCategory(t)}
-                    >
-                      {t.name} ({formatEuroFromCents(t.priceGrossCents)})
-                    </button>
-                  ))}
-                </div>
-              ) : null}
 
               <div className="space-y-3">
                 {categories.map((cat, index) => (
