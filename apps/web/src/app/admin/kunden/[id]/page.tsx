@@ -16,6 +16,7 @@ import {
 } from "@/lib/commerce/channels";
 import {
   customerDisplayEmail,
+  isActiveTicketStatus,
   isOrderCountedInRevenue,
   isWalkInCustomerEmail,
 } from "@/lib/commerce/customers";
