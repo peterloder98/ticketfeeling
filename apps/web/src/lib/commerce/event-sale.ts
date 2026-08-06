@@ -57,7 +57,7 @@ export function isEventSaleOpen(
     status: string;
     presaleStartsAt?: Date | null;
     presaleEndsAt?: Date | null;
-    /** Resolved cover (event or tour). Sale requires a cover. */
+    /** Cover is optional for sale (admin soft-hint only). Kept for callers. */
     coverImageUrl?: string | null;
     tour?: { coverImageUrl?: string | null; visibility?: string | null } | null;
   },
@@ -70,9 +70,6 @@ export function isEventSaleOpen(
   if (event.tour?.visibility === "draft") return false;
   const status = effectiveEventStatus(event, now);
   if (!isEventSalesReleased(status)) return false;
-  const cover =
-    event.coverImageUrl?.trim() || event.tour?.coverImageUrl?.trim() || "";
-  if (!cover) return false;
   if (event.presaleStartsAt && event.presaleStartsAt.getTime() > now.getTime()) return false;
   if (event.presaleEndsAt && event.presaleEndsAt.getTime() < now.getTime()) return false;
   return true;
@@ -111,13 +108,12 @@ export function statusAfterPresaleStart(
  * - Entwurf + Vorverkaufsstart gesetzt → „Verkauf geplant“ (announcement), so the event
  *   can appear publicly and auto-flip to Im Verkauf when the start is reached.
  * - Reached Vorverkaufsstart → Im Verkauf (presale_active).
- * - Auto-flip without cover stays announcement so the save does not fail with COVER_REQUIRED
- *   (listings still show it; checkout stays closed until a cover exists).
- * - Explicit „Im Verkauf“ without cover still returns a sale status — caller must assert cover.
+ * - Cover is not required for sale or status transitions (admin may still hint).
  */
 export function resolvePersistedEventStatus(opts: {
   requestedStatus: string;
   presaleStartsAt: Date | null;
+  /** @deprecated Unused — kept so existing callers keep compiling. */
   coverImageUrl?: string | null;
   now?: Date;
 }): string {
@@ -129,13 +125,5 @@ export function resolvePersistedEventStatus(opts: {
     status = "announcement";
   }
 
-  const afterStart = statusAfterPresaleStart(status, opts.presaleStartsAt, now);
-  const explicitSale = isEventSalesReleased(opts.requestedStatus);
-  const hasCover = Boolean(opts.coverImageUrl?.trim());
-
-  if (isEventSalesReleased(afterStart) && !hasCover && !explicitSale) {
-    return "announcement";
-  }
-
-  return afterStart;
+  return statusAfterPresaleStart(status, opts.presaleStartsAt, now);
 }

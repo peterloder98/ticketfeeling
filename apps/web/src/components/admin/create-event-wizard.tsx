@@ -154,7 +154,8 @@ function humanizeCreateEventError(err: unknown): string {
   const code = err instanceof Error ? err.message : "";
   switch (code) {
     case "COVER_REQUIRED_FOR_SALE":
-      return "Für den gewählten Status brauchst du ein Cover-Bild. Dein Entwurf bleibt gespeichert.";
+      // Legacy — cover is no longer required for sale; keep message for old clients.
+      return "Cover fehlt noch — Verkauf ist trotzdem möglich. Dein Entwurf bleibt gespeichert.";
     case "TRACKING_REVIEW_REQUIRED":
       return "Bitte Tracking prüfen (Org-Defaults oder eigene IDs). Dein Entwurf bleibt gespeichert.";
     case "CATEGORIES_REQUIRED":

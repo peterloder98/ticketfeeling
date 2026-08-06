@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   effectiveEventStatus,
+  isEventSaleOpen,
   resolvePersistedEventStatus,
   statusAfterPresaleStart,
 } from "@/lib/commerce/event-sale";
@@ -54,7 +55,7 @@ describe("presale status transitions", () => {
     ).toBe("draft");
   });
 
-  it("does not fail auto-flip without cover — stays Verkauf geplant", () => {
+  it("auto-flips to Im Verkauf without cover", () => {
     expect(
       resolvePersistedEventStatus({
         requestedStatus: "announcement",
@@ -62,10 +63,10 @@ describe("presale status transitions", () => {
         coverImageUrl: null,
         now,
       }),
-    ).toBe("announcement");
+    ).toBe("presale_active");
   });
 
-  it("still returns Im Verkauf for explicit sale so cover assert can fire", () => {
+  it("allows explicit Im Verkauf without cover", () => {
     expect(
       resolvePersistedEventStatus({
         requestedStatus: "presale_active",
@@ -74,5 +75,37 @@ describe("presale status transitions", () => {
         now,
       }),
     ).toBe("presale_active");
+  });
+});
+
+describe("isEventSaleOpen without cover", () => {
+  const now = new Date("2026-08-06T08:30:00.000Z");
+  const past = new Date("2026-08-06T08:17:00.000Z");
+
+  it("opens sale when released even if cover is missing", () => {
+    expect(
+      isEventSaleOpen(
+        {
+          status: "presale_active",
+          presaleStartsAt: past,
+          coverImageUrl: null,
+          tour: { coverImageUrl: null },
+        },
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it("opens sale for effective Im Verkauf (announcement + reached start) without cover", () => {
+    expect(
+      isEventSaleOpen(
+        {
+          status: "announcement",
+          presaleStartsAt: past,
+          coverImageUrl: null,
+        },
+        now,
+      ),
+    ).toBe(true);
   });
 });

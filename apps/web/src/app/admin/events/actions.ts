@@ -49,12 +49,6 @@ async function requireEventWrite() {
   return { session, membership };
 }
 
-function assertCoverForSaleRelease(status: string, coverImageUrl: string | null) {
-  if (isEventSalesReleased(status) && !coverImageUrl?.trim()) {
-    throw new Error("COVER_REQUIRED_FOR_SALE");
-  }
-}
-
 function parseDt(formData: FormData, key: string) {
   const raw = String(formData.get(key) ?? "").trim();
   if (!raw) return null;
@@ -124,7 +118,7 @@ async function createEventFromFormData(
   const becomingOnSale = isEventSalesReleased(requestedStatus);
   const presaleStartsAt =
     becomingOnSale && !formPresaleStartsAt ? new Date() : formPresaleStartsAt;
-  // Cover may come from tour inherit — resolved below before assertCover.
+  // Cover may come from tour inherit — resolved below before status.
 
   const ticketTaxPercent = Number(
     String(formData.get("ticketTaxPercent") ?? "7").replace(",", "."),
@@ -215,7 +209,6 @@ async function createEventFromFormData(
     presaleStartsAt,
     coverImageUrl: persistedCoverUrl,
   });
-  assertCoverForSaleRelease(status, persistedCoverUrl);
 
   const taxRate =
     (await prisma.taxRate.findFirst({
@@ -550,7 +543,7 @@ export async function updateEventAction(formData: FormData) {
   const becomingOnSale =
     isEventSalesReleased(requestedStatus) && !isEventSalesReleased(event.status);
   const presaleStartsAt = becomingOnSale ? new Date() : formPresaleStartsAt;
-  // Cover may change with tour link — resolve below before status/cover assert.
+  // Cover may change with tour link — resolve below before status.
   const subtitle = String(formData.get("subtitle") ?? "").trim() || null;
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
@@ -623,7 +616,6 @@ export async function updateEventAction(formData: FormData) {
     presaleStartsAt,
     coverImageUrl: nextCoverUrl,
   });
-  assertCoverForSaleRelease(status, nextCoverUrl);
 
   await prisma.event.update({
     where: { id: event.id },
