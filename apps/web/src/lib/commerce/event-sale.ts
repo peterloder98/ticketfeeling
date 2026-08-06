@@ -1,8 +1,9 @@
 /**
  * Sale gating for events.
  *
- * Draft / announcement never sell — even if `presaleStartsAt` is in the past.
- * Ticket sales require an explicit release (`presale_active` or `published`).
+ * Draft never sells.
+ * Announcement can auto-release when `presaleStartsAt` is reached (effective status).
+ * Ticket sales require release (`presale_active` or `published`) — either stored or effective.
  */
 
 /** Organizer has released the event for ticket sales (or it sold out). */
@@ -22,6 +23,24 @@ export const PUBLIC_LISTING_STATUSES = [
 
 export function isEventSalesReleased(status: string): boolean {
   return (SALE_RELEASED_STATUSES as readonly string[]).includes(status);
+}
+
+/**
+ * When Vorverkaufsstart is reached, announcement is treated as „Im Verkauf“.
+ * Stored DB status may still be `announcement` until cron/save flips it.
+ */
+export function effectiveEventStatus(
+  event: { status: string; presaleStartsAt?: Date | null },
+  now: Date = new Date(),
+): string {
+  if (
+    event.status === "announcement" &&
+    event.presaleStartsAt &&
+    event.presaleStartsAt.getTime() <= now.getTime()
+  ) {
+    return "presale_active";
+  }
+  return event.status;
 }
 
 /** Categories may still be added/removed only before first sale release. */
@@ -45,7 +64,8 @@ export function isEventSaleOpen(
   }
   // Draft tour = not public / not sellable
   if (event.tour?.visibility === "draft") return false;
-  if (!isEventSalesReleased(event.status)) return false;
+  const status = effectiveEventStatus(event, now);
+  if (!isEventSalesReleased(status)) return false;
   const cover =
     event.coverImageUrl?.trim() || event.tour?.coverImageUrl?.trim() || "";
   if (!cover) return false;
@@ -64,4 +84,20 @@ export function isCategorySaleWindowOpen(
   if (category.saleStartsAt && category.saleStartsAt.getTime() > now.getTime()) return false;
   if (category.saleEndsAt && category.saleEndsAt.getTime() < now.getTime()) return false;
   return true;
+}
+
+/**
+ * If Vorverkaufsstart is already reached (or null with explicit release),
+ * bump announcement → presale_active on write.
+ */
+export function statusAfterPresaleStart(
+  status: string,
+  presaleStartsAt: Date | null,
+  now: Date = new Date(),
+): string {
+  if (status !== "announcement") return status;
+  if (presaleStartsAt && presaleStartsAt.getTime() <= now.getTime()) {
+    return "presale_active";
+  }
+  return status;
 }

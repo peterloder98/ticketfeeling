@@ -11,6 +11,10 @@
     {
       "path": "/api/v1/cron/stripe-payout-reconcile?kind=monthly",
       "schedule": "30 3 1 * *"
+    },
+    {
+      "path": "/api/v1/cron/release-presale",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -11,13 +11,14 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
   CREATE_EVENT_STATUSES,
   EVENT_STATUSES,
+  parseDatetimeLocalBerlin,
   slugify,
 } from "@/lib/admin/event-form";
 import { parseArtistsJson } from "@/lib/admin/artist-form";
 import { syncEventArtistsInTx } from "@/lib/admin/artist-sync";
 import { allocateUniqueEventSlug } from "@/lib/admin/unique-event-slug";
 import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
-import { isEventSalesReleased } from "@/lib/commerce/event-sale";
+import { isEventSalesReleased, statusAfterPresaleStart } from "@/lib/commerce/event-sale";
 import {
   STREET_NO_NUMBERS_MESSAGE,
   POSTAL_CODE_DIGITS_ONLY_MESSAGE,
@@ -54,8 +55,8 @@ function assertCoverForSaleRelease(status: string, coverImageUrl: string | null)
 function parseDt(formData: FormData, key: string) {
   const raw = String(formData.get(key) ?? "").trim();
   if (!raw) return null;
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) throw new Error(`INVALID_${key}`);
+  const d = parseDatetimeLocalBerlin(raw);
+  if (!d || Number.isNaN(d.getTime())) throw new Error(`INVALID_${key}`);
   return d;
 }
 
@@ -100,8 +101,8 @@ async function createEventFromFormData(
 
   const preferredSlug = String(formData.get("slug") ?? "").trim() || null;
 
-  const status = String(formData.get("status") ?? "draft");
-  if (!CREATE_EVENT_STATUSES.includes(status as (typeof CREATE_EVENT_STATUSES)[number])) {
+  const requestedStatus = String(formData.get("status") ?? "draft");
+  if (!CREATE_EVENT_STATUSES.includes(requestedStatus as (typeof CREATE_EVENT_STATUSES)[number])) {
     throw new Error("INVALID_STATUS");
   }
 
@@ -115,7 +116,12 @@ async function createEventFromFormData(
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   const eventEndsAt = parseDt(formData, "eventEndsAt");
   const doorsOpenAt = parseDt(formData, "doorsOpenAt");
-  const presaleStartsAt = parseDt(formData, "presaleStartsAt");
+  const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
+  // Creating already „Im Verkauf“ → start now if empty; reached start flips announcement → im Verkauf.
+  const becomingOnSale = isEventSalesReleased(requestedStatus);
+  const presaleStartsAt =
+    becomingOnSale && !formPresaleStartsAt ? new Date() : formPresaleStartsAt;
+  const status = statusAfterPresaleStart(requestedStatus, presaleStartsAt);
 
   const ticketTaxPercent = Number(
     String(formData.get("ticketTaxPercent") ?? "7").replace(",", "."),
@@ -490,8 +496,8 @@ export async function updateEventAction(formData: FormData) {
 
   const preferredSlug = String(formData.get("slug") ?? "").trim() || null;
 
-  const status = String(formData.get("status") ?? event.status);
-  if (!EVENT_STATUSES.includes(status as (typeof EVENT_STATUSES)[number])) {
+  const requestedStatus = String(formData.get("status") ?? event.status);
+  if (!EVENT_STATUSES.includes(requestedStatus as (typeof EVENT_STATUSES)[number])) {
     throw new Error("INVALID_STATUS");
   }
 
@@ -534,8 +540,10 @@ export async function updateEventAction(formData: FormData) {
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
   // Manual „Im Verkauf“: Vorverkaufsstart becomes now so the shop is buyable immediately.
   const becomingOnSale =
-    isEventSalesReleased(status) && !isEventSalesReleased(event.status);
+    isEventSalesReleased(requestedStatus) && !isEventSalesReleased(event.status);
   const presaleStartsAt = becomingOnSale ? new Date() : formPresaleStartsAt;
+  // Reached Vorverkaufsstart while still „Pausiert“ → flip to Im Verkauf.
+  const status = statusAfterPresaleStart(requestedStatus, presaleStartsAt);
   const subtitle = String(formData.get("subtitle") ?? "").trim() || null;
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;

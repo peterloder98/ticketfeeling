@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { formatEuroFromCents } from "@/lib/money";
 import { eventStatusLabel } from "@/lib/admin/nav";
+import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { TicketProgressBar } from "@/components/admin/category-sales-table";
 import {
   DEFAULT_EVENT_LIST_FILTERS,
@@ -20,6 +21,7 @@ export type AdminEventListRow = {
   name: string;
   slug: string;
   status: string;
+  presaleStartsAt: string | null;
   eventStartsAt: string | null;
   locationName: string | null;
   locationCity: string | null;
@@ -48,7 +50,17 @@ export function AdminEventsList({
 
   const visible = useMemo(() => {
     const statuses = new Set(statusesForEventListFilters(activeFilters));
-    return events.filter((event) => statuses.has(event.status));
+    const now = new Date();
+    return events.filter((event) => {
+      const effective = effectiveEventStatus(
+        {
+          status: event.status,
+          presaleStartsAt: event.presaleStartsAt ? new Date(event.presaleStartsAt) : null,
+        },
+        now,
+      );
+      return statuses.has(effective);
+    });
   }, [events, activeFilters]);
 
   const isDefaultView = isDefaultEventListFilters(activeFilters);
@@ -114,7 +126,14 @@ export function AdminEventsList({
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold text-[var(--tf-navy)]">{event.name}</h2>
                     <span className="rounded-full bg-[rgba(15,39,71,0.06)] px-2.5 py-0.5 text-xs font-medium text-[var(--tf-navy)]">
-                      {eventStatusLabel(event.status)}
+                      {eventStatusLabel(
+                        effectiveEventStatus({
+                          status: event.status,
+                          presaleStartsAt: event.presaleStartsAt
+                            ? new Date(event.presaleStartsAt)
+                            : null,
+                        }),
+                      )}
                     </span>
                   </div>
                   <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">

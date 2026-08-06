@@ -18,7 +18,7 @@ import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
-import { isEventSalesReleased } from "@/lib/commerce/event-sale";
+import { isEventSalesReleased, effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
@@ -130,6 +130,9 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     );
   }
   if (!event) notFound();
+
+  const displayStatus = effectiveEventStatus(event);
+  const salesReleased = isEventSalesReleased(displayStatus);
 
   // Plain props only — never pass the raw Prisma graph into Client Components.
   const editEvent = {
@@ -290,7 +293,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
                 {event.name}
               </h1>
               <span className="rounded-full bg-[rgba(15,39,71,0.06)] px-2.5 py-0.5 text-xs font-medium text-[var(--tf-navy)]">
-                {eventStatusLabel(event.status)}
+                {eventStatusLabel(displayStatus)}
               </span>
             </div>
             <div className="mt-1 space-y-0.5 text-sm text-[var(--tf-text-secondary)]">
@@ -518,7 +521,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-[var(--tf-text-secondary)]">Status</dt>
-              <dd className="font-medium">{eventStatusLabel(event.status)}</dd>
+              <dd className="font-medium">{eventStatusLabel(displayStatus)}</dd>
             </div>
             <div>
               <dt className="text-[var(--tf-text-secondary)]">Link-Name</dt>
@@ -573,7 +576,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         initialCategories={seatingCategoriesRows}
         templates={templates}
         canWrite={canWrite}
-        salesReleased={isEventSalesReleased(event.status)}
+        salesReleased={salesReleased}
         seatingEnabled={seatingEnabled}
       />
 

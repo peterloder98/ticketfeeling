@@ -71,6 +71,7 @@ export default async function AdminEventsPage({ searchParams }: Props) {
           name: event.name,
           slug: event.slug,
           status: event.status,
+          presaleStartsAt: event.presaleStartsAt?.toISOString() ?? null,
           eventStartsAt: event.eventStartsAt?.toISOString() ?? null,
           locationName: event.location?.name ?? null,
           locationCity: event.location?.city ?? null,

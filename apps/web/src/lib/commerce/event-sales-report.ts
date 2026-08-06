@@ -48,6 +48,7 @@ export async function getEventListSales(
       slug: true,
       status: true,
       eventStartsAt: true,
+      presaleStartsAt: true,
       location: { select: { name: true, city: true } },
       ticketCategories: {
         select: {
