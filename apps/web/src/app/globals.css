@@ -378,6 +378,10 @@ html.dark .tf-page-wash {
 .tf-qr-reader #qr-shaded-region {
   display: none !important;
 }
+/* html5-qrcode injects an English "Scanner paused" banner — we handle pause in German UI */
+.tf-qr-reader > div[data-tf-hidden-paused="1"] {
+  display: none !important;
+}
 .tf-qr-reader img {
   display: none !important;
 }

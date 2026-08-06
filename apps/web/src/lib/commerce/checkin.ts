@@ -191,23 +191,25 @@ export async function scanTicket(input: {
     };
   }
 
-  await prisma.ticket.update({
-    where: { id: ticket.id },
-    data: { presence: nextPresence },
-  });
-
-  await prisma.checkinEvent.create({
-    data: {
-      eventId: ticket.eventId,
-      ticketId: ticket.id,
-      action,
-      result: "green",
-      previousPresence: previous,
-      newPresence: nextPresence,
-      actorUserId: input.actorUserId,
-      deviceLabel: input.deviceLabel,
-    },
-  });
+  // Atomic presence flip so Im-Haus counts never lag the scan response
+  await prisma.$transaction([
+    prisma.ticket.update({
+      where: { id: ticket.id },
+      data: { presence: nextPresence },
+    }),
+    prisma.checkinEvent.create({
+      data: {
+        eventId: ticket.eventId,
+        ticketId: ticket.id,
+        action,
+        result: "green",
+        previousPresence: previous,
+        newPresence: nextPresence,
+        actorUserId: input.actorUserId,
+        deviceLabel: input.deviceLabel,
+      },
+    }),
+  ]);
 
   await writeAudit({
     organizationId: ticket.organizationId,
@@ -218,6 +220,7 @@ export async function scanTicket(input: {
     after: { previous, nextPresence },
   });
 
+  const stats = await getEventCheckinStats(ticket.eventId);
   const isVip = /vip/i.test(ticket.categorySnapshot);
   return {
     color: isVip ? ("blue" as const) : ("green" as const),
@@ -225,7 +228,7 @@ export async function scanTicket(input: {
     ticket: ticketPayload({ ...ticket, presence: nextPresence }),
     salesChannel,
     salesChannelLabel,
-    stats: await getEventCheckinStats(ticket.eventId),
+    stats,
   };
 }
 

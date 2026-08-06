@@ -38,5 +38,9 @@ export async function GET(request: Request) {
   }
 
   const stats = await getEventCheckinStats(eventId);
-  return NextResponse.json(stats);
+  return NextResponse.json(stats, {
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+    },
+  });
 }

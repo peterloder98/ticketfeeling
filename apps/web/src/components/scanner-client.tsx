@@ -43,9 +43,13 @@ export type ScannerStats = {
   notArrived: number;
 };
 
-const SCAN_COOLDOWN_MS = 2800;
-const SAME_CODE_LOCK_MS = 4000;
-const DETECT_PAUSE_MS = 2200;
+const SCAN_COOLDOWN_MS = 3200;
+/** Ignore identical QR payload for this long (anti-retrigger on frozen last frame). */
+const SAME_CODE_LOCK_MS = 12000;
+/** Consecutive no-code frames required before the next scan is accepted. */
+const CLEAR_FRAMES_REQUIRED = 10;
+const RESULT_HOLD_MS = 5000;
+const DARK_LUMA_THRESHOLD = 14;
 const SESSION_KEY_PREFIX = "tf.scanner.session.";
 
 type ScannerSession = {
@@ -198,10 +202,14 @@ const GUIDE_CORNER = "pointer-events-none absolute h-10 w-10 border-white";
 /**
  * Single overlay: corner brackets + red line share one square.
  * Library shaded UI is hidden — this is the only aim guide.
+ * Centered with inset:0 + grid so it stays mid-viewfinder even when video is black/collapsed.
  */
 function ScanGuide() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-5">
+    <div
+      className="pointer-events-none absolute inset-0 z-10 p-5"
+      style={{ display: "grid", placeItems: "center" }}
+    >
       <div
         className="relative"
         style={{
@@ -215,7 +223,6 @@ function ScanGuide() {
         <span className={`${GUIDE_CORNER} right-0 top-0 border-r-[3px] border-t-[3px]`} />
         <span className={`${GUIDE_CORNER} bottom-0 left-0 border-b-[3px] border-l-[3px]`} />
         <span className={`${GUIDE_CORNER} bottom-0 right-0 border-b-[3px] border-r-[3px]`} />
-        {/* Same box as corners — explicit centering (Tailwind top-1/2 alone was drifting vs library UI) */}
         <span
           aria-hidden
           style={{
@@ -224,7 +231,7 @@ function ScanGuide() {
             right: "10%",
             top: "50%",
             height: 3,
-            transform: "translateY(-50%)",
+            marginTop: -1.5,
             borderRadius: 9999,
             background: "#ef4444",
             boxShadow: "0 0 10px rgba(239,68,68,0.85)",
@@ -236,6 +243,51 @@ function ScanGuide() {
       </div>
     </div>
   );
+}
+
+type FrameSample = { luma: number; fingerprint: string; ok: boolean };
+
+/** Sample a tiny downscale of the live video — reject black/frozen decode ghosts. */
+function sampleVideoFrame(): FrameSample {
+  const video = document.querySelector("#tf-qr-reader video") as HTMLVideoElement | null;
+  if (!video || video.readyState < 2 || video.videoWidth < 2) {
+    return { luma: 0, fingerprint: "none", ok: false };
+  }
+  try {
+    const w = 24;
+    const h = 24;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return { luma: 0, fingerprint: "none", ok: false };
+    ctx.drawImage(video, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    let sum = 0;
+    const picks: number[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const y = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      sum += y;
+      if (i % 64 === 0) picks.push(Math.round(y));
+    }
+    const luma = sum / (data.length / 4);
+    const fingerprint = `${Math.round(luma)}:${picks.slice(0, 8).join(",")}`;
+    return { luma, fingerprint, ok: luma >= DARK_LUMA_THRESHOLD };
+  } catch {
+    return { luma: 0, fingerprint: "err", ok: false };
+  }
+}
+
+function hideLibraryPausedBanner(host: HTMLElement | null) {
+  if (!host) return;
+  host.querySelectorAll("div").forEach((el) => {
+    const text = (el.textContent || "").trim().toLowerCase();
+    if (text === "scanner paused" || text.includes("scanner paused")) {
+      el.style.setProperty("display", "none", "important");
+      el.setAttribute("aria-hidden", "true");
+      el.dataset.tfHiddenPaused = "1";
+    }
+  });
 }
 
 function isAppleMobileBrowser() {
@@ -473,6 +525,8 @@ export function ScannerClient({
   const [online, setOnline] = useState(true);
   const [leaving, setLeaving] = useState(false);
   const [decodeHint, setDecodeHint] = useState<string | null>(null);
+  const [cameraPausedUi, setCameraPausedUi] = useState(false);
+  const [cameraDead, setCameraDead] = useState(false);
   const sessionHydratedRef = useRef(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const startGenRef = useRef(0);
@@ -480,15 +534,20 @@ export function ScannerClient({
   const lastScanAt = useRef(0);
   const lastDecodedRef = useRef<{ raw: string; at: number } | null>(null);
   const scanInFlightRef = useRef(false);
-  const pauseUntilRef = useRef(0);
+  const resultShowingRef = useRef(false);
+  const needClearFramesRef = useRef(false);
+  const clearMissCountRef = useRef(0);
+  const lastFingerprintRef = useRef<string | null>(null);
+  const frozenFingerprintHitsRef = useRef(0);
+  const darkStreakRef = useRef(0);
   const modeRef = useRef(mode);
   const gateRef = useRef(gate);
   const resultClearRef = useRef<number | null>(null);
   const flashClearRef = useRef<number | null>(null);
-  const resumeTimerRef = useRef<number | null>(null);
   const decodeAttemptsRef = useRef(0);
   const lastDecodeTickRef = useRef(0);
   const scanningSinceRef = useRef(0);
+  const softPausedRef = useRef(false);
 
   useEffect(() => {
     const saved = loadSession(eventId);
@@ -522,7 +581,9 @@ export function ScannerClient({
 
   const refreshStats = useCallback(async () => {
     try {
-      const res = await fetch(`/api/v1/scanner/stats?eventId=${eventId}`);
+      const res = await fetch(`/api/v1/scanner/stats?eventId=${eventId}`, {
+        cache: "no-store",
+      });
       if (!res.ok) return;
       const data = await res.json();
       if (isScannerStats(data)) setStats(data);
@@ -531,50 +592,68 @@ export function ScannerClient({
     }
   }, [eventId]);
 
-  const pauseDetectionBriefly = useCallback(() => {
-    pauseUntilRef.current = Date.now() + DETECT_PAUSE_MS;
-    const scanner = scannerRef.current;
-    if (scanner?.isScanning) {
-      try {
-        scanner.pause(true);
-      } catch {
-        /* ignore */
-      }
+  /**
+   * Soft gate after any result — never call html5-qrcode pause()
+   * (that freezes the last QR frame and shows English "Scanner paused").
+   */
+  const armAfterResult = useCallback(() => {
+    resultShowingRef.current = true;
+    needClearFramesRef.current = true;
+    clearMissCountRef.current = 0;
+    frozenFingerprintHitsRef.current = 0;
+  }, []);
+
+  const dismissResult = useCallback(() => {
+    if (resultClearRef.current) {
+      window.clearTimeout(resultClearRef.current);
+      resultClearRef.current = null;
     }
-    if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current);
-    resumeTimerRef.current = window.setTimeout(() => {
-      const s = scannerRef.current;
-      if (!s?.isScanning) return;
-      try {
-        s.resume();
-      } catch {
-        /* ignore */
-      }
-    }, DETECT_PAUSE_MS);
+    if (flashClearRef.current) {
+      window.clearTimeout(flashClearRef.current);
+      flashClearRef.current = null;
+    }
+    setResult(null);
+    setFlash(null);
+    resultShowingRef.current = false;
+    needClearFramesRef.current = true;
+    clearMissCountRef.current = 0;
   }, []);
 
   const runScan = useCallback(
-    async (rawToken: string) => {
+    async (rawToken: string, source: "camera" | "manual" = "camera") => {
       const cleaned = rawToken.trim();
       if (cleaned.length < 10) return;
 
       const now = Date.now();
-      // Cooldown / locks apply only after a prior accepted decode — never block the first hit.
-      if (lastScanAt.current > 0) {
-        if (now < pauseUntilRef.current) return;
-        if (now - lastScanAt.current < SCAN_COOLDOWN_MS) return;
+      if (scanInFlightRef.current) return;
+      if (resultShowingRef.current) return;
+
+      if (source === "camera") {
+        if (softPausedRef.current) return;
+        if (needClearFramesRef.current) return;
+        if (lastScanAt.current > 0 && now - lastScanAt.current < SCAN_COOLDOWN_MS) return;
         const last = lastDecodedRef.current;
         if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) {
           return;
         }
+        const frame = sampleVideoFrame();
+        if (!frame.ok) return;
+        if (
+          lastFingerprintRef.current &&
+          frame.fingerprint === lastFingerprintRef.current &&
+          frozenFingerprintHitsRef.current >= 3
+        ) {
+          // Same bitmap repeatedly (frozen / black ghost) — ignore decode
+          return;
+        }
+        lastFingerprintRef.current = frame.fingerprint;
       }
-      if (scanInFlightRef.current) return;
 
       lastScanAt.current = now;
       lastDecodedRef.current = { raw: cleaned, at: now };
       scanInFlightRef.current = true;
       setDecodeHint(null);
-      pauseDetectionBriefly();
+      armAfterResult();
 
       setLoading(true);
       try {
@@ -603,20 +682,40 @@ export function ScannerClient({
         if (scanResult.color === "green" || scanResult.color === "blue") setToken("");
         if (isScannerStats(scanResult.stats)) {
           setStats(scanResult.stats);
-        } else {
-          void refreshStats();
         }
+        // Always refresh so Im Haus / OUT stay correct after check-out/in
+        void refreshStats();
 
         if (resultClearRef.current) window.clearTimeout(resultClearRef.current);
         if (flashClearRef.current) window.clearTimeout(flashClearRef.current);
         flashClearRef.current = window.setTimeout(() => setFlash(null), 1800);
-        resultClearRef.current = window.setTimeout(() => setResult(null), 4500);
+        resultClearRef.current = window.setTimeout(() => {
+          setResult(null);
+          resultShowingRef.current = false;
+          needClearFramesRef.current = true;
+          clearMissCountRef.current = 0;
+        }, RESULT_HOLD_MS);
+      } catch {
+        setResult({
+          color: "red",
+          message: "Netzwerkfehler — erneut scannen",
+          ticket: null,
+        });
+        resultShowingRef.current = true;
+        playScanSound("red");
+        if (resultClearRef.current) window.clearTimeout(resultClearRef.current);
+        resultClearRef.current = window.setTimeout(() => {
+          setResult(null);
+          resultShowingRef.current = false;
+          needClearFramesRef.current = true;
+          clearMissCountRef.current = 0;
+        }, RESULT_HOLD_MS);
       } finally {
         scanInFlightRef.current = false;
         setLoading(false);
       }
     },
-    [eventId, pauseDetectionBriefly, refreshStats],
+    [armAfterResult, eventId, refreshStats],
   );
 
   const onDecoded = useCallback(
@@ -624,13 +723,14 @@ export function ScannerClient({
       const cleaned = decoded.trim();
       if (!cleaned) return;
       if (scanInFlightRef.current) return;
+      if (resultShowingRef.current) return;
+      if (softPausedRef.current) return;
+      if (needClearFramesRef.current) return;
       const now = Date.now();
-      if (lastScanAt.current > 0) {
-        if (now < pauseUntilRef.current) return;
-        const last = lastDecodedRef.current;
-        if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) return;
-      }
-      void runScan(cleaned);
+      if (lastScanAt.current > 0 && now - lastScanAt.current < SCAN_COOLDOWN_MS) return;
+      const last = lastDecodedRef.current;
+      if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) return;
+      void runScan(cleaned, "camera");
     },
     [runScan],
   );
@@ -638,6 +738,36 @@ export function ScannerClient({
   const onScanFrameMiss = useCallback(() => {
     decodeAttemptsRef.current += 1;
     lastDecodeTickRef.current = Date.now();
+
+    const frame = sampleVideoFrame();
+    if (frame.fingerprint && frame.fingerprint === lastFingerprintRef.current) {
+      frozenFingerprintHitsRef.current += 1;
+    } else {
+      frozenFingerprintHitsRef.current = 0;
+      if (frame.ok) lastFingerprintRef.current = frame.fingerprint;
+    }
+
+    if (!frame.ok) {
+      darkStreakRef.current += 1;
+      if (darkStreakRef.current >= 36 && phase === "scanning") {
+        setCameraDead(true);
+      }
+    } else {
+      darkStreakRef.current = 0;
+      if (cameraDead) setCameraDead(false);
+    }
+
+    if (needClearFramesRef.current) {
+      // Only count a "clear" frame when no code AND video is live (not black freeze)
+      if (frame.ok) {
+        clearMissCountRef.current += 1;
+        if (clearMissCountRef.current >= CLEAR_FRAMES_REQUIRED) {
+          needClearFramesRef.current = false;
+          clearMissCountRef.current = 0;
+        }
+      }
+    }
+
     if (
       decodeAttemptsRef.current >= 40 &&
       lastScanAt.current === 0 &&
@@ -645,13 +775,9 @@ export function ScannerClient({
     ) {
       setDecodeHint("Kamera läuft — Code näher / ruhiger halten");
     }
-  }, []);
+  }, [cameraDead, phase]);
 
   const stopScannerInstance = useCallback(async () => {
-    if (resumeTimerRef.current) {
-      window.clearTimeout(resumeTimerRef.current);
-      resumeTimerRef.current = null;
-    }
     const scanner = scannerRef.current;
     scannerRef.current = null;
     if (scanner) {
@@ -677,6 +803,54 @@ export function ScannerClient({
     return () => window.clearInterval(id);
   }, [refreshStats]);
 
+  // Tab hidden → soft-pause (no library pause). Visible again → resume cleanly.
+  useEffect(() => {
+    const onVisibility = () => {
+      const host = document.getElementById("tf-qr-reader");
+      hideLibraryPausedBanner(host);
+      if (document.visibilityState === "hidden") {
+        softPausedRef.current = true;
+        setCameraPausedUi(true);
+        return;
+      }
+      softPausedRef.current = false;
+      setCameraPausedUi(false);
+      needClearFramesRef.current = true;
+      clearMissCountRef.current = 0;
+      // If library somehow paused, try resume; otherwise check stream health
+      const scanner = scannerRef.current;
+      if (scanner) {
+        try {
+          // getState may exist — resume only when paused
+          const state = (
+            scanner as unknown as { getState?: () => number }
+          ).getState?.();
+          // Html5QrcodeScannerState.PAUSED === 3 typically
+          if (state === 3) {
+            try {
+              scanner.resume();
+            } catch {
+              /* ignore */
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+      hideLibraryPausedBanner(host);
+      const video = host?.querySelector("video") as HTMLVideoElement | null;
+      const trackDead =
+        !video ||
+        video.readyState < 2 ||
+        !(video.srcObject as MediaStream | null)?.getVideoTracks?.().some((t) => t.readyState === "live");
+      if (trackDead && phase === "scanning") {
+        setCameraDead(true);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [phase]);
+
   const startCamera = useCallback(async () => {
     if (startingRef.current) return;
     startingRef.current = true;
@@ -685,6 +859,14 @@ export function ScannerClient({
     setCameraError(null);
     setCameraHelp(null);
     setDecodeHint(null);
+    setCameraDead(false);
+    setCameraPausedUi(false);
+    softPausedRef.current = false;
+    needClearFramesRef.current = false;
+    clearMissCountRef.current = 0;
+    darkStreakRef.current = 0;
+    frozenFingerprintHitsRef.current = 0;
+    lastFingerprintRef.current = null;
     decodeAttemptsRef.current = 0;
     lastDecodeTickRef.current = 0;
     scanningSinceRef.current = Date.now();
@@ -786,10 +968,13 @@ export function ScannerClient({
         video.muted = true;
       });
 
+      hideLibraryPausedBanner(host);
+
       // Soft focus only (skipped on iOS)
       window.setTimeout(() => {
         if (gen !== startGenRef.current) return;
         if (scannerRef.current === scanner) void applyBestCameraConstraints(scanner);
+        hideLibraryPausedBanner(document.getElementById("tf-qr-reader"));
       }, 500);
 
       // If decode loop never ticks, surface it (BarcodeDetector hang / dead canvas)
@@ -797,7 +982,8 @@ export function ScannerClient({
         if (gen !== startGenRef.current) return;
         if (lastScanAt.current > 0) return;
         if (lastDecodeTickRef.current === 0) {
-          setDecodeHint("Decoder startet nicht — Stop tippen und erneut versuchen");
+          setDecodeHint("Decoder startet nicht — Kamera neu starten");
+          setCameraDead(true);
           console.warn("[tf-scanner] no decode ticks after start");
         }
       }, 5000);
@@ -822,7 +1008,6 @@ export function ScannerClient({
       void stopScannerInstance();
       if (resultClearRef.current) window.clearTimeout(resultClearRef.current);
       if (flashClearRef.current) window.clearTimeout(flashClearRef.current);
-      if (resumeTimerRef.current) window.clearTimeout(resumeTimerRef.current);
     };
     // Restart only when switching events — not when callbacks churn
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -833,6 +1018,15 @@ export function ScannerClient({
     startingRef.current = false;
     await stopScannerInstance();
     setPhase("ready");
+    setCameraDead(false);
+    setCameraPausedUi(false);
+  }
+
+  async function restartCamera() {
+    setCameraDead(false);
+    setCameraPausedUi(false);
+    softPausedRef.current = false;
+    await startCamera();
   }
 
   async function leaveScanner() {
@@ -849,7 +1043,7 @@ export function ScannerClient({
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     getAudioCtx();
-    await runScan(token);
+    await runScan(token, "manual");
   }
 
   const meta = modeMeta(mode);
@@ -927,6 +1121,21 @@ export function ScannerClient({
           <div className="w-[72px] md:hidden" />
         </div>
 
+        <div className="mt-2 grid grid-cols-3 gap-2 text-center text-xs md:hidden">
+          <div className="rounded-lg bg-white/10 px-2 py-2 ring-1 ring-[var(--tf-teal)]/50">
+            <p className="text-white/60">Im Haus</p>
+            <p className="text-lg font-bold tabular-nums">{stats.currentlyIn}</p>
+          </div>
+          <div className="rounded-lg bg-white/10 px-2 py-2">
+            <p className="text-white/60">OUT</p>
+            <p className="text-lg font-bold tabular-nums">{stats.currentlyOut}</p>
+          </div>
+          <div className="rounded-lg bg-white/10 px-2 py-2">
+            <p className="text-white/60">Offen</p>
+            <p className="text-lg font-bold tabular-nums">{stats.notArrived}</p>
+          </div>
+        </div>
+
         {showSettings ? (
           <div className="mt-2 space-y-2 rounded-xl bg-black/25 p-3 md:hidden">
             <label className="grid gap-1 text-sm">
@@ -938,20 +1147,6 @@ export function ScannerClient({
                 placeholder="Eingang Haupt"
               />
             </label>
-            <div className="grid grid-cols-3 gap-2 text-center text-xs">
-              <div className="rounded-lg bg-white/10 px-2 py-2">
-                <p className="text-white/60">IN</p>
-                <p className="text-lg font-bold tabular-nums">{stats.currentlyIn}</p>
-              </div>
-              <div className="rounded-lg bg-white/10 px-2 py-2">
-                <p className="text-white/60">OUT</p>
-                <p className="text-lg font-bold tabular-nums">{stats.currentlyOut}</p>
-              </div>
-              <div className="rounded-lg bg-white/10 px-2 py-2">
-                <p className="text-white/60">Offen</p>
-                <p className="text-lg font-bold tabular-nums">{stats.notArrived}</p>
-              </div>
-            </div>
             <button
               type="button"
               disabled={leaving}
@@ -971,13 +1166,51 @@ export function ScannerClient({
           id="tf-qr-reader"
           className="tf-qr-reader relative h-full min-h-[48vh] w-full overflow-hidden bg-black md:min-h-[420px]"
         />
-
         {phase === "scanning" ? <ScanGuide /> : null}
 
-        {phase === "scanning" && decodeHint ? (
+        {phase === "scanning" && decodeHint && !cameraDead && !cameraPausedUi ? (
           <p className="absolute left-3 right-3 top-3 z-20 rounded-lg bg-black/55 px-3 py-2 text-center text-xs font-medium text-white/90 ring-1 ring-white/20">
             {decodeHint}
           </p>
+        ) : null}
+
+        {phase === "scanning" && cameraPausedUi && !cameraDead ? (
+          <button
+            type="button"
+            className="absolute inset-0 z-[25] flex flex-col items-center justify-center gap-3 bg-black/70 px-6 text-center"
+            onClick={() => {
+              softPausedRef.current = false;
+              setCameraPausedUi(false);
+              needClearFramesRef.current = true;
+              clearMissCountRef.current = 0;
+              const scanner = scannerRef.current;
+              try {
+                scanner?.resume();
+              } catch {
+                /* ignore */
+              }
+              hideLibraryPausedBanner(document.getElementById("tf-qr-reader"));
+            }}
+          >
+            <p className="text-lg font-semibold text-white">Kamera pausiert</p>
+            <p className="max-w-xs text-sm text-white/80">Tippen zum Fortsetzen</p>
+          </button>
+        ) : null}
+
+        {phase === "scanning" && cameraDead ? (
+          <div className="absolute inset-0 z-[25] flex flex-col items-center justify-center gap-4 bg-black/80 px-6 text-center">
+            <p className="text-lg font-semibold text-white">Kamera unterbrochen</p>
+            <p className="max-w-sm text-sm text-white/75">
+              Bild ist schwarz oder der Stream ist weg. Neu starten, dann weiter scannen.
+            </p>
+            <button
+              type="button"
+              className="rounded-2xl bg-[var(--tf-teal)] px-6 py-3.5 text-base font-semibold text-[#0B1220]"
+              onClick={() => void restartCamera()}
+            >
+              Kamera neu starten
+            </button>
+          </div>
         ) : null}
 
         {phase === "ready" ? (
@@ -1061,6 +1294,13 @@ export function ScannerClient({
                   ) : null}
                 </div>
               ) : null}
+              <button
+                type="button"
+                className="mt-3 rounded-xl bg-black/25 px-4 py-2 text-sm font-semibold text-white ring-1 ring-white/30"
+                onClick={() => dismissResult()}
+              >
+                Weiter scannen
+              </button>
             </div>
           </div>
         ) : null}
@@ -1085,7 +1325,10 @@ export function ScannerClient({
                 }`}
                 onClick={() => {
                   getAudioCtx();
+                  dismissResult();
                   setMode(id);
+                  needClearFramesRef.current = true;
+                  clearMissCountRef.current = 0;
                 }}
               >
                 <Icon className="h-6 w-6" strokeWidth={active ? 2.4 : 2} />
@@ -1160,7 +1403,7 @@ export function ScannerClient({
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
-              ["Aktuell IN", stats.currentlyIn, true],
+              ["Im Haus", stats.currentlyIn, true],
               ["OUT", stats.currentlyOut, false],
               ["Noch nicht da", stats.notArrived, false],
               ["Verkauft", stats.sold, false],
