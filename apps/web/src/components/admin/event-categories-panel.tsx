@@ -247,7 +247,7 @@ export function EventCategoriesPanel({
   onCategoriesChange,
   templates,
   canWrite,
-  salesReleased = false,
+  categoriesCreateLocked = false,
   seatingEnabled = false,
 }: {
   eventId: string;
@@ -256,8 +256,8 @@ export function EventCategoriesPanel({
   onCategoriesChange?: Dispatch<SetStateAction<Category[]>>;
   templates: Template[];
   canWrite: boolean;
-  /** True when event is freigegeben — no new categories allowed */
-  salesReleased?: boolean;
+  /** True after first sold/held ticket — no new categories allowed */
+  categoriesCreateLocked?: boolean;
   /** When true, plan-backed categories get Kontingent from Saalplan seats. */
   seatingEnabled?: boolean;
 }) {
@@ -275,8 +275,8 @@ export function EventCategoriesPanel({
   }, [initialCategories, onCategoriesChange]);
 
   async function saveCategory(form: HTMLFormElement, categoryId?: string) {
-    if (!categoryId && salesReleased) {
-      setError("Nach Verkaufsfreigabe dürfen keine neuen Kategorien angelegt werden.");
+    if (!categoryId && categoriesCreateLocked) {
+      setError("Nach erstem Ticketverkauf dürfen keine neuen Kategorien angelegt werden.");
       return;
     }
     const fd = new FormData(form);
@@ -304,7 +304,7 @@ export function EventCategoriesPanel({
       if (!response.ok) {
         setError(
           data?.error?.code === "CATEGORIES_LOCKED"
-            ? "Nach Verkaufsfreigabe keine neuen Kategorien."
+            ? "Nach erstem Ticketverkauf keine neuen Kategorien."
             : (data?.error?.code ?? "Speichern fehlgeschlagen"),
         );
         return;
@@ -355,8 +355,8 @@ export function EventCategoriesPanel({
   }
 
   async function applyTemplate(templateId: string) {
-    if (salesReleased) {
-      setError("Nach Verkaufsfreigabe dürfen keine neuen Kategorien angelegt werden.");
+    if (categoriesCreateLocked) {
+      setError("Nach erstem Ticketverkauf dürfen keine neuen Kategorien angelegt werden.");
       return;
     }
     setSavingId("template");
@@ -379,7 +379,7 @@ export function EventCategoriesPanel({
       if (!response.ok) {
         setError(
           data?.error?.code === "CATEGORIES_LOCKED"
-            ? "Nach Verkaufsfreigabe keine neuen Kategorien."
+            ? "Nach erstem Ticketverkauf keine neuen Kategorien."
             : (data?.error?.code ?? "Vorlage fehlgeschlagen"),
         );
         return;
@@ -397,8 +397,8 @@ export function EventCategoriesPanel({
       <div>
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Preiskategorien</h2>
         <p className="text-sm text-[var(--tf-text-secondary)]">
-          {salesReleased
-            ? "Verkauf ist freigegeben — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
+          {categoriesCreateLocked
+            ? "Erstes Ticket verkauft oder reserviert — bestehende Preise kannst du anpassen, neue Kategorien nicht mehr anlegen."
             : seatingEnabled
               ? "Preis, Name, Farbe und Art hier bearbeiten."
               : "Preis, Kontingent, Name und Art bearbeiten."}
@@ -494,7 +494,7 @@ export function EventCategoriesPanel({
                     >
                       {savingId === cat.id ? "Speichert…" : "Speichern"}
                     </button>
-                    {sold === 0 && held === 0 && !salesReleased ? (
+                    {sold === 0 && held === 0 ? (
                       <button
                         type="button"
                         className="tf-btn tf-btn-secondary !min-h-10 text-sm"
@@ -536,7 +536,7 @@ export function EventCategoriesPanel({
         ) : null}
       </div>
 
-      {canWrite && !salesReleased ? (
+      {canWrite && !categoriesCreateLocked ? (
         <div className="grid gap-4 lg:grid-cols-2">
           <form
             key={newFormKey}
@@ -593,11 +593,10 @@ export function EventCategoriesPanel({
         </div>
       ) : null}
 
-      {canWrite && salesReleased ? (
+      {canWrite && categoriesCreateLocked ? (
         <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
-          Neue Kategorien sind gesperrt, solange das Event zum Verkauf freigegeben ist. Zum Ändern
-          der Struktur den Status wieder auf Entwurf setzen (nur sinnvoll, wenn noch keine Tickets
-          verkauft wurden).
+          Neue Kategorien sind gesperrt, sobald das erste Ticket verkauft oder reserviert wurde.
+          Bestehende Kategorien kannst du weiter bearbeiten.
         </p>
       ) : null}
 

@@ -63,14 +63,15 @@ export function EventSeatingSetup({
   initialCategories,
   templates,
   canWrite,
-  salesReleased = false,
+  categoriesCreateLocked = false,
   seatingEnabled = false,
 }: {
   eventId: string;
   initialCategories: EventCategoryRow[];
   templates: Template[];
   canWrite: boolean;
-  salesReleased?: boolean;
+  /** After first sold/held ticket — no new categories. */
+  categoriesCreateLocked?: boolean;
   /** Venue plan + seating mode — plan-backed Kontingent only when true. */
   seatingEnabled?: boolean;
 }) {
@@ -154,7 +155,7 @@ export function EventSeatingSetup({
         onCategoriesChange={setCategories}
         templates={templates}
         canWrite={canWrite}
-        salesReleased={salesReleased}
+        categoriesCreateLocked={categoriesCreateLocked}
         seatingEnabled={seatingEnabled}
       />
     </div>

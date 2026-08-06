@@ -18,7 +18,7 @@ import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
 import { EventAdminHeaderActions } from "@/components/admin/event-admin-header-actions";
-import { isEventSalesReleased, effectiveEventStatus } from "@/lib/commerce/event-sale";
+import { canCreateEventCategories, effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -141,7 +141,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   if (released.flipped) event.status = released.status;
 
   const displayStatus = effectiveEventStatus(event);
-  const salesReleased = isEventSalesReleased(displayStatus);
+  const categoriesCreateLocked = !(await canCreateEventCategories(event.id));
 
   // Plain props only — never pass the raw Prisma graph into Client Components.
   const editEvent = {
@@ -572,7 +572,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         initialCategories={seatingCategoriesRows}
         templates={templates}
         canWrite={canWrite}
-        salesReleased={salesReleased}
+        categoriesCreateLocked={categoriesCreateLocked}
         seatingEnabled={seatingEnabled}
       />
 

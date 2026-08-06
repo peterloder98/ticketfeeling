@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { canMutateEventCategories } from "@/lib/commerce/event-sale";
+import { canCreateEventCategories } from "@/lib/commerce/event-sale";
 import {
   isPlanBackedTicketCategory,
   syncPlanBackedCategoryCapacities,
@@ -61,8 +61,8 @@ export async function PUT(request: Request) {
     });
     if (!event) return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
 
-    // New categories only while event is still draft / announcement
-    if (!body.categoryId && !canMutateEventCategories(event.status)) {
+    // New categories only until first sold/held inventory (edits stay allowed)
+    if (!body.categoryId && !(await canCreateEventCategories(event.id))) {
       return NextResponse.json({ error: { code: "CATEGORIES_LOCKED" } }, { status: 409 });
     }
 

@@ -118,8 +118,8 @@ export async function upsertEventCategoryAction(formData: FormData) {
   const maxPerOrder = Math.max(1, Number(formData.get("maxPerOrder") ?? 10));
   const description = String(formData.get("description") ?? "").trim() || null;
 
-  const { canMutateEventCategories } = await import("@/lib/commerce/event-sale");
-  if (!categoryId && !canMutateEventCategories(event.status)) {
+  const { canCreateEventCategories } = await import("@/lib/commerce/event-sale");
+  if (!categoryId && !(await canCreateEventCategories(event.id))) {
     throw new Error("CATEGORIES_LOCKED");
   }
 
@@ -216,8 +216,8 @@ export async function applyCategoryTemplateAction(formData: FormData) {
     where: { id: eventId, organizationId: membership.organizationId },
   });
   if (!event) throw new Error("EVENT_NOT_FOUND");
-  const { canMutateEventCategories } = await import("@/lib/commerce/event-sale");
-  if (!canMutateEventCategories(event.status)) throw new Error("CATEGORIES_LOCKED");
+  const { canCreateEventCategories } = await import("@/lib/commerce/event-sale");
+  if (!(await canCreateEventCategories(event.id))) throw new Error("CATEGORIES_LOCKED");
   const template = await prisma.ticketCategoryTemplate.findFirst({
     where: { id: templateId, organizationId: membership.organizationId },
   });
