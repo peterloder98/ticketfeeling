@@ -8,6 +8,10 @@ import { SaalplanEditor } from "@/components/admin/saalplan-editor";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
 import { parsePlanCategorySlots } from "@/lib/saalplan/category-slots";
 import { saveVenuePlanAction } from "@/app/admin/saalplan/actions";
+import {
+  checkVenuePlanGeometryFrozen,
+  GEOMETRY_FROZEN_MESSAGE,
+} from "@/lib/seating/geometry-freeze";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +67,9 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
   });
   if (!plan) notFound();
 
+  const freeze = await checkVenuePlanGeometryFrozen(plan.id);
+  const geometryFrozen = freeze.frozen;
+
   const fallbackHref = `/admin/locations/${plan.locationId}`;
   const backHref = returnTo ?? fallbackHref;
   const backLabel =
@@ -111,6 +118,8 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
         initialObjects={parseVenuePlanObjects(plan.objects)}
         initialCategorySlots={parsePlanCategorySlots(plan.categorySlots)}
         saveAction={saveVenuePlanAction}
+        geometryFrozen={geometryFrozen}
+        geometryFrozenMessage={geometryFrozen ? GEOMETRY_FROZEN_MESSAGE : null}
         returnTo={returnTo}
         returnLabel={
           returnLabel ||

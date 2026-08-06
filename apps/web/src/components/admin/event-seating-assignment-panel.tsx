@@ -343,7 +343,11 @@ export function EventSeatingAssignmentPanel({
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok) {
-              setError(data?.error?.code ?? "Speichern fehlgeschlagen");
+              setError(
+                data?.error?.message ||
+                  data?.error?.code ||
+                  "Speichern fehlgeschlagen",
+              );
               void load({ silent: true, seatsOnly: true });
               continue;
             }

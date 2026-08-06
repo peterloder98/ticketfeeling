@@ -194,7 +194,13 @@ export async function prepareWizardLocationPlanAction(
   };
 }
 
-export async function saveVenuePlanAction(formData: FormData) {
+export type SaveVenuePlanResult =
+  | { ok: true }
+  | { ok: false; error: string; code?: string };
+
+export async function saveVenuePlanAction(
+  formData: FormData,
+): Promise<SaveVenuePlanResult> {
   const { membership } = await requireLocationsWrite();
   const planId = String(formData.get("planId") ?? "");
   const name = String(formData.get("name") ?? "").trim() || "Saalplan";
@@ -222,7 +228,43 @@ export async function saveVenuePlanAction(formData: FormData) {
   const plan = await prisma.venuePlan.findFirst({
     where: { id: planId, organizationId: membership.organizationId },
   });
-  if (!plan) throw new Error("NOT_FOUND");
+  if (!plan) return { ok: false, error: "Saalplan nicht gefunden.", code: "NOT_FOUND" };
+
+  const {
+    checkVenuePlanGeometryFrozen,
+    geometryPayloadChangesSeatIdentities,
+    GEOMETRY_FROZEN_MESSAGE,
+  } = await import("@/lib/seating/geometry-freeze");
+
+  const freeze = await checkVenuePlanGeometryFrozen(plan.id);
+  if (freeze.frozen) {
+    const geometryChanged = geometryPayloadChangesSeatIdentities({
+      previousWidthCm: plan.widthCm,
+      previousDepthCm: plan.depthCm,
+      previousObjects: plan.objects,
+      nextWidthCm: widthCm,
+      nextDepthCm: depthCm,
+      nextObjects: objects,
+    });
+    if (geometryChanged) {
+      return {
+        ok: false,
+        error: freeze.message || GEOMETRY_FROZEN_MESSAGE,
+        code: "GEOMETRY_FROZEN",
+      };
+    }
+    // Name-only (and legacy categorySlots) still allowed while frozen.
+    await prisma.venuePlan.update({
+      where: { id: plan.id },
+      data: {
+        name,
+        categorySlots: categorySlots as Prisma.InputJsonValue,
+      },
+    });
+    revalidatePath(`/admin/saalplan/${plan.id}`);
+    revalidatePath(`/admin/locations/${plan.locationId}`);
+    return { ok: true };
+  }
 
   await prisma.venuePlan.update({
     where: { id: plan.id },
@@ -243,6 +285,7 @@ export async function saveVenuePlanAction(formData: FormData) {
   revalidatePath(`/admin/saalplan/${plan.id}`);
   revalidatePath(`/admin/locations/${plan.locationId}`);
   revalidatePath("/admin/events");
+  return { ok: true };
 }
 
 async function deleteVenuePlanRecord(input: {
@@ -257,6 +300,13 @@ async function deleteVenuePlanRecord(input: {
   if (!plan) return { deleted: false, reason: "NOT_FOUND" };
   if (input.requireUnused && plan._count.events > 0) {
     return { deleted: false, locationId: plan.locationId, reason: "IN_USE" };
+  }
+
+  // Never wipe a plan once linked events have sale/inventory freeze.
+  const { checkVenuePlanGeometryFrozen } = await import("@/lib/seating/geometry-freeze");
+  const freeze = await checkVenuePlanGeometryFrozen(plan.id);
+  if (freeze.frozen) {
+    return { deleted: false, locationId: plan.locationId, reason: "GEOMETRY_FROZEN" };
   }
 
   // EventSeat has no FK to VenuePlan — clear any leftover inventory rows first.
@@ -275,7 +325,13 @@ export async function deleteVenuePlanAction(formData: FormData) {
     planId,
     requireUnused: false,
   });
-  if (!result.deleted) throw new Error("NOT_FOUND");
+  if (!result.deleted) {
+    if (result.reason === "GEOMETRY_FROZEN") {
+      const { GEOMETRY_FROZEN_MESSAGE } = await import("@/lib/seating/geometry-freeze");
+      throw new Error(GEOMETRY_FROZEN_MESSAGE);
+    }
+    throw new Error("NOT_FOUND");
+  }
   revalidatePath(`/admin/locations/${result.locationId}`);
   redirect(`/admin/locations/${result.locationId}`);
 }

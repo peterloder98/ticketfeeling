@@ -167,6 +167,52 @@ export async function PATCH(request: Request) {
     if (body.categoryId !== undefined) data.categoryId = body.categoryId;
     if (body.locked !== undefined) data.locked = body.locked;
 
+    // Hard reject lock/unlock when the selection includes sold (or held for lock).
+    if (body.locked !== undefined) {
+      const {
+        LOCK_INCLUDES_SOLD_MESSAGE,
+        UNLOCK_INCLUDES_SOLD_MESSAGE,
+      } = await import("@/lib/seating/geometry-freeze");
+      const targetWhere = { ...where };
+      if (body.locked === true) {
+        const blocked = await prisma.eventSeat.count({
+          where: {
+            ...targetWhere,
+            status: { in: ["held", "sold"] },
+          },
+        });
+        if (blocked > 0) {
+          return NextResponse.json(
+            {
+              error: {
+                code: "LOCK_INCLUDES_SOLD",
+                message: LOCK_INCLUDES_SOLD_MESSAGE,
+              },
+            },
+            { status: 409 },
+          );
+        }
+      } else {
+        const sold = await prisma.eventSeat.count({
+          where: {
+            ...targetWhere,
+            status: "sold",
+          },
+        });
+        if (sold > 0) {
+          return NextResponse.json(
+            {
+              error: {
+                code: "UNLOCK_INCLUDES_SOLD",
+                message: UNLOCK_INCLUDES_SOLD_MESSAGE,
+              },
+            },
+            { status: 409 },
+          );
+        }
+      }
+    }
+
     let statusFilter: { in: string[] } | undefined;
     if (body.locked === true) {
       statusFilter = { in: ["available"] };

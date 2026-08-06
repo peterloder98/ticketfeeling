@@ -263,14 +263,21 @@ export async function syncSeatsForVenuePlan(venuePlanId: string) {
       venuePlanId,
       seatingBookingMode: { in: ["best_available", "seat_map_and_best"] },
     },
-    select: { id: true },
+    select: { id: true, status: true, presaleStartsAt: true },
   });
+  const { resolveEventGeometryFrozen } = await import("@/lib/seating/geometry-freeze");
   let synced = 0;
+  let skippedFrozen = 0;
   for (const event of events) {
+    // Defense in depth: never rematerialize (add/move/delete) for frozen events.
+    if (await resolveEventGeometryFrozen(event)) {
+      skippedFrozen += 1;
+      continue;
+    }
     await ensureEventSeats(event.id);
     synced += 1;
   }
-  return synced;
+  return { synced, skippedFrozen };
 }
 
 let lastSeatExpireMs = 0;

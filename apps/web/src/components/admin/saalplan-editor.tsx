@@ -55,7 +55,12 @@ type Props = {
   initialObjects: VenuePlanObject[];
   /** Preserved on save for legacy plans; not editable in the geometry editor. */
   initialCategorySlots?: PlanCategorySlot[];
-  saveAction: (formData: FormData) => Promise<void>;
+  saveAction: (
+    formData: FormData,
+  ) => Promise<void | { ok: true } | { ok: false; error: string; code?: string }>;
+  /** When true, structural geometry edits are blocked (sale started / seats sold). */
+  geometryFrozen?: boolean;
+  geometryFrozenMessage?: string | null;
   /** Optional return path shown after save (wizard / event). */
   returnTo?: string | null;
   returnLabel?: string | null;
@@ -82,6 +87,8 @@ export function SaalplanEditor({
   initialObjects,
   initialCategorySlots,
   saveAction,
+  geometryFrozen = false,
+  geometryFrozenMessage = null,
   returnTo,
   returnLabel,
 }: Props) {
@@ -163,7 +170,7 @@ export function SaalplanEditor({
   }
 
   function updateSelected(patch: Partial<VenuePlanObject>, notice?: string | null) {
-    if (!selectedId) return;
+    if (geometryFrozen || !selectedId) return;
     setObjects((prev) => {
       const next = prev.map((o) => (o.id === selectedId ? { ...o, ...patch } : o));
       return next;
@@ -174,7 +181,7 @@ export function SaalplanEditor({
 
   /** Grow block from row/seat counts; clamp physical size to hall and surface feedback. */
   function applySeatLayout(rawRows: number, rawSeatsPerRow: number) {
-    if (!selectedId) return;
+    if (geometryFrozen || !selectedId) return;
     const rows = Math.min(MAX_ROWS, Math.max(1, Math.round(rawRows) || 1));
     const seatsPerRow = Math.min(
       MAX_SEATS_PER_ROW,
@@ -211,7 +218,7 @@ export function SaalplanEditor({
   }
 
   function deleteSelected() {
-    if (!selectedId) return;
+    if (geometryFrozen || !selectedId) return;
     const id = selectedId;
     setObjects((prev) => prev.filter((o) => o.id !== id));
     setSelectedId(null);
@@ -220,6 +227,7 @@ export function SaalplanEditor({
   }
 
   function addStage() {
+    if (geometryFrozen) return;
     if (hasStage) {
       const existing = objects.find((o) => o.type === "stage");
       if (existing) setSelectedId(existing.id);
@@ -231,6 +239,7 @@ export function SaalplanEditor({
   }
 
   function addSeatBlock() {
+    if (geometryFrozen) return;
     const block = createSeatBlock(widthCm, depthCm, {
       label: nextBlockLabel(objects),
       numberedSeats: true,
@@ -240,6 +249,7 @@ export function SaalplanEditor({
   }
 
   function addStandingArea() {
+    if (geometryFrozen) return;
     const area = createStandingArea(widthCm, depthCm, {
       label: nextBlockLabel(objects),
       standingMode: "standing",
@@ -316,6 +326,7 @@ export function SaalplanEditor({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      if (geometryFrozen) return;
       if (e.key !== "Delete" && e.key !== "Backspace") return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
@@ -331,7 +342,7 @@ export function SaalplanEditor({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedId]);
+  }, [selectedId, geometryFrozen]);
 
   function onPointerDownObject(e: React.PointerEvent, obj: VenuePlanObject) {
     // Space / Alt / middle-mouse → canvas pan, not object move.
@@ -339,7 +350,7 @@ export function SaalplanEditor({
     e.stopPropagation();
     e.preventDefault();
     setSelectedId(obj.id);
-    if (obj.locked) return;
+    if (geometryFrozen || obj.locked) return;
     dragRef.current = {
       kind: "move",
       objectId: obj.id,
@@ -360,10 +371,18 @@ export function SaalplanEditor({
     fd.set("categorySlots", JSON.stringify(categorySlots));
     startTransition(async () => {
       try {
-        await saveAction(fd);
+        const result = await saveAction(fd);
+        if (result && typeof result === "object" && "ok" in result && result.ok === false) {
+          setMessage(result.error || "Speichern fehlgeschlagen");
+          return;
+        }
         setDirty(false);
         setSavedOnce(true);
-        setMessage("Gespeichert — der Plan ist bereit. Kategorien ordnest du am Event zu.");
+        setMessage(
+          geometryFrozen
+            ? "Name gespeichert. Die Geometrie bleibt gesperrt, solange der Verkauf läuft."
+            : "Gespeichert — der Plan ist bereit. Kategorien ordnest du am Event zu.",
+        );
       } catch (err) {
         setMessage(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
       }
@@ -424,6 +443,19 @@ export function SaalplanEditor({
 
   return (
     <div className="space-y-4">
+      {geometryFrozen ? (
+        <div
+          role="status"
+          className="rounded-2xl border border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.12)] px-4 py-3 text-sm text-[var(--tf-navy)]"
+        >
+          <p className="font-semibold">Saalplan-Geometrie gesperrt</p>
+          <p className="mt-1 text-[var(--tf-text-secondary)]">
+            {geometryFrozenMessage ||
+              "Verkauf läuft oder Plätze sind verkauft/reserviert — Blöcke, Reihen und Sitze dürfen nicht mehr umgebaut werden. Name ändern und unverkaufte Plätze am Event sperren/freigeben bleibt möglich."}
+          </p>
+        </div>
+      ) : null}
+
       <ol className="grid gap-2 rounded-2xl border border-[var(--tf-line)] bg-white p-4 text-sm sm:grid-cols-4">
         {[
           {
@@ -494,8 +526,10 @@ export function SaalplanEditor({
               min={2}
               step={0.1}
               className="tf-input"
+              disabled={geometryFrozen}
               value={Number((widthCm / 100).toFixed(2))}
               onChange={(e) => {
+                if (geometryFrozen) return;
                 const m = Number(String(e.target.value).replace(",", "."));
                 if (!Number.isFinite(m) || m < 2) return;
                 setWidthCm(Math.round(m * 100));
@@ -510,8 +544,10 @@ export function SaalplanEditor({
               min={2}
               step={0.1}
               className="tf-input"
+              disabled={geometryFrozen}
               value={Number((depthCm / 100).toFixed(2))}
               onChange={(e) => {
+                if (geometryFrozen) return;
                 const m = Number(String(e.target.value).replace(",", "."));
                 if (!Number.isFinite(m) || m < 2) return;
                 setDepthCm(Math.round(m * 100));
@@ -542,7 +578,17 @@ export function SaalplanEditor({
         </div>
       </div>
 
-      {message ? <p className="text-sm text-[var(--tf-teal)]">{message}</p> : null}
+      {message ? (
+        <p
+          className={`text-sm ${
+            message.includes("gesperrt") || message.includes("fehlgeschlagen") || message.includes("nicht")
+              ? "text-[var(--danger)]"
+              : "text-[var(--tf-teal)]"
+          }`}
+        >
+          {message}
+        </p>
+      ) : null}
 
       <p className="text-sm text-[var(--tf-text-secondary)]">
         Hier nur Geometrie: Bühne, Sitzblöcke und Stehbereiche. Preiskategorien ordnest du danach am
@@ -813,7 +859,7 @@ export function SaalplanEditor({
             type="button"
             className="tf-btn w-full justify-start text-sm"
             onClick={addStage}
-            disabled={hasStage}
+            disabled={geometryFrozen || hasStage}
           >
             <Plus className="mr-1 inline h-4 w-4" />
             {hasStage ? "Bühne ist schon da" : "Bühne einfügen"}
@@ -822,6 +868,7 @@ export function SaalplanEditor({
             type="button"
             className="tf-btn tf-btn-primary w-full justify-start text-sm"
             onClick={addSeatBlock}
+            disabled={geometryFrozen}
           >
             <Plus className="mr-1 inline h-4 w-4" /> Sitzblock einfügen
           </button>
@@ -829,6 +876,7 @@ export function SaalplanEditor({
             type="button"
             className="tf-btn w-full justify-start text-sm"
             onClick={addStandingArea}
+            disabled={geometryFrozen}
           >
             <Plus className="mr-1 inline h-4 w-4" /> Stehbereich einfügen
           </button>
@@ -839,7 +887,10 @@ export function SaalplanEditor({
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>
           {selected ? (
-            <div className="grid gap-2 text-sm">
+            <fieldset
+              disabled={geometryFrozen}
+              className={`grid gap-2 text-sm ${geometryFrozen ? "opacity-60" : ""}`}
+            >
               <label className="grid gap-1">
                 <span className="text-xs text-[var(--tf-text-secondary)]">Bezeichnung</span>
                 <input
@@ -989,10 +1040,11 @@ export function SaalplanEditor({
                 type="button"
                 className="tf-btn w-full !min-h-10 border border-[rgba(220,38,38,0.35)] bg-white text-sm text-[var(--danger)] hover:bg-[rgba(220,38,38,0.06)]"
                 onClick={deleteSelected}
+                disabled={geometryFrozen}
               >
                 Objekt löschen
               </button>
-            </div>
+            </fieldset>
           ) : (
             <p className="text-xs text-[var(--tf-text-secondary)]">
               Klicke ein Objekt an — oder füge Bühne, Sitzblock oder Stehbereich ein.
