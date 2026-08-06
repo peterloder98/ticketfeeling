@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/v1/cron/release-presale",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 5 * * *"
     }
   ]
 }

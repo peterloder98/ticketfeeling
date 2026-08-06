@@ -68,6 +68,16 @@ export default async function EventPage({ params }: Props) {
   });
 
   if (!event) notFound();
+
+  const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
+  const released = await ensurePresaleAutoRelease({
+    id: event.id,
+    organizationId: event.organizationId,
+    status: event.status,
+    presaleStartsAt: event.presaleStartsAt,
+  });
+  if (released.flipped) event.status = released.status;
+
   // Draft / cancelled events are not a public shop surface
   if (
     event.status === "draft" ||
