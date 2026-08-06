@@ -40,12 +40,26 @@ function applyEmbedFrameHeaders(response: NextResponse) {
   return response;
 }
 
+function clearEmbedCookie(response: NextResponse) {
+  response.cookies.set({
+    name: "tf_embed",
+    value: "",
+    path: "/",
+    maxAge: 0,
+  });
+  return response;
+}
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isIframe = request.headers.get("sec-fetch-dest") === "iframe";
   const embedShell = request.cookies.get("tf_embed")?.value === "1";
 
-  if (isIframe || embedShell) {
+  // Only rewrite shop paths when the request is actually framed.
+  // Never use the sticky tf_embed cookie alone — that redirected normal
+  // /event/[slug] browsing (and Next Link RSC fetches) into /embed/event/...
+  // after any prior embed/admin preview visit.
+  if (isIframe) {
     const embedPath = embedPathForIframe(pathname);
     if (embedPath) {
       const url = request.nextUrl.clone();
@@ -55,7 +69,15 @@ export function middleware(request: NextRequest) {
   }
 
   if (pathname.startsWith("/embed")) {
-    return applyEmbedFrameHeaders(NextResponse.next());
+    const res = applyEmbedFrameHeaders(NextResponse.next());
+    // Top-level /embed preview (admin) must not poison public browsing.
+    if (!isIframe && embedShell) clearEmbedCookie(res);
+    return res;
+  }
+
+  // Drop leftover embed cookie on public top-level traffic.
+  if (!isIframe && embedShell) {
+    return clearEmbedCookie(NextResponse.next());
   }
 
   return NextResponse.next();
@@ -63,14 +85,10 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/embed/:path*",
-    "/warenkorb",
-    "/warenkorb/:path*",
-    "/checkout",
-    "/checkout/:path*",
-    "/event/:path*",
-    "/tour/:path*",
-    "/bestellung/:path*",
-    "/shop",
+    /*
+     * Clear sticky tf_embed on any public navigation (incl. `/`), and keep
+     * iframe shop paths remapped. Skip static assets.
+     */
+    "/((?!_next/static|_next/image|favicon.ico|brand/|uploads/|.*\\..*).*)",
   ],
 };

@@ -31,10 +31,19 @@ export function EmbedStayInFrame() {
 
   useEffect(() => {
     try {
-      // Same-origin navigations inside the iframe; Lax is enough to keep /tour → /embed/tour.
-      document.cookie = "tf_embed=1; Path=/; SameSite=Lax; Max-Age=86400";
+      // Only mark embed shell when actually framed. Setting this on top-level
+      // /embed previews previously poisoned public /event/[slug] browsing.
+      const inIframe = window.self !== window.top;
+      if (inIframe) {
+        document.cookie = "tf_embed=1; Path=/; SameSite=Lax; Max-Age=86400";
+      }
     } catch {
-      /* ignore */
+      // Cross-origin parent → treat as framed.
+      try {
+        document.cookie = "tf_embed=1; Path=/; SameSite=Lax; Max-Age=86400";
+      } catch {
+        /* ignore */
+      }
     }
 
     function rewrite(anchor: HTMLAnchorElement) {
