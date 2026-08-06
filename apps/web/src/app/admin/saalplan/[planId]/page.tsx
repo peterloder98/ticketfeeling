@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { SaalplanEditor } from "@/components/admin/saalplan-editor";
+import { SaalplanReturnButton } from "@/components/admin/saalplan-return-button";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
 import { parsePlanCategorySlots } from "@/lib/saalplan/category-slots";
 import { saveVenuePlanAction } from "@/app/admin/saalplan/actions";
@@ -17,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ planId: string }>;
-  searchParams: Promise<{ returnTo?: string; returnLabel?: string }>;
+  searchParams: Promise<{ returnTo?: string; returnLabel?: string; popup?: string }>;
 };
 
 function safeReturnTo(raw: string | undefined): string | null {
@@ -49,6 +50,7 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
   const sp = await searchParams;
   const returnTo = safeReturnTo(sp.returnTo);
   const returnLabel = sp.returnLabel?.trim() || null;
+  const isPopup = sp.popup === "1";
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
@@ -80,18 +82,42 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
         ? "Zurück zum Event"
         : `← ${plan.location.name}`);
 
+  const displayBackLabel =
+    backLabel.startsWith("←") || backLabel.startsWith("Zurück") ? backLabel : `← ${backLabel}`;
+
+  const primaryReturnLabel =
+    returnLabel ||
+    (returnTo?.includes("/events/neu")
+      ? "Zurück zum Wizard"
+      : returnTo
+        ? "Zurück zum Event"
+        : null);
+
   return (
-    <div className="-mx-4 space-y-4 px-2 sm:-mx-6 sm:px-4 lg:-mx-8 lg:px-6">
+    <div
+      className={
+        isPopup
+          ? "space-y-4"
+          : "-mx-4 space-y-4 px-2 sm:-mx-6 sm:px-4 lg:-mx-8 lg:px-6"
+      }
+    >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link
-            href={backHref}
-            className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
-          >
-            {backLabel.startsWith("←") || backLabel.startsWith("Zurück")
-              ? backLabel
-              : `← ${backLabel}`}
-          </Link>
+          {returnTo ? (
+            <SaalplanReturnButton
+              href={backHref}
+              label={displayBackLabel}
+              planId={plan.id}
+              className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
+            />
+          ) : (
+            <Link
+              href={backHref}
+              className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
+            >
+              {displayBackLabel}
+            </Link>
+          )}
           <h1 className="mt-2 text-2xl font-semibold tracking-tight text-[var(--tf-navy)] md:text-3xl">
             Saalplan zeichnen
           </h1>
@@ -100,13 +126,13 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
             Event.
           </p>
         </div>
-        {returnTo ? (
-          <Link href={returnTo} className="tf-btn tf-btn-secondary !min-h-10 shrink-0 text-sm">
-            {returnLabel ||
-              (returnTo.includes("/events/neu")
-                ? "Zurück zum Wizard"
-                : "Zurück zum Event")}
-          </Link>
+        {returnTo && primaryReturnLabel ? (
+          <SaalplanReturnButton
+            href={returnTo}
+            label={primaryReturnLabel}
+            planId={plan.id}
+            className="tf-btn tf-btn-secondary !min-h-10 shrink-0 text-sm"
+          />
         ) : null}
       </div>
 
@@ -121,14 +147,7 @@ export default async function VenuePlanEditorPage({ params, searchParams }: Prop
         geometryFrozen={geometryFrozen}
         geometryFrozenMessage={geometryFrozen ? GEOMETRY_FROZEN_MESSAGE : null}
         returnTo={returnTo}
-        returnLabel={
-          returnLabel ||
-          (returnTo?.includes("/events/neu")
-            ? "Zurück zum Wizard"
-            : returnTo
-              ? "Zurück zum Event"
-              : null)
-        }
+        returnLabel={primaryReturnLabel}
       />
     </div>
   );

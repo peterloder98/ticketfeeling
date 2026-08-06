@@ -46,6 +46,7 @@ import {
   readableScalePxPerCm,
 } from "@/lib/saalplan/view-zoom";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
+import { SaalplanReturnButton } from "@/components/admin/saalplan-return-button";
 
 type Props = {
   planId: string;
@@ -571,9 +572,12 @@ export function SaalplanEditor({
             {pending ? "Speichert…" : dirty ? "Speichern" : "Gespeichert"}
           </button>
           {returnTo && (!dirty || savedOnce) ? (
-            <a href={returnTo} className="tf-btn tf-btn-secondary !min-h-10 text-sm">
-              {returnLabel?.trim() || "Zurück zum Event"}
-            </a>
+            <SaalplanReturnButton
+              href={returnTo}
+              planId={planId}
+              label={returnLabel?.trim() || "Zurück zum Event"}
+              className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+            />
           ) : null}
         </div>
       </div>

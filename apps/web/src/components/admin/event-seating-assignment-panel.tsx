@@ -15,6 +15,11 @@ import {
 } from "@/lib/saalplan/view-zoom";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 import { sellableSeatCountsByCategory } from "@/lib/seating/sync-category-capacity";
+import {
+  buildSaalplanEditorHref,
+  openSaalplanEditorWindow,
+  SAALPLAN_WINDOW_NAME,
+} from "@/lib/saalplan/popup";
 
 export type AssignmentCategory = {
   id: string;
@@ -683,7 +688,10 @@ export function EventSeatingAssignmentPanel({
   const toY = (cm: number) => hallTop + cm * scale;
   const toS = (cm: number) => cm * scale;
   const editorHref = venuePlanId
-    ? `/admin/saalplan/${venuePlanId}?returnTo=${encodeURIComponent(`/admin/events/${eventId}#zuordnung`)}&returnLabel=${encodeURIComponent("Zurück zum Event")}`
+    ? buildSaalplanEditorHref(venuePlanId, {
+        returnTo: `/admin/events/${eventId}#zuordnung`,
+        returnLabel: "Zurück zum Event",
+      })
     : null;
 
   return (
@@ -700,9 +708,12 @@ export function EventSeatingAssignmentPanel({
         {editorHref ? (
           <a
             href={editorHref}
-            target="_blank"
-            rel="noreferrer"
+            target={SAALPLAN_WINDOW_NAME}
             className="tf-btn tf-btn-secondary !min-h-10 shrink-0 text-sm"
+            onClick={(e) => {
+              e.preventDefault();
+              openSaalplanEditorWindow(editorHref);
+            }}
           >
             Geometrie bearbeiten
           </a>

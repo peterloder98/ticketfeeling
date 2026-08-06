@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ADMIN_TOP_NAV, isAdminNavActive } from "@/lib/admin/nav";
 
@@ -11,6 +12,15 @@ const BOX_OFFICE_NAV: { href: string; label: string; match?: string[] }[] = [
 const SCANNER_ONLY_NAV: { href: string; label: string; match?: string[] }[] = [
   { href: "/scanner", label: "Scanner", match: ["/scanner"] },
 ];
+
+function readPopupFlag(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return new URLSearchParams(window.location.search).get("popup") === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function AdminShell({
   email,
@@ -29,12 +39,25 @@ export function AdminShell({
   scannerOnly?: boolean;
 }) {
   const pathname = usePathname();
+  const [isPopup, setIsPopup] = useState(false);
   const navItems = boxOfficeOnly
     ? BOX_OFFICE_NAV
     : scannerOnly
       ? SCANNER_ONLY_NAV
       : ADMIN_TOP_NAV;
   const restricted = boxOfficeOnly || scannerOnly;
+
+  useEffect(() => {
+    setIsPopup(readPopupFlag());
+  }, [pathname]);
+
+  if (isPopup) {
+    return (
+      <div className="min-h-[100dvh] bg-[rgba(248,250,252,0.95)]">
+        <div className="mx-auto w-full max-w-[1400px] px-3 py-4 sm:px-5">{children}</div>
+      </div>
+    );
+  }
 
   return (
     <div

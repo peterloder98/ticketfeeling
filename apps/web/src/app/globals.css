@@ -398,3 +398,8 @@ html.tf-embed-route .tf-page-wash {
 html.tf-embed-route main {
   padding-bottom: 0 !important;
 }
+
+/* Saalplan editor popup: no site header/footer padding */
+html.tf-popup-route main {
+  padding-bottom: 0 !important;
+}

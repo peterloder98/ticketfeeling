@@ -1,12 +1,18 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { updateEventAction } from "@/app/admin/events/actions";
 import { EVENT_STATUSES, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
 import { EventVenuePlanFields } from "@/components/admin/event-venue-plan-fields";
+import {
+  buildSaalplanEditorHref,
+  openSaalplanEditorWindow,
+  SAALPLAN_WINDOW_NAME,
+} from "@/lib/saalplan/popup";
 
 type LocationOpt = { id: string; name: string; city: string | null };
 type PlanOpt = {
@@ -17,6 +23,27 @@ type PlanOpt = {
   sizeLabel: string;
 };
 type TourOpt = { id: string; name: string };
+
+function humanizeEventSaveError(code: string): string {
+  switch (code) {
+    case "NAME_REQUIRED":
+      return "Bitte einen Event-Namen eingeben.";
+    case "LOCATION_NOT_FOUND":
+      return "Die gewählte Location wurde nicht gefunden.";
+    case "VENUE_PLAN_NEEDS_LOCATION":
+      return "Saalplan braucht eine Location — bitte beides speichern.";
+    case "VENUE_PLAN_NOT_FOUND":
+      return "Der gewählte Saalplan gehört nicht zu dieser Location.";
+    case "TOUR_NOT_FOUND":
+      return "Die gewählte Tour wurde nicht gefunden.";
+    case "INVALID_STATUS":
+      return "Ungültiger Status.";
+    case "NOT_FOUND":
+      return "Event nicht gefunden.";
+    default:
+      return code || "Speichern fehlgeschlagen";
+  }
+}
 
 export function EventEditForm({
   event,
@@ -63,6 +90,7 @@ export function EventEditForm({
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
 
   function onStatusChange(next: string) {
     setStatus(next);
@@ -79,8 +107,14 @@ export function EventEditForm({
       try {
         await updateEventAction(formData);
         setSaved(true);
+        // Refresh server tree so seating assignment UI appears after plan assign.
+        router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+        setError(
+          err instanceof Error
+            ? humanizeEventSaveError(err.message)
+            : "Speichern fehlgeschlagen",
+        );
       }
     });
   }
@@ -199,10 +233,21 @@ export function EventEditForm({
         <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
           Aktuell:{" "}
           <a
-            href={`/admin/saalplan/${venuePlan.id}?returnTo=${encodeURIComponent(`/admin/events/${event.id}#saalplan`)}&returnLabel=${encodeURIComponent("Zurück zum Event")}`}
-            target="_blank"
-            rel="noreferrer"
+            href={buildSaalplanEditorHref(venuePlan.id, {
+              returnTo: `/admin/events/${event.id}#saalplan`,
+              returnLabel: "Zurück zum Event",
+            })}
+            target={SAALPLAN_WINDOW_NAME}
             className="font-medium text-[var(--tf-navy)] underline"
+            onClick={(e) => {
+              e.preventDefault();
+              openSaalplanEditorWindow(
+                buildSaalplanEditorHref(venuePlan.id, {
+                  returnTo: `/admin/events/${event.id}#saalplan`,
+                  returnLabel: "Zurück zum Event",
+                }),
+              );
+            }}
           >
             {venuePlan.name} bearbeiten
           </a>

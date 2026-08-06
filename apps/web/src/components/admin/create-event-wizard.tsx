@@ -28,6 +28,11 @@ import {
   filterStreetNameInput,
 } from "@/lib/commerce/address";
 import { formatEuroFromCents } from "@/lib/money";
+import {
+  buildSaalplanEditorHref,
+  isSaalplanDoneMessage,
+  openSaalplanEditorWindow,
+} from "@/lib/saalplan/popup";
 
 const DRAFT_KEY_LEGACY = "tf-create-event-wizard-v1";
 
@@ -271,9 +276,11 @@ function newCategoryRow(partial?: Partial<CategoryRow>): CategoryRow {
 
 function saalplanEditorUrl(planId: string) {
   // resume=1 → wizard auto-restores draft after return from the editor tab.
-  const returnTo = encodeURIComponent("/admin/events/neu?resume=1");
-  const returnLabel = encodeURIComponent("Zurück zum Wizard");
-  return `/admin/saalplan/${planId}?returnTo=${returnTo}&returnLabel=${returnLabel}`;
+  // popup=1 → chrome-free editor; return closes the window via SaalplanReturnButton.
+  return buildSaalplanEditorHref(planId, {
+    returnTo: "/admin/events/neu?resume=1",
+    returnLabel: "Zurück zum Wizard",
+  });
 }
 
 function WizardSubmitButton({
@@ -683,6 +690,32 @@ export function CreateEventWizard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount / tour / org change only
   }, [initialTourId, organizationId]);
 
+  // Editor popup closed → focus this tab and keep draft (localStorage already shared).
+  useEffect(() => {
+    function onMessage(ev: MessageEvent) {
+      if (ev.origin !== window.location.origin) return;
+      if (!isSaalplanDoneMessage(ev.data)) return;
+      try {
+        window.focus();
+      } catch {
+        /* ignore */
+      }
+      // Re-apply draft in case this tab was idle while the popup edited.
+      try {
+        const raw = readDraftRaw(organizationId);
+        if (raw) {
+          const draft = JSON.parse(raw) as Record<string, unknown>;
+          if (isMeaningfulDraft(draft)) applyDraft(draft);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- opener handshake only
+  }, [organizationId]);
+
   useEffect(() => {
     if (draftGate !== "ready" || !allowPersistRef.current) return;
     persistDraftNow();
@@ -917,7 +950,7 @@ export function CreateEventWizard({
           wantSaalplan: true,
           seatingBookingMode: "seat_map_and_best",
         });
-        window.open(saalplanEditorUrl(result.venuePlanId), "_blank", "noopener,noreferrer");
+        openSaalplanEditorWindow(saalplanEditorUrl(result.venuePlanId));
       } catch (e) {
         setStepError(
           e instanceof Error && e.message === "LOCATION_NAME_REQUIRED"
@@ -1588,9 +1621,12 @@ export function CreateEventWizard({
                       <div className="flex flex-wrap gap-2">
                         <a
                           href={saalplanEditorUrl(venuePlanId)}
-                          target="_blank"
-                          rel="noreferrer"
+                          target="tf-saalplan-editor"
                           className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            openSaalplanEditorWindow(saalplanEditorUrl(venuePlanId));
+                          }}
                         >
                           Saalplan bearbeiten
                         </a>

@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  buildSaalplanEditorHref,
+  openSaalplanEditorWindow,
+  SAALPLAN_WINDOW_NAME,
+} from "@/lib/saalplan/popup";
 
 export type PlanOption = {
   id: string;
@@ -22,9 +27,19 @@ type Props = {
 
 function planEditorHref(planId: string, eventId?: string) {
   if (!eventId) return `/admin/saalplan/${planId}`;
-  const returnTo = encodeURIComponent(`/admin/events/${eventId}#saalplan`);
-  const returnLabel = encodeURIComponent("Zurück zum Event");
-  return `/admin/saalplan/${planId}?returnTo=${returnTo}&returnLabel=${returnLabel}`;
+  return buildSaalplanEditorHref(planId, {
+    returnTo: `/admin/events/${eventId}#saalplan`,
+    returnLabel: "Zurück zum Event",
+  });
+}
+
+function bookingModeFromInitial(
+  venuePlanId: string,
+  seatingBookingMode: string,
+): string {
+  if (!venuePlanId) return "none";
+  if (seatingBookingMode === "none") return "seat_map_and_best";
+  return seatingBookingMode;
 }
 
 export function EventVenuePlanFields({
@@ -38,12 +53,15 @@ export function EventVenuePlanFields({
   const [locationId, setLocationId] = useState(initialLocationId);
   const [venuePlanId, setVenuePlanId] = useState(initialVenuePlanId);
   const [bookingMode, setBookingMode] = useState(
-    initialVenuePlanId
-      ? initialSeatingBookingMode === "none"
-        ? "seat_map_and_best"
-        : initialSeatingBookingMode
-      : "none",
+    bookingModeFromInitial(initialVenuePlanId, initialSeatingBookingMode),
   );
+
+  // Soft save → router.refresh() updates server props; keep controlled fields in sync.
+  useEffect(() => {
+    setLocationId(initialLocationId);
+    setVenuePlanId(initialVenuePlanId);
+    setBookingMode(bookingModeFromInitial(initialVenuePlanId, initialSeatingBookingMode));
+  }, [initialLocationId, initialVenuePlanId, initialSeatingBookingMode]);
 
   const plansForLocation = useMemo(
     () => plans.filter((p) => p.locationId === locationId),
@@ -61,10 +79,14 @@ export function EventVenuePlanFields({
 
   return (
     <>
+      {/* Hidden inputs: controlled selects can miss FormData on soft client actions. */}
+      <input type="hidden" name="locationId" value={locationId} />
+      <input type="hidden" name="venuePlanId" value={venuePlanId} />
+      <input type="hidden" name="seatingBookingMode" value={venuePlanId ? bookingMode : "none"} />
+
       <label className="grid gap-1">
         <span className="font-medium">Location</span>
         <select
-          name="locationId"
           className="tf-input"
           value={locationId}
           onChange={(e) => {
@@ -88,7 +110,6 @@ export function EventVenuePlanFields({
       <label className="grid gap-1">
         <span className="font-medium">Saalplan</span>
         <select
-          name="venuePlanId"
           className="tf-input"
           value={venuePlanId}
           onChange={(e) => selectPlan(e.target.value)}
@@ -103,8 +124,6 @@ export function EventVenuePlanFields({
           ))}
         </select>
       </label>
-
-      <input type="hidden" name="seatingBookingMode" value={venuePlanId ? bookingMode : "none"} />
 
       {venuePlanId ? (
         <fieldset
@@ -150,9 +169,12 @@ export function EventVenuePlanFields({
             Geometrie im Editor — Preiskategorien ordnest du unten am Event zu.{" "}
             <a
               href={planEditorHref(venuePlanId, eventId)}
-              target="_blank"
-              rel="noreferrer"
+              target={SAALPLAN_WINDOW_NAME}
               className="font-semibold text-[var(--tf-teal)] hover:underline"
+              onClick={(e) => {
+                e.preventDefault();
+                openSaalplanEditorWindow(planEditorHref(venuePlanId, eventId));
+              }}
             >
               Saalplan bearbeiten
             </a>
