@@ -21,13 +21,12 @@ import {
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
-import {
-  BoxOfficeSaleRowActions,
-  BoxOfficeVoidButton,
-} from "@/components/box-office-sale-row-actions";
+import { BoxOfficeVoidButton } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
+import { countBoxOfficeSaleTickets } from "@/lib/commerce/box-office-ticket-count";
+import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tageskasse" };
@@ -167,6 +166,55 @@ export default async function BoxOfficePage({ searchParams }: Props) {
 
   const hasMoreSales = orders.length > SALES_LIMIT;
   const salesList = hasMoreSales ? orders.slice(0, SALES_LIMIT) : orders;
+
+  // Paid Tageskasse rows with positions but no ticket rows (fulfillment gap) —
+  // mint tickets so Beleg count and Storno work.
+  const ticketSelect = {
+    id: true,
+    orderId: true,
+    ticketNumber: true,
+    categorySnapshot: true,
+    status: true,
+    presence: true,
+    seatLabel: true,
+    seatRow: true,
+    seatNumber: true,
+    blockLabel: true,
+  } as const;
+  const missingTicketOrders = salesList.filter(
+    (o) =>
+      !o.voidedAt &&
+      o.tickets.length === 0 &&
+      o.items.some((i) => i.quantity > 0) &&
+      (o.status === "paid" || o.status === "fulfilled"),
+  );
+  if (missingTicketOrders.length > 0) {
+    await Promise.all(
+      missingTicketOrders.map((o) =>
+        fulfillPaidOrder(o.id).catch((err) => {
+          console.error("[kasse] fulfill repair failed", o.orderNumber, err);
+          return null;
+        }),
+      ),
+    );
+    const repaired = await prisma.ticket.findMany({
+      where: { orderId: { in: missingTicketOrders.map((o) => o.id) } },
+      select: ticketSelect,
+    });
+    const byOrder = new Map<string, typeof salesList[number]["tickets"]>();
+    for (const t of repaired) {
+      const { orderId, ...ticket } = t;
+      const list = byOrder.get(orderId) ?? [];
+      list.push(ticket);
+      byOrder.set(orderId, list);
+    }
+    for (const order of salesList) {
+      const tickets = byOrder.get(order.id);
+      if (tickets?.length) {
+        order.tickets = tickets;
+      }
+    }
+  }
 
   const feeConfig = resolveActivePlatformFeeConfig(orgSettings?.platformFeeConfig);
   const now = Date.now();
@@ -335,7 +383,6 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                 <th className="px-3 py-3 font-medium">Zahlung</th>
                 <th className="px-3 py-3 font-medium">Status</th>
                 <th className="px-3 py-3 font-medium text-right">Betrag</th>
-                <th className="px-3 py-3 font-medium text-right">Öffnen</th>
                 <th className="px-3 py-3 text-center font-medium">Storno</th>
               </tr>
             </thead>
@@ -362,7 +409,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                 const customerEmail = order.customer.email.includes("@ticketfeeling.local")
                   ? null
                   : order.customer.email;
-                const activeTickets = order.tickets.filter((t) => t.status !== "voided");
+                const activeTicketCount = countBoxOfficeSaleTickets(order);
 
                 return (
                   <tr
@@ -389,12 +436,12 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                     <td className={`px-3 py-3 ${strike}`}>
                       <Link
                         href={`/kasse/beleg/${order.id}`}
-                        className="font-semibold text-[var(--tf-navy)] underline-offset-2 hover:underline"
+                        className="tf-link font-semibold underline underline-offset-2"
                       >
                         {order.orderNumber}
                       </Link>
                       <p className="text-xs text-[var(--tf-text-secondary)]">
-                        {activeTickets.length} Ticket{activeTickets.length === 1 ? "" : "s"}
+                        {activeTicketCount} Ticket{activeTicketCount === 1 ? "" : "s"}
                       </p>
                     </td>
                     <td className={`px-3 py-3 ${strike}`}>
@@ -449,9 +496,6 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                     </td>
                     <td className={`px-3 py-3 text-right font-medium tabular-nums ${strike}`}>
                       {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <BoxOfficeSaleRowActions orderId={order.id} />
                     </td>
                     <td className="px-3 py-3 text-center">
                       <BoxOfficeVoidButton
