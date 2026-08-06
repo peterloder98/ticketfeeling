@@ -34,6 +34,10 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function EmbedEventShopPage({ params }: Props) {
   const { slug } = await params;
+  const { ensureEventPricingSchema } = await import(
+    "@/lib/commerce/ensure-event-pricing-schema"
+  );
+  await ensureEventPricingSchema(prisma);
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {
@@ -121,6 +125,14 @@ export default async function EmbedEventShopPage({ params }: Props) {
     ? await assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
     : {};
 
+  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const campaigns = await loadEventPriceCampaigns(event.id);
+  const accessibilityOffer = accessibilityOfferFromEvent(event);
+  const priceNow = new Date();
+
   const categories = event.ticketCategories.map((category) => {
     const sellableCapacity = resolveSellableCategoryCapacity({
       categoryCapacity: category.capacity,
@@ -132,11 +144,22 @@ export default async function EmbedEventShopPage({ params }: Props) {
     const available = category.pools.length
       ? channelAvailableQuantity(category.pools, "online", sellableCapacity)
       : Math.max(0, sellableCapacity - category.safetyReserve);
+    const priced = resolveTicketUnitPrice({
+      listCents: category.priceGrossCents,
+      categoryId: category.id,
+      channel: "online",
+      now: priceNow,
+      campaigns,
+      accessibility: accessibilityOffer,
+      accessibilitySelected: false,
+    });
     return {
       id: category.id,
       name: category.name,
       description: category.description,
-      priceGrossCents: category.priceGrossCents,
+      priceGrossCents: priced.unitCents,
+      listPriceGrossCents: priced.listCents,
+      campaignName: priced.campaignName,
       available,
       maxPerOrder: category.maxPerOrder,
       needsSeats: categoryNeedsSeats({
@@ -243,6 +266,15 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   showRemainingAvailability={event.showRemainingAvailability}
                   cartHref="/embed/warenkorb"
                   checkoutHref="/embed/checkout"
+                  accessibilityOffer={
+                    accessibilityOffer.enabled
+                      ? {
+                          label: accessibilityOffer.label,
+                          type: accessibilityOffer.type,
+                          value: accessibilityOffer.value,
+                        }
+                      : null
+                  }
                 />
               ) : (
                 <AddToCartPanel
@@ -252,6 +284,15 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   cartHref="/embed/warenkorb"
                   checkoutHref="/embed/checkout"
                   compact
+                  accessibilityOffer={
+                    accessibilityOffer.enabled
+                      ? {
+                          label: accessibilityOffer.label,
+                          type: accessibilityOffer.type,
+                          value: accessibilityOffer.value,
+                        }
+                      : null
+                  }
                 />
               )
             ) : (

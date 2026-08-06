@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  countAvailableForCategory,
   countSellableAvailableSeats,
   multiCategorySelectionCap,
 } from "@/lib/seating/availability";
+import type { SeatMapPayload } from "@/lib/seating/types";
+import { categoryNeedsSeats } from "@/lib/seating/types";
+import { categoryFillRgba, hexToRgb } from "@/lib/seating/layout-config";
 
 describe("countSellableAvailableSeats", () => {
   const seats = [
@@ -34,6 +38,92 @@ describe("countSellableAvailableSeats", () => {
         assignedCategoryIds: ["a", "b"],
       }),
     ).toBe(1);
+  });
+});
+
+describe("countAvailableForCategory includes standing inventory", () => {
+  it("counts standingSeats for Stehplatz even when blocks are empty", () => {
+    const map = {
+      blocks: [],
+      standingSeats: [
+        {
+          id: "1",
+          seatKey: "z:ST:1",
+          blockObjectId: "z",
+          blockLabel: "Steh",
+          rowIndex: 1,
+          seatIndex: 1,
+          rowLabel: "Steh",
+          seatNumber: "1",
+          categoryId: "steh",
+          locked: false,
+          status: "available" as const,
+        },
+        {
+          id: "2",
+          seatKey: "z:ST:2",
+          blockObjectId: "z",
+          blockLabel: "Steh",
+          rowIndex: 1,
+          seatIndex: 2,
+          rowLabel: "Steh",
+          seatNumber: "2",
+          categoryId: "steh",
+          locked: false,
+          status: "available" as const,
+        },
+        {
+          id: "3",
+          seatKey: "z:ST:3",
+          blockObjectId: "z",
+          blockLabel: "Steh",
+          rowIndex: 1,
+          seatIndex: 3,
+          rowLabel: "Steh",
+          seatNumber: "3",
+          categoryId: "steh",
+          locked: true,
+          status: "locked" as const,
+        },
+      ],
+      categories: [{ id: "steh", name: "Stehplatz", color: "#0F2747" }],
+    } as unknown as SeatMapPayload;
+    expect(countAvailableForCategory(map, "steh")).toBe(2);
+  });
+});
+
+describe("categoryNeedsSeats (plan-backed Stehplatz)", () => {
+  it("requires EventSeat holds for standing when seating is on", () => {
+    expect(
+      categoryNeedsSeats({
+        seatingBookingMode: "seat_map_and_best",
+        categoryKind: "standing",
+        freeSeating: true,
+      }),
+    ).toBe(true);
+    expect(
+      categoryNeedsSeats({
+        seatingBookingMode: "none",
+        categoryKind: "standing",
+        freeSeating: true,
+      }),
+    ).toBe(false);
+    expect(
+      categoryNeedsSeats({
+        seatingBookingMode: "seat_map_and_best",
+        categoryKind: "free_choice",
+        freeSeating: true,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("categoryFillRgba", () => {
+  it("makes dark navy fills more opaque so they do not look unassigned gray", () => {
+    const navy = hexToRgb("#0F2747");
+    expect(navy).toEqual({ r: 15, g: 39, b: 71 });
+    expect(categoryFillRgba("#0F2747", 0.28)).toBe("rgba(15,39,71,0.45)");
+    expect(categoryFillRgba("#14B8A6", 0.28)).toBe("rgba(20,184,166,0.28)");
   });
 });
 

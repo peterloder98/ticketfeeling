@@ -25,17 +25,26 @@ import {
   countAvailableForCategory,
   multiCategorySelectionCap,
 } from "@/lib/seating/availability";
+import { applyDiscountOff } from "@/lib/commerce/event-pricing";
 
 type Category = {
   id: string;
   name: string;
   description: string | null;
   priceGrossCents: number;
+  listPriceGrossCents?: number;
+  campaignName?: string | null;
   available: number;
   maxPerOrder: number;
   needsSeats: boolean;
   categoryKind?: string;
   companionFree?: boolean;
+};
+
+type AccessibilityOfferProp = {
+  label: string;
+  type: string;
+  value: number;
 };
 
 type Props = {
@@ -47,13 +56,9 @@ type Props = {
   breakOutToTop?: boolean;
   cartHref?: string;
   checkoutHref?: string;
-  /**
-   * When set (public event page), the saalplan renders into this host element
-   * below the info section instead of inside the right ticket box.
-   */
   mapHostId?: string;
-  /** Scroll target after seats are added (defaults to #tickets). */
   cartScrollId?: string;
+  accessibilityOffer?: AccessibilityOfferProp | null;
 };
 
 function scrollToId(id: string) {
@@ -72,10 +77,14 @@ export function SeatBookingPanel({
   checkoutHref = "/checkout",
   mapHostId,
   cartScrollId = "tickets",
+  accessibilityOffer = null,
 }: Props) {
   const { bump } = useCart();
   const seatCategories = categories.filter((c) => c.needsSeats);
   const freeCategories = categories.filter((c) => !c.needsSeats);
+  const standingOnlySeats =
+    seatCategories.length > 0 &&
+    seatCategories.every((c) => c.categoryKind === "standing");
 
   const [mode, setMode] = useState<"best_available" | "seat_map">("best_available");
   /** Bestplatz: single active category. Saalplan uses selectedByCategory instead. */
@@ -89,12 +98,23 @@ export function SeatBookingPanel({
   const [justAdded, setJustAdded] = useState(false);
   const [addedSeatLabels, setAddedSeatLabels] = useState<string[]>([]);
   const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
+  const [accessibilitySelected, setAccessibilitySelected] = useState(false);
   const [freeQty, setFreeQty] = useState<Record<string, number>>(
     Object.fromEntries(freeCategories.map((c) => [c.id, c.available < 1 ? 0 : 1])),
   );
 
+  function unitPriceFor(cat: Category) {
+    const base = cat.priceGrossCents;
+    if (!accessibilitySelected || !accessibilityOffer) return base;
+    return applyDiscountOff(base, accessibilityOffer.type, accessibilityOffer.value);
+  }
+
+  function listPriceFor(cat: Category) {
+    return cat.listPriceGrossCents ?? cat.priceGrossCents;
+  }
+
   const useExternalMap = Boolean(mapHostId);
-  const showMap = mode === "seat_map";
+  const showMap = mode === "seat_map" && !standingOnlySeats;
 
   const selectedCategory = seatCategories.find((c) => c.id === categoryId) ?? null;
   const companionFree = Boolean(selectedCategory?.companionFree);
@@ -178,6 +198,13 @@ export function SeatBookingPanel({
   }, [bookingMode, seatCategories.length, loadMap]);
 
   useEffect(() => {
+    if (standingOnlySeats && mode === "seat_map") {
+      setMode("best_available");
+      setSelectedByCategory({});
+    }
+  }, [standingOnlySeats, mode]);
+
+  useEffect(() => {
     if (mode !== "best_available") return;
     if (maxQty < 1) {
       setQty(1);
@@ -242,6 +269,7 @@ export function SeatBookingPanel({
             categoryId: selectedCategory.id,
             quantity: qty,
             seatingMode: "best_available",
+            accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
           }),
         });
         const data = await response.json();
@@ -296,6 +324,7 @@ export function SeatBookingPanel({
             quantity: seatIds.length,
             seatingMode: "seat_map",
             seatIds,
+            accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
           }),
         });
         const data = await response.json();
@@ -366,6 +395,7 @@ export function SeatBookingPanel({
           categoryId: catId,
           quantity: freeQty[catId] ?? 1,
           seatingMode: "free",
+          accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
         }),
       });
       const data = await response.json();
@@ -453,9 +483,25 @@ export function SeatBookingPanel({
   return (
     <div className="space-y-5">
       {externalMap}
+      {accessibilityOffer ? (
+        <label className="flex items-start gap-2 rounded-[14px] border border-[var(--tf-line)] bg-white px-3 py-2.5 text-sm text-[var(--tf-navy)]">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={accessibilitySelected}
+            onChange={(e) => setAccessibilitySelected(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">{accessibilityOffer.label}</span>
+            <span className="mt-0.5 block text-[var(--tf-text-secondary)]">
+              Ermäßigten Preis für diese Tickets wählen
+            </span>
+          </span>
+        </label>
+      ) : null}
       {seatCategories.length > 0 ? (
         <div className="space-y-4">
-          {bookingMode === "seat_map_and_best" ? (
+          {bookingMode === "seat_map_and_best" && !standingOnlySeats ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
@@ -497,7 +543,9 @@ export function SeatBookingPanel({
             </div>
           ) : (
             <p className="rounded-xl bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-              Bestplatzbuchung: Wir weisen dir automatisch die besten freien Plätze zu.
+              {standingOnlySeats
+                ? "Stehplatz: Wir reservieren freie Plätze aus dem zugeordneten Bereich."
+                : "Bestplatzbuchung: Wir weisen dir automatisch die besten freien Plätze zu."}
             </p>
           )}
 
@@ -512,7 +560,12 @@ export function SeatBookingPanel({
                 >
                   {seatCategories.map((c) => (
                     <option key={c.id} value={c.id} disabled={c.available < 1}>
-                      {c.name} · {formatEuroFromCents(c.priceGrossCents)}
+                      {c.name} · {formatEuroFromCents(unitPriceFor(c))}
+                      {listPriceFor(c) > unitPriceFor(c) ? (
+                        <span className="ml-1 text-[var(--tf-text-secondary)] line-through">
+                          {formatEuroFromCents(listPriceFor(c))}
+                        </span>
+                      ) : null}
                       {c.available < 1 ? " (ausverkauft)" : ""}
                     </option>
                   ))}
@@ -565,7 +618,9 @@ export function SeatBookingPanel({
               <p className="text-sm text-[var(--tf-text-secondary)]">
                 {companionFree
                   ? "Wir suchen die besten freien Rollstuhlplätze inkl. Begleitung nebeneinander."
-                  : "Wir suchen die besten freien Plätze — möglichst nebeneinander in einer Reihe."}
+                  : selectedCategory?.categoryKind === "standing"
+                    ? "Wir reservieren freie Stehplätze aus dem zugeordneten Bereich."
+                    : "Wir suchen die besten freien Plätze — möglichst nebeneinander in einer Reihe."}
               </p>
             </>
           ) : (
@@ -580,7 +635,7 @@ export function SeatBookingPanel({
                       <p className="font-semibold">
                         {line.seats.length}× {line.category.name}
                         <span className="ml-1 font-normal text-[var(--tf-text-secondary)]">
-                          · {formatEuroFromCents(line.category.priceGrossCents)}
+                          · {formatEuroFromCents(unitPriceFor(line.category))}
                         </span>
                       </p>
                       <ul className="mt-0.5 space-y-0.5 text-xs font-medium text-[var(--tf-teal-hover)]">
@@ -641,7 +696,17 @@ export function SeatBookingPanel({
                   <div>
                     <p className="font-semibold text-[var(--tf-navy)]">{category.name}</p>
                     <p className="text-lg font-bold text-[var(--tf-navy)]">
-                      {formatEuroFromCents(category.priceGrossCents)}
+                      {listPriceFor(category) > unitPriceFor(category) ? (
+                        <span className="mr-1.5 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
+                          {formatEuroFromCents(listPriceFor(category))}
+                        </span>
+                      ) : null}
+                      {formatEuroFromCents(unitPriceFor(category))}
+                      {category.campaignName && !accessibilitySelected ? (
+                        <span className="ml-1.5 text-[11px] font-medium text-[var(--tf-teal)]">
+                          {category.campaignName}
+                        </span>
+                      ) : null}
                     </p>
                   </div>
                   {soldOut ? (

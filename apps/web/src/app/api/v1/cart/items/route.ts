@@ -17,6 +17,7 @@ const schema = z.object({
   quantity: z.number().int().min(1).max(20),
   seatingMode: z.enum(["best_available", "seat_map", "free"]).optional(),
   seatIds: z.array(z.string().uuid()).max(20).optional(),
+  accessibilitySelected: z.boolean().optional(),
 });
 
 export async function POST(request: Request) {
@@ -44,6 +45,7 @@ export async function POST(request: Request) {
       quantity: body.quantity,
       seatingMode: body.seatingMode,
       seatIds: body.seatIds,
+      accessibilitySelected: body.accessibilitySelected,
       userId: session?.user?.id,
       sessionKey,
     });

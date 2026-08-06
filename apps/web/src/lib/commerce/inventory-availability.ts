@@ -43,7 +43,15 @@ export function channelAvailableQuantity(
   const shared = sharedRemainingQuantity(pools, categoryCapacity);
   const pool = pools.find((p) => p.channel === channel);
   if (!pool) return shared;
-  const channelLocal = Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity);
+  // Plan-backed categories start with pool.capacity 0 until sync. A zero pool
+  // with positive Kontingent is stale — treat as full shared cap, never invent
+  // stock when categoryCapacity is 0.
+  const poolCap =
+    pool.capacity <= 0 && categoryCapacity > 0 ? categoryCapacity : pool.capacity;
+  const channelLocal = Math.max(
+    0,
+    Math.min(poolCap, categoryCapacity) - pool.soldQuantity - pool.heldQuantity,
+  );
   return Math.min(channelLocal, shared);
 }
 

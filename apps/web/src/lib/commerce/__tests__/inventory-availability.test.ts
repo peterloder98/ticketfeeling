@@ -44,6 +44,12 @@ describe("inventory-availability (shared channel pools)", () => {
     );
   });
 
+  it("heals stale zero pool capacity when Kontingent is positive", () => {
+    const p = pools({ capacity: 0, sold: 0 }, { capacity: 0, sold: 0 });
+    expect(channelAvailableQuantity(p, "online", 64)).toBe(64);
+    expect(channelAvailableQuantity(p, "box_office", 64)).toBe(64);
+  });
+
   it("shared remaining treats Online + Tageskasse as one Kontingent", () => {
     const p = pools({ capacity: 50, sold: 0 }, { capacity: 50, sold: 0 });
     expect(sharedRemainingQuantity(p, 50)).toBe(50);

@@ -19,12 +19,15 @@ import {
   countAvailableForCategory,
   multiCategorySelectionCap,
 } from "@/lib/seating/availability";
+import { applyDiscountOff } from "@/lib/commerce/event-pricing";
 
 type Category = {
   id: string;
   name: string;
   description?: string | null;
   priceGrossCents: number;
+  listPriceGrossCents?: number;
+  campaignName?: string | null;
   available: number;
   maxPerOrder?: number;
   saleLabel?: string | null;
@@ -40,6 +43,7 @@ type EventOption = {
   locationLabel?: string | null;
   hasReservedSeating?: boolean;
   seatingBookingMode?: "none" | "best_available" | "seat_map_and_best";
+  accessibilityOffer?: { label: string; type: string; value: number } | null;
   categories: Category[];
 };
 
@@ -94,6 +98,7 @@ export function BoxOfficeForm({
   const [city, setCity] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [accessibilitySelected, setAccessibilitySelected] = useState(false);
   const [tapWait, setTapWait] = useState<{
     orderId: string;
     deepLink: string;
@@ -121,8 +126,15 @@ export function BoxOfficeForm({
     [categories, qty],
   );
 
+  function unitPrice(cat: Category) {
+    const base = cat.priceGrossCents;
+    const offer = selectedEvent?.accessibilityOffer;
+    if (!accessibilitySelected || !offer) return base;
+    return applyDiscountOff(base, offer.type, offer.value);
+  }
+
   const ticketsGrossCents = lineItems.reduce(
-    (s, l) => s + l.quantity * l.category.priceGrossCents,
+    (s, l) => s + l.quantity * unitPrice(l.category),
     0,
   );
   const feeGrossCents =
@@ -288,6 +300,9 @@ export function BoxOfficeForm({
             items: lineItems.map((l) => ({
               categoryId: l.category.id,
               quantity: l.quantity,
+              accessibilitySelected: Boolean(
+                selectedEvent?.accessibilityOffer && accessibilitySelected,
+              ),
               ...(hasReservedSeating &&
               seatingChoice === "seat_map" &&
               l.category.needsSeats
@@ -339,6 +354,9 @@ export function BoxOfficeForm({
           items: lineItems.map((l) => ({
             categoryId: l.category.id,
             quantity: l.quantity,
+            accessibilitySelected: Boolean(
+              selectedEvent?.accessibilityOffer && accessibilitySelected,
+            ),
             ...(hasReservedSeating &&
             seatingChoice === "seat_map" &&
             l.category.needsSeats
@@ -528,7 +546,9 @@ export function BoxOfficeForm({
                 <span>
                   <span className="font-semibold text-[var(--tf-navy)]">Bestplatz</span>
                   <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    System vergibt die besten freien Plätze, möglichst nebeneinander
+                    {seatCategories.every((c) => c.categoryKind === "standing")
+                      ? "System reserviert freie Stehplätze aus dem zugeordneten Bereich"
+                      : "System vergibt die besten freien Plätze, möglichst nebeneinander"}
                   </span>
                 </span>
               </button>
@@ -565,6 +585,24 @@ export function BoxOfficeForm({
           ) : null}
 
           <div className="space-y-3">
+            {selectedEvent?.accessibilityOffer ? (
+              <label className="flex items-start gap-2 rounded-2xl border border-[var(--tf-line)] bg-white px-3 py-2.5 text-sm text-[var(--tf-navy)]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={accessibilitySelected}
+                  onChange={(e) => setAccessibilitySelected(e.target.checked)}
+                />
+                <span>
+                  <span className="font-semibold">
+                    {selectedEvent.accessibilityOffer.label}
+                  </span>
+                  <span className="mt-0.5 block text-[var(--tf-text-secondary)]">
+                    Ermäßigten Preis anwenden
+                  </span>
+                </span>
+              </label>
+            ) : null}
             {categories.map((category) => {
               const current = qty[category.id] ?? 0;
               const available = displayAvailable(category);
@@ -596,7 +634,20 @@ export function BoxOfficeForm({
                         </p>
                       ) : null}
                       <p className="mt-2 text-lg font-bold tabular-nums text-[var(--tf-navy)]">
-                        {formatEuroFromCents(category.priceGrossCents)}
+                        {(category.listPriceGrossCents ?? category.priceGrossCents) >
+                        unitPrice(category) ? (
+                          <span className="mr-2 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
+                            {formatEuroFromCents(
+                              category.listPriceGrossCents ?? category.priceGrossCents,
+                            )}
+                          </span>
+                        ) : null}
+                        {formatEuroFromCents(unitPrice(category))}
+                        {category.campaignName && !accessibilitySelected ? (
+                          <span className="ml-2 text-[11px] font-medium text-[var(--tf-teal)]">
+                            {category.campaignName}
+                          </span>
+                        ) : null}
                       </p>
                       <p className="text-xs text-[var(--tf-text-secondary)]">
                         {soldOut ? "Ausverkauft" : `Verfügbar: ${available}`}
@@ -669,7 +720,7 @@ export function BoxOfficeForm({
                           <li key={l.category.id} className="font-medium">
                             {picked}× {l.category.name}
                             <span className="ml-1 font-normal text-[var(--tf-text-secondary)]">
-                              ({formatEuroFromCents(l.category.priceGrossCents)})
+                              ({formatEuroFromCents(unitPrice(l.category))})
                             </span>
                           </li>
                         );
@@ -896,7 +947,7 @@ export function BoxOfficeForm({
                   {l.quantity}× {l.category.name}
                 </span>
                 <span className="tabular-nums">
-                  {formatEuroFromCents(l.quantity * l.category.priceGrossCents)}
+                  {formatEuroFromCents(l.quantity * unitPrice(l.category))}
                 </span>
               </div>
             ))}

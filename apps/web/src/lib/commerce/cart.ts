@@ -350,6 +350,8 @@ export async function addToCart(input: {
   seatingMode?: "best_available" | "seat_map" | "free";
   /** Required when seatingMode === seat_map */
   seatIds?: string[];
+  /** Optional reduced fare / wheelchair self-select when event offer is enabled */
+  accessibilitySelected?: boolean;
 }) {
   if (input.quantity < 1) throw new Error("INVALID_QUANTITY");
 
@@ -384,6 +386,23 @@ export async function addToCart(input: {
   if (input.quantity < category.minPerOrder || input.quantity > category.maxPerOrder) {
     throw new Error("QUANTITY_LIMIT");
   }
+
+  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const campaigns = await loadEventPriceCampaigns(category.eventId);
+  const accessibility = accessibilityOfferFromEvent(category.event);
+  const accessibilitySelected = Boolean(input.accessibilitySelected && accessibility.enabled);
+  const pricedUnit = resolveTicketUnitPrice({
+    listCents: category.priceGrossCents,
+    categoryId: category.id,
+    channel: "online",
+    now,
+    campaigns,
+    accessibility,
+    accessibilitySelected,
+  });
 
   const { categoryNeedsSeats, seatsPerTicket } = await import("@/lib/seating/types");
   const { ensureEventSeatsIfNeeded } = await import("@/lib/seating/materialize");
@@ -550,12 +569,13 @@ export async function addToCart(input: {
       },
     });
 
-    // Merge into an existing line when category + unit price match (same price only).
+    // Merge into an existing line when category + unit price + accessibility match.
     const existingItem = await tx.cartItem.findFirst({
       where: {
         cartId: cart.id,
         categoryId: category.id,
-        unitPriceGrossCents: category.priceGrossCents,
+        unitPriceGrossCents: pricedUnit.unitCents,
+        accessibilitySelected,
       },
       include: { hold: true },
     });
@@ -597,7 +617,11 @@ export async function addToCart(input: {
           eventId: category.eventId,
           categoryId: category.id,
           quantity: input.quantity,
-          unitPriceGrossCents: category.priceGrossCents,
+          unitPriceGrossCents: pricedUnit.unitCents,
+          unitListGrossCents: pricedUnit.listCents,
+          accessibilitySelected,
+          priceCampaignId: pricedUnit.campaignId,
+          priceCampaignName: pricedUnit.campaignName,
           seatingMode,
         },
       });
@@ -691,4 +715,71 @@ export function summarizeCart(cart: Awaited<ReturnType<typeof getOpenCart>>) {
     currency: cart.currency,
     expiresAt: cart.expiresAt,
   };
+}
+
+/**
+ * Re-resolve campaign / accessibility prices on open cart lines before checkout.
+ * Keeps unit prices truthful if a campaign expired while items were held.
+ */
+export async function repriceOpenCart(cartId: string) {
+  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const { ensureEventPricingSchema } = await import(
+    "@/lib/commerce/ensure-event-pricing-schema"
+  );
+  await ensureEventPricingSchema(prisma);
+
+  const items = await prisma.cartItem.findMany({
+    where: { cartId },
+    include: {
+      category: {
+        include: {
+          event: true,
+        },
+      },
+    },
+  });
+  if (items.length === 0) return;
+
+  const campaignsByEvent = new Map<string, Awaited<ReturnType<typeof loadEventPriceCampaigns>>>();
+  const now = new Date();
+
+  for (const item of items) {
+    let campaigns = campaignsByEvent.get(item.eventId);
+    if (!campaigns) {
+      campaigns = await loadEventPriceCampaigns(item.eventId);
+      campaignsByEvent.set(item.eventId, campaigns);
+    }
+    const accessibility = accessibilityOfferFromEvent(item.category.event);
+    const accessibilitySelected = Boolean(
+      item.accessibilitySelected && accessibility.enabled,
+    );
+    const priced = resolveTicketUnitPrice({
+      listCents: item.category.priceGrossCents,
+      categoryId: item.categoryId,
+      channel: "online",
+      now,
+      campaigns,
+      accessibility,
+      accessibilitySelected,
+    });
+    if (
+      priced.unitCents !== item.unitPriceGrossCents ||
+      priced.listCents !== item.unitListGrossCents ||
+      priced.campaignId !== item.priceCampaignId
+    ) {
+      await prisma.cartItem.update({
+        where: { id: item.id },
+        data: {
+          unitPriceGrossCents: priced.unitCents,
+          unitListGrossCents: priced.listCents,
+          priceCampaignId: priced.campaignId,
+          priceCampaignName: priced.campaignName,
+          accessibilitySelected,
+        },
+      });
+    }
+  }
 }

@@ -44,6 +44,7 @@ export async function createBoxOfficeTapSale(input: {
       seatIds: Array.isArray(i.seatIds)
         ? i.seatIds.filter((id): id is string => typeof id === "string")
         : undefined,
+      accessibilitySelected: Boolean(i.accessibilitySelected),
     }))
     .filter((i) => i.quantity > 0);
 
@@ -99,6 +100,14 @@ export async function createBoxOfficeTapSale(input: {
   }
 
   const byId = new Map(categories.map((c) => [c.id, c]));
+  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const campaigns = await loadEventPriceCampaigns(input.eventId);
+  const accessibility = accessibilityOfferFromEvent(event);
+  const now = new Date();
+
   const resolved = items.map((item) => {
     const category = byId.get(item.categoryId);
     if (!category) throw new Error("CATEGORY_UNAVAILABLE");
@@ -106,13 +115,22 @@ export async function createBoxOfficeTapSale(input: {
       category.pools.find((p) => p.channel === "box_office") ??
       category.pools.find((p) => p.channel === "online");
     if (!pool) throw new Error("NO_INVENTORY_POOL");
-    return { item, category, pool };
+    const pricedUnit = resolveTicketUnitPrice({
+      listCents: category.priceGrossCents,
+      categoryId: category.id,
+      channel: "box_office",
+      now,
+      campaigns,
+      accessibility,
+      accessibilitySelected: Boolean(item.accessibilitySelected),
+    });
+    return { item, category, pool, pricedUnit };
   });
 
   const priced = computeOrderPricing({
-    lines: resolved.map(({ item, category }) => ({
+    lines: resolved.map(({ item, category, pricedUnit }) => ({
       quantity: item.quantity,
-      unitGrossCents: category.priceGrossCents,
+      unitGrossCents: pricedUnit.unitCents,
       taxRateBps: category.taxRate.rateBps,
       feeEligible: true,
     })),
@@ -283,7 +301,7 @@ export async function createBoxOfficeTapSale(input: {
         reservationStatus: "held",
         reservedUntil,
         items: {
-          create: resolved.map(({ item, category }, index) => {
+          create: resolved.map(({ item, category, pricedUnit }, index) => {
             const split = priced.lineSplits[index]!;
             return {
               eventId: category.eventId,
@@ -296,7 +314,7 @@ export async function createBoxOfficeTapSale(input: {
                 ? `${category.event.location.name}, ${category.event.location.city ?? ""}`
                 : null,
               categorySnapshot: category.name,
-              unitListGrossCents: category.priceGrossCents,
+              unitListGrossCents: pricedUnit.listCents,
               unitPaidGrossCents:
                 item.quantity > 0 ? Math.round(split.lineGrossCents / item.quantity) : 0,
               discountCents: split.discountShareCents,

@@ -49,6 +49,12 @@ export type PublicStandingArea = {
   estimatedCapacity: number;
   /** Assignable standing places for this zone */
   capacity: number;
+  /** Dominant assigned category when uniformly painted (for map fill). */
+  categoryId?: string | null;
+  /** Category color when assigned */
+  color?: string | null;
+  /** Free standing units in this zone (not pickable dots). */
+  availableCount?: number;
 };
 
 export type SeatMapPayload = {
@@ -67,6 +73,11 @@ export type SeatMapPayload = {
   } | null;
   blocks: PublicSeatBlock[];
   standingAreas: PublicStandingArea[];
+  /**
+   * Standing inventory units — counted for availability / best-available,
+   * not rendered as pickable seat dots on the saalplan.
+   */
+  standingSeats: PublicSeat[];
   categories: SeatMapCategoryLegend[];
   availableCount: number;
 };
@@ -94,10 +105,13 @@ export function categoryNeedsSeats(input: {
   ) {
     return false;
   }
-  if (input.freeSeating) return false;
   const kind = input.categoryKind ?? "standard";
-  // Stehplatz & freie Platzwahl bleiben ohne festen Sitz
-  if (kind === "standing" || kind === "free_choice") return false;
+  // Freie Platzwahl: qty only, no EventSeat holds.
+  if (kind === "free_choice") return false;
+  // Plan-backed Stehplatz: qty / best-available claims assigned :ST: units
+  // (not pickable map dots). freeSeating stays true for "no seat number" UX.
+  if (kind === "standing") return true;
+  if (input.freeSeating) return false;
   return true;
 }
 

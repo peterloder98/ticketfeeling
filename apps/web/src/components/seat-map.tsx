@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
-import { resolveCategoryColor } from "@/lib/seating/layout-config";
+import { categoryFillRgba, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 
 /** Public buy flow: closer default than the previous 1.5× framing. */
@@ -289,6 +289,17 @@ export function SeatMap({
             const top = toY(area.yCm) - toS(area.heightCm) / 2;
             const w = toS(area.widthCm);
             const h = toS(area.heightCm);
+            const assignedColor = area.color
+              ? resolveCategoryColor(area.color, 0)
+              : null;
+            const fill = assignedColor
+              ? categoryFillRgba(assignedColor, 0.32)
+              : "rgba(15,39,71,0.06)";
+            const stroke = assignedColor ?? "#0F2747";
+            const freeLabel =
+              typeof area.availableCount === "number" && assignedColor
+                ? area.availableCount
+                : (area.capacity ?? area.estimatedCapacity);
             return (
               <g
                 key={area.objectId}
@@ -299,10 +310,10 @@ export function SeatMap({
                   y={top}
                   width={w}
                   height={h}
-                  fill="rgba(15,39,71,0.06)"
-                  stroke="#0F2747"
-                  strokeWidth={1.25}
-                  strokeDasharray="6 4"
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth={assignedColor ? 2.5 : 1.25}
+                  strokeDasharray={assignedColor ? undefined : "6 4"}
                   rx={5}
                 />
                 <text
@@ -311,9 +322,7 @@ export function SeatMap({
                   textAnchor="middle"
                   style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
                 >
-                  {(area.capacity ?? area.estimatedCapacity) > 0
-                    ? `Stehplätze ${area.capacity ?? area.estimatedCapacity}`
-                    : "Stehplätze"}
+                  {freeLabel > 0 ? `Stehplätze ${freeLabel}` : "Stehplätze"}
                 </text>
               </g>
             );

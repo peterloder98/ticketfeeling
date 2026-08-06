@@ -53,6 +53,10 @@ function formatEventDate(date: Date) {
 
 export default async function EventPage({ params }: Props) {
   const { slug } = await params;
+  const { ensureEventPricingSchema } = await import(
+    "@/lib/commerce/ensure-event-pricing-schema"
+  );
+  await ensureEventPricingSchema(prisma);
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {
@@ -142,6 +146,14 @@ export default async function EventPage({ params }: Props) {
     ? await assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
     : {};
 
+  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const campaigns = await loadEventPriceCampaigns(event.id);
+  const accessibilityOffer = accessibilityOfferFromEvent(event);
+  const priceNow = new Date();
+
   const categories = event.ticketCategories.map((category) => {
     const sellableCapacity = resolveSellableCategoryCapacity({
       categoryCapacity: category.capacity,
@@ -153,11 +165,22 @@ export default async function EventPage({ params }: Props) {
     const available = category.pools.length
       ? channelAvailableQuantity(category.pools, "online", sellableCapacity)
       : Math.max(0, sellableCapacity - category.safetyReserve);
+    const priced = resolveTicketUnitPrice({
+      listCents: category.priceGrossCents,
+      categoryId: category.id,
+      channel: "online",
+      now: priceNow,
+      campaigns,
+      accessibility: accessibilityOffer,
+      accessibilitySelected: false,
+    });
     return {
       id: category.id,
       name: category.name,
       description: category.description,
-      priceGrossCents: category.priceGrossCents,
+      priceGrossCents: priced.unitCents,
+      listPriceGrossCents: priced.listCents,
+      campaignName: priced.campaignName,
       available,
       maxPerOrder: category.maxPerOrder,
       needsSeats: categoryNeedsSeats({
@@ -312,6 +335,19 @@ export default async function EventPage({ params }: Props) {
             </div>
           ) : null}
 
+          {accessibilityOffer.enabled ? (
+            <div className="rounded-[16px] border border-[var(--tf-line)] bg-white p-5">
+              <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--tf-navy)]">
+                <Accessibility className="h-5 w-5 text-[var(--tf-teal)]" strokeWidth={2} />
+                {accessibilityOffer.label}
+              </h2>
+              <p className="mt-2 whitespace-pre-wrap text-base leading-relaxed text-[var(--tf-text-secondary)]">
+                {accessibilityOffer.description?.trim() ||
+                  "Du kannst beim Ticketkauf die Ermäßigung selbst auswählen."}
+              </p>
+            </div>
+          ) : null}
+
           <div>
             <h2 className="tf-display text-2xl md:text-3xl">Line-up</h2>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
@@ -383,6 +419,15 @@ export default async function EventPage({ params }: Props) {
                     categories={categories}
                     feeSurchargeNote={feeSurchargeNote || undefined}
                     showRemainingAvailability={event.showRemainingAvailability}
+                    accessibilityOffer={
+                      accessibilityOffer.enabled
+                        ? {
+                            label: accessibilityOffer.label,
+                            type: accessibilityOffer.type,
+                            value: accessibilityOffer.value,
+                          }
+                        : null
+                    }
                   />
                 </div>
               ) : (
@@ -416,6 +461,15 @@ export default async function EventPage({ params }: Props) {
                     showRemainingAvailability={event.showRemainingAvailability}
                     mapHostId="saalplan-map"
                     cartScrollId="tickets"
+                    accessibilityOffer={
+                      accessibilityOffer.enabled
+                        ? {
+                            label: accessibilityOffer.label,
+                            type: accessibilityOffer.type,
+                            value: accessibilityOffer.value,
+                          }
+                        : null
+                    }
                   />
                 </div>
               ) : (

@@ -14,6 +14,7 @@ import {
 import { SalesPieChart, SalesTimelineChart } from "@/components/admin/sales-charts";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
+import { EventDiscountsPanel } from "@/components/admin/event-discounts-panel";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
@@ -28,8 +29,10 @@ import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
+import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
 
 export const dynamic = "force-dynamic";
@@ -96,6 +99,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   await Promise.all([
     ensureSeatingAssignmentSchema(prisma),
     ensureSepaPaymentSchema(prisma),
+    ensureEventPricingSchema(prisma),
   ]);
 
   let event;
@@ -268,8 +272,12 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
 
   const seatingEnabled =
     Boolean(event.venuePlanId) && event.seatingBookingMode !== "none";
-  const seatingCategories = event.ticketCategories.filter(
-    (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
+  const seatingCategories = event.ticketCategories.filter((c) =>
+    isPlanBackedTicketCategory({
+      freeSeating: c.freeSeating,
+      categoryKind: c.categoryKind,
+      seatingEnabled: true,
+    }),
   );
   let unassignedSeatCount = 0;
   if (seatingEnabled) {
@@ -566,6 +574,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         categoriesCreateLocked={categoriesCreateLocked}
         seatingEnabled={seatingEnabled}
       />
+
+      <EventDiscountsPanel eventId={event.id} canWrite={canWrite} />
 
       <section className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Auf meine Website</h2>

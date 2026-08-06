@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Lock, Unlock, Paintbrush, Plus, ZoomIn, ZoomOut } from "lucide-react";
-import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
+import {
+  DEFAULT_CATEGORY_COLORS,
+  categoryFillRgba,
+  resolveCategoryColor,
+} from "@/lib/seating/layout-config";
 import { parseVenuePlanObjects } from "@/lib/saalplan/types";
 import {
   DEFAULT_VIEW_ZOOM,
@@ -1106,18 +1110,17 @@ export function EventSeatingAssignmentPanel({
                 const catIds = [
                   ...new Set(standingSeats.map((s) => s.categoryId).filter(Boolean)),
                 ] as string[];
-                const fill =
-                  catIds.length === 1
-                    ? `${colorById.get(catIds[0]!) ?? "#14B8A6"}66`
-                    : catIds.length > 1
-                      ? "rgba(15,39,71,0.08)"
-                      : "rgba(15,39,71,0.05)";
+                const assignedColor =
+                  catIds.length === 1 ? colorById.get(catIds[0]!) ?? "#14B8A6" : null;
+                const fill = assignedColor
+                  ? categoryFillRgba(assignedColor, 0.32)
+                  : catIds.length > 1
+                    ? "rgba(15,39,71,0.08)"
+                    : "rgba(15,39,71,0.05)";
                 const stroke =
                   lockedStanding === standingCap && standingCap > 0
                     ? "#94a3b8"
-                    : catIds.length === 1
-                      ? (colorById.get(catIds[0]!) ?? "#0F2747")
-                      : "#0F2747";
+                    : assignedColor ?? "#0F2747";
                 return (
                   <g key={obj.id} transform={`rotate(${obj.rotationDeg} ${toX(obj.xCm)} ${toY(obj.yCm)})`}>
                     <rect
@@ -1127,8 +1130,8 @@ export function EventSeatingAssignmentPanel({
                       height={toS(obj.heightCm)}
                       fill={fill}
                       stroke={stroke}
-                      strokeWidth={catIds.length === 1 ? 2 : 1.25}
-                      strokeDasharray="6 4"
+                      strokeWidth={assignedColor ? 2.5 : 1.25}
+                      strokeDasharray={assignedColor ? undefined : "6 4"}
                       rx={4}
                       {...(target === "block" ? { "data-saalplan-interactive": "" } : {})}
                       style={{ cursor: target === "block" && canWrite ? "pointer" : "default" }}

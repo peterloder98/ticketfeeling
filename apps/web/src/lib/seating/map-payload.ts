@@ -1,19 +1,54 @@
 import { prisma } from "@/lib/db";
-import {
-  isStandingSeatKey,
-  parseVenuePlanObjects,
-  resolveStandingCapacity,
-} from "@/lib/saalplan/types";
+import { parseVenuePlanObjects, resolveStandingCapacity } from "@/lib/saalplan/types";
 import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materialize";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
 import { countSellableAvailableSeats } from "@/lib/seating/availability";
 import type {
+  PublicSeat,
   PublicSeatBlock,
   PublicStandingArea,
   SeatMapCategoryLegend,
   SeatMapPayload,
 } from "@/lib/seating/types";
+
+function toPublicSeat(
+  s: {
+    id: string;
+    seatKey: string;
+    blockObjectId: string;
+    blockLabel: string;
+    rowIndex: number;
+    seatIndex: number;
+    rowLabel: string;
+    seatNumber: string;
+    status: string;
+    cartItemId: string | null;
+    categoryId: string | null;
+    locked: boolean;
+  },
+  viewerSet: Set<string>,
+): PublicSeat {
+  let status: PublicSeat["status"] = "available";
+  if (s.locked) status = "locked";
+  else if (s.status === "sold") status = "taken";
+  else if (s.status === "held") {
+    status = s.cartItemId && viewerSet.has(s.cartItemId) ? "held_by_you" : "taken";
+  }
+  return {
+    id: s.id,
+    seatKey: s.seatKey,
+    blockObjectId: s.blockObjectId,
+    blockLabel: s.blockLabel,
+    rowIndex: s.rowIndex,
+    seatIndex: s.seatIndex,
+    rowLabel: s.rowLabel,
+    seatNumber: s.seatNumber,
+    categoryId: s.categoryId,
+    locked: s.locked,
+    status,
+  };
+}
 
 export async function getSeatMapPayload(
   eventId: string,
@@ -65,14 +100,16 @@ export async function getSeatMapPayload(
 
   const objects = parseVenuePlanObjects(event.venuePlan.objects);
   const viewerSet = new Set(opts?.viewerCartItemIds ?? []);
+  // Legend includes plan-backed Stehplatz so standing fill can resolve colors.
   const seatingCategories = event.ticketCategories.filter(
-    (c) => !c.freeSeating && c.categoryKind !== "standing" && c.categoryKind !== "free_choice",
+    (c) => c.categoryKind !== "free_choice" && (c.categoryKind === "standing" || !c.freeSeating),
   );
   const categories: SeatMapCategoryLegend[] = seatingCategories.map((c, i) => ({
     id: c.id,
     name: c.name,
     color: resolveCategoryColor(c.color, i),
   }));
+  const colorById = new Map(categories.map((c) => [c.id, c.color]));
 
   const stageObj = objects.find((o) => o.type === "stage");
   const seatsByBlock = new Map<string, typeof seats>();
@@ -84,11 +121,23 @@ export async function getSeatMapPayload(
 
   const blocks: PublicSeatBlock[] = [];
   const standingAreas: PublicStandingArea[] = [];
+  const standingSeats: PublicSeat[] = [];
 
   for (const obj of objects) {
     if (obj.type === "standing_area") {
       const mode = obj.standingMode === "standing_tables" ? "standing_tables" : "standing";
       const capacity = resolveStandingCapacity(obj);
+      const zoneSeats = seatsByBlock.get(obj.id) ?? [];
+      const publicZone = zoneSeats.map((s) => toPublicSeat(s, viewerSet));
+      standingSeats.push(...publicZone);
+      const catIds = [
+        ...new Set(zoneSeats.map((s) => s.categoryId).filter(Boolean)),
+      ] as string[];
+      const categoryId = catIds.length === 1 ? catIds[0]! : null;
+      const availableCount = countSellableAvailableSeats(publicZone, {
+        categoryId: opts?.categoryId,
+        assignedCategoryIds: seatingCategories.map((c) => c.id),
+      });
       standingAreas.push({
         objectId: obj.id,
         label: obj.label ?? "Stehbereich",
@@ -100,6 +149,9 @@ export async function getSeatMapPayload(
         standingMode: mode,
         estimatedCapacity: capacity,
         capacity,
+        categoryId,
+        color: categoryId ? (colorById.get(categoryId) ?? null) : null,
+        availableCount,
       });
       continue;
     }
@@ -118,40 +170,15 @@ export async function getSeatMapPayload(
       heightCm: obj.heightCm,
       rotationDeg: obj.rotationDeg,
       numberedSeats: numbered,
-      seats: blockSeats.map((s) => {
-        let status: "available" | "taken" | "held_by_you" | "locked" = "available";
-        if (s.locked) status = "locked";
-        else if (s.status === "sold") status = "taken";
-        else if (s.status === "held") {
-          status =
-            s.cartItemId && viewerSet.has(s.cartItemId) ? "held_by_you" : "taken";
-        }
-        return {
-          id: s.id,
-          seatKey: s.seatKey,
-          blockObjectId: s.blockObjectId,
-          blockLabel: s.blockLabel,
-          rowIndex: s.rowIndex,
-          seatIndex: s.seatIndex,
-          rowLabel: s.rowLabel,
-          seatNumber: s.seatNumber,
-          categoryId: s.categoryId,
-          locked: s.locked,
-          status,
-        };
-      }),
+      seats: blockSeats.map((s) => toPublicSeat(s, viewerSet)),
     });
   }
 
-  // Count only pickable free seats (assigned categories when the plan is assigned).
-  // Standing inventory units are not seat-map pickable — sold via best-available / Kontingent.
-  const availableCount = countSellableAvailableSeats(
-    seats.filter((s) => !isStandingSeatKey(s.seatKey)),
-    {
-      categoryId: opts?.categoryId,
-      assignedCategoryIds: seatingCategories.map((c) => c.id),
-    },
-  );
+  // Numbered free seats + standing inventory (standing not pickable on the map UI).
+  const availableCount = countSellableAvailableSeats(seats, {
+    categoryId: opts?.categoryId,
+    assignedCategoryIds: seatingCategories.map((c) => c.id),
+  });
 
   return {
     eventId,
@@ -171,6 +198,7 @@ export async function getSeatMapPayload(
       : null,
     blocks,
     standingAreas,
+    standingSeats,
     categories,
     availableCount,
   };

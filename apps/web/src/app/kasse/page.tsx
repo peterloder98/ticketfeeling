@@ -24,6 +24,7 @@ import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
 import { resolveSellableCategoryCapacity } from "@/lib/seating/sync-category-capacity";
+import { categoryNeedsSeats } from "@/lib/seating/types";
 import { BoxOfficeVoidButton } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
@@ -248,11 +249,33 @@ export default async function BoxOfficePage({ searchParams }: Props) {
     seatCountByEventCategory.set(key, (seatCountByEventCategory.get(key) ?? 0) + 1);
   }
 
+  const { ensureEventPricingSchema } = await import(
+    "@/lib/commerce/ensure-event-pricing-schema"
+  );
+  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  await ensureEventPricingSchema(prisma);
+
+  const campaignsByEvent = new Map<
+    string,
+    Awaited<ReturnType<typeof loadEventPriceCampaigns>>
+  >();
+  await Promise.all(
+    events.map(async (event) => {
+      campaignsByEvent.set(event.id, await loadEventPriceCampaigns(event.id));
+    }),
+  );
+  const priceNow = new Date();
+
   const payload = events.map((event) => {
     const hasReservedSeating =
       Boolean(event.venuePlanId) &&
       (event.seatingBookingMode === "best_available" ||
         event.seatingBookingMode === "seat_map_and_best");
+    const campaigns = campaignsByEvent.get(event.id) ?? [];
+    const accessibilityOffer = accessibilityOfferFromEvent(event);
     return {
       id: event.id,
       name: event.name,
@@ -274,6 +297,13 @@ export default async function BoxOfficePage({ searchParams }: Props) {
         | "none"
         | "best_available"
         | "seat_map_and_best",
+      accessibilityOffer: accessibilityOffer.enabled
+        ? {
+            label: accessibilityOffer.label,
+            type: accessibilityOffer.type,
+            value: accessibilityOffer.value,
+          }
+        : null,
       categories: event.ticketCategories.map((category) => {
         const sellableCapacity = resolveSellableCategoryCapacity({
           categoryCapacity: category.capacity,
@@ -296,16 +326,27 @@ export default async function BoxOfficePage({ searchParams }: Props) {
         } else if (category.saleStartsAt && category.saleStartsAt.getTime() > now) {
           saleLabel = "Verkauf startet später";
         }
-        const needsSeats =
-          hasReservedSeating &&
-          !category.freeSeating &&
-          category.categoryKind !== "standing" &&
-          category.categoryKind !== "free_choice";
+        const needsSeats = categoryNeedsSeats({
+          seatingBookingMode: event.seatingBookingMode,
+          categoryKind: category.categoryKind,
+          freeSeating: category.freeSeating,
+        });
+        const priced = resolveTicketUnitPrice({
+          listCents: category.priceGrossCents,
+          categoryId: category.id,
+          channel: "box_office",
+          now: priceNow,
+          campaigns,
+          accessibility: accessibilityOffer,
+          accessibilitySelected: false,
+        });
         return {
           id: category.id,
           name: category.name,
           description: category.description,
-          priceGrossCents: category.priceGrossCents,
+          priceGrossCents: priced.unitCents,
+          listPriceGrossCents: priced.listCents,
+          campaignName: priced.campaignName,
           available,
           maxPerOrder: category.maxPerOrder,
           saleLabel,

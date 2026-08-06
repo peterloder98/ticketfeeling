@@ -1,40 +1,48 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Minus, Plus, Mail, Smartphone, ShieldCheck, Headphones, BadgeCheck } from "lucide-react";
 import { formatEuroFromCents } from "@/lib/money";
 import { useCart } from "@/components/cart-context";
 import { cartFetch } from "@/lib/commerce/cart-client";
 import { cartErrorMessage } from "@/lib/commerce/cart-error-messages";
+import { applyDiscountOff } from "@/lib/commerce/event-pricing";
 
 type Category = {
   id: string;
   name: string;
   description: string | null;
   priceGrossCents: number;
+  listPriceGrossCents?: number;
+  campaignName?: string | null;
   available: number;
   maxPerOrder: number;
+};
+
+type AccessibilityOfferProp = {
+  label: string;
+  type: string;
+  value: number;
 };
 
 export function AddToCartPanel({
   categories,
   feeSurchargeNote,
   showRemainingAvailability = false,
-  /** Denser layout for iframe embeds */
   compact = false,
   cartHref = "/warenkorb",
   checkoutHref = "/checkout",
+  accessibilityOffer = null,
 }: {
   categories: Category[];
-  /** e.g. "zzgl. 4 % Verwaltungsgebühr" — shown under ticket price */
   feeSurchargeNote?: string;
   showRemainingAvailability?: boolean;
-  /** @deprecated use cartHref/checkoutHref — kept so old call sites compile */
   breakOutToTop?: boolean;
   compact?: boolean;
   cartHref?: string;
   checkoutHref?: string;
+  accessibilityOffer?: AccessibilityOfferProp | null;
 }) {
   const { bump } = useCart();
   const [qty, setQty] = useState<Record<string, number>>(
@@ -43,6 +51,19 @@ export function AddToCartPanel({
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState(false);
+  const [accessibilitySelected, setAccessibilitySelected] = useState(false);
+
+  const displayPrice = useMemo(() => {
+    return (category: Category) => {
+      const list = category.listPriceGrossCents ?? category.priceGrossCents;
+      const base = category.priceGrossCents;
+      if (!accessibilitySelected || !accessibilityOffer) {
+        return { unit: base, list, showStrike: list > base };
+      }
+      const unit = applyDiscountOff(base, accessibilityOffer.type, accessibilityOffer.value);
+      return { unit, list, showStrike: list > unit };
+    };
+  }, [accessibilityOffer, accessibilitySelected]);
 
   function setQuantity(categoryId: string, next: number, max: number) {
     const value = Math.max(max < 1 ? 0 : 1, Math.min(Math.max(0, max), next));
@@ -57,7 +78,11 @@ export function AddToCartPanel({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 25_000,
-        body: JSON.stringify({ categoryId, quantity: qty[categoryId] ?? 1 }),
+        body: JSON.stringify({
+          categoryId,
+          quantity: qty[categoryId] ?? 1,
+          accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
+        }),
       });
       const data = await response.json();
       if (!response.ok) {
@@ -115,10 +140,28 @@ export function AddToCartPanel({
 
   return (
     <div className={compact ? "space-y-2" : "space-y-3"}>
+      {accessibilityOffer ? (
+        <label className="flex items-start gap-2 rounded-[14px] border border-[var(--tf-line)] bg-white px-3 py-2.5 text-sm text-[var(--tf-navy)]">
+          <input
+            type="checkbox"
+            className="mt-0.5"
+            checked={accessibilitySelected}
+            onChange={(e) => setAccessibilitySelected(e.target.checked)}
+          />
+          <span>
+            <span className="font-semibold">{accessibilityOffer.label}</span>
+            <span className="mt-0.5 block text-[var(--tf-text-secondary)]">
+              Ermäßigten Preis für diese Tickets wählen
+            </span>
+          </span>
+        </label>
+      ) : null}
+
       {categories.map((category) => {
         const max = Math.min(category.maxPerOrder, Math.max(0, category.available));
         const soldOut = category.available < 1;
         const current = qty[category.id] ?? 1;
+        const price = displayPrice(category);
         return (
           <div
             key={category.id}
@@ -135,10 +178,20 @@ export function AddToCartPanel({
                 >
                   {category.name}
                 </p>
+                {category.campaignName && !accessibilitySelected ? (
+                  <p className="mt-0.5 text-[11px] font-medium text-[var(--tf-teal)]">
+                    {category.campaignName}
+                  </p>
+                ) : null}
                 <p
                   className={`font-bold text-[var(--tf-navy)] ${compact ? "mt-0.5 text-sm" : "mt-1 text-lg"}`}
                 >
-                  {formatEuroFromCents(category.priceGrossCents)}
+                  {price.showStrike ? (
+                    <span className="mr-2 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
+                      {formatEuroFromCents(price.list)}
+                    </span>
+                  ) : null}
+                  {formatEuroFromCents(price.unit)}
                   {feeSurchargeNote && !compact ? (
                     <span className="ml-1.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
                       {feeSurchargeNote}
@@ -217,69 +270,57 @@ export function AddToCartPanel({
       })}
 
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+
       {justAdded ? (
         <div
-          className={`rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.08)] text-[var(--tf-navy)] ${
-            compact ? "px-2.5 py-2" : "px-3 py-3"
+          className={`rounded-[16px] border border-[var(--tf-teal)]/30 bg-[rgba(20,184,166,0.08)] ${
+            compact ? "p-2.5" : "p-4"
           }`}
         >
-          <p className={`font-semibold ${compact ? "text-xs" : "text-sm"}`}>Im Warenkorb.</p>
-          <div className={`flex flex-wrap items-center gap-2 ${compact ? "mt-1.5" : "mt-2"}`}>
-            <Link
-              href={checkoutHref}
-              className={`tf-btn tf-btn-primary ${compact ? "!min-h-8 !px-2.5 !text-xs" : "!min-h-10 text-sm"}`}
-            >
-              Zur Kasse
-            </Link>
+          <p className={`font-semibold text-[var(--tf-navy)] ${compact ? "text-sm" : "text-base"}`}>
+            Im Warenkorb
+          </p>
+          <div className={`mt-2 flex flex-wrap gap-2 ${compact ? "gap-1.5" : ""}`}>
             <Link
               href={cartHref}
-              className={`font-medium text-[var(--tf-text-secondary)] underline ${compact ? "text-xs" : "text-sm"}`}
+              className={`tf-btn tf-btn-secondary ${compact ? "!min-h-8 !text-xs" : "!min-h-10 text-sm"}`}
             >
               Warenkorb
+            </Link>
+            <Link
+              href={checkoutHref}
+              className={`tf-btn tf-btn-primary ${compact ? "!min-h-8 !text-xs" : "!min-h-10 text-sm"}`}
+            >
+              Zur Kasse
             </Link>
           </div>
         </div>
       ) : null}
 
-      {compact ? (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-1 text-[11px] text-[var(--tf-text-secondary)]">
-          <span className="inline-flex items-center gap-1">
-            <ShieldCheck className="h-3 w-3 text-[var(--tf-teal)]" aria-hidden />
+      {!compact ? (
+        <ul className="space-y-2 pt-1 text-sm text-[var(--tf-text-secondary)]">
+          <li className="flex items-center gap-2">
+            <Mail className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
+            Tickets per E-Mail
+          </li>
+          <li className="flex items-center gap-2">
+            <Smartphone className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
+            Handy-Ticket möglich
+          </li>
+          <li className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
             Sichere Zahlung
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <Mail className="h-3 w-3 text-[var(--tf-teal)]" aria-hidden />
-            Ticket per E-Mail
-          </span>
-          <span className="inline-flex items-center gap-1">
-            <BadgeCheck className="h-3 w-3 text-[var(--tf-teal)]" aria-hidden />
-            Direkt beim Veranstalter
-          </span>
-        </p>
-      ) : (
-        <ul className="space-y-2 border-t border-[var(--tf-line)] pt-4 text-sm text-[var(--tf-text-secondary)]">
-          <li className="flex items-center gap-2">
-            <BadgeCheck className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-            Direkt beim Veranstalter buchen
           </li>
           <li className="flex items-center gap-2">
-            <Mail className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-            Ticket sofort per E-Mail
+            <Headphones className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
+            Support bei Fragen
           </li>
           <li className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-            Sichere Zahlungsabwicklung
-          </li>
-          <li className="flex items-center gap-2">
-            <Headphones className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-            Persönliche Hilfe bei Fragen
-          </li>
-          <li className="flex items-center gap-2">
-            <Smartphone className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
-            Digitales Ticket auf dem Smartphone
+            <BadgeCheck className="h-4 w-4 text-[var(--tf-teal)]" strokeWidth={2} />
+            Offizieller Vorverkauf
           </li>
         </ul>
-      )}
+      ) : null}
     </div>
   );
 }

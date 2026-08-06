@@ -82,6 +82,9 @@ export async function createOrderFromCart(input: {
       ensureSepaPaymentSchema(prisma),
       ensureLegalSchema(prisma),
       ensureSeatingAssignmentSchema(prisma),
+      import("@/lib/commerce/ensure-event-pricing-schema").then((m) =>
+        m.ensureEventPricingSchema(prisma),
+      ),
     ]),
     new Promise<void>((resolve) => setTimeout(resolve, CHECKOUT_ENSURE_BUDGET_MS)),
   ]);
@@ -93,9 +96,14 @@ export async function createOrderFromCart(input: {
 
   const sessionKey = input.sessionKey?.trim() || (await readCartSessionKey());
   if (!sessionKey) throw new Error("CART_EMPTY");
-  const cart = await getOpenCart({ userId: input.userId, sessionKey });
+  let cart = await getOpenCart({ userId: input.userId, sessionKey });
   if (cart.items.length === 0) throw new Error("CART_EMPTY");
   if (cart.expiresAt < new Date()) throw new Error("CART_EXPIRED");
+
+  const { repriceOpenCart } = await import("@/lib/commerce/cart");
+  await repriceOpenCart(cart.id);
+  cart = await getOpenCart({ userId: input.userId, sessionKey });
+  if (cart.items.length === 0) throw new Error("CART_EMPTY");
 
   const emailNormalized = normalizeEmail(input.customer.email);
   const mode = input.customer.checkoutMode;
@@ -312,7 +320,8 @@ export async function createOrderFromCart(input: {
           ? `${item.category.event.location.name}, ${item.category.event.location.city ?? ""}`
           : null,
         categorySnapshot: item.category.name,
-        unitListGrossCents: item.unitPriceGrossCents,
+        unitListGrossCents:
+          item.unitListGrossCents > 0 ? item.unitListGrossCents : item.unitPriceGrossCents,
         unitPaidGrossCents:
           item.quantity > 0 ? Math.round(split.lineGrossCents / item.quantity) : 0,
         discountCents: split.discountShareCents,

@@ -33,7 +33,7 @@ export function countSellableAvailableSeats(
 }
 
 export function flattenMapSeats(map: SeatMapPayload): PublicSeat[] {
-  return map.blocks.flatMap((b) => b.seats);
+  return [...map.blocks.flatMap((b) => b.seats), ...(map.standingSeats ?? [])];
 }
 
 /** Available (pickable) seats for one category on a loaded public map. */
