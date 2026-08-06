@@ -460,9 +460,6 @@ export default async function EventPage({ params }: Props) {
           >
             <div className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-6">
               <h2 className="tf-display text-2xl">Tickets</h2>
-              <p className="mt-1 text-base text-[var(--tf-text-secondary)]">
-                Bestplatz oder Saalplan — Auswahl bleibt hier rechts.
-              </p>
               {saleOpen ? (
                 <div className="mt-4">
                   <SeatBookingPanel
