@@ -1,7 +1,8 @@
 /**
  * Sale gating for events.
  *
- * Draft never sells.
+ * Draft never sells and is not listed — unless a Vorverkaufsstart is set (save promotes
+ * to announcement / scheduled) or the start is already due (release flips to Im Verkauf).
  * Announcement can auto-release when `presaleStartsAt` is reached (effective status).
  * Ticket sales require release (`presale_active` or `published`) — either stored or effective.
  */
@@ -21,20 +22,23 @@ export const PUBLIC_LISTING_STATUSES = [
   "sold_out",
 ] as const;
 
+/** Statuses that auto-release to Im Verkauf when Vorverkaufsstart is reached. */
+export const PRESALE_AUTO_RELEASE_STATUSES = ["announcement", "draft"] as const;
+
 export function isEventSalesReleased(status: string): boolean {
   return (SALE_RELEASED_STATUSES as readonly string[]).includes(status);
 }
 
 /**
- * When Vorverkaufsstart is reached, announcement is treated as „Im Verkauf“.
- * Stored DB status may still be `announcement` until cron/save flips it.
+ * When Vorverkaufsstart is reached, announcement/draft is treated as „Im Verkauf“.
+ * Stored DB status may still lag until cron/save/listing flip.
  */
 export function effectiveEventStatus(
   event: { status: string; presaleStartsAt?: Date | null },
   now: Date = new Date(),
 ): string {
   if (
-    event.status === "announcement" &&
+    (event.status === "announcement" || event.status === "draft") &&
     event.presaleStartsAt &&
     event.presaleStartsAt.getTime() <= now.getTime()
   ) {
@@ -87,17 +91,51 @@ export function isCategorySaleWindowOpen(
 }
 
 /**
- * If Vorverkaufsstart is already reached (or null with explicit release),
- * bump announcement → presale_active on write.
+ * If Vorverkaufsstart is already reached, bump announcement/draft → presale_active.
  */
 export function statusAfterPresaleStart(
   status: string,
   presaleStartsAt: Date | null,
   now: Date = new Date(),
 ): string {
-  if (status !== "announcement") return status;
+  if (status !== "announcement" && status !== "draft") return status;
   if (presaleStartsAt && presaleStartsAt.getTime() <= now.getTime()) {
     return "presale_active";
   }
   return status;
+}
+
+/**
+ * Persistable status for create/update.
+ *
+ * - Entwurf + Vorverkaufsstart gesetzt → „Verkauf geplant“ (announcement), so the event
+ *   can appear publicly and auto-flip to Im Verkauf when the start is reached.
+ * - Reached Vorverkaufsstart → Im Verkauf (presale_active).
+ * - Auto-flip without cover stays announcement so the save does not fail with COVER_REQUIRED
+ *   (listings still show it; checkout stays closed until a cover exists).
+ * - Explicit „Im Verkauf“ without cover still returns a sale status — caller must assert cover.
+ */
+export function resolvePersistedEventStatus(opts: {
+  requestedStatus: string;
+  presaleStartsAt: Date | null;
+  coverImageUrl?: string | null;
+  now?: Date;
+}): string {
+  const now = opts.now ?? new Date();
+  let status = opts.requestedStatus;
+
+  // Setting a Vorverkaufsstart means scheduled public release — not forever-Entwurf.
+  if (status === "draft" && opts.presaleStartsAt) {
+    status = "announcement";
+  }
+
+  const afterStart = statusAfterPresaleStart(status, opts.presaleStartsAt, now);
+  const explicitSale = isEventSalesReleased(opts.requestedStatus);
+  const hasCover = Boolean(opts.coverImageUrl?.trim());
+
+  if (isEventSalesReleased(afterStart) && !hasCover && !explicitSale) {
+    return "announcement";
+  }
+
+  return afterStart;
 }

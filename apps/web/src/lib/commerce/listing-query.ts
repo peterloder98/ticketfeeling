@@ -1,4 +1,7 @@
 import type { Prisma } from "@prisma/client";
+import { prisma } from "@/lib/db";
+import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
+import type { ListingEvent } from "@/lib/commerce/public-listings";
 
 /** Slim include for public listing cards (homepage / events / embed). */
 export const publicListingInclude = {
@@ -40,3 +43,36 @@ export const PUBLIC_LISTING_STATUSES = [
   "presale_active",
   "sold_out",
 ] as const;
+
+const publicListingSelect = {
+  id: true,
+  slug: true,
+  name: true,
+  subtitle: true,
+  status: true,
+  presaleStartsAt: true,
+  eventStartsAt: true,
+  showRemainingAvailability: true,
+  coverImageUrl: true,
+  tourId: true,
+  ...publicListingInclude,
+} satisfies Prisma.EventSelect;
+
+/**
+ * Flip due Vorverkaufsstart → Im Verkauf, then load public listing rows.
+ * Must run on Startseite / Events / Embed-Shop — not only admin or event detail.
+ */
+export async function loadPublicListingEvents(opts?: {
+  take?: number;
+}): Promise<ListingEvent[]> {
+  await releaseDuePresales({ take: 200 });
+
+  return (await prisma.event.findMany({
+    where: {
+      status: { in: [...PUBLIC_LISTING_STATUSES] },
+    },
+    select: publicListingSelect,
+    orderBy: { eventStartsAt: "asc" },
+    take: opts?.take ?? 48,
+  })) as ListingEvent[];
+}

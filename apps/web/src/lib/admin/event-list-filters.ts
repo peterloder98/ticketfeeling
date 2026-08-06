@@ -6,7 +6,7 @@ export const EVENT_LIST_FILTERS = [
   },
   {
     key: "paused",
-    label: "Pausiert",
+    label: "Verkauf geplant",
     statuses: ["announcement"],
   },
   {
@@ -23,7 +23,7 @@ export const EVENT_LIST_FILTERS = [
 
 export type EventListFilterKey = (typeof EVENT_LIST_FILTERS)[number]["key"];
 
-/** Default: nur Im Verkauf — Pausiert, Entwurf und Abgesagt über die Filter. */
+/** Default: nur Im Verkauf — Verkauf geplant, Entwurf und Abgesagt über die Filter. */
 export const DEFAULT_EVENT_LIST_FILTERS: EventListFilterKey[] = ["onsale"];
 
 export function parseEventListFilters(raw: string | undefined | null): EventListFilterKey[] {

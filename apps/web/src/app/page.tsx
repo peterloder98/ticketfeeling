@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
 import { BrandLogo } from "@/components/brand-logo";
 import { EventCard } from "@/components/event-card";
 import { TrustBar } from "@/components/trust-bar";
@@ -14,37 +13,16 @@ import {
   buildPublicListingCards,
   remainingForCategories,
 } from "@/lib/commerce/public-listings";
-import {
-  PUBLIC_LISTING_STATUSES,
-  publicListingInclude,
-} from "@/lib/commerce/listing-query";
+import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
 
-export const revalidate = 60;
+/** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
+export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const org = await getDefaultOrganization();
   const feeConfig = resolveActivePlatformFeeConfig(org?.settings?.platformFeeConfig);
 
-  const events = await prisma.event.findMany({
-    where: {
-      status: { in: [...PUBLIC_LISTING_STATUSES] },
-    },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      subtitle: true,
-      status: true,
-      presaleStartsAt: true,
-      eventStartsAt: true,
-      showRemainingAvailability: true,
-      coverImageUrl: true,
-      tourId: true,
-      ...publicListingInclude,
-    },
-    orderBy: { eventStartsAt: "asc" },
-    take: 48,
-  });
+  const events = await loadPublicListingEvents({ take: 48 });
 
   // Tours collapse to one card — hero + grid never list each tour date separately.
   const listings = buildPublicListingCards(events);

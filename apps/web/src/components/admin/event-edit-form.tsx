@@ -164,6 +164,16 @@ export function EventEditForm({
           <span className="text-xs text-[var(--tf-text-secondary)]">
             Vorverkaufsstart wird auf jetzt gesetzt — das Event ist sofort online kaufbar.
           </span>
+        ) : status === "draft" ? (
+          <span className="text-xs text-[var(--tf-text-secondary)]">
+            Entwurf erscheint nicht öffentlich. Mit Vorverkaufsstart wird beim Speichern
+            automatisch „Verkauf geplant“ gesetzt — und ab dem Start „Im Verkauf“.
+          </span>
+        ) : status === "announcement" ? (
+          <span className="text-xs text-[var(--tf-text-secondary)]">
+            Ab Vorverkaufsstart geht das Event automatisch in den Verkauf und erscheint auf
+            Startseite und Events.
+          </span>
         ) : null}
       </label>
 

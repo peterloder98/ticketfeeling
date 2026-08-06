@@ -1,4 +1,3 @@
-import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
@@ -7,14 +6,12 @@ import {
   buildPublicListingCards,
   remainingForCategories,
 } from "@/lib/commerce/public-listings";
-import {
-  PUBLIC_LISTING_STATUSES,
-  publicListingInclude,
-} from "@/lib/commerce/listing-query";
+import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
 import { EventsSearchGrid } from "@/components/events-search-grid";
 import type { EventCardData } from "@/components/event-card";
 
-export const revalidate = 60;
+/** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Events" };
 
 type Props = { searchParams: Promise<{ q?: string }> };
@@ -26,27 +23,8 @@ export default async function EventsPage({ searchParams }: Props) {
   const org = await getDefaultOrganization();
   const feeConfig = resolveActivePlatformFeeConfig(org?.settings?.platformFeeConfig);
 
-  // Always load the full public list once; search filters client-side for instant feedback.
-  const events = await prisma.event.findMany({
-    where: {
-      status: { in: [...PUBLIC_LISTING_STATUSES] },
-    },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      subtitle: true,
-      status: true,
-      presaleStartsAt: true,
-      eventStartsAt: true,
-      showRemainingAvailability: true,
-      coverImageUrl: true,
-      tourId: true,
-      ...publicListingInclude,
-    },
-    orderBy: { eventStartsAt: "asc" },
-    take: 80,
-  });
+  // Flip due Vorverkaufsstart, then load; search filters client-side for instant feedback.
+  const events = await loadPublicListingEvents({ take: 80 });
 
   const listings = buildPublicListingCards(events);
 

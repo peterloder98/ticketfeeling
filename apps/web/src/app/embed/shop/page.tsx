@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
@@ -11,40 +10,18 @@ import { Calendar, MapPin } from "lucide-react";
 import {
   buildPublicListingCards,
   remainingForCategories,
-  type ListingEvent,
 } from "@/lib/commerce/public-listings";
-import {
-  PUBLIC_LISTING_STATUSES,
-  publicListingInclude,
-} from "@/lib/commerce/listing-query";
+import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
 
-export const revalidate = 60;
+/** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Events & Tickets" };
 
 export default async function EmbedShopPage() {
   const org = await getDefaultOrganization();
   const feeConfig = resolveActivePlatformFeeConfig(org?.settings?.platformFeeConfig);
 
-  const events = (await prisma.event.findMany({
-    where: {
-      status: { in: [...PUBLIC_LISTING_STATUSES] },
-    },
-    select: {
-      id: true,
-      slug: true,
-      name: true,
-      subtitle: true,
-      status: true,
-      presaleStartsAt: true,
-      eventStartsAt: true,
-      showRemainingAvailability: true,
-      coverImageUrl: true,
-      tourId: true,
-      ...publicListingInclude,
-    },
-    orderBy: { eventStartsAt: "asc" },
-    take: 48,
-  })) as ListingEvent[];
+  const events = await loadPublicListingEvents({ take: 48 });
 
   const listings = buildPublicListingCards(events, { linkMode: "embed" });
 

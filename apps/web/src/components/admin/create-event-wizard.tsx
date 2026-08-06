@@ -1133,6 +1133,13 @@ export function CreateEventWizard({
                     </option>
                   ))}
                 </select>
+                <span className="text-xs text-[var(--tf-text-secondary)]">
+                  {status === "draft"
+                    ? "Entwurf ist nicht öffentlich. Mit Vorverkaufsstart wird beim Anlegen „Verkauf geplant“ — ab dem Start „Im Verkauf“."
+                    : status === "announcement"
+                      ? "Ab Vorverkaufsstart automatisch Im Verkauf — sichtbar auf Startseite und Events."
+                      : "Sofort im Verkauf (Cover-Bild nötig)."}
+                </span>
               </label>
 
               <CoverImageField

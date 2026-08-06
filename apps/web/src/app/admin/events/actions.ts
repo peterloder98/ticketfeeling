@@ -18,7 +18,10 @@ import { parseArtistsJson } from "@/lib/admin/artist-form";
 import { syncEventArtistsInTx } from "@/lib/admin/artist-sync";
 import { allocateUniqueEventSlug } from "@/lib/admin/unique-event-slug";
 import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
-import { isEventSalesReleased, statusAfterPresaleStart } from "@/lib/commerce/event-sale";
+import {
+  isEventSalesReleased,
+  resolvePersistedEventStatus,
+} from "@/lib/commerce/event-sale";
 import {
   STREET_NO_NUMBERS_MESSAGE,
   POSTAL_CODE_DIGITS_ONLY_MESSAGE,
@@ -117,11 +120,11 @@ async function createEventFromFormData(
   const eventEndsAt = parseDt(formData, "eventEndsAt");
   const doorsOpenAt = parseDt(formData, "doorsOpenAt");
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
-  // Creating already „Im Verkauf“ → start now if empty; reached start flips announcement → im Verkauf.
+  // Creating already „Im Verkauf“ → start now if empty; Entwurf+Vorverkauf → geplant/Im Verkauf.
   const becomingOnSale = isEventSalesReleased(requestedStatus);
   const presaleStartsAt =
     becomingOnSale && !formPresaleStartsAt ? new Date() : formPresaleStartsAt;
-  const status = statusAfterPresaleStart(requestedStatus, presaleStartsAt);
+  // Cover may come from tour inherit — resolved below before assertCover.
 
   const ticketTaxPercent = Number(
     String(formData.get("ticketTaxPercent") ?? "7").replace(",", "."),
@@ -206,6 +209,11 @@ async function createEventFromFormData(
   const persistedCoverUrl = await resolveCoverForTourEvent({
     tourId,
     coverImageUrl,
+  });
+  const status = resolvePersistedEventStatus({
+    requestedStatus,
+    presaleStartsAt,
+    coverImageUrl: persistedCoverUrl,
   });
   assertCoverForSaleRelease(status, persistedCoverUrl);
 
@@ -542,8 +550,7 @@ export async function updateEventAction(formData: FormData) {
   const becomingOnSale =
     isEventSalesReleased(requestedStatus) && !isEventSalesReleased(event.status);
   const presaleStartsAt = becomingOnSale ? new Date() : formPresaleStartsAt;
-  // Reached Vorverkaufsstart while still „Pausiert“ → flip to Im Verkauf.
-  const status = statusAfterPresaleStart(requestedStatus, presaleStartsAt);
+  // Cover may change with tour link — resolve below before status/cover assert.
   const subtitle = String(formData.get("subtitle") ?? "").trim() || null;
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
@@ -611,6 +618,11 @@ export async function updateEventAction(formData: FormData) {
         : event.coverImageUrl;
     }
   }
+  const status = resolvePersistedEventStatus({
+    requestedStatus,
+    presaleStartsAt,
+    coverImageUrl: nextCoverUrl,
+  });
   assertCoverForSaleRelease(status, nextCoverUrl);
 
   await prisma.event.update({

@@ -187,11 +187,10 @@ export function buildPublicListingCards(
   const cards: PublicListingCard[] = [];
   const consumed = new Set<string>();
 
-  // 1) Official tour grouping
+  // 1) Official tour grouping (skip draft tours — those dates fall through as singles)
   for (const event of events) {
     if (!event.tourId || consumed.has(event.id)) continue;
     if (event.tour?.visibility === "draft") {
-      consumed.add(event.id);
       continue;
     }
 
