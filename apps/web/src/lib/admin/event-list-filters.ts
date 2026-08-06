@@ -5,9 +5,14 @@ export const EVENT_LIST_FILTERS = [
     statuses: ["presale_active", "published", "sold_out"],
   },
   {
-    key: "paused",
+    key: "scheduled",
     label: "Verkauf geplant",
     statuses: ["announcement"],
+  },
+  {
+    key: "paused",
+    label: "Pausiert",
+    statuses: ["paused"],
   },
   {
     key: "draft",
@@ -23,7 +28,7 @@ export const EVENT_LIST_FILTERS = [
 
 export type EventListFilterKey = (typeof EVENT_LIST_FILTERS)[number]["key"];
 
-/** Default: nur Im Verkauf — Verkauf geplant, Entwurf und Abgesagt über die Filter. */
+/** Default: nur Im Verkauf — geplante, pausierte, Entwurf und Abgesagt über die Filter. */
 export const DEFAULT_EVENT_LIST_FILTERS: EventListFilterKey[] = ["onsale"];
 
 export function parseEventListFilters(raw: string | undefined | null): EventListFilterKey[] {

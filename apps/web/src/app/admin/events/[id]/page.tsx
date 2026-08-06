@@ -6,8 +6,7 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { getEventSalesReport } from "@/lib/commerce/event-sales-report";
 import { formatEuroFromCents } from "@/lib/money";
-import { ADMIN_SUBNAV, eventStatusLabel } from "@/lib/admin/nav";
-import { AdminSubnav } from "@/components/admin/admin-subnav";
+import { eventStatusLabel } from "@/lib/admin/nav";
 import {
   CategorySalesTable,
   TicketProgressBar,
@@ -18,6 +17,7 @@ import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
 import { EventEditForm } from "@/components/admin/event-edit-form";
 import { EventLineupForm } from "@/components/admin/event-lineup-form";
 import { EmbedCodeModalButton } from "@/components/admin/embed-code-modal";
+import { EventAdminHeaderActions } from "@/components/admin/event-admin-header-actions";
 import { isEventSalesReleased, effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
@@ -286,6 +286,13 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       })
     : null;
 
+  let ticketsSold = report.sold;
+  try {
+    ticketsSold = await prisma.ticket.count({ where: { eventId: event.id } });
+  } catch (err) {
+    console.error("[admin/events/[id]] ticket count failed", event.id, err);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -295,63 +302,43 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         >
           ← Alle Events
         </Link>
-        <div className="mt-3 space-y-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
-                {event.name}
-              </h1>
-              <span className="rounded-full bg-[rgba(15,39,71,0.06)] px-2.5 py-0.5 text-xs font-medium text-[var(--tf-navy)]">
-                {eventStatusLabel(displayStatus)}
-              </span>
-            </div>
-            <div className="mt-1 space-y-0.5 text-sm text-[var(--tf-text-secondary)]">
-              <p>{when ?? "Termin offen"}</p>
-              {event.location ? (
-                <p>
-                  {event.location.name}
-                  {event.location.city ? `, ${event.location.city}` : ""}
-                </p>
-              ) : null}
-              {event.tour ? (
-                <p>
-                  Tour:{" "}
-                  <Link
-                    href={`/admin/tours/${event.tour.id}`}
-                    className="font-medium text-[var(--tf-navy)] underline"
-                  >
-                    {event.tour.name}
-                  </Link>
-                </p>
-              ) : null}
-            </div>
-          </div>
-          <AdminSubnav items={ADMIN_SUBNAV.tours} />
-          <div className="flex flex-wrap gap-2">
-            <Link
-              href={`/event/${event.slug}`}
-              className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-              target="_blank"
-            >
-              Öffentliche Seite
-            </Link>
-            <EmbedCodeModalButton
-              buttonLabel="Auf meine Website"
-              title="Auf meine Website einbinden"
-              description="Nur Tickets für dieses Event. Code kopieren und auf der Event-Unterseite einbinden."
-              slug={event.slug}
-              eventTitle={event.name}
-            />
-            <Link href="/admin/catalog" className="tf-btn tf-btn-secondary !min-h-10 text-sm">
-              Kategorie-Vorlagen
-            </Link>
-            <Link
-              href={`/kasse?eventId=${event.id}#verkaeufe`}
-              className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-            >
-              Tageskasse
-            </Link>
-          </div>
+        <div className="mt-3">
+          <EventAdminHeaderActions
+            canWrite={canWrite}
+            ticketsSold={ticketsSold}
+            statusLabel={eventStatusLabel(displayStatus)}
+            event={{
+              id: event.id,
+              name: event.name,
+              slug: event.slug,
+              status: displayStatus,
+              locationName: event.location?.name ?? null,
+              locationCity: event.location?.city ?? null,
+              whenLabel: when ?? "Termin offen",
+            }}
+            meta={
+              <div className="mt-1 space-y-0.5 text-sm text-[var(--tf-text-secondary)]">
+                <p>{when ?? "Termin offen"}</p>
+                {event.location ? (
+                  <p>
+                    {event.location.name}
+                    {event.location.city ? `, ${event.location.city}` : ""}
+                  </p>
+                ) : null}
+                {event.tour ? (
+                  <p>
+                    Tour:{" "}
+                    <Link
+                      href={`/admin/tours/${event.tour.id}`}
+                      className="font-medium text-[var(--tf-navy)] underline"
+                    >
+                      {event.tour.name}
+                    </Link>
+                  </p>
+                ) : null}
+              </div>
+            }
+          />
         </div>
         {saved ? (
           <p className="mt-3 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">

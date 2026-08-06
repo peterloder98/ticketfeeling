@@ -5,6 +5,7 @@
  * to announcement / scheduled) or the start is already due (release flips to Im Verkauf).
  * Announcement can auto-release when `presaleStartsAt` is reached (effective status).
  * Ticket sales require release (`presale_active` or `published`) — either stored or effective.
+ * `paused` hides the event from public listings and closes sales until resumed.
  */
 
 /** Organizer has released the event for ticket sales (or it sold out). */
@@ -14,7 +15,10 @@ export const SALE_RELEASED_STATUSES = [
   "sold_out",
 ] as const;
 
-/** Shown in public listings (may or may not be buyable). */
+/** „Im Verkauf“ statuses that can be paused from the admin header. */
+export const PAUSABLE_STATUSES = ["presale_active", "published"] as const;
+
+/** Shown in public listings (may or may not be buyable). Paused is intentionally absent. */
 export const PUBLIC_LISTING_STATUSES = [
   "announcement",
   "presale_active",
@@ -29,9 +33,14 @@ export function isEventSalesReleased(status: string): boolean {
   return (SALE_RELEASED_STATUSES as readonly string[]).includes(status);
 }
 
+export function isEventPausable(status: string): boolean {
+  return (PAUSABLE_STATUSES as readonly string[]).includes(status);
+}
+
 /**
  * When Vorverkaufsstart is reached, announcement/draft is treated as „Im Verkauf“.
  * Stored DB status may still lag until cron/save/listing flip.
+ * Paused / cancelled / completed are never auto-flipped.
  */
 export function effectiveEventStatus(
   event: { status: string; presaleStartsAt?: Date | null },
@@ -49,7 +58,7 @@ export function effectiveEventStatus(
 
 /** Categories may still be added/removed only before first sale release. */
 export function canMutateEventCategories(status: string): boolean {
-  return !isEventSalesReleased(status);
+  return !isEventSalesReleased(status) && status !== "paused";
 }
 
 export function isEventSaleOpen(
@@ -63,7 +72,12 @@ export function isEventSaleOpen(
   },
   now: Date = new Date(),
 ): boolean {
-  if (event.status === "sold_out" || event.status === "cancelled" || event.status === "completed") {
+  if (
+    event.status === "sold_out" ||
+    event.status === "cancelled" ||
+    event.status === "completed" ||
+    event.status === "paused"
+  ) {
     return false;
   }
   // Draft tour = not public / not sellable

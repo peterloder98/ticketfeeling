@@ -110,6 +110,7 @@ export const EVENT_STATUSES = [
   "announcement",
   "presale_active",
   "published",
+  "paused",
   "sold_out",
   "cancelled",
   "completed",

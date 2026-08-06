@@ -76,6 +76,11 @@ describe("presale status transitions", () => {
       }),
     ).toBe("presale_active");
   });
+
+  it("does not treat paused as on sale", () => {
+    expect(effectiveEventStatus({ status: "paused", presaleStartsAt: past }, now)).toBe("paused");
+    expect(statusAfterPresaleStart("paused", past, now)).toBe("paused");
+  });
 });
 
 describe("isEventSaleOpen without cover", () => {
@@ -107,5 +112,14 @@ describe("isEventSaleOpen without cover", () => {
         now,
       ),
     ).toBe(true);
+  });
+
+  it("closes sale when paused or cancelled", () => {
+    expect(
+      isEventSaleOpen({ status: "paused", presaleStartsAt: past }, now),
+    ).toBe(false);
+    expect(
+      isEventSaleOpen({ status: "cancelled", presaleStartsAt: past }, now),
+    ).toBe(false);
   });
 });

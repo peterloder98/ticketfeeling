@@ -78,13 +78,40 @@ export default async function EventPage({ params }: Props) {
   });
   if (released.flipped) event.status = released.status;
 
-  // Draft / cancelled events are not a public shop surface
-  if (
-    event.status === "draft" ||
-    event.status === "cancelled" ||
-    event.tour?.visibility === "draft"
-  ) {
+  // Draft / paused events are not a public shop surface; cancelled shows a soft page.
+  if (event.status === "draft" || event.status === "paused" || event.tour?.visibility === "draft") {
     notFound();
+  }
+
+  if (event.status === "cancelled") {
+    const when = event.eventStartsAt
+      ? event.eventStartsAt.toLocaleString("de-DE", {
+          timeZone: "Europe/Berlin",
+          dateStyle: "full",
+          timeStyle: "short",
+        })
+      : null;
+    return (
+      <div className="tf-container py-16">
+        <div className="mx-auto max-w-xl rounded-2xl border border-[var(--tf-line)] bg-white px-6 py-10 text-center shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--tf-teal)]">
+            Ticketfeeling
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
+            {event.name}
+          </h1>
+          <p className="mt-3 text-base text-[var(--tf-text-secondary)]">
+            Dieses Event wurde abgesagt. Tickets sind nicht mehr erhältlich.
+          </p>
+          {when ? (
+            <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">{when}</p>
+          ) : null}
+          <Link href="/events" className="tf-btn tf-btn-primary mt-6 inline-flex !min-h-10 text-sm">
+            Andere Events entdecken
+          </Link>
+        </div>
+      </div>
+    );
   }
 
   const coverImageUrl = resolveEventCoverUrl(event);

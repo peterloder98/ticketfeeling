@@ -65,13 +65,24 @@ export default async function EmbedEventShopPage({ params }: Props) {
   if (
     event.status === "draft" ||
     event.status === "cancelled" ||
+    event.status === "paused" ||
     event.tour?.visibility === "draft"
   ) {
     return (
       <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-10 text-center">
-        <p className="font-semibold text-[var(--tf-navy)]">Event nicht freigeschaltet</p>
+        <p className="font-semibold text-[var(--tf-navy)]">
+          {event.status === "cancelled"
+            ? "Event abgesagt"
+            : event.status === "paused"
+              ? "Verkauf pausiert"
+              : "Event nicht freigeschaltet"}
+        </p>
         <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-          Dieses Event ist online noch nicht öffentlich (Entwurf, Absage oder Tour noch als Entwurf).
+          {event.status === "cancelled"
+            ? "Dieses Event wurde abgesagt — online sind keine Tickets mehr erhältlich."
+            : event.status === "paused"
+              ? "Der Ticketverkauf für dieses Event ist vorübergehend pausiert."
+              : "Dieses Event ist online noch nicht öffentlich (Entwurf oder Tour noch als Entwurf)."}
         </p>
       </div>
     );

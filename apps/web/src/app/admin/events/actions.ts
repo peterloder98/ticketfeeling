@@ -49,6 +49,17 @@ async function requireEventWrite() {
   return { session, membership };
 }
 
+/** Best-effort DDL when migrate deploy lags (Vercel/Neon). */
+async function ensureEventPauseColumn() {
+  try {
+    await prisma.$executeRawUnsafe(
+      `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "status_before_pause" TEXT`,
+    );
+  } catch (err) {
+    console.error("[ensureEventPauseColumn]", err);
+  }
+}
+
 function parseDt(formData: FormData, key: string) {
   const raw = String(formData.get(key) ?? "").trim();
   if (!raw) return null;
@@ -485,6 +496,7 @@ async function createEventFromFormData(
 
 export async function updateEventAction(formData: FormData) {
   const { session, membership } = await requireEventWrite();
+  await ensureEventPauseColumn();
 
   const eventId = String(formData.get("eventId") ?? "");
   const event = await prisma.event.findFirst({
@@ -617,12 +629,23 @@ export async function updateEventAction(formData: FormData) {
     coverImageUrl: nextCoverUrl,
   });
 
+  const { isEventPausable } = await import("@/lib/commerce/event-sale");
+  const statusBeforePause =
+    status === "paused"
+      ? event.status === "paused"
+        ? event.statusBeforePause
+        : isEventPausable(event.status)
+          ? event.status
+          : "presale_active"
+      : null;
+
   await prisma.event.update({
     where: { id: event.id },
     data: {
       name,
       slug,
       status,
+      statusBeforePause,
       tourId,
       locationId,
       venuePlanId,
@@ -693,4 +716,233 @@ export async function updateEventAction(formData: FormData) {
     revalidatePath("/admin/tours");
   }
   return { ok: true as const, eventId: event.id };
+}
+
+function revalidateEventSurfaces(opts: {
+  eventId: string;
+  slug: string;
+  tourId?: string | null;
+}) {
+  revalidatePath("/admin/events");
+  revalidatePath(`/admin/events/${opts.eventId}`);
+  revalidatePath("/events");
+  revalidatePath(`/event/${opts.slug}`);
+  revalidatePath(`/embed/event/${opts.slug}`);
+  revalidatePath("/");
+  revalidatePath("/kasse");
+  revalidatePath("/scanner");
+  if (opts.tourId) {
+    revalidatePath(`/admin/tours/${opts.tourId}`);
+    revalidatePath("/admin/tours");
+  }
+}
+
+async function countSoldTickets(eventId: string) {
+  return prisma.ticket.count({ where: { eventId } });
+}
+
+export type PauseResumeResult =
+  | { ok: true; status: string }
+  | { ok: false; error: string };
+
+export async function pauseEventSalesAction(eventId: string): Promise<PauseResumeResult> {
+  const { session, membership } = await requireEventWrite();
+  await ensureEventPauseColumn();
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, organizationId: membership.organizationId },
+    select: {
+      id: true,
+      slug: true,
+      status: true,
+      tourId: true,
+      statusBeforePause: true,
+      presaleStartsAt: true,
+    },
+  });
+  if (!event) return { ok: false, error: "Event nicht gefunden." };
+
+  const { isEventPausable, effectiveEventStatus } = await import("@/lib/commerce/event-sale");
+  const display = effectiveEventStatus(event);
+  if (!isEventPausable(display) && !isEventPausable(event.status)) {
+    return { ok: false, error: "Nur Events im Verkauf können pausiert werden." };
+  }
+
+  const previousStatus = isEventPausable(event.status) ? event.status : display;
+
+  await prisma.event.update({
+    where: { id: event.id },
+    data: {
+      status: "paused",
+      statusBeforePause: previousStatus,
+    },
+  });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "event.sales_paused",
+    entityType: "event",
+    entityId: event.id,
+    before: { status: event.status },
+    after: { status: "paused", statusBeforePause: previousStatus },
+  });
+
+  revalidateEventSurfaces({
+    eventId: event.id,
+    slug: event.slug,
+    tourId: event.tourId,
+  });
+  return { ok: true, status: "paused" };
+}
+
+export async function resumeEventSalesAction(eventId: string): Promise<PauseResumeResult> {
+  const { session, membership } = await requireEventWrite();
+  await ensureEventPauseColumn();
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, organizationId: membership.organizationId },
+    select: {
+      id: true,
+      slug: true,
+      status: true,
+      tourId: true,
+      statusBeforePause: true,
+    },
+  });
+  if (!event) return { ok: false, error: "Event nicht gefunden." };
+  if (event.status !== "paused") {
+    return { ok: false, error: "Das Event ist nicht pausiert." };
+  }
+
+  const restoreStatus =
+    event.statusBeforePause === "published" || event.statusBeforePause === "presale_active"
+      ? event.statusBeforePause
+      : "presale_active";
+
+  await prisma.event.update({
+    where: { id: event.id },
+    data: {
+      status: restoreStatus,
+      statusBeforePause: null,
+    },
+  });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "event.sales_resumed",
+    entityType: "event",
+    entityId: event.id,
+    before: { status: "paused", statusBeforePause: event.statusBeforePause },
+    after: { status: restoreStatus },
+  });
+
+  revalidateEventSurfaces({
+    eventId: event.id,
+    slug: event.slug,
+    tourId: event.tourId,
+  });
+  return { ok: true, status: restoreStatus };
+}
+
+export type DeleteOrCancelResult =
+  | { ok: true; mode: "deleted" }
+  | { ok: true; mode: "cancelled" }
+  | { ok: false; error: string };
+
+/**
+ * Hard-delete when no tickets sold; otherwise cancel (status=cancelled) and keep data.
+ */
+export async function deleteOrCancelEventAction(
+  eventId: string,
+): Promise<DeleteOrCancelResult> {
+  const { session, membership } = await requireEventWrite();
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, organizationId: membership.organizationId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      status: true,
+      tourId: true,
+    },
+  });
+  if (!event) return { ok: false, error: "Event nicht gefunden." };
+
+  const sold = await countSoldTickets(event.id);
+  if (sold > 0) {
+    if (event.status === "cancelled") {
+      return { ok: false, error: "Das Event ist bereits abgesagt." };
+    }
+    await prisma.event.update({
+      where: { id: event.id },
+      data: { status: "cancelled", statusBeforePause: null },
+    });
+    await writeAudit({
+      organizationId: membership.organizationId,
+      actorUserId: session.user.id,
+      action: "event.cancelled",
+      entityType: "event",
+      entityId: event.id,
+      before: { status: event.status },
+      after: { status: "cancelled", soldTickets: sold },
+    });
+    revalidateEventSurfaces({
+      eventId: event.id,
+      slug: event.slug,
+      tourId: event.tourId,
+    });
+    return { ok: true, mode: "cancelled" };
+  }
+
+  // No tickets — hard delete. Clear cart lines that would block category cascade.
+  try {
+    await prisma.$transaction(async (tx) => {
+      const categories = await tx.eventTicketCategory.findMany({
+        where: { eventId: event.id },
+        select: { id: true },
+      });
+      const categoryIds = categories.map((c) => c.id);
+      if (categoryIds.length > 0) {
+        await tx.cartItem.deleteMany({ where: { categoryId: { in: categoryIds } } });
+      }
+      // Order items without tickets shouldn't exist, but guard anyway.
+      const orderItems = await tx.orderItem.count({ where: { eventId: event.id } });
+      if (orderItems > 0) {
+        throw new Error("HAS_ORDERS");
+      }
+      await tx.event.delete({ where: { id: event.id } });
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "DELETE_FAILED";
+    if (message === "HAS_ORDERS") {
+      return {
+        ok: false,
+        error: "Es gibt noch Bestellungen zu diesem Event — bitte absagen statt löschen.",
+      };
+    }
+    console.error("[deleteOrCancelEventAction] delete failed", event.id, err);
+    return { ok: false, error: "Löschen fehlgeschlagen. Bitte erneut versuchen." };
+  }
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "event.deleted",
+    entityType: "event",
+    entityId: event.id,
+    before: { name: event.name, slug: event.slug, status: event.status },
+    after: { deleted: true },
+  });
+
+  revalidatePath("/admin/events");
+  revalidatePath("/events");
+  revalidatePath(`/event/${event.slug}`);
+  revalidatePath(`/embed/event/${event.slug}`);
+  revalidatePath("/");
+  revalidatePath("/kasse");
+  if (event.tourId) {
+    revalidatePath(`/admin/tours/${event.tourId}`);
+    revalidatePath("/admin/tours");
+  }
+  return { ok: true, mode: "deleted" };
 }

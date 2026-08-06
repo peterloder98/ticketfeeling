@@ -187,6 +187,7 @@ export const EVENT_STATUS_LABELS: Record<string, string> = {
   announcement: "Verkauf geplant (ab Vorverkaufsstart)",
   presale_active: "Im Verkauf",
   published: "Im Verkauf",
+  paused: "Pausiert",
   sold_out: "Ausverkauft",
   cancelled: "Abgesagt",
   completed: "Beendet",

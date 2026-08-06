@@ -644,6 +644,8 @@ model Event {
   coverImageUrl     String?   @map("cover_image_url")
   mobileCoverUrl    String?   @map("mobile_cover_url")
   status            String    @default("draft")
+  /// When status is `paused`, the previous selling status to restore on resume
+  statusBeforePause String?   @map("status_before_pause")
   locale            String    @default("de-DE")
   seoTitle          String?   @map("seo_title")
   seoDescription    String?   @map("seo_description")
