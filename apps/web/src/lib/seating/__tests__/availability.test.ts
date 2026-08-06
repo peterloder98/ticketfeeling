@@ -119,10 +119,12 @@ describe("categoryNeedsSeats (plan-backed Stehplatz)", () => {
 });
 
 describe("categoryFillRgba", () => {
-  it("makes dark navy fills more opaque so they do not look unassigned gray", () => {
+  it("uses a strong interior fill so assignment reads as paint, not a frame", () => {
     const navy = hexToRgb("#0F2747");
     expect(navy).toEqual({ r: 15, g: 39, b: 71 });
-    expect(categoryFillRgba("#0F2747", 0.28)).toBe("rgba(15,39,71,0.45)");
+    expect(categoryFillRgba("#0F2747")).toBe("rgba(15,39,71,0.68)");
+    expect(categoryFillRgba("#14B8A6")).toBe("rgba(20,184,166,0.55)");
+    expect(categoryFillRgba("#0F2747", 0.28)).toBe("rgba(15,39,71,0.68)");
     expect(categoryFillRgba("#14B8A6", 0.28)).toBe("rgba(20,184,166,0.28)");
   });
 });

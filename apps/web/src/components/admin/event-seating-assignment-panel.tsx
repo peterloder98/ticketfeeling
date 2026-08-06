@@ -1058,7 +1058,7 @@ export function EventSeatingAssignmentPanel({
         </div>
         <div
           ref={canvasRef}
-          className={`h-[min(56vh,520px)] w-full overflow-auto bg-[#f8fafc] ${
+          className={`h-[min(72vh,680px)] w-full overflow-auto bg-[#f8fafc] ${
             panning ? "cursor-grabbing" : "cursor-grab"
           }`}
           {...panHandlers}
@@ -1113,14 +1113,14 @@ export function EventSeatingAssignmentPanel({
                 const assignedColor =
                   catIds.length === 1 ? colorById.get(catIds[0]!) ?? "#14B8A6" : null;
                 const fill = assignedColor
-                  ? categoryFillRgba(assignedColor, 0.32)
+                  ? categoryFillRgba(assignedColor)
                   : catIds.length > 1
                     ? "rgba(15,39,71,0.08)"
                     : "rgba(15,39,71,0.05)";
                 const stroke =
                   lockedStanding === standingCap && standingCap > 0
                     ? "#94a3b8"
-                    : assignedColor ?? "#0F2747";
+                    : "#0F2747";
                 return (
                   <g key={obj.id} transform={`rotate(${obj.rotationDeg} ${toX(obj.xCm)} ${toY(obj.yCm)})`}>
                     <rect
@@ -1130,7 +1130,7 @@ export function EventSeatingAssignmentPanel({
                       height={toS(obj.heightCm)}
                       fill={fill}
                       stroke={stroke}
-                      strokeWidth={assignedColor ? 2.5 : 1.25}
+                      strokeWidth={assignedColor ? 1.5 : 1.25}
                       strokeDasharray={assignedColor ? undefined : "6 4"}
                       rx={4}
                       {...(target === "block" ? { "data-saalplan-interactive": "" } : {})}

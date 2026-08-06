@@ -293,9 +293,8 @@ export function SeatMap({
               ? resolveCategoryColor(area.color, 0)
               : null;
             const fill = assignedColor
-              ? categoryFillRgba(assignedColor, 0.32)
+              ? categoryFillRgba(assignedColor)
               : "rgba(15,39,71,0.06)";
-            const stroke = assignedColor ?? "#0F2747";
             const freeLabel =
               typeof area.availableCount === "number" && assignedColor
                 ? area.availableCount
@@ -311,8 +310,8 @@ export function SeatMap({
                   width={w}
                   height={h}
                   fill={fill}
-                  stroke={stroke}
-                  strokeWidth={assignedColor ? 2.5 : 1.25}
+                  stroke="#0F2747"
+                  strokeWidth={assignedColor ? 1.5 : 1.25}
                   strokeDasharray={assignedColor ? undefined : "6 4"}
                   rx={5}
                 />

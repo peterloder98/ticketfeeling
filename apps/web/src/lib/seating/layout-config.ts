@@ -32,14 +32,15 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } | nul
 }
 
 /**
- * Semi-transparent category fill for standing zones / blocks.
- * Dark navy (#0F2747) at low alpha looks like unassigned gray — bump alpha for dark hues.
+ * Category interior fill for standing zones / blocks.
+ * Assignment must read as painted fill, not a colored frame — keep alpha strong.
+ * Dark navy at low alpha looks like unassigned gray — bump further for dark hues.
  */
-export function categoryFillRgba(color: string, alpha = 0.28): string {
+export function categoryFillRgba(color: string, alpha = 0.55): string {
   const rgb = hexToRgb(color);
   if (!rgb) return `rgba(20,184,166,${alpha})`;
   const luminance = (0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b) / 255;
-  const a = luminance < 0.35 ? Math.max(alpha, 0.45) : alpha;
+  const a = luminance < 0.35 ? Math.max(alpha, 0.68) : alpha;
   return `rgba(${rgb.r},${rgb.g},${rgb.b},${a})`;
 }
 
