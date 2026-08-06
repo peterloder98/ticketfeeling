@@ -13,6 +13,7 @@ import {
   fitViewZoom,
   readableScalePxPerCm,
 } from "@/lib/saalplan/view-zoom";
+import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 import { sellableSeatCountsByCategory } from "@/lib/seating/sync-category-capacity";
 
 export type AssignmentCategory = {
@@ -98,6 +99,7 @@ export function EventSeatingAssignmentPanel({
   const [zoom, setZoom] = useState(DEFAULT_VIEW_ZOOM);
   const [viewport, setViewport] = useState({ w: 720, h: 420 });
   const canvasRef = useRef<HTMLDivElement>(null);
+  const { panning, panHandlers } = useCanvasPan(canvasRef);
   const initialLoadDone = useRef(false);
   const seatsRef = useRef(seats);
   seatsRef.current = seats;
@@ -939,7 +941,8 @@ export function EventSeatingAssignmentPanel({
       <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
         <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Scrollen = verschieben · 100 % = lesbare Platznummern
+            Ziehen = verschieben · Leertaste/Alt + ziehen überall · 50 % Standard · 100 % =
+            lesbare Platznummern
             {saving ? " · speichert…" : ""}
           </p>
           <div className="flex items-center gap-1">
@@ -955,8 +958,8 @@ export function EventSeatingAssignmentPanel({
             <button
               type="button"
               className="min-w-[3.25rem] rounded-md px-1 py-1 text-center text-xs tabular-nums hover:bg-[rgba(15,39,71,0.06)]"
-              onClick={() => setZoom(fitZoom)}
-              title="Saal auf Fläche einpassen"
+              onClick={() => setZoom(DEFAULT_VIEW_ZOOM)}
+              title="Standardzoom 50 %"
             >
               {Math.round(zoom * 100)}%
             </button>
@@ -969,11 +972,22 @@ export function EventSeatingAssignmentPanel({
             >
               <ZoomIn className="h-4 w-4" />
             </button>
+            <button
+              type="button"
+              className="ml-1 rounded-md px-1.5 py-1 text-[10px] text-[var(--tf-text-secondary)] hover:bg-[rgba(15,39,71,0.06)]"
+              onClick={() => setZoom(fitZoom)}
+              title="Saal auf Fläche einpassen"
+            >
+              Einpassen
+            </button>
           </div>
         </div>
         <div
           ref={canvasRef}
-          className="h-[min(56vh,520px)] w-full overflow-auto bg-[#f8fafc]"
+          className={`h-[min(56vh,520px)] w-full overflow-auto bg-[#f8fafc] ${
+            panning ? "cursor-grabbing" : "cursor-grab"
+          }`}
+          {...panHandlers}
         >
           <svg
             width={viewW}
@@ -1091,6 +1105,7 @@ export function EventSeatingAssignmentPanel({
                     fill="rgba(20,184,166,0.04)"
                     stroke="#0F2747"
                     rx={4}
+                    {...(target === "block" ? { "data-saalplan-interactive": "" } : {})}
                     style={{ cursor: target === "block" ? "pointer" : "default" }}
                     onClick={() => onBlockClick(obj.id)}
                   />
@@ -1113,6 +1128,7 @@ export function EventSeatingAssignmentPanel({
                           x={left + Math.max(6, padX * 0.55)}
                           y={cy + 3}
                           textAnchor="middle"
+                          data-saalplan-interactive=""
                           style={{
                             fontSize: rowFont,
                             fontWeight: 600,
@@ -1132,6 +1148,7 @@ export function EventSeatingAssignmentPanel({
                           x={left + w - Math.max(6, padX * 0.55)}
                           y={cy + 3}
                           textAnchor="middle"
+                          data-saalplan-interactive=""
                           style={{
                             fontSize: rowFont,
                             fontWeight: 600,
@@ -1163,10 +1180,15 @@ export function EventSeatingAssignmentPanel({
                         ? "#94A3B8"
                         : color;
                     const labelFill = seatLabelFill(fill);
-                    // Always show numbers at readable zoom; floor font so they stay legible near the gate.
-                    const showNumber = r >= 4.5;
+                    // Readable at default 50% zoom; floor font so labels stay legible.
+                    const showNumber = r >= 3.5;
                     return (
-                      <g key={seat.id} style={{ cursor: "pointer" }} onClick={() => onSeatClick(seat)}>
+                      <g
+                        key={seat.id}
+                        data-saalplan-interactive=""
+                        style={{ cursor: "pointer" }}
+                        onClick={() => onSeatClick(seat)}
+                      >
                         <circle
                           cx={cx}
                           cy={cy}

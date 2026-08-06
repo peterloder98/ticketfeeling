@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { updateEventAction } from "@/app/admin/events/actions";
 import { EVENT_STATUSES, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
@@ -60,6 +60,9 @@ export function EventEditForm({
   const [presaleStartsAt, setPresaleStartsAt] = useState(
     toDatetimeLocalValue(event.presaleStartsAt),
   );
+  const [pending, startTransition] = useTransition();
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   function onStatusChange(next: string) {
     setStatus(next);
@@ -69,8 +72,31 @@ export function EventEditForm({
     }
   }
 
+  function onSubmit(formData: FormData) {
+    setError(null);
+    setSaved(false);
+    startTransition(async () => {
+      try {
+        await updateEventAction(formData);
+        setSaved(true);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      }
+    });
+  }
+
   return (
-    <form action={updateEventAction} className="mt-5 grid gap-3 text-sm md:grid-cols-2">
+    <form action={onSubmit} className="relative mt-5 grid gap-3 text-sm md:grid-cols-2">
+      {pending ? (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-[rgba(248,250,252,0.72)] backdrop-blur-[1px]"
+          aria-live="polite"
+        >
+          <p className="rounded-xl border border-[var(--tf-line)] bg-white px-4 py-2 text-sm font-medium text-[var(--tf-navy)] shadow-sm">
+            Speichert…
+          </p>
+        </div>
+      ) : null}
       <input type="hidden" name="eventId" value={event.id} />
 
       <label className="grid gap-1 md:col-span-2">
@@ -246,10 +272,14 @@ export function EventEditForm({
         </span>
       </label>
 
-      <div className="md:col-span-2">
-        <button type="submit" className="tf-btn tf-btn-primary">
-          Event speichern
+      <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+        <button type="submit" className="tf-btn tf-btn-primary" disabled={pending}>
+          {pending ? "Speichert…" : "Event speichern"}
         </button>
+        {saved ? (
+          <p className="text-sm font-medium text-[var(--tf-teal-hover)]">Änderungen gespeichert.</p>
+        ) : null}
+        {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
       </div>
     </form>
   );

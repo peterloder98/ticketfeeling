@@ -11,7 +11,8 @@ export const REFERENCE_SEAT_CELL_CM = 50;
 
 export const MIN_VIEW_ZOOM = 0.2;
 export const MAX_VIEW_ZOOM = 8;
-export const DEFAULT_VIEW_ZOOM = 1;
+/** Start at 50% of readable scale — still shows seat numbers with label floor. */
+export const DEFAULT_VIEW_ZOOM = 0.5;
 export const VIEW_ZOOM_STEP = 0.25;
 
 /** px per plan-cm so a typical seat circle is ~TARGET_SEAT_SCREEN_PX. */

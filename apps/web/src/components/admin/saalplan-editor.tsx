@@ -45,6 +45,7 @@ import {
   fitViewZoom,
   readableScalePxPerCm,
 } from "@/lib/saalplan/view-zoom";
+import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 
 type Props = {
   planId: string;
@@ -106,6 +107,7 @@ export function SaalplanEditor({
   const dragRef = useRef<DragState | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const { panning, isSpacePan, panHandlers } = useCanvasPan(canvasRef);
   const scaleRef = useRef(1);
   const hallRef = useRef({ widthCm: initialWidthCm, depthCm: initialDepthCm });
 
@@ -332,6 +334,8 @@ export function SaalplanEditor({
   }, [selectedId]);
 
   function onPointerDownObject(e: React.PointerEvent, obj: VenuePlanObject) {
+    // Space / Alt / middle-mouse → canvas pan, not object move.
+    if (isSpacePan() || e.altKey || e.button === 1) return;
     e.stopPropagation();
     e.preventDefault();
     setSelectedId(obj.id);
@@ -549,7 +553,7 @@ export function SaalplanEditor({
         <div className="overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
           <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
             <p className="text-xs text-[var(--tf-text-secondary)]">
-              Ziehen = verschieben · Größe über Maße / Reihen rechts · Entf = löschen
+              Ziehen am Block = verschieben · Leertaste/Alt + ziehen = Plan schieben · Entf = löschen
               {dirty ? " · ungespeichert" : ""}
             </p>
             <div className="flex items-center gap-1">
@@ -565,8 +569,8 @@ export function SaalplanEditor({
               <button
                 type="button"
                 className="min-w-[3.25rem] rounded-md px-1 py-1 text-center text-xs tabular-nums hover:bg-[rgba(15,39,71,0.06)]"
-                onClick={() => setZoom(fitZoom)}
-                title="Saal auf Fläche einpassen"
+                onClick={() => setZoom(DEFAULT_VIEW_ZOOM)}
+                title="Standardzoom 50 %"
               >
                 {Math.round(zoom * 100)}%
               </button>
@@ -579,12 +583,23 @@ export function SaalplanEditor({
               >
                 <ZoomIn className="h-4 w-4" />
               </button>
+              <button
+                type="button"
+                className="ml-1 rounded-md px-1.5 py-1 text-[10px] text-[var(--tf-text-secondary)] hover:bg-[rgba(15,39,71,0.06)]"
+                onClick={() => setZoom(fitZoom)}
+                title="Saal auf Fläche einpassen"
+              >
+                Einpassen
+              </button>
             </div>
           </div>
 
           <div
             ref={canvasRef}
-            className="h-[min(72vh,640px)] w-full overflow-auto bg-[#f8fafc]"
+            className={`h-[min(72vh,640px)] w-full overflow-auto bg-[#f8fafc] ${
+              panning ? "cursor-grabbing" : "cursor-grab"
+            }`}
+            {...panHandlers}
           >
             <svg
               ref={svgRef}
@@ -703,6 +718,7 @@ export function SaalplanEditor({
                     <g
                       key={obj.id}
                       transform={`rotate(${obj.rotationDeg} ${cx} ${cy})`}
+                      data-saalplan-interactive=""
                       onPointerDown={(e) => onPointerDownObject(e, obj)}
                       style={{ cursor: "move" }}
                     >

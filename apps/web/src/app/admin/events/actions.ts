@@ -667,8 +667,9 @@ export async function updateEventAction(formData: FormData) {
     await ensureEventSeats(event.id);
   }
 
+  // Revalidate public + list surfaces. Skip remounting this admin detail page
+  // (no redirect) so the form stays visible without a blank flash.
   revalidatePath("/admin/events");
-  revalidatePath(`/admin/events/${event.id}`);
   revalidatePath("/events");
   revalidatePath(`/event/${event.slug}`);
   if (event.slug !== slug) revalidatePath(`/event/${slug}`);
@@ -679,5 +680,5 @@ export async function updateEventAction(formData: FormData) {
     revalidatePath(`/admin/tours/${tourId}`);
     revalidatePath("/admin/tours");
   }
-  redirect(`/admin/events/${event.id}?saved=1`);
+  return { ok: true as const, eventId: event.id };
 }

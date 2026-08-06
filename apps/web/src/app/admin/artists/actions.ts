@@ -267,8 +267,8 @@ export async function updateEventLineupAction(formData: FormData) {
     after: { artistCount: drafts.length, names: drafts.map((d) => d.name) },
   });
 
-  revalidatePath(`/admin/events/${event.id}`);
+  // Soft save: no redirect / no admin-detail remount (avoids blank flash).
   revalidatePath(`/event/${event.slug}`);
   revalidatePath("/admin/artists");
-  redirect(`/admin/events/${event.id}?saved=1#lineup`);
+  return { ok: true as const, eventId: event.id };
 }
