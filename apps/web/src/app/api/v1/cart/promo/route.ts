@@ -34,7 +34,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: { code: guard.code } }, { status: 403 });
   }
   const ip = clientIpFromRequest(request);
-  const limited = takeRateLimit({ key: `promo:${ip}`, limit: 20, windowMs: 60 * 1000 });
+  const limited = takeRateLimit({
+    key: `promo:${ip}`,
+    limit: 12,
+    windowMs: 60 * 1000,
+  });
   if (!limited.ok) {
     return NextResponse.json(
       { error: { code: "RATE_LIMITED" } },

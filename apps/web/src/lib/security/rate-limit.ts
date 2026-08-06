@@ -2,6 +2,17 @@ type Bucket = { count: number; resetAt: number };
 
 const buckets = new Map<string, Bucket>();
 
+/**
+ * In-process rate limit (best-effort).
+ *
+ * Multi-instance gap: each Vercel/Node isolate keeps its own Map — limits do not
+ * aggregate across instances. Prefer Upstash/Redis when available; until then this
+ * still blunts single-instance abuse (promo brute-force, checkout spam, login).
+ * Do not block deploys on Redis configuration.
+ *
+ * Env (optional, future): UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN —
+ * not wired yet (no Redis client in dependencies).
+ */
 function prune(now: number) {
   if (buckets.size < 2000) return;
   for (const [key, b] of buckets) {
@@ -9,10 +20,18 @@ function prune(now: number) {
   }
 }
 
-/**
- * Lightweight in-process rate limit (best-effort; resets on deploy).
- * Prefer Redis/Upstash in multi-instance production later.
- */
+/** Default windows used by public commerce routes (documented for ops). */
+export const RATE_LIMIT_PRESETS = {
+  /** Promo / gift-card guessing */
+  promo: { limit: 12, windowMs: 60 * 1000 },
+  /** Add-to-cart bursts */
+  cartAdd: { limit: 40, windowMs: 60 * 1000 },
+  /** Checkout confirm */
+  checkout: { limit: 12, windowMs: 10 * 60 * 1000 },
+  /** Credential login */
+  login: { limit: 8, windowMs: 15 * 60 * 1000 },
+} as const;
+
 export function takeRateLimit(input: {
   key: string;
   limit: number;

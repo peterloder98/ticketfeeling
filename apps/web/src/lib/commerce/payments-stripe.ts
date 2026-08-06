@@ -1,6 +1,7 @@
 import type Stripe from "stripe";
 import { prisma } from "@/lib/db";
 import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
+import { paymentAmountMatchesOrder } from "@/lib/commerce/payment-amount-guard";
 import { shouldVoidTicketsOnRefund } from "@/lib/commerce/refund-rules";
 import { releaseOrderHolds } from "@/lib/commerce/release-order-holds";
 import { normalizeSepaTicketReleaseMode } from "@/lib/commerce/sepa-availability";
@@ -250,6 +251,54 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           break;
         }
 
+        const amountCheck = paymentAmountMatchesOrder({
+          paymentAmountCents: pi.amount,
+          paymentCurrency: pi.currency,
+          customerTotalCents: order.customerTotalCents,
+          grossCents: order.grossCents,
+          orderCurrency: order.currency,
+        });
+        if (!amountCheck.ok) {
+          console.error(
+            "[stripe] KRITISCH: PaymentIntent-Betrag stimmt nicht mit Bestellung überein — keine Fulfillment",
+            {
+              orderId,
+              orderNumber: order.orderNumber,
+              paymentIntentId: pi.id,
+              reason: amountCheck.reason,
+              erwartetCents: amountCheck.expectedCents,
+              tatsaechlichCents: amountCheck.actualCents,
+              erwartetWaehrung: amountCheck.expectedCurrency,
+              tatsaechlichWaehrung: amountCheck.actualCurrency,
+            },
+          );
+          await prisma.order.update({
+            where: { id: orderId },
+            data: {
+              paymentStatus: "needs_review",
+              failedReasonCode: "PAYMENT_AMOUNT_MISMATCH",
+              failedReasonMessage: `Stripe-Betrag weicht ab (${amountCheck.actualCents} ${amountCheck.actualCurrency} vs. erwartet ${amountCheck.expectedCents} ${amountCheck.expectedCurrency}). Bitte manuell prüfen — Tickets wurden nicht ausgestellt.`,
+            },
+          });
+          await writeAudit({
+            organizationId: order.organizationId,
+            action: "payment.amount_mismatch_blocked",
+            entityType: "order",
+            entityId: orderId,
+            after: {
+              paymentIntentId: pi.id,
+              reason: amountCheck.reason,
+              expectedCents: amountCheck.expectedCents,
+              actualCents: amountCheck.actualCents,
+              expectedCurrency: amountCheck.expectedCurrency,
+              actualCurrency: amountCheck.actualCurrency,
+              fulfilled: false,
+            },
+            reason: "PaymentIntent amount/currency mismatch — fulfillment blocked",
+          });
+          break;
+        }
+
         const isSepa = pi.payment_method_types?.includes("sepa_debit");
         const sepaDetails = isSepa ? await extractSepaDetails(pi) : null;
 
@@ -292,7 +341,41 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             ? pi.latest_charge
             : pi.latest_charge?.id ?? null;
         await applyBalanceFees(orderId, chargeId);
-        await fulfillPaidOrder(orderId);
+        try {
+          await fulfillPaidOrder(orderId);
+        } catch (fulfillError) {
+          const code =
+            fulfillError instanceof Error ? fulfillError.message : "FULFILL_FAILED";
+          const promoFail =
+            code === "DISCOUNT_EXHAUSTED" ||
+            code === "DISCOUNT_NOT_FOUND" ||
+            code.startsWith("GIFT_CARD_");
+          if (promoFail) {
+            console.error(
+              "[stripe] KRITISCH: Promo-/Gutschein-Einlösung nach Zahlung fehlgeschlagen — keine Tickets",
+              { orderId, paymentIntentId: pi.id, code },
+            );
+            await prisma.order.update({
+              where: { id: orderId },
+              data: {
+                paymentStatus: "needs_review",
+                failedReasonCode: code,
+                failedReasonMessage:
+                  "Rabatt oder Gutschein konnte nach erfolgreicher Zahlung nicht eingelöst werden. Bitte manuell prüfen — Tickets wurden nicht ausgestellt.",
+              },
+            });
+            await writeAudit({
+              organizationId: order.organizationId,
+              action: "payment.promo_redeem_blocked",
+              entityType: "order",
+              entityId: orderId,
+              after: { paymentIntentId: pi.id, code, fulfilled: false },
+              reason: "Promo redemption failed after paid — fulfillment blocked",
+            });
+            break;
+          }
+          throw fulfillError;
+        }
         await prisma.order.update({
           where: { id: orderId },
           data: {

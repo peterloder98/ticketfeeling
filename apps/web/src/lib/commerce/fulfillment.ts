@@ -18,6 +18,8 @@ import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { buildBillingSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
 import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating";
+import { redeemOrderPromotions } from "@/lib/commerce/discounts";
+import { isOrderAlreadyFulfilled } from "@/lib/commerce/payment-amount-guard";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import type { Prisma } from "@prisma/client";
 
@@ -155,6 +157,11 @@ export async function fulfillPaidOrder(orderId: string) {
   return prisma
     .$transaction(
       async (tx) => {
+    // Serialize concurrent fulfill attempts (duplicate webhooks) on this order row.
+    await tx.$queryRaw`
+      SELECT id FROM orders WHERE id = ${orderId}::uuid FOR UPDATE
+    `;
+
     const order = await tx.order.findUnique({
       where: { id: orderId },
       include: {
@@ -184,7 +191,14 @@ export async function fulfillPaidOrder(orderId: string) {
       throw new Error("PAYMENT_NOT_CONFIRMED");
     }
 
-    if (order.fulfillmentLockedAt && order.status === "fulfilled" && order.tickets.length > 0) {
+    // Idempotent: second webhook must not mint tickets or rotate QR tokens.
+    if (
+      isOrderAlreadyFulfilled({
+        fulfillmentLockedAt: order.fulfillmentLockedAt,
+        status: order.status,
+        ticketCount: order.tickets.length,
+      })
+    ) {
       return { order, alreadyFulfilled: true as const };
     }
 
@@ -538,6 +552,15 @@ export async function fulfillPaidOrder(orderId: string) {
           },
         });
       }
+
+      // Same transaction as ticket mint: rollback on failure → no over-redeem / stable QR retry.
+      await redeemOrderPromotions(tx, {
+        id: order.id,
+        organizationId: order.organizationId,
+        discountCode: order.discountCode,
+        giftCardCode: order.giftCardCode,
+        giftCardAppliedCents: order.giftCardAppliedCents,
+      });
 
       const plainTokens = planned.map((p) => {
         const ticket = ticketByNumber.get(p.ticketNumber);

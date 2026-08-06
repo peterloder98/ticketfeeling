@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 
 export type DiscountComputation = {
   code: string;
@@ -6,6 +7,33 @@ export type DiscountComputation = {
   discountCents: number;
   label: string;
 };
+
+export type GiftCardDebitPlan = {
+  balanceAfterCents: number;
+  status: "active" | "exhausted";
+};
+
+/** Pure helper — gift card balance after a single debit (or error). */
+export function planGiftCardDebit(
+  balanceCents: number,
+  appliedCents: number,
+): GiftCardDebitPlan {
+  const applied = Math.max(0, Math.floor(appliedCents));
+  if (applied <= 0) {
+    return {
+      balanceAfterCents: balanceCents,
+      status: balanceCents <= 0 ? "exhausted" : "active",
+    };
+  }
+  if (balanceCents < applied) {
+    throw new Error("GIFT_CARD_INSUFFICIENT");
+  }
+  const balanceAfterCents = balanceCents - applied;
+  return {
+    balanceAfterCents,
+    status: balanceAfterCents <= 0 ? "exhausted" : "active",
+  };
+}
 
 export async function resolveDiscountCode(input: {
   organizationId: string;
@@ -76,4 +104,93 @@ export async function resolveGiftCard(input: {
     balanceAfter: card.balanceCents - applied,
     cardId: card.id,
   };
+}
+
+/**
+ * Atomically redeem discount + debit gift card for a paid order.
+ * Must run inside the same DB transaction as ticket minting so a failed
+ * fulfill rolls back redemption (no double-debit on retry / duplicate webhook).
+ */
+export async function redeemOrderPromotions(
+  tx: Prisma.TransactionClient,
+  order: {
+    id: string;
+    organizationId: string;
+    discountCode: string | null;
+    giftCardCode: string | null;
+    giftCardAppliedCents: number;
+  },
+): Promise<{ discountRedeemed: boolean; giftCardDebitedCents: number }> {
+  let discountRedeemed = false;
+  let giftCardDebitedCents = 0;
+
+  const discountCode = order.discountCode?.trim().toUpperCase() || null;
+  if (discountCode) {
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        redemption_count: number;
+        max_redemptions: number | null;
+        active: boolean;
+      }>
+    >`
+      SELECT id, redemption_count, max_redemptions, active
+      FROM discount_codes
+      WHERE organization_id = ${order.organizationId}::uuid
+        AND code = ${discountCode}
+      FOR UPDATE
+    `;
+    const row = rows[0];
+    if (!row || !row.active) {
+      throw new Error("DISCOUNT_NOT_FOUND");
+    }
+    if (row.max_redemptions != null && row.redemption_count >= row.max_redemptions) {
+      throw new Error("DISCOUNT_EXHAUSTED");
+    }
+    await tx.discountCode.update({
+      where: { id: row.id },
+      data: { redemptionCount: { increment: 1 } },
+    });
+    discountRedeemed = true;
+  }
+
+  const giftCode = order.giftCardCode?.trim().toUpperCase() || null;
+  const applied = Math.max(0, Math.floor(order.giftCardAppliedCents || 0));
+  if (giftCode && applied > 0) {
+    const rows = await tx.$queryRaw<
+      Array<{
+        id: string;
+        balance_cents: number;
+        status: string;
+        expires_at: Date | null;
+      }>
+    >`
+      SELECT id, balance_cents, status, expires_at
+      FROM gift_cards
+      WHERE organization_id = ${order.organizationId}::uuid
+        AND code = ${giftCode}
+      FOR UPDATE
+    `;
+    const card = rows[0];
+    if (!card) {
+      throw new Error("GIFT_CARD_NOT_FOUND");
+    }
+    if (card.status !== "active") {
+      throw new Error("GIFT_CARD_INACTIVE");
+    }
+    if (card.expires_at && card.expires_at < new Date()) {
+      throw new Error("GIFT_CARD_EXPIRED");
+    }
+    const plan = planGiftCardDebit(card.balance_cents, applied);
+    await tx.giftCard.update({
+      where: { id: card.id },
+      data: {
+        balanceCents: plan.balanceAfterCents,
+        status: plan.status,
+      },
+    });
+    giftCardDebitedCents = applied;
+  }
+
+  return { discountRedeemed, giftCardDebitedCents };
 }

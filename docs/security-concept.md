@@ -31,8 +31,16 @@
 * Raw body für HMAC
 * Idempotente Inbox
 * Replay-Schutz (event id + timestamp tolerance)
+* PaymentIntent-Betrag/Währung vs. `order.customerTotalCents` (Mismatch → keine Fulfillment, `needs_review`)
+* Rabatt-/Gutschein-Einlösung atomar in Fulfillment-Transaktion (`FOR UPDATE`)
 * Keine Kartendaten in TF
 * Direct charges / connected account des Veranstalters
+
+## 4b. Rate Limits
+
+* In-process Map (`takeRateLimit`) auf Promo, Cart, Checkout, Login
+* **Multi-Instance-Lücke:** Limits gelten pro Isolat (Vercel), nicht cluster-weit — Upstash/Redis geplant, Deploy nicht blockieren
+* Klarere Presets in `apps/web/src/lib/security/rate-limit.ts`
 
 ## 5. Tickets & QR
 

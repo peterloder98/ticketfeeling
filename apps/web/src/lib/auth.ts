@@ -35,7 +35,7 @@ export const authOptions: NextAuthOptions = {
         const email = parsed.data.email.toLowerCase().trim();
         const limited = takeRateLimit({
           key: `login:${email}`,
-          limit: 10,
+          limit: 8,
           windowMs: 15 * 60 * 1000,
         });
         if (!limited.ok) return null;
