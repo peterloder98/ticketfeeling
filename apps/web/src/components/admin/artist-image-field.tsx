@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Check } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
+import { ArtistImageCropModal } from "@/components/admin/artist-image-crop-modal";
 
 type Props = {
   kind: "profile" | "header";
@@ -18,8 +19,8 @@ type Props = {
 };
 
 const KIND_HINT: Record<Props["kind"], string> = {
-  profile: "Wird auf ca. 1000 px Kante optimiert (WebP).",
-  header: "Wird auf ca. 1800 px Kante optimiert (WebP).",
+  profile: "Ausschnitt wählen, dann ca. 1000 px Kante (WebP).",
+  header: "Ausschnitt wählen, dann ca. 1800 px Breite (WebP).",
 };
 
 export function ArtistImageField({
@@ -37,6 +38,7 @@ export function ArtistImageField({
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [showUrl, setShowUrl] = useState(false);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function ArtistImageField({
     onUrlChange?.(next);
   }
 
-  async function uploadFile(file: File) {
+  function openCrop(file: File) {
     if (!file.type.startsWith("image/")) {
       setError("Bitte eine Bilddatei wählen (JPG, PNG, WebP).");
       return;
@@ -57,11 +59,16 @@ export function ArtistImageField({
       setError("Maximal 12 MB.");
       return;
     }
+    setError(null);
+    setCropFile(file);
+  }
+
+  async function uploadBlob(blob: Blob, filename: string) {
     setUploading(true);
     setError(null);
     try {
       const body = new FormData();
-      body.append("file", file);
+      body.append("file", blob, filename);
       body.append("kind", kind);
       if (artistId) body.append("artistId", artistId);
 
@@ -93,6 +100,12 @@ export function ArtistImageField({
     } finally {
       setUploading(false);
     }
+  }
+
+  async function onCropConfirm(blob: Blob) {
+    setCropFile(null);
+    const filename = kind === "header" ? "artist-header.jpg" : "artist-profile.jpg";
+    await uploadBlob(blob, filename);
   }
 
   async function clearImage() {
@@ -177,7 +190,7 @@ export function ArtistImageField({
             e.preventDefault();
             setDragOver(false);
             const file = e.dataTransfer.files?.[0];
-            if (file) void uploadFile(file);
+            if (file) openCrop(file);
           }}
           className={`flex min-h-[120px] cursor-pointer flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed px-4 py-6 text-center transition ${
             dragOver
@@ -200,7 +213,7 @@ export function ArtistImageField({
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void uploadFile(file);
+          if (file) openCrop(file);
           e.target.value = "";
         }}
       />
@@ -226,6 +239,15 @@ export function ArtistImageField({
       ) : null}
 
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+
+      {cropFile ? (
+        <ArtistImageCropModal
+          kind={kind}
+          file={cropFile}
+          onConfirm={(blob) => void onCropConfirm(blob)}
+          onCancel={() => setCropFile(null)}
+        />
+      ) : null}
     </div>
   );
 }
