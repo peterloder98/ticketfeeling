@@ -4,6 +4,7 @@ import { useState } from "react";
 import { updateEventAction } from "@/app/admin/events/actions";
 import { EVENT_STATUSES, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
+import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
 import { EventVenuePlanFields } from "@/components/admin/event-venue-plan-fields";
 
@@ -52,12 +53,21 @@ export function EventEditForm({
   venuePlan: { id: string; name: string } | null;
   tours: TourOpt[];
 }) {
+  const [status, setStatus] = useState(event.status);
   const [startsAt, setStartsAt] = useState(toDatetimeLocalValue(event.eventStartsAt));
   const [endsAt, setEndsAt] = useState(toDatetimeLocalValue(event.eventEndsAt));
   const [doorsOpenAt, setDoorsOpenAt] = useState(toDatetimeLocalValue(event.doorsOpenAt));
   const [presaleStartsAt, setPresaleStartsAt] = useState(
     toDatetimeLocalValue(event.presaleStartsAt),
   );
+
+  function onStatusChange(next: string) {
+    setStatus(next);
+    // Switching into „Im Verkauf“ → Vorverkaufsstart = jetzt (server enforces on save).
+    if (isEventSalesReleased(next) && !isEventSalesReleased(status)) {
+      setPresaleStartsAt(toDatetimeLocalValue(new Date()));
+    }
+  }
 
   return (
     <form action={updateEventAction} className="mt-5 grid gap-3 text-sm md:grid-cols-2">
@@ -112,13 +122,23 @@ export function EventEditForm({
 
       <label className="grid gap-1 md:col-span-2">
         <span className="font-medium">Status / Verkaufsfreigabe</span>
-        <select name="status" className="tf-input" defaultValue={event.status}>
-          {EVENT_STATUSES.map((status) => (
-            <option key={status} value={status}>
-              {eventStatusLabel(status)}
+        <select
+          name="status"
+          className="tf-input"
+          value={status}
+          onChange={(e) => onStatusChange(e.target.value)}
+        >
+          {EVENT_STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {eventStatusLabel(s)}
             </option>
           ))}
         </select>
+        {isEventSalesReleased(status) && !isEventSalesReleased(event.status) ? (
+          <span className="text-xs text-[var(--tf-text-secondary)]">
+            Vorverkaufsstart wird auf jetzt gesetzt — das Event ist sofort online kaufbar.
+          </span>
+        ) : null}
       </label>
 
       <label className="flex items-center gap-2 md:col-span-2">

@@ -531,7 +531,11 @@ export async function updateEventAction(formData: FormData) {
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   const eventEndsAt = parseDt(formData, "eventEndsAt");
   const doorsOpenAt = parseDt(formData, "doorsOpenAt");
-  const presaleStartsAt = parseDt(formData, "presaleStartsAt");
+  const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
+  // Manual „Im Verkauf“: Vorverkaufsstart becomes now so the shop is buyable immediately.
+  const becomingOnSale =
+    isEventSalesReleased(status) && !isEventSalesReleased(event.status);
+  const presaleStartsAt = becomingOnSale ? new Date() : formPresaleStartsAt;
   const subtitle = String(formData.get("subtitle") ?? "").trim() || null;
   const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "").trim() || null;
@@ -654,6 +658,7 @@ export async function updateEventAction(formData: FormData) {
       administrationFeeTaxMode,
       administrationFeeCustomTaxRateBasisPoints,
       showRemainingAvailability,
+      ...(becomingOnSale ? { presaleStartsAt } : {}),
     },
   });
 

@@ -25,7 +25,9 @@ export function SiteHeaderClient({
     pathname.startsWith("/admin") ||
     pathname.startsWith("/kasse") ||
     pathname.startsWith("/scanner");
-  const homeHref = boxOfficeOnly || (isAdminChrome && canKasse && !canAdmin) ? "/kasse" : isAdminChrome ? "/admin" : "/";
+  // Admin logo → public homepage (leave admin). Vorverkaufsstelle stays on Tageskasse.
+  const homeHref =
+    boxOfficeOnly || (isAdminChrome && canKasse && !canAdmin) ? "/kasse" : "/";
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.96)] backdrop-blur-xl">

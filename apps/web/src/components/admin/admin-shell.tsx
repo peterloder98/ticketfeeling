@@ -24,7 +24,8 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const navItems = boxOfficeOnly ? BOX_OFFICE_NAV : ADMIN_TOP_NAV;
-  const homeHref = boxOfficeOnly ? "/kasse" : "/admin";
+  // Logo leaves admin → public shop home (sidebar “Zur Website” stays as text fallback).
+  const homeHref = boxOfficeOnly ? "/kasse" : "/";
 
   return (
     <div

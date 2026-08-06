@@ -1072,8 +1072,9 @@ export function EventSeatingAssignmentPanel({
               const top = toY(obj.yCm) - toS(obj.heightCm) / 2;
               const w = toS(obj.widthCm);
               const h = toS(obj.heightCm);
-              const padX = w * 0.12;
-              const padY = h * 0.14;
+              // Match geometry editor / public seat-map padding so seat dots stay large enough for numbers.
+              const padX = w * 0.05;
+              const padY = h * 0.05;
               const cols = Math.max(1, obj.seatsPerRow ?? 1);
               const rows = Math.max(1, obj.rows ?? 1);
               const cellW = (w - padX * 2) / cols;
@@ -1105,14 +1106,15 @@ export function EventSeatingAssignmentPanel({
                   {Array.from({ length: rows }, (_, ri) => {
                     const rowNum = ri + 1;
                     const cy = top + padY + cellH * (rowNum - 0.5);
+                    const rowFont = Math.max(7, Math.min(11, cellH * 0.28));
                     return (
                       <g key={`row-${rowNum}`}>
                         <text
-                          x={left + padX * 0.4}
+                          x={left + Math.max(6, padX * 0.55)}
                           y={cy + 3}
                           textAnchor="middle"
                           style={{
-                            fontSize: Math.max(8, Math.min(11, cellH * 0.35)),
+                            fontSize: rowFont,
                             fontWeight: 600,
                             fill: "#64748B",
                             cursor: target === "row" ? "pointer" : "default",
@@ -1127,11 +1129,11 @@ export function EventSeatingAssignmentPanel({
                           {rowNum}
                         </text>
                         <text
-                          x={left + w - padX * 0.4}
+                          x={left + w - Math.max(6, padX * 0.55)}
                           y={cy + 3}
                           textAnchor="middle"
                           style={{
-                            fontSize: Math.max(8, Math.min(11, cellH * 0.35)),
+                            fontSize: rowFont,
                             fontWeight: 600,
                             fill: "#64748B",
                             cursor: target === "row" ? "pointer" : "default",
@@ -1160,6 +1162,9 @@ export function EventSeatingAssignmentPanel({
                       : seat.status === "sold" || seat.status === "held"
                         ? "#94A3B8"
                         : color;
+                    const labelFill = seatLabelFill(fill);
+                    // Always show numbers at readable zoom; floor font so they stay legible near the gate.
+                    const showNumber = r >= 4.5;
                     return (
                       <g key={seat.id} style={{ cursor: "pointer" }} onClick={() => onSeatClick(seat)}>
                         <circle
@@ -1171,15 +1176,15 @@ export function EventSeatingAssignmentPanel({
                           strokeWidth={seat.locked ? 1.5 : 1}
                           strokeDasharray={seat.locked ? "3 2" : undefined}
                         />
-                        {r >= 6 ? (
+                        {showNumber ? (
                           <text
                             x={cx}
-                            y={cy + 3}
+                            y={cy + r * 0.35}
                             textAnchor="middle"
                             style={{
-                              fontSize: Math.min(9, r * 0.9),
+                              fontSize: Math.max(7, Math.min(10, r * 0.95)),
                               fontWeight: 700,
-                              fill: seat.locked || !seat.categoryId ? "#0F2747" : "#fff",
+                              fill: labelFill,
                               pointerEvents: "none",
                             }}
                           >
@@ -1222,4 +1227,23 @@ export function EventSeatingAssignmentPanel({
       </div>
     </section>
   );
+}
+
+/** Navy on light fills, white on dark category colors — keeps seat numbers readable. */
+function seatLabelFill(hexOrCss: string): string {
+  const raw = hexOrCss.replace("#", "").trim();
+  const full =
+    raw.length === 3
+      ? raw
+          .split("")
+          .map((c) => c + c)
+          .join("")
+      : raw;
+  if (full.length !== 6 || /[^0-9a-fA-F]/.test(full)) return "#0F2747";
+  const r = parseInt(full.slice(0, 2), 16);
+  const g = parseInt(full.slice(2, 4), 16);
+  const b = parseInt(full.slice(4, 6), 16);
+  // Relative luminance (sRGB approximation)
+  const luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luma > 0.55 ? "#0F2747" : "#FFFFFF";
 }

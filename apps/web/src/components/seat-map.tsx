@@ -374,20 +374,6 @@ export function SeatMap({
         </svg>
       </div>
 
-      {map.categories.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--tf-text-secondary)]">
-          <span className="font-medium text-[var(--tf-navy)]">Kategorien</span>
-          {map.categories.map((c, i) => (
-            <Legend
-              key={c.id}
-              color={resolveCategoryColor(c.color, i)}
-              label={c.name}
-              emphasize={activeCategoryId === c.id}
-            />
-          ))}
-        </div>
-      ) : null}
-
       {hint ? <p className="text-sm text-[var(--tf-text-secondary)]">{hint}</p> : null}
     </div>
   );
@@ -414,20 +400,14 @@ function Legend({
   label,
   border,
   dashed,
-  emphasize,
 }: {
   color: string;
   label: string;
   border?: string;
   dashed?: boolean;
-  emphasize?: boolean;
 }) {
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 ${
-        emphasize ? "font-semibold text-[var(--tf-navy)]" : ""
-      }`}
-    >
+    <span className="inline-flex items-center gap-1.5">
       <span
         className="inline-block h-3 w-3 rounded-full"
         style={{
