@@ -14,6 +14,7 @@ import { withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
+import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { buildBillingSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
 import type { Prisma } from "@prisma/client";
@@ -296,13 +297,25 @@ export async function fulfillPaidOrder(orderId: string) {
           buyerSnapshot: buyerSnapshot as Prisma.InputJsonValue,
           items: {
             create: [
-              ...order.items.map((item) => ({
-                description: buildInvoiceTicketDescription(item),
-                quantity: item.quantity,
-                taxRateBps: item.taxRateBps,
-                netCents: item.netCents,
-                taxCents: item.taxCents,
-                grossCents: item.grossCents,
+              ...mergeSameCategoryLines(
+                order.items.map((item) => ({
+                  quantity: item.quantity,
+                  categoryLabel: item.categorySnapshot,
+                  unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+                  lineGrossCents: item.grossCents,
+                  lineNetCents: item.netCents,
+                  lineTaxCents: item.taxCents,
+                  eventKey: item.eventId,
+                  taxRateBps: item.taxRateBps,
+                  description: buildInvoiceTicketDescription(item),
+                })),
+              ).map((line) => ({
+                description: line.description,
+                quantity: line.quantity,
+                taxRateBps: line.taxRateBps,
+                netCents: line.lineNetCents ?? 0,
+                taxCents: line.lineTaxCents ?? 0,
+                grossCents: line.lineGrossCents,
               })),
               ...feeInvoiceLines(order),
             ],
@@ -705,10 +718,18 @@ export async function fulfillPaidOrder(orderId: string) {
                 .filter(Boolean)
                 .join(" ")
                 .trim() || "Unbekannt";
-              const categories = fresh.items.map((item) => ({
-                name: item.categorySnapshot || item.productNameSnapshot,
-                quantity: item.quantity,
-                grossCents: item.grossCents,
+              const categories = mergeSameCategoryLines(
+                fresh.items.map((item) => ({
+                  quantity: item.quantity,
+                  categoryLabel: item.categorySnapshot || item.productNameSnapshot,
+                  unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+                  lineGrossCents: item.grossCents,
+                  eventKey: item.eventId,
+                })),
+              ).map((line) => ({
+                name: line.categoryLabel,
+                quantity: line.quantity,
+                grossCents: line.lineGrossCents,
               }));
               const invoiceRow = fresh.invoices[0];
               const invoiceDownloadUrl = invoiceRow

@@ -10,6 +10,7 @@ import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tick
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
+import { mergeOrderTicketPositions } from "@/lib/commerce/merge-category-lines";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tickets" };
@@ -80,83 +81,87 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
     ticketsByItem.set(ticket.orderItemId, list);
   }
 
-  const positions: OrderPositionView[] = order.items.map((item) => {
-    const itemTickets = ticketsByItem.get(item.id) ?? [];
-    const firstTicket = itemTickets[0];
-    const whenLabel = item.eventStartsAtSnapshot
-      ? item.eventStartsAtSnapshot.toLocaleString("de-DE", {
-          timeZone: "Europe/Berlin",
-          dateStyle: "medium",
-          timeStyle: "short",
-        })
-      : firstTicket?.event.eventStartsAt
-        ? firstTicket.event.eventStartsAt.toLocaleString("de-DE", {
+  const positions: OrderPositionView[] = mergeOrderTicketPositions(
+    order.items.map((item) => {
+      const itemTickets = ticketsByItem.get(item.id) ?? [];
+      const firstTicket = itemTickets[0];
+      const whenLabel = item.eventStartsAtSnapshot
+        ? item.eventStartsAtSnapshot.toLocaleString("de-DE", {
             timeZone: "Europe/Berlin",
             dateStyle: "medium",
             timeStyle: "short",
           })
+        : firstTicket?.event.eventStartsAt
+          ? firstTicket.event.eventStartsAt.toLocaleString("de-DE", {
+              timeZone: "Europe/Berlin",
+              dateStyle: "medium",
+              timeStyle: "short",
+            })
+          : null;
+      const placeLabel =
+        item.locationSnapshot ??
+        (firstTicket?.event.location
+          ? [firstTicket.event.location.name, firstTicket.event.location.city]
+              .filter(Boolean)
+              .join(", ")
+          : null);
+      const doorsOpenAt = firstTicket?.event.doorsOpenAt ?? null;
+      const doorsOpenLabel = doorsOpenAt
+        ? doorsOpenAt.toLocaleTimeString("de-DE", {
+            timeZone: "Europe/Berlin",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
         : null;
-    const placeLabel =
-      item.locationSnapshot ??
-      (firstTicket?.event.location
-        ? [firstTicket.event.location.name, firstTicket.event.location.city]
-            .filter(Boolean)
-            .join(", ")
-        : null);
-    const doorsOpenAt = firstTicket?.event.doorsOpenAt ?? null;
-    const doorsOpenLabel = doorsOpenAt
-      ? doorsOpenAt.toLocaleTimeString("de-DE", {
-          timeZone: "Europe/Berlin",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-      : null;
-    const startsAt =
-      item.eventStartsAtSnapshot ?? firstTicket?.event.eventStartsAt ?? null;
-    const endsAt = firstTicket?.event.eventEndsAt ?? null;
+      const startsAt =
+        item.eventStartsAtSnapshot ?? firstTicket?.event.eventStartsAt ?? null;
+      const endsAt = firstTicket?.event.eventEndsAt ?? null;
 
-    return {
-      id: item.id,
-      quantity: item.quantity,
-      categorySnapshot: item.categorySnapshot,
-      eventNameSnapshot: item.eventNameSnapshot,
-      whenLabel,
-      placeLabel,
-      doorsOpenLabel,
-      startsAtIso: startsAt ? startsAt.toISOString() : null,
-      endsAtIso: endsAt ? endsAt.toISOString() : null,
-      tickets: itemTickets.map((ticket) => {
-        const transferred = isTicketTransferred({
-          holderCustomerId: ticket.holderCustomerId,
-          orderCustomerId: order.customerId,
-        });
-        const canEntry = canUseTicketEntryWithGuestToken({
-          sessionUserId: session?.user?.id,
-          sessionEmail: session?.user?.email,
-          holder: ticket.holder,
-          isStaff,
-          hasAccessToken,
-          transferred,
-        });
-        return {
-          id: ticket.id,
-          ticketNumber: ticket.ticketNumber,
-          categorySnapshot: ticket.categorySnapshot,
-          seatLabel: ticket.seatLabel,
-          presence: ticket.presence,
-          qrToken: canEntry ? (ticket.qrTokens[0]?.token ?? null) : null,
-          holderLabel: ticket.holder
-            ? `${ticket.holder.firstName} ${ticket.holder.lastName}`.trim()
-            : null,
-          holderFirstName: ticket.holder?.firstName ?? null,
-          holderLastName: ticket.holder?.lastName ?? null,
-          holderEmail: ticket.holder?.email ?? null,
-          transferred,
-          canUseEntry: canEntry,
-        };
-      }),
-    };
-  });
+      return {
+        id: item.id,
+        quantity: item.quantity,
+        categorySnapshot: item.categorySnapshot,
+        eventNameSnapshot: item.eventNameSnapshot,
+        unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+        eventKey: item.eventId,
+        whenLabel,
+        placeLabel,
+        doorsOpenLabel,
+        startsAtIso: startsAt ? startsAt.toISOString() : null,
+        endsAtIso: endsAt ? endsAt.toISOString() : null,
+        tickets: itemTickets.map((ticket) => {
+          const transferred = isTicketTransferred({
+            holderCustomerId: ticket.holderCustomerId,
+            orderCustomerId: order.customerId,
+          });
+          const canEntry = canUseTicketEntryWithGuestToken({
+            sessionUserId: session?.user?.id,
+            sessionEmail: session?.user?.email,
+            holder: ticket.holder,
+            isStaff,
+            hasAccessToken,
+            transferred,
+          });
+          return {
+            id: ticket.id,
+            ticketNumber: ticket.ticketNumber,
+            categorySnapshot: ticket.categorySnapshot,
+            seatLabel: ticket.seatLabel,
+            presence: ticket.presence,
+            qrToken: canEntry ? (ticket.qrTokens[0]?.token ?? null) : null,
+            holderLabel: ticket.holder
+              ? `${ticket.holder.firstName} ${ticket.holder.lastName}`.trim()
+              : null,
+            holderFirstName: ticket.holder?.firstName ?? null,
+            holderLastName: ticket.holder?.lastName ?? null,
+            holderEmail: ticket.holder?.email ?? null,
+            transferred,
+            canUseEntry: canEntry,
+          };
+        }),
+      };
+    }),
+  );
 
   return (
     <div className="space-y-4 text-sm">

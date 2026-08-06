@@ -27,6 +27,7 @@ import {
 } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
+import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tageskasse" };
@@ -326,8 +327,16 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                 const cancelled =
                   voided || order.status === "cancelled" || order.status === "refunded";
                 const strike = orderCancelledStrikeClass(cancelled);
-                const lines = order.items
-                  .map((i) => `${i.quantity}× ${i.categorySnapshot}`)
+                const lines = mergeSameCategoryLines(
+                  order.items.map((i) => ({
+                    quantity: i.quantity,
+                    categoryLabel: i.categorySnapshot,
+                    unitPriceCents: i.unitPaidGrossCents || i.unitListGrossCents,
+                    lineGrossCents: i.grossCents,
+                    eventKey: i.eventId,
+                  })),
+                )
+                  .map((l) => `${l.quantity}× ${l.categoryLabel}`)
                   .join(", ");
                 const customerName =
                   `${order.customer.firstName} ${order.customer.lastName}`.trim();

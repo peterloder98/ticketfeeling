@@ -163,12 +163,13 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
             categoryLabel: item.categorySnapshot,
             unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
             lineGrossCents: item.grossCents,
+            eventKey: item.eventId,
             eventNameSnapshot: item.eventNameSnapshot,
             locationSnapshot: item.locationSnapshot,
           })),
         ).map((line, idx) => (
           <div
-            key={`${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
+            key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
             className="flex justify-between gap-4 text-sm"
           >
             <div>

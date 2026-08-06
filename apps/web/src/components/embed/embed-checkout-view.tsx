@@ -9,6 +9,7 @@ import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { useCart } from "@/components/cart-context";
 import type { CheckoutPaymentOption } from "@/lib/commerce/payment-fees";
+import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 
 type Bootstrap = {
   empty: boolean;
@@ -116,19 +117,34 @@ export function EmbedCheckoutView() {
           Bestellung
         </p>
         <ul className="mt-2 space-y-2">
-          {data.items.map((item) => (
-            <li key={item.id} className="flex justify-between gap-2 text-xs">
+          {mergeSameCategoryLines(
+            data.items.map((item) => ({
+              quantity: item.quantity,
+              categoryLabel: item.categoryName,
+              unitPriceCents: item.unitPriceGrossCents,
+              lineGrossCents: item.quantity * item.unitPriceGrossCents,
+              eventKey: item.eventName,
+              eventName: item.eventName,
+              eventStartsAt: item.eventStartsAt,
+              locationName: item.locationName,
+              locationCity: item.locationCity,
+            })),
+          ).map((line, idx) => (
+            <li
+              key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
+              className="flex justify-between gap-2 text-xs"
+            >
               <span className="min-w-0 text-[var(--tf-navy)]">
-                {item.quantity}× {item.categoryName}
-                <span className="mt-0.5 block font-medium">{item.eventName}</span>
+                {line.quantity}× {line.categoryLabel}
+                <span className="mt-0.5 block font-medium">{line.eventName}</span>
                 <CartItemEventMeta
-                  eventStartsAt={item.eventStartsAt}
-                  locationName={item.locationName}
-                  locationCity={item.locationCity}
+                  eventStartsAt={line.eventStartsAt}
+                  locationName={line.locationName}
+                  locationCity={line.locationCity}
                 />
               </span>
               <span className="shrink-0 tabular-nums font-medium">
-                {formatEuroFromCents(item.quantity * item.unitPriceGrossCents)}
+                {formatEuroFromCents(line.lineGrossCents)}
               </span>
             </li>
           ))}

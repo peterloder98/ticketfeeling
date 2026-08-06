@@ -21,6 +21,7 @@ import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { FeeInfoDialog } from "@/components/fee-info-dialog";
 import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
+import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
@@ -130,49 +131,74 @@ export default async function CheckoutPage() {
             <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Zusammenfassung</h2>
 
             <ul className="mt-4 space-y-4">
-              {cart.items.map((item) => {
-                const ev = item.category.event;
+              {mergeSameCategoryLines(
+                cart.items.map((item) => {
+                  const ev = item.category.event;
+                  return {
+                    quantity: item.quantity,
+                    categoryLabel: item.category.name,
+                    unitPriceCents: item.unitPriceGrossCents,
+                    lineGrossCents: item.quantity * item.unitPriceGrossCents,
+                    eventKey: item.eventId,
+                    eventName: ev.name,
+                    eventStartsAt: ev.eventStartsAt,
+                    locationName: ev.location?.name ?? null,
+                    locationCity: ev.location?.city ?? null,
+                    categoryKind: item.category.categoryKind,
+                    companionFree: item.category.companionFree,
+                    seats: item.seats,
+                  };
+                }),
+              ).map((line, idx) => {
+                const seats = Array.isArray(line.seats) ? line.seats : [];
                 return (
                   <li
-                    key={item.id}
+                    key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
                     className="border-b border-[var(--tf-line)] pb-4 last:border-0 last:pb-0"
                   >
                     <div className="flex justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-semibold text-[var(--tf-navy)]">
-                          {item.quantity}× {item.category.name}
+                          {line.quantity}× {line.categoryLabel}
                         </p>
                         <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
-                          {ev.name}
+                          {line.eventName}
                         </p>
                         <CartItemEventMeta
-                          eventStartsAt={ev.eventStartsAt}
-                          locationName={ev.location?.name}
-                          locationCity={ev.location?.city}
+                          eventStartsAt={line.eventStartsAt}
+                          locationName={line.locationName}
+                          locationCity={line.locationCity}
                         />
-                        {item.category.categoryKind === "wheelchair" &&
-                        item.category.companionFree ? (
+                        {line.categoryKind === "wheelchair" && line.companionFree ? (
                           <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
                             Inkl. Begleitperson kostenfrei
                           </p>
                         ) : null}
-                        {item.seats.length > 0 ? (
+                        {seats.length > 0 ? (
                           <ul className="mt-1.5 space-y-0.5 text-xs font-medium text-[var(--tf-teal-hover)]">
-                            {item.seats.map((s, idx) => (
-                              <li key={s.id}>
-                                {s.blockLabel} · R{s.rowLabel} · Pl. {s.seatNumber}
-                                {item.category.categoryKind === "wheelchair" &&
-                                item.category.companionFree &&
-                                idx % 2 === 1
-                                  ? " (Begleitung)"
-                                  : ""}
-                              </li>
-                            ))}
+                            {seats.map((s, seatIdx) => {
+                              const seat = s as {
+                                id: string;
+                                blockLabel: string;
+                                rowLabel: string;
+                                seatNumber: string;
+                              };
+                              return (
+                                <li key={seat.id}>
+                                  {seat.blockLabel} · R{seat.rowLabel} · Pl. {seat.seatNumber}
+                                  {line.categoryKind === "wheelchair" &&
+                                  line.companionFree &&
+                                  seatIdx % 2 === 1
+                                    ? " (Begleitung)"
+                                    : ""}
+                                </li>
+                              );
+                            })}
                           </ul>
                         ) : null}
                       </div>
                       <p className="shrink-0 text-sm font-medium tabular-nums text-[var(--tf-navy)]">
-                        {formatEuroFromCents(item.quantity * item.unitPriceGrossCents)}
+                        {formatEuroFromCents(line.lineGrossCents)}
                       </p>
                     </div>
                   </li>
