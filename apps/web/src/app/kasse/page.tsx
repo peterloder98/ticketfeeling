@@ -568,6 +568,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
                         voided,
                         deliveryStatus: order.deliveryStatus,
                         orderStatus: order.status,
+                        paymentMethod: order.paymentMethod,
                       })}
                     </td>
                     <td className={`px-3 py-3 text-right font-medium tabular-nums ${strike}`}>

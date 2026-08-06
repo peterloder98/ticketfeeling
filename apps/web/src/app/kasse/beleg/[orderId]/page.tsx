@@ -107,6 +107,7 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
               voided,
               deliveryStatus: order.deliveryStatus,
               orderStatus: order.status,
+              paymentMethod: order.paymentMethod,
             })}
           </span>
         </div>

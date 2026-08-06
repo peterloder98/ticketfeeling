@@ -32,6 +32,8 @@ export function paymentMethodLabel(method: string | null | undefined): string {
       return "Kartenterminal";
     case "other":
       return "Sonstige";
+    case "consignment":
+      return "Kontingent Vorverkaufsstelle";
     case "card":
     case "stripe_card":
     case "dev_card":
@@ -96,9 +98,13 @@ export function boxOfficeSaleStatusLabel(input: {
   voided?: boolean;
   deliveryStatus?: string | null;
   orderStatus?: string | null;
+  paymentMethod?: string | null;
 }): string {
   if (input.voided || input.orderStatus === "cancelled" || input.orderStatus === "refunded") {
     return "Storniert";
+  }
+  if (input.paymentMethod === "consignment") {
+    return "Kontingent (Vorabbuchung)";
   }
   return "Verkauft/bezahlt";
 }

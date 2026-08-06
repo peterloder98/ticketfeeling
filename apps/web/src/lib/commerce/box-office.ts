@@ -27,8 +27,13 @@ export async function createBoxOfficeSale(input: {
   organizationId: string;
   eventId: string;
   items: BoxOfficeSaleItem[];
-  paymentMethod: "cash" | "card_terminal" | "other";
+  paymentMethod: "cash" | "card_terminal" | "other" | "consignment";
   actorUserId: string;
+  /**
+   * Attribute sale to a partner (Kontingent). Defaults to actorUserId.
+   * Admin may allocate for a Vorverkaufsstelle while remaining the actor.
+   */
+  soldByUserId?: string;
   customerEmail?: string;
   customerFirstName?: string;
   customerLastName?: string;
@@ -40,7 +45,17 @@ export async function createBoxOfficeSale(input: {
   cashTenderedCents?: number | null;
   /** best_available | seat_map — only when event has reserved seating */
   seatingMode?: BoxOfficeSeatingMode;
+  /** Raise per-line cap (default 20; consignment uses up to 50). */
+  maxQuantityPerItem?: number;
+  /** Raise order total cap (default 40; consignment uses up to 50). */
+  maxTotalQuantity?: number;
+  /** Override contractSnapshot.notice (German). */
+  contractNotice?: string;
 }) {
+  const maxPerItem = input.maxQuantityPerItem ?? 20;
+  const maxTotal = input.maxTotalQuantity ?? 40;
+  const soldByUserId = input.soldByUserId ?? input.actorUserId;
+
   const items = input.items
     .map((i) => ({
       categoryId: i.categoryId,
@@ -53,9 +68,9 @@ export async function createBoxOfficeSale(input: {
     .filter((i) => i.quantity > 0);
 
   if (items.length === 0) throw new Error("INVALID_QUANTITY");
-  if (items.some((i) => i.quantity > 20)) throw new Error("INVALID_QUANTITY");
+  if (items.some((i) => i.quantity > maxPerItem)) throw new Error("INVALID_QUANTITY");
   const totalQty = items.reduce((s, i) => s + i.quantity, 0);
-  if (totalQty > 40) throw new Error("INVALID_QUANTITY");
+  if (totalQty > maxTotal) throw new Error("INVALID_QUANTITY");
 
   const org = await prisma.organization.findUniqueOrThrow({
     where: { id: input.organizationId },
@@ -300,9 +315,15 @@ export async function createBoxOfficeSale(input: {
         contractSnapshot: {
           locale: "de-DE",
           channel: "box_office",
-          notice: "Tageskasse-Verkauf.",
+          notice:
+            input.contractNotice ??
+            (input.paymentMethod === "consignment"
+              ? "Kontingent Vorverkaufsstelle (Vorabbuchung)."
+              : "Tageskasse-Verkauf."),
           acceptedAt: new Date().toISOString(),
           paymentMethod: input.paymentMethod,
+          consignment: input.paymentMethod === "consignment",
+          partnerUserId: input.paymentMethod === "consignment" ? soldByUserId : undefined,
           cashTenderedCents,
           changeCents,
           ...(seatAssignments.length > 0
@@ -314,7 +335,7 @@ export async function createBoxOfficeSale(input: {
               }
             : {}),
         },
-        soldByUserId: input.actorUserId,
+        soldByUserId,
         deliveryStatus: "none",
         items: {
           create: resolved.map(({ item, category, pricedUnit }, index) => {
@@ -372,7 +393,8 @@ export async function createBoxOfficeSale(input: {
     paymentId: result.payment.id,
     amountCents: result.payment.amountCents,
     currency: "EUR",
-    paymentMethod: input.paymentMethod,
+    paymentMethod:
+      input.paymentMethod === "consignment" ? "other" : input.paymentMethod,
     tseMode: org.settings?.tseMode ?? "none",
     tseProvider: org.settings?.tseProvider,
     tseClientId: org.settings?.tseClientId,
@@ -419,7 +441,7 @@ export async function createBoxOfficeSale(input: {
       changeCents,
       tseMode: org.settings?.tseMode ?? "none",
       tseStatus: fiscal.status,
-      soldByUserId: input.actorUserId,
+      soldByUserId,
     },
     reason:
       fiscal.status === "signed"
@@ -427,5 +449,5 @@ export async function createBoxOfficeSale(input: {
         : "Tageskasse — TSE siehe Stammdaten / docs/tse-plan.md",
   });
 
-  return { orderId: result.order.id, fulfillment, fiscal };
+  return { orderId: result.order.id, orderNumber: result.order.orderNumber, fulfillment, fiscal };
 }
