@@ -80,15 +80,23 @@ export function SeatBookingPanel({
   accessibilityOffer = null,
 }: Props) {
   const { bump } = useCart();
-  const seatCategories = categories.filter((c) => c.needsSeats);
+  /** Numbered seats / wheelchair etc. — Bestplatz + Saalplan dropdown */
+  const seatedCategories = categories.filter(
+    (c) => c.needsSeats && c.categoryKind !== "standing",
+  );
+  /** Plan-backed Stehplatz — own cards, not in Preiskategorie-Dropdown */
+  const standingCategories = categories.filter(
+    (c) => c.needsSeats && c.categoryKind === "standing",
+  );
   const freeCategories = categories.filter((c) => !c.needsSeats);
-  const standingOnlySeats =
-    seatCategories.length > 0 &&
-    seatCategories.every((c) => c.categoryKind === "standing");
+  /** Categories that use per-card qty UI (Stehplatz + freie Platzwahl) */
+  const cardCategories = [...standingCategories, ...freeCategories];
+  /** Still needed for Saalplan selection of numbered seats */
+  const seatCategories = seatedCategories;
 
   const [mode, setMode] = useState<"best_available" | "seat_map">("best_available");
-  /** Bestplatz: single active category. Saalplan uses selectedByCategory instead. */
-  const [categoryId, setCategoryId] = useState(seatCategories[0]?.id ?? "");
+  /** Bestplatz: single active seated category. Saalplan uses selectedByCategory instead. */
+  const [categoryId, setCategoryId] = useState(seatedCategories[0]?.id ?? "");
   const [qty, setQty] = useState(1);
   const [selectedByCategory, setSelectedByCategory] = useState<Record<string, string[]>>({});
   const [map, setMap] = useState<SeatMapPayload | null>(null);
@@ -99,8 +107,8 @@ export function SeatBookingPanel({
   const [addedSeatLabels, setAddedSeatLabels] = useState<string[]>([]);
   const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
   const [accessibilitySelected, setAccessibilitySelected] = useState(false);
-  const [freeQty, setFreeQty] = useState<Record<string, number>>(
-    Object.fromEntries(freeCategories.map((c) => [c.id, c.available < 1 ? 0 : 1])),
+  const [cardQty, setCardQty] = useState<Record<string, number>>(
+    Object.fromEntries(cardCategories.map((c) => [c.id, c.available < 1 ? 0 : 1])),
   );
 
   function unitPriceFor(cat: Category) {
@@ -114,9 +122,9 @@ export function SeatBookingPanel({
   }
 
   const useExternalMap = Boolean(mapHostId);
-  const showMap = mode === "seat_map" && !standingOnlySeats;
+  const showMap = mode === "seat_map";
 
-  const selectedCategory = seatCategories.find((c) => c.id === categoryId) ?? null;
+  const selectedCategory = seatedCategories.find((c) => c.id === categoryId) ?? null;
   const companionFree = Boolean(selectedCategory?.companionFree);
   /** Cap by pool stock and (when map loaded) actually sellable seats for this category. */
   const sellableStock = selectedCategory
@@ -196,13 +204,6 @@ export function SeatBookingPanel({
       void loadMap();
     }
   }, [bookingMode, seatCategories.length, loadMap]);
-
-  useEffect(() => {
-    if (standingOnlySeats && mode === "seat_map") {
-      setMode("best_available");
-      setSelectedByCategory({});
-    }
-  }, [standingOnlySeats, mode]);
 
   useEffect(() => {
     if (mode !== "best_available") return;
@@ -383,18 +384,21 @@ export function SeatBookingPanel({
     });
   }
 
-  async function addFree(catId: string) {
+  async function addCardCategory(catId: string) {
+    const cat = cardCategories.find((c) => c.id === catId);
+    if (!cat) return;
     setLoading(true);
     setError(null);
     try {
+      const isStanding = cat.categoryKind === "standing";
       const response = await cartFetch("/api/v1/cart/items", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         timeoutMs: 25_000,
         body: JSON.stringify({
           categoryId: catId,
-          quantity: freeQty[catId] ?? 1,
-          seatingMode: "free",
+          quantity: cardQty[catId] ?? 1,
+          seatingMode: isStanding || cat.needsSeats ? "best_available" : "free",
           accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
         }),
       });
@@ -404,21 +408,25 @@ export function SeatBookingPanel({
         const available =
           typeof data?.error?.available === "number" ? data.error.available : null;
         if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
-          const cat = freeCategories.find((c) => c.id === catId);
-          const max = Math.min(cat?.maxPerOrder ?? available, available);
-          setFreeQty((p) => ({ ...p, [catId]: Math.min(max, available) }));
+          const max = Math.min(cat.maxPerOrder ?? available, available);
+          setCardQty((p) => ({ ...p, [catId]: Math.min(max, available) }));
           setError(cartErrorMessage(code, { available }));
           return;
         }
         if ((code === "SOLD_OUT" || code === "INSUFFICIENT_STOCK") && available === 0) {
-          setFreeQty((p) => ({ ...p, [catId]: 0 }));
+          setCardQty((p) => ({ ...p, [catId]: 0 }));
         }
         setError(cartErrorMessage(code, { available }));
         return;
       }
       applyCartBump(data);
+      setAddedSeatLabels(seatLabelsFromResponse(data));
       setJustAdded(true);
       requestAnimationFrame(() => scrollToId(cartScrollId));
+    } catch (err) {
+      const code =
+        err instanceof Error && err.message === "REQUEST_TIMEOUT" ? "REQUEST_TIMEOUT" : "";
+      setError(cartErrorMessage(code));
     } finally {
       setLoading(false);
     }
@@ -499,9 +507,9 @@ export function SeatBookingPanel({
           </span>
         </label>
       ) : null}
-      {seatCategories.length > 0 ? (
+      {seatedCategories.length > 0 ? (
         <div className="space-y-4">
-          {bookingMode === "seat_map_and_best" && !standingOnlySeats ? (
+          {bookingMode === "seat_map_and_best" ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
@@ -543,9 +551,7 @@ export function SeatBookingPanel({
             </div>
           ) : (
             <p className="rounded-xl bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-              {standingOnlySeats
-                ? "Stehplatz: Wir reservieren freie Plätze aus dem zugeordneten Bereich."
-                : "Bestplatzbuchung: Wir weisen dir automatisch die besten freien Plätze zu."}
+              Bestplatzbuchung: Wir weisen dir automatisch die besten freien Plätze zu.
             </p>
           )}
 
@@ -558,14 +564,9 @@ export function SeatBookingPanel({
                   value={categoryId}
                   onChange={(e) => setCategoryId(e.target.value)}
                 >
-                  {seatCategories.map((c) => (
+                  {seatedCategories.map((c) => (
                     <option key={c.id} value={c.id} disabled={c.available < 1}>
                       {c.name} · {formatEuroFromCents(unitPriceFor(c))}
-                      {listPriceFor(c) > unitPriceFor(c) ? (
-                        <span className="ml-1 text-[var(--tf-text-secondary)] line-through">
-                          {formatEuroFromCents(listPriceFor(c))}
-                        </span>
-                      ) : null}
                       {c.available < 1 ? " (ausverkauft)" : ""}
                     </option>
                   ))}
@@ -618,9 +619,7 @@ export function SeatBookingPanel({
               <p className="text-sm text-[var(--tf-text-secondary)]">
                 {companionFree
                   ? "Wir suchen die besten freien Rollstuhlplätze inkl. Begleitung nebeneinander."
-                  : selectedCategory?.categoryKind === "standing"
-                    ? "Wir reservieren freie Stehplätze aus dem zugeordneten Bereich."
-                    : "Wir suchen die besten freien Plätze — möglichst nebeneinander in einer Reihe."}
+                  : "Wir suchen die besten freien Plätze — möglichst nebeneinander in einer Reihe."}
               </p>
             </>
           ) : (
@@ -678,15 +677,23 @@ export function SeatBookingPanel({
         </div>
       ) : null}
 
-      {freeCategories.length > 0 ? (
-        <div className="space-y-3 border-t border-[var(--tf-line)] pt-4">
-          <p className="text-sm font-semibold text-[var(--tf-navy)]">
-            {seatCategories.length > 0 ? "Stehplatz / freie Platzwahl" : "Tickets"}
-          </p>
-          {freeCategories.map((category) => {
+      {cardCategories.length > 0 ? (
+        <div
+          className={`space-y-3 ${seatedCategories.length > 0 ? "border-t border-[var(--tf-line)] pt-4" : ""}`}
+        >
+          {seatedCategories.length > 0 ? (
+            <p className="text-sm font-semibold text-[var(--tf-navy)]">
+              {standingCategories.length > 0 && freeCategories.length > 0
+                ? "Stehplatz / freie Platzwahl"
+                : standingCategories.length > 0
+                  ? "Stehplätze"
+                  : "Freie Platzwahl"}
+            </p>
+          ) : null}
+          {cardCategories.map((category) => {
             const max = Math.min(category.maxPerOrder, Math.max(0, category.available));
             const soldOut = category.available < 1;
-            const current = freeQty[category.id] ?? (soldOut ? 0 : 1);
+            const current = cardQty[category.id] ?? (soldOut ? 0 : 1);
             return (
               <div
                 key={category.id}
@@ -695,13 +702,23 @@ export function SeatBookingPanel({
                 <div className="flex justify-between gap-2">
                   <div>
                     <p className="font-semibold text-[var(--tf-navy)]">{category.name}</p>
-                    <p className="text-lg font-bold text-[var(--tf-navy)]">
+                    {category.description ? (
+                      <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+                        {category.description}
+                      </p>
+                    ) : null}
+                    <p className="mt-1 text-lg font-bold text-[var(--tf-navy)]">
                       {listPriceFor(category) > unitPriceFor(category) ? (
                         <span className="mr-1.5 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
                           {formatEuroFromCents(listPriceFor(category))}
                         </span>
                       ) : null}
                       {formatEuroFromCents(unitPriceFor(category))}
+                      {feeSurchargeNote ? (
+                        <span className="ml-1.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
+                          {feeSurchargeNote}
+                        </span>
+                      ) : null}
                       {category.campaignName && !accessibilitySelected ? (
                         <span className="ml-1.5 text-[11px] font-medium text-[var(--tf-teal)]">
                           {category.campaignName}
@@ -711,6 +728,10 @@ export function SeatBookingPanel({
                   </div>
                   {soldOut ? (
                     <p className="text-sm text-[var(--tf-text-secondary)]">Ausverkauft</p>
+                  ) : showRemainingAvailability ? (
+                    <p className="text-sm text-[var(--tf-text-secondary)]">
+                      Noch {category.available}
+                    </p>
                   ) : null}
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -720,7 +741,7 @@ export function SeatBookingPanel({
                       className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
                       disabled={soldOut || current <= 1}
                       onClick={() =>
-                        setFreeQty((p) => ({
+                        setCardQty((p) => ({
                           ...p,
                           [category.id]: Math.max(1, current - 1),
                         }))
@@ -734,7 +755,7 @@ export function SeatBookingPanel({
                       className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
                       disabled={soldOut || current >= max}
                       onClick={() =>
-                        setFreeQty((p) => ({
+                        setCardQty((p) => ({
                           ...p,
                           [category.id]: Math.min(max, Math.max(1, current + 1)),
                         }))
@@ -747,7 +768,7 @@ export function SeatBookingPanel({
                     type="button"
                     className="tf-btn tf-btn-primary !min-h-11 flex-1 text-sm"
                     disabled={soldOut || current < 1 || loading}
-                    onClick={() => void addFree(category.id)}
+                    onClick={() => void addCardCategory(category.id)}
                   >
                     {soldOut ? "Ausverkauft" : "In den Warenkorb"}
                   </button>
