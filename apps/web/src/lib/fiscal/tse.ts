@@ -16,7 +16,7 @@ export type FiscalSignInput = {
   paymentId?: string;
   amountCents: number;
   currency: string;
-  paymentMethod: "cash" | "card_terminal" | "other";
+  paymentMethod: "cash" | "card_terminal" | "card_present" | "other";
   tseMode: string;
   tseProvider?: string | null;
   tseClientId?: string | null;

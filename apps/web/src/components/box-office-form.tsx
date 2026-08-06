@@ -75,7 +75,9 @@ export function BoxOfficeForm({
   const [selectedByCategory, setSelectedByCategory] = useState<Record<string, string[]>>({});
   const [map, setMap] = useState<SeatMapPayload | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card_terminal">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<
+    "cash" | "card_present" | "card_terminal"
+  >("cash");
   const [cashGiven, setCashGiven] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -88,6 +90,13 @@ export function BoxOfficeForm({
   const [city, setCity] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tapWait, setTapWait] = useState<{
+    orderId: string;
+    deepLink: string;
+    amountCents: number;
+    reservedUntil: string | null;
+  } | null>(null);
+  const [tapPolling, setTapPolling] = useState(false);
 
   const selectedEvent = events.find((e) => e.id === eventId) ?? null;
   const categories = useMemo(
@@ -232,6 +241,58 @@ export function BoxOfficeForm({
     setLoading(true);
     setError(null);
     try {
+      if (paymentMethod === "card_present") {
+        const response = await fetch("/api/v1/box-office/sales/tap", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventId,
+            seatingMode: hasReservedSeating ? seatingChoice : "free",
+            items: lineItems.map((l) => ({
+              categoryId: l.category.id,
+              quantity: l.quantity,
+              ...(hasReservedSeating &&
+              seatingChoice === "seat_map" &&
+              l.category.needsSeats
+                ? { seatIds: selectedByCategory[l.category.id] ?? [] }
+                : {}),
+            })),
+            customerFirstName: firstName.trim() || undefined,
+            customerLastName: lastName.trim() || undefined,
+            customerEmail: email.trim() || undefined,
+            customerStreet: street.trim() || undefined,
+            customerHouseNumber: houseNumber.trim() || undefined,
+            customerPostalCode: postalCode.trim() || undefined,
+            customerCity: city.trim() || undefined,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const code = String(data?.error?.code ?? "");
+          setError(
+            code === "STRIPE_TERMINAL_NOT_CONFIGURED"
+              ? "Tap to Pay ist noch nicht eingerichtet (Stripe Terminal Location fehlt)."
+              : code === "SOLD_OUT"
+                ? "Nicht genug Tickets verfügbar."
+                : code === "SEATS_UNAVAILABLE" || code === "SEATS_REQUIRED"
+                  ? "Plätze nicht mehr verfügbar — bitte erneut wählen."
+                  : code === "COMPANION_SEAT_UNAVAILABLE"
+                    ? "Kein freier Begleitplatz neben dem Rollstuhlplatz."
+                    : code || "Tap to Pay konnte nicht gestartet werden",
+          );
+          if (seatingChoice === "seat_map") void loadMap();
+          return;
+        }
+        setTapWait({
+          orderId: data.orderId as string,
+          deepLink: data.deepLink as string,
+          amountCents: Number(data.amountCents) || totalCents,
+          reservedUntil: (data.reservedUntil as string) ?? null,
+        });
+        setTapPolling(true);
+        return;
+      }
+
       const response = await fetch("/api/v1/box-office/sales", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -278,6 +339,50 @@ export function BoxOfficeForm({
       router.refresh();
     } finally {
       setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!tapWait || !tapPolling) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const res = await fetch(`/api/v1/box-office/sales/${tapWait.orderId}`);
+        const data = await res.json();
+        if (cancelled) return;
+        if (res.ok && data.ready) {
+          setTapPolling(false);
+          router.push(data.detailPath ?? `/kasse/beleg/${tapWait.orderId}`);
+          router.refresh();
+          return;
+        }
+        if (res.ok && (data.paymentStatus === "failed" || data.paymentStatus === "canceled")) {
+          setTapPolling(false);
+          setTapWait(null);
+          setError("Kartenzahlung abgebrochen oder fehlgeschlagen. Bitte erneut versuchen.");
+        }
+      } catch {
+        // keep polling
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+    };
+  }, [tapWait, tapPolling, router]);
+
+  async function cancelTapSale() {
+    if (!tapWait) return;
+    setLoading(true);
+    try {
+      await fetch(`/api/v1/box-office/sales/${tapWait.orderId}`, { method: "DELETE" });
+    } finally {
+      setTapPolling(false);
+      setTapWait(null);
+      setLoading(false);
+      setError(null);
     }
   }
 
@@ -761,94 +866,164 @@ export function BoxOfficeForm({
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("cash")}
-              className={`rounded-2xl border p-4 text-left ${
-                paymentMethod === "cash"
-                  ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)]"
-                  : "border-[var(--tf-line)] bg-white"
-              }`}
-            >
-              <p className="font-semibold text-[var(--tf-navy)]">Bar</p>
-              <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                Mit Wechselgeld-Rechner
+          {tapWait ? (
+            <div className="space-y-4 rounded-2xl border border-[var(--tf-teal)] bg-[rgba(20,184,166,0.06)] p-5">
+              <div>
+                <h3 className="text-lg font-semibold text-[var(--tf-navy)]">
+                  Warte auf Tap to Pay…
+                </h3>
+                <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+                  Betrag{" "}
+                  <strong className="text-[var(--tf-navy)]">
+                    {formatEuroFromCents(tapWait.amountCents)}
+                  </strong>
+                  {" · "}Öffne die Kasse-App auf dem iPhone und halte die Karte / das Handy an.
+                  Dieser Bildschirm aktualisiert sich automatisch.
+                </p>
+              </div>
+              <a
+                href={tapWait.deepLink}
+                className="tf-btn tf-btn-primary flex w-full !min-h-12 items-center justify-center text-base"
+              >
+                Tap to Pay auf iPhone öffnen
+              </a>
+              <p className="text-xs text-[var(--tf-text-secondary)]">
+                Noch keine App? Installiere „Ticketfeeling Kasse“ und erlaube den Link
+                <code className="mx-1 rounded bg-white px-1">ticketfeeling-kasse://</code>.
+                Die Web-Tageskasse allein kann NFC nicht nutzen.
               </p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaymentMethod("card_terminal")}
-              className={`rounded-2xl border p-4 text-left ${
-                paymentMethod === "card_terminal"
-                  ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)]"
-                  : "border-[var(--tf-line)] bg-white"
-              }`}
-            >
-              <p className="font-semibold text-[var(--tf-navy)]">Karte</p>
-              <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                Kartenterminal vor Ort
-              </p>
-            </button>
-          </div>
-
-          {paymentMethod === "cash" ? (
-            <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium">Kunde gibt (€)</span>
-                <input
-                  className="tf-input text-lg tabular-nums"
-                  inputMode="decimal"
-                  placeholder={(totalCents / 100).toFixed(2).replace(".", ",")}
-                  value={cashGiven}
-                  onChange={(e) => setCashGiven(e.target.value)}
-                />
-              </label>
-              {changeCents != null ? (
-                <p
-                  className={`mt-3 text-lg font-semibold ${
-                    changeCents < 0 ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
-                  }`}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className="tf-btn"
+                  disabled={loading}
+                  onClick={() => void cancelTapSale()}
                 >
-                  {changeCents < 0
-                    ? `Noch ${formatEuroFromCents(-changeCents)} fehlen`
-                    : `Wechselgeld: ${formatEuroFromCents(changeCents)}`}
+                  Abbrechen
+                </button>
+                <p className="flex items-center text-sm text-[var(--tf-text-secondary)]">
+                  {tapPolling ? "Prüfe Zahlungsstatus…" : "Bereit"}
                 </p>
-              ) : (
-                <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
-                  Optional: Betrag eingeben, um Wechselgeld zu berechnen.
-                </p>
-              )}
+              </div>
             </div>
           ) : (
-            <p className="rounded-xl border border-[var(--tf-line)] bg-white px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
-              Betrag am Terminal einziehen:{" "}
-              <strong className="text-[var(--tf-navy)]">{formatEuroFromCents(totalCents)}</strong>
-            </p>
-          )}
+            <>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("cash")}
+                  className={`rounded-2xl border p-4 text-left ${
+                    paymentMethod === "cash"
+                      ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)]"
+                      : "border-[var(--tf-line)] bg-white"
+                  }`}
+                >
+                  <p className="font-semibold text-[var(--tf-navy)]">Bar</p>
+                  <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                    Mit Wechselgeld-Rechner · sofort gebucht
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod("card_present")}
+                  className={`rounded-2xl border p-4 text-left ${
+                    paymentMethod === "card_present"
+                      ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)]"
+                      : "border-[var(--tf-line)] bg-white"
+                  }`}
+                >
+                  <p className="font-semibold text-[var(--tf-navy)]">Karte (Tap to Pay)</p>
+                  <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                    iPhone · Stripe · wöchentliche Auszahlung
+                  </p>
+                </button>
+              </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className="tf-btn" onClick={() => setStep(2)} disabled={loading}>
-              Zurück
-            </button>
-            <button
-              type="button"
-              className="tf-btn tf-btn-primary flex-1 !min-h-12 text-base"
-              disabled={
-                loading ||
-                (paymentMethod === "cash" && changeCents != null && changeCents < 0)
-              }
-              onClick={() => void confirmSale()}
-            >
-              {loading ? (
-                "Wird gebucht…"
+              <button
+                type="button"
+                onClick={() => setPaymentMethod("card_terminal")}
+                className={`w-full rounded-xl border px-3 py-2 text-left text-sm ${
+                  paymentMethod === "card_terminal"
+                    ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)]"
+                    : "border-[var(--tf-line)] bg-white text-[var(--tf-text-secondary)]"
+                }`}
+              >
+                Externes Terminal (manuell bestätigen, ohne Stripe)
+              </button>
+
+              {paymentMethod === "cash" ? (
+                <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium">Kunde gibt (€)</span>
+                    <input
+                      className="tf-input text-lg tabular-nums"
+                      inputMode="decimal"
+                      placeholder={(totalCents / 100).toFixed(2).replace(".", ",")}
+                      value={cashGiven}
+                      onChange={(e) => setCashGiven(e.target.value)}
+                    />
+                  </label>
+                  {changeCents != null ? (
+                    <p
+                      className={`mt-3 text-lg font-semibold ${
+                        changeCents < 0 ? "text-[var(--danger)]" : "text-[var(--tf-navy)]"
+                      }`}
+                    >
+                      {changeCents < 0
+                        ? `Noch ${formatEuroFromCents(-changeCents)} fehlen`
+                        : `Wechselgeld: ${formatEuroFromCents(changeCents)}`}
+                    </p>
+                  ) : (
+                    <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
+                      Optional: Betrag eingeben, um Wechselgeld zu berechnen.
+                    </p>
+                  )}
+                </div>
+              ) : paymentMethod === "card_present" ? (
+                <p className="rounded-xl border border-[var(--tf-line)] bg-white px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
+                  Danach öffnet sich Tap to Pay auf dem iPhone. Betrag:{" "}
+                  <strong className="text-[var(--tf-navy)]">
+                    {formatEuroFromCents(totalCents)}
+                  </strong>
+                </p>
               ) : (
-                <>
-                  <Check className="mr-1 inline h-4 w-4" /> Zahlung erhalten · Verkauf abschließen
-                </>
+                <p className="rounded-xl border border-[var(--tf-line)] bg-white px-3 py-2 text-sm text-[var(--tf-text-secondary)]">
+                  Betrag am externen Terminal einziehen, dann hier bestätigen:{" "}
+                  <strong className="text-[var(--tf-navy)]">
+                    {formatEuroFromCents(totalCents)}
+                  </strong>
+                </p>
               )}
-            </button>
-          </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className="tf-btn" onClick={() => setStep(2)} disabled={loading}>
+                  Zurück
+                </button>
+                <button
+                  type="button"
+                  className="tf-btn tf-btn-primary flex-1 !min-h-12 text-base"
+                  disabled={
+                    loading ||
+                    (paymentMethod === "cash" && changeCents != null && changeCents < 0)
+                  }
+                  onClick={() => void confirmSale()}
+                >
+                  {loading ? (
+                    "Wird gebucht…"
+                  ) : paymentMethod === "card_present" ? (
+                    <>
+                      <Check className="mr-1 inline h-4 w-4" /> Tap to Pay starten
+                    </>
+                  ) : (
+                    <>
+                      <Check className="mr-1 inline h-4 w-4" /> Zahlung erhalten · Verkauf
+                      abschließen
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       ) : null}
     </div>

@@ -15,6 +15,7 @@ import {
 import { formatEuroFromCents } from "@/lib/money";
 import { invalidateWalletPassesForOrder } from "@/lib/wallet/invalidate";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
+import type { Prisma } from "@prisma/client";
 
 function appBaseUrl() {
   return getPublicAppUrl();
@@ -299,6 +300,77 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             reservationStatus: "consumed",
           },
         });
+
+        // Tageskasse Tap to Pay: fiscal stub after Stripe success (cash path signs inside createBoxOfficeSale).
+        if (
+          pi.metadata?.source === "box_office_tap" ||
+          (order.channel === "box_office" && order.paymentMethod === "card_present")
+        ) {
+          try {
+            const { signBoxOfficeSale } = await import("@/lib/fiscal/tse");
+            const org = await prisma.organization.findUnique({
+              where: { id: order.organizationId },
+              include: { settings: true },
+            });
+            const payment = await prisma.payment.findFirst({
+              where: { orderId, provider: "stripe" },
+            });
+            if (org && payment) {
+              const existingFiscal = await prisma.fiscalTransaction.findFirst({
+                where: { orderId, paymentId: payment.id },
+              });
+              if (!existingFiscal) {
+                const fiscal = await signBoxOfficeSale({
+                  organizationId: order.organizationId,
+                  orderId,
+                  paymentId: payment.id,
+                  amountCents: payment.amountCents,
+                  currency: payment.currency,
+                  paymentMethod: "card_present",
+                  tseMode: org.settings?.tseMode ?? "none",
+                  tseProvider: org.settings?.tseProvider,
+                  tseClientId: org.settings?.tseClientId,
+                  tseTssId: org.settings?.tseTssId,
+                });
+                await prisma.fiscalTransaction.create({
+                  data: {
+                    organizationId: order.organizationId,
+                    orderId,
+                    paymentId: payment.id,
+                    provider: fiscal.provider,
+                    status: fiscal.status,
+                    externalId: fiscal.externalId,
+                    tssId: fiscal.tssId,
+                    clientId: fiscal.clientId,
+                    processType: fiscal.processType,
+                    signatureValue: fiscal.signatureValue,
+                    signatureCounter: fiscal.signatureCounter,
+                    qrCodeData: fiscal.qrCodeData,
+                    certificateSerial: fiscal.certificateSerial,
+                    timeStart: fiscal.timeStart,
+                    timeEnd: fiscal.timeEnd,
+                    raw: (fiscal.raw ?? {}) as Prisma.InputJsonValue,
+                    errorMessage: fiscal.errorMessage,
+                  },
+                });
+              }
+              await writeAudit({
+                organizationId: order.organizationId,
+                actorUserId: order.soldByUserId,
+                action: "box_office.tap_sale_paid",
+                entityType: "order",
+                entityId: orderId,
+                after: {
+                  paymentIntentId: pi.id,
+                  source: "box_office_tap",
+                },
+                reason: "Tageskasse Tap to Pay — Stripe PaymentIntent succeeded",
+              });
+            }
+          } catch (fiscalError) {
+            console.error("[stripe] box_office_tap fiscal failed", orderId, fiscalError);
+          }
+        }
         break;
       }
       case "payment_intent.processing": {

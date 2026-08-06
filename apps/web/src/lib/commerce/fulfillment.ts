@@ -229,6 +229,24 @@ export async function fulfillPaidOrder(orderId: string) {
       }
     }
 
+    // Box-office Tap to Pay (and other async box-office Stripe) holds are order-scoped, no cart.
+    const orderHolds = await tx.inventoryHold.findMany({
+      where: { orderId: order.id, status: "held" },
+    });
+    for (const hold of orderHolds) {
+      await tx.inventoryHold.update({
+        where: { id: hold.id },
+        data: { status: "consumed" },
+      });
+      await tx.inventoryPool.update({
+        where: { id: hold.poolId },
+        data: {
+          heldQuantity: { decrement: hold.quantity },
+          soldQuantity: { increment: hold.quantity },
+        },
+      });
+    }
+
     // Invoice (once)
     let invoice = order.invoices[0];
     if (!invoice) {
