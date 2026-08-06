@@ -197,6 +197,14 @@ export default async function EventPage({ params }: Props) {
   const fromTicket = categories.length
     ? Math.min(...categories.map((c) => c.priceGrossCents))
     : null;
+  const fromListTicket = categories.length
+    ? Math.min(...categories.map((c) => c.listPriceGrossCents ?? c.priceGrossCents))
+    : null;
+  const fromCampaignName =
+    fromTicket != null
+      ? categories.find((c) => c.priceGrossCents === fromTicket && c.campaignName)?.campaignName ??
+        null
+      : null;
   const fromPrice =
     fromTicket != null
       ? formatCustomerPriceLabel({
@@ -206,7 +214,14 @@ export default async function EventPage({ params }: Props) {
           prefix: "ab",
         })
       : null;
-  const fromPriceLabel = fromPrice ? `Tickets ${fromPrice.totalLabel}` : "Tickets";
+  const fromPriceLabel = fromPrice
+    ? fromCampaignName &&
+      fromTicket != null &&
+      fromListTicket != null &&
+      fromListTicket > fromTicket
+      ? `Tickets ${fromPrice.totalLabel} · ${fromCampaignName}`
+      : `Tickets ${fromPrice.totalLabel}`
+    : "Tickets";
 
   const placeName = event.location?.name ?? null;
   const placeAddress = event.location

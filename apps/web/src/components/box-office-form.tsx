@@ -20,6 +20,7 @@ import {
   multiCategorySelectionCap,
 } from "@/lib/seating/availability";
 import { applyDiscountOff } from "@/lib/commerce/event-pricing";
+import { CampaignPriceDisplay } from "@/components/campaign-price-display";
 
 type Category = {
   id: string;
@@ -633,22 +634,17 @@ export function BoxOfficeForm({
                           {category.description}
                         </p>
                       ) : null}
-                      <p className="mt-2 text-lg font-bold tabular-nums text-[var(--tf-navy)]">
-                        {(category.listPriceGrossCents ?? category.priceGrossCents) >
-                        unitPrice(category) ? (
-                          <span className="mr-2 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
-                            {formatEuroFromCents(
-                              category.listPriceGrossCents ?? category.priceGrossCents,
-                            )}
-                          </span>
-                        ) : null}
-                        {formatEuroFromCents(unitPrice(category))}
-                        {category.campaignName && !accessibilitySelected ? (
-                          <span className="ml-2 text-[11px] font-medium text-[var(--tf-teal)]">
-                            {category.campaignName}
-                          </span>
-                        ) : null}
-                      </p>
+                      <CampaignPriceDisplay
+                        className="mt-2"
+                        listCents={category.listPriceGrossCents ?? category.priceGrossCents}
+                        unitCents={unitPrice(category)}
+                        promoLabel={
+                          accessibilitySelected && selectedEvent?.accessibilityOffer
+                            ? selectedEvent.accessibilityOffer.label
+                            : category.campaignName
+                        }
+                        size="md"
+                      />
                       <p className="text-xs text-[var(--tf-text-secondary)]">
                         {soldOut ? "Ausverkauft" : `Verfügbar: ${available}`}
                         {feeConfig.enabled

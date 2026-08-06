@@ -8,6 +8,7 @@ import { useCart } from "@/components/cart-context";
 import { cartFetch } from "@/lib/commerce/cart-client";
 import { cartErrorMessage } from "@/lib/commerce/cart-error-messages";
 import { applyDiscountOff } from "@/lib/commerce/event-pricing";
+import { CampaignPriceDisplay } from "@/components/campaign-price-display";
 
 type Category = {
   id: string;
@@ -58,10 +59,10 @@ export function AddToCartPanel({
       const list = category.listPriceGrossCents ?? category.priceGrossCents;
       const base = category.priceGrossCents;
       if (!accessibilitySelected || !accessibilityOffer) {
-        return { unit: base, list, showStrike: list > base };
+        return { unit: base, list };
       }
       const unit = applyDiscountOff(base, accessibilityOffer.type, accessibilityOffer.value);
-      return { unit, list, showStrike: list > unit };
+      return { unit, list };
     };
   }, [accessibilityOffer, accessibilitySelected]);
 
@@ -178,29 +179,18 @@ export function AddToCartPanel({
                 >
                   {category.name}
                 </p>
-                {category.campaignName && !accessibilitySelected ? (
-                  <p className="mt-0.5 text-[11px] font-medium text-[var(--tf-teal)]">
-                    {category.campaignName}
-                  </p>
-                ) : null}
-                <p
-                  className={`font-bold text-[var(--tf-navy)] ${compact ? "mt-0.5 text-sm" : "mt-1 text-lg"}`}
-                >
-                  {price.showStrike ? (
-                    <span className="mr-2 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
-                      {formatEuroFromCents(price.list)}
-                    </span>
-                  ) : null}
-                  {formatEuroFromCents(price.unit)}
-                  {feeSurchargeNote && !compact ? (
-                    <span className="ml-1.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
-                      {feeSurchargeNote}
-                    </span>
-                  ) : null}
-                </p>
-                {feeSurchargeNote && compact ? (
-                  <p className="text-[10px] text-[var(--tf-text-secondary)]">{feeSurchargeNote}</p>
-                ) : null}
+                <CampaignPriceDisplay
+                  className={compact ? "mt-0.5" : "mt-1"}
+                  listCents={price.list}
+                  unitCents={price.unit}
+                  promoLabel={
+                    accessibilitySelected && accessibilityOffer
+                      ? accessibilityOffer.label
+                      : category.campaignName
+                  }
+                  feeNote={feeSurchargeNote}
+                  size={compact ? "sm" : "md"}
+                />
               </div>
               {soldOut ? (
                 <p className="text-[11px] font-medium text-[var(--tf-text-secondary)]">Ausverkauft</p>

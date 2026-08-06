@@ -26,6 +26,7 @@ import {
   multiCategorySelectionCap,
 } from "@/lib/seating/availability";
 import { applyDiscountOff } from "@/lib/commerce/event-pricing";
+import { CampaignPriceDisplay } from "@/components/campaign-price-display";
 
 type Category = {
   id: string;
@@ -557,34 +558,66 @@ export function SeatBookingPanel({
 
           {mode === "best_available" ? (
             <>
-              <label className="grid gap-1 text-sm">
-                <span className="font-medium text-[var(--tf-navy)]">Preiskategorie</span>
-                <select
-                  className="tf-input"
-                  value={categoryId}
-                  onChange={(e) => setCategoryId(e.target.value)}
-                >
-                  {seatedCategories.map((c) => (
-                    <option key={c.id} value={c.id} disabled={c.available < 1}>
-                      {c.name} · {formatEuroFromCents(unitPriceFor(c))}
-                      {c.available < 1 ? " (ausverkauft)" : ""}
-                    </option>
-                  ))}
-                </select>
-                {selectedCategory?.description ? (
-                  <span className="text-xs text-[var(--tf-text-secondary)]">
-                    {selectedCategory.description}
-                  </span>
-                ) : null}
-                {companionFree ? (
-                  <span className="text-xs font-medium text-[var(--tf-teal-hover)]">
-                    Inkl. Begleitperson kostenfrei — wir reservieren den Nebenplatz automatisch.
-                  </span>
-                ) : null}
+              <div className="grid gap-2" role="radiogroup" aria-label="Preiskategorie">
+                <span className="text-sm font-medium text-[var(--tf-navy)]">Preiskategorie</span>
+                {seatedCategories.map((c) => {
+                  const selected = c.id === categoryId;
+                  const soldOut = c.available < 1;
+                  const list = listPriceFor(c);
+                  const unit = unitPriceFor(c);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      disabled={soldOut}
+                      onClick={() => setCategoryId(c.id)}
+                      className={`rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-55 ${
+                        selected
+                          ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.2)]"
+                          : "border-[var(--tf-line)] bg-white hover:border-[var(--tf-teal)]"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="font-semibold text-[var(--tf-navy)]">{c.name}</p>
+                        {soldOut ? (
+                          <span className="shrink-0 text-xs text-[var(--tf-text-secondary)]">
+                            Ausverkauft
+                          </span>
+                        ) : showRemainingAvailability ? (
+                          <span className="shrink-0 text-xs text-[var(--tf-text-secondary)]">
+                            Noch {c.available}
+                          </span>
+                        ) : null}
+                      </div>
+                      <CampaignPriceDisplay
+                        className="mt-1"
+                        listCents={list}
+                        unitCents={unit}
+                        promoLabel={
+                          accessibilitySelected && accessibilityOffer
+                            ? accessibilityOffer.label
+                            : c.campaignName
+                        }
+                        size="sm"
+                      />
+                      {c.description ? (
+                        <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">{c.description}</p>
+                      ) : null}
+                      {selected && c.companionFree ? (
+                        <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
+                          Inkl. Begleitperson kostenfrei — wir reservieren den Nebenplatz
+                          automatisch.
+                        </p>
+                      ) : null}
+                    </button>
+                  );
+                })}
                 {feeSurchargeNote ? (
                   <span className="text-xs text-[var(--tf-text-secondary)]">{feeSurchargeNote}</span>
                 ) : null}
-              </label>
+              </div>
 
               <div className="flex flex-wrap items-center gap-3">
                 <span className="text-sm font-medium text-[var(--tf-navy)]">Anzahl</span>
@@ -633,10 +666,19 @@ export function SeatBookingPanel({
                     <li key={line.category.id}>
                       <p className="font-semibold">
                         {line.seats.length}× {line.category.name}
-                        <span className="ml-1 font-normal text-[var(--tf-text-secondary)]">
-                          · {formatEuroFromCents(unitPriceFor(line.category))}
-                        </span>
                       </p>
+                      <CampaignPriceDisplay
+                        className="mt-0.5"
+                        listCents={listPriceFor(line.category)}
+                        unitCents={unitPriceFor(line.category)}
+                        promoLabel={
+                          accessibilitySelected && accessibilityOffer
+                            ? accessibilityOffer.label
+                            : line.category.campaignName
+                        }
+                        size="sm"
+                        inline
+                      />
                       <ul className="mt-0.5 space-y-0.5 text-xs font-medium text-[var(--tf-teal-hover)]">
                         {line.seats.map((s) => (
                           <li key={s.id}>
@@ -707,24 +749,18 @@ export function SeatBookingPanel({
                         {category.description}
                       </p>
                     ) : null}
-                    <p className="mt-1 text-lg font-bold text-[var(--tf-navy)]">
-                      {listPriceFor(category) > unitPriceFor(category) ? (
-                        <span className="mr-1.5 text-sm font-normal text-[var(--tf-text-secondary)] line-through">
-                          {formatEuroFromCents(listPriceFor(category))}
-                        </span>
-                      ) : null}
-                      {formatEuroFromCents(unitPriceFor(category))}
-                      {feeSurchargeNote ? (
-                        <span className="ml-1.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
-                          {feeSurchargeNote}
-                        </span>
-                      ) : null}
-                      {category.campaignName && !accessibilitySelected ? (
-                        <span className="ml-1.5 text-[11px] font-medium text-[var(--tf-teal)]">
-                          {category.campaignName}
-                        </span>
-                      ) : null}
-                    </p>
+                    <CampaignPriceDisplay
+                      className="mt-1"
+                      listCents={listPriceFor(category)}
+                      unitCents={unitPriceFor(category)}
+                      promoLabel={
+                        accessibilitySelected && accessibilityOffer
+                          ? accessibilityOffer.label
+                          : category.campaignName
+                      }
+                      feeNote={feeSurchargeNote}
+                      size="md"
+                    />
                   </div>
                   {soldOut ? (
                     <p className="text-sm text-[var(--tf-text-secondary)]">Ausverkauft</p>
