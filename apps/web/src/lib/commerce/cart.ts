@@ -522,26 +522,68 @@ export async function addToCart(input: {
       },
     });
 
-    const item = await tx.cartItem.create({
-      data: {
+    // Merge into an existing line when category + unit price match (same price only).
+    const existingItem = await tx.cartItem.findFirst({
+      where: {
         cartId: cart.id,
-        eventId: category.eventId,
         categoryId: category.id,
-        quantity: input.quantity,
         unitPriceGrossCents: category.priceGrossCents,
-        seatingMode,
       },
+      include: { hold: true },
     });
 
-    await tx.inventoryHold.create({
-      data: {
-        poolId: pool.id,
-        cartItemId: item.id,
-        quantity: input.quantity,
-        status: "held",
-        expiresAt,
-      },
-    });
+    let itemId: string;
+    if (existingItem) {
+      await tx.cartItem.update({
+        where: { id: existingItem.id },
+        data: {
+          quantity: { increment: input.quantity },
+          // Prefer seat_map / best_available marker if this add has seats.
+          ...(seatingMode !== "free" ? { seatingMode } : {}),
+        },
+      });
+      if (existingItem.hold?.status === "held") {
+        await tx.inventoryHold.update({
+          where: { id: existingItem.hold.id },
+          data: {
+            quantity: { increment: input.quantity },
+            expiresAt,
+          },
+        });
+      } else {
+        await tx.inventoryHold.create({
+          data: {
+            poolId: pool.id,
+            cartItemId: existingItem.id,
+            quantity: input.quantity,
+            status: "held",
+            expiresAt,
+          },
+        });
+      }
+      itemId = existingItem.id;
+    } else {
+      const item = await tx.cartItem.create({
+        data: {
+          cartId: cart.id,
+          eventId: category.eventId,
+          categoryId: category.id,
+          quantity: input.quantity,
+          unitPriceGrossCents: category.priceGrossCents,
+          seatingMode,
+        },
+      });
+      await tx.inventoryHold.create({
+        data: {
+          poolId: pool.id,
+          cartItemId: item.id,
+          quantity: input.quantity,
+          status: "held",
+          expiresAt,
+        },
+      });
+      itemId = item.id;
+    }
 
     if (seatIdsToHold.length > 0) {
       // Atomic claim — require still-available + unlocked so concurrent carts cannot steal.
@@ -554,7 +596,7 @@ export async function addToCart(input: {
         data: {
           status: "held",
           holdExpiresAt: expiresAt,
-          cartItemId: item.id,
+          cartItemId: itemId,
         },
       });
       if (claimed.count !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");

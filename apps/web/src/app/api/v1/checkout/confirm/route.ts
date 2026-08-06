@@ -29,6 +29,8 @@ const schema = z
         "sepa_debit",
         "apple_pay",
         "google_pay",
+        "klarna",
+        "stripe_klarna",
         "stripe_sepa",
         "stripe_card",
       ])

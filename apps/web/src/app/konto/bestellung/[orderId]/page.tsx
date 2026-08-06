@@ -12,6 +12,7 @@ import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tick
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
+import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 
 export const dynamic = "force-dynamic";
 
@@ -259,13 +260,20 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
           <aside className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.05)] md:p-6 lg:sticky lg:top-6">
             <h2 className="text-base font-semibold text-[var(--tf-navy)]">Zusammenfassung</h2>
             <ul className="mt-3 space-y-3 text-sm">
-              {order.items.map((item) => (
-                <li key={item.id} className="flex justify-between gap-3">
+              {mergeSameCategoryLines(
+                order.items.map((item) => ({
+                  quantity: item.quantity,
+                  categoryLabel: item.categorySnapshot,
+                  unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+                  lineGrossCents: item.grossCents,
+                })),
+              ).map((line, idx) => (
+                <li key={`${line.categoryLabel}-${line.unitPriceCents}-${idx}`} className="flex justify-between gap-3">
                   <span className="text-[var(--tf-text-secondary)]">
-                    {item.quantity}× {item.categorySnapshot}
+                    {line.quantity}× {line.categoryLabel}
                   </span>
                   <span className="shrink-0 tabular-nums text-[var(--tf-navy)]">
-                    {formatEuroFromCents(item.grossCents)}
+                    {formatEuroFromCents(line.lineGrossCents)}
                   </span>
                 </li>
               ))}

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
+import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 
 type Props = {
   map: SeatMapPayload;
@@ -14,6 +15,8 @@ type Props = {
   activeCategoryId?: string | null;
   /** Hint under the map, e.g. companion info */
   hint?: string | null;
+  /** Higher default zoom for public buy flow */
+  initialZoom?: number;
 };
 
 export function SeatMap({
@@ -23,9 +26,12 @@ export function SeatMap({
   maxSelect,
   activeCategoryId,
   hint,
+  initialZoom = 1.5,
 }: Props) {
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(initialZoom);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const { panning, panHandlers } = useCanvasPan(canvasRef);
 
   const colorByCategory = useMemo(() => {
     const m = new Map<string, string>();
@@ -42,8 +48,8 @@ export function SeatMap({
   );
 
   const pad = 48;
-  const baseW = 920;
-  const baseH = 660;
+  const baseW = 1100;
+  const baseH = 780;
   const viewW = baseW;
   const viewH = baseH;
   const scale =
@@ -80,6 +86,9 @@ export function SeatMap({
     return "#E2E8F0";
   }
 
+  const svgWidth = Math.max(viewW, contentW + pad * 2);
+  const svgHeight = Math.max(viewH, contentH + pad * 2);
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--tf-text-secondary)]">
@@ -104,7 +113,7 @@ export function SeatMap({
             <button
               type="button"
               className="inline-flex h-8 w-8 items-center justify-center border-x border-[var(--tf-line)]"
-              onClick={() => setZoom(1)}
+              onClick={() => setZoom(initialZoom)}
               aria-label="Zoom zurücksetzen"
             >
               <RotateCcw className="h-3.5 w-3.5" />
@@ -112,8 +121,8 @@ export function SeatMap({
             <button
               type="button"
               className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
-              disabled={zoom >= 2}
-              onClick={() => setZoom((z) => Math.min(2, Math.round((z + 0.25) * 100) / 100))}
+              disabled={zoom >= 3}
+              onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))}
               aria-label="Vergrößern"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -122,20 +131,33 @@ export function SeatMap({
         </div>
       </div>
 
-      <div className="overflow-auto rounded-2xl border border-[var(--tf-line)] bg-[#eef2f7] shadow-inner">
+      <p className="text-xs text-[var(--tf-text-secondary)]">
+        Ziehe mit der Maus (oder dem Finger), um den Saalplan zu verschieben.
+      </p>
+
+      <div
+        ref={canvasRef}
+        className={`max-h-[78vh] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-[#eef2f7] shadow-inner ${
+          panning ? "cursor-grabbing select-none" : "cursor-grab"
+        }`}
+        {...panHandlers}
+      >
         <svg
-          viewBox={`0 0 ${viewW} ${viewH}`}
-          className="h-auto min-h-[340px] w-full max-h-[72vh]"
+          width={svgWidth}
+          height={svgHeight}
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          className="block min-h-[480px] w-full min-w-[920px]"
           role="img"
           aria-label={`Saalplan ${map.planName}`}
+          style={{ touchAction: "none" }}
         >
           <defs>
             <pattern id="tf-seat-grid" width="24" height="24" patternUnits="userSpaceOnUse">
               <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(15,39,71,0.04)" strokeWidth="1" />
             </pattern>
           </defs>
-          <rect x={0} y={0} width={viewW} height={viewH} fill="#f8fafc" />
-          <rect x={0} y={0} width={viewW} height={viewH} fill="url(#tf-seat-grid)" />
+          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="#f8fafc" />
+          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="url(#tf-seat-grid)" />
           <rect
             x={toX(0)}
             y={toY(0)}
@@ -304,7 +326,7 @@ export function SeatMap({
                           : "#0F2747";
                       const lightText = taken || isSel || heldByYou || Boolean(seat.categoryId && !locked);
                       return (
-                        <g key={seat.id}>
+                        <g key={seat.id} data-saalplan-interactive="">
                           <circle
                             cx={cx}
                             cy={cy}

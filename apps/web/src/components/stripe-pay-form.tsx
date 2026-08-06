@@ -154,7 +154,7 @@ export function StripePayForm({
   const isSepa =
     paymentMethod === "sepa_debit" ||
     paymentMethod === "stripe_sepa";
-  const isKlarna = paymentMethod === "klarna";
+  const isKlarna = paymentMethod === "klarna" || paymentMethod === "stripe_klarna";
   const resolvedSuccess = successPath ?? `/konto/bestellung/${orderId}`;
   const resolvedProcessing = processingPath ?? `/konto/bestellung/${orderId}`;
   const stripePromise = loadStripe(publishableKey);

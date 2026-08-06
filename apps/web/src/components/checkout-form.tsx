@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { signIn } from "next-auth/react";
+import { signIn, signOut } from "next-auth/react";
 import { PhoneInput } from "@/components/phone-input";
 import { CheckoutPaymentMethods } from "@/components/checkout-payment-methods";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
@@ -364,16 +364,17 @@ export function CheckoutForm({
           <p className="font-semibold">Du bist als Mitarbeiter angemeldet</p>
           <p className="mt-1 text-[var(--tf-text-secondary)]">
             Für einen normalen Kundentest: als Gast kaufen (unten) — oder{" "}
-            <Link
-              href={
-                embed
-                  ? "/api/auth/signout?callbackUrl=/embed/checkout"
-                  : "/api/auth/signout?callbackUrl=/checkout"
-              }
+            <button
+              type="button"
               className="font-medium underline"
+              onClick={() =>
+                void signOut({
+                  callbackUrl: embed ? "/embed/checkout" : "/checkout",
+                })
+              }
             >
               abmelden
-            </Link>{" "}
+            </button>{" "}
             und den Kauf ohne Admin-Konto durchführen.
           </p>
         </div>

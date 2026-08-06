@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatEuroFromCents } from "@/lib/money";
 import { eventStatusLabel } from "@/lib/admin/nav";
@@ -11,6 +11,7 @@ import {
   EVENT_LIST_FILTERS,
   eventListFilterHref,
   isDefaultEventListFilters,
+  rememberEventListFilters,
   statusesForEventListFilters,
   toggleEventListFilter,
   type EventListFilterKey,
@@ -48,6 +49,10 @@ export function AdminEventsList({
 }) {
   const [activeFilters, setActiveFilters] = useState<EventListFilterKey[]>(initialFilters);
 
+  useEffect(() => {
+    rememberEventListFilters(activeFilters);
+  }, [activeFilters]);
+
   const visible = useMemo(() => {
     const statuses = new Set(statusesForEventListFilters(activeFilters));
     const now = new Date();
@@ -67,6 +72,7 @@ export function AdminEventsList({
 
   function setFilters(next: EventListFilterKey[]) {
     setActiveFilters(next);
+    rememberEventListFilters(next);
     const href = eventListFilterHref(next);
     window.history.replaceState(null, "", href);
   }

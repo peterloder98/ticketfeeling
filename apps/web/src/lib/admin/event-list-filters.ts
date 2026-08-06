@@ -75,3 +75,25 @@ export function eventListFilterHref(keys: EventListFilterKey[]): string {
   if (isDefaultEventListFilters(keys)) return "/admin/events";
   return `/admin/events?f=${keys.join(",")}`;
 }
+
+/** Persist chip selection so delete/cancel return keeps the filtered list. */
+export const EVENT_LIST_FILTER_STORAGE_KEY = "tf-admin-event-list-filters";
+
+export function rememberEventListFilters(keys: EventListFilterKey[]) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(EVENT_LIST_FILTER_STORAGE_KEY, keys.join(","));
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+export function recalledEventListHref(): string {
+  if (typeof window === "undefined") return "/admin/events";
+  try {
+    const raw = sessionStorage.getItem(EVENT_LIST_FILTER_STORAGE_KEY);
+    return eventListFilterHref(parseEventListFilters(raw));
+  } catch {
+    return "/admin/events";
+  }
+}

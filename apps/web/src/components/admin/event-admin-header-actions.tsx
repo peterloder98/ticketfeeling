@@ -8,6 +8,7 @@ import {
   pauseEventSalesAction,
   resumeEventSalesAction,
 } from "@/app/admin/events/actions";
+import { recalledEventListHref } from "@/lib/admin/event-list-filters";
 
 type EventSummary = {
   id: string;
@@ -18,6 +19,8 @@ type EventSummary = {
   locationCity: string | null;
   whenLabel: string;
 };
+
+type ConfirmKind = "danger" | "pause";
 
 export function EventAdminHeaderActions({
   event,
@@ -37,6 +40,7 @@ export function EventAdminHeaderActions({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmKind, setConfirmKind] = useState<ConfirmKind>("danger");
   const [confirmStep, setConfirmStep] = useState<1 | 2>(1);
 
   const isPaused = event.status === "paused";
@@ -62,8 +66,16 @@ export function EventAdminHeaderActions({
     };
   }, [confirmOpen]);
 
-  function openConfirm() {
+  function openDangerConfirm() {
     setError(null);
+    setConfirmKind("danger");
+    setConfirmStep(1);
+    setConfirmOpen(true);
+  }
+
+  function openPauseConfirm() {
+    setError(null);
+    setConfirmKind("pause");
     setConfirmStep(1);
     setConfirmOpen(true);
   }
@@ -74,16 +86,27 @@ export function EventAdminHeaderActions({
     setConfirmStep(1);
   }
 
-  function onPauseToggle() {
+  function onResume() {
     setError(null);
     startTransition(async () => {
-      const result = isPaused
-        ? await resumeEventSalesAction(event.id)
-        : await pauseEventSalesAction(event.id);
+      const result = await resumeEventSalesAction(event.id);
       if (!result.ok) {
         setError(result.error);
         return;
       }
+      router.refresh();
+    });
+  }
+
+  function onConfirmPause() {
+    setError(null);
+    startTransition(async () => {
+      const result = await pauseEventSalesAction(event.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setConfirmOpen(false);
       router.refresh();
     });
   }
@@ -98,7 +121,7 @@ export function EventAdminHeaderActions({
       }
       setConfirmOpen(false);
       if (result.mode === "deleted") {
-        router.push("/admin/events");
+        router.push(recalledEventListHref());
         router.refresh();
         return;
       }
@@ -140,7 +163,7 @@ export function EventAdminHeaderActions({
                   : "tf-btn tf-btn-secondary !min-h-10 text-sm"
               }
               disabled={pending}
-              onClick={onPauseToggle}
+              onClick={isPaused ? onResume : openPauseConfirm}
             >
               {pending
                 ? "Einen Moment…"
@@ -154,7 +177,7 @@ export function EventAdminHeaderActions({
               type="button"
               className="tf-btn tf-btn-secondary !min-h-10 border-[rgba(185,28,28,0.35)] text-sm text-[var(--danger)] hover:border-[var(--danger)]"
               disabled={pending}
-              onClick={openConfirm}
+              onClick={openDangerConfirm}
             >
               {dangerLabel}
             </button>
@@ -188,93 +211,126 @@ export function EventAdminHeaderActions({
             className="relative w-full max-w-md rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 id={dialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
-              {confirmStep === 1
-                ? isCancelMode
-                  ? "Event wirklich absagen?"
-                  : "Event wirklich löschen?"
-                : isCancelMode
-                  ? "Letzte Bestätigung: absagen"
-                  : "Letzte Bestätigung: löschen"}
-            </h2>
-
-            <dl className="mt-4 space-y-2 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-3 text-sm">
-              <div>
-                <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-                  Name
-                </dt>
-                <dd className="font-medium text-[var(--tf-navy)]">{event.name}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-                  Location
-                </dt>
-                <dd className="font-medium text-[var(--tf-navy)]">
-                  {event.locationName ?? "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-                  Ort
-                </dt>
-                <dd className="font-medium text-[var(--tf-navy)]">
-                  {event.locationCity ?? "—"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
-                  Datum
-                </dt>
-                <dd className="font-medium text-[var(--tf-navy)]">{event.whenLabel}</dd>
-              </div>
-            </dl>
-
-            <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
-              {confirmStep === 1
-                ? isCancelMode
-                  ? `Es wurden bereits ${ticketsSold} Tickets verkauft. Das Event wird abgesagt — Daten und Tickets bleiben erhalten, Kauf ist nicht mehr möglich.`
-                  : "Es wurden noch keine Tickets verkauft. Das Event wird unwiderruflich gelöscht — inklusive Kategorien und Saalplan-Zuordnung."
-                : isCancelMode
-                  ? "Bitte bestätige noch einmal: Das Event wird öffentlich als abgesagt angezeigt."
-                  : "Bitte bestätige noch einmal: Das Event wird vollständig gelöscht und kann nicht wiederhergestellt werden."}
-            </p>
-
-            {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
-
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-                disabled={pending}
-                onClick={closeConfirm}
-              >
-                Abbrechen
-              </button>
-              {confirmStep === 1 ? (
-                <button
-                  type="button"
-                  className="tf-btn tf-btn-primary !min-h-10 text-sm"
-                  disabled={pending}
-                  onClick={() => setConfirmStep(2)}
-                >
-                  Ja, weiter
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="tf-btn tf-btn-primary !min-h-10 bg-[var(--danger)] text-sm hover:opacity-90"
-                  disabled={pending}
-                  onClick={onConfirmDanger}
-                >
-                  {pending
-                    ? "Einen Moment…"
+            {confirmKind === "pause" ? (
+              <>
+                <h2 id={dialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
+                  Verkauf wirklich pausieren?
+                </h2>
+                <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+                  Der Online-Verkauf wird gestoppt. Das Event verschwindet von Startseite,
+                  Events-Liste und Embeds — bis du den Verkauf fortsetzt.
+                </p>
+                {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                    disabled={pending}
+                    onClick={closeConfirm}
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                    disabled={pending}
+                    onClick={onConfirmPause}
+                  >
+                    {pending ? "Einen Moment…" : "Verkauf pausieren"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 id={dialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
+                  {confirmStep === 1
+                    ? isCancelMode
+                      ? "Event wirklich absagen?"
+                      : "Event wirklich löschen?"
                     : isCancelMode
-                      ? "Endgültig absagen"
-                      : "Endgültig löschen"}
-                </button>
-              )}
-            </div>
-            <p className="sr-only">Aktion: Event {dangerVerb}</p>
+                      ? "Letzte Bestätigung: absagen"
+                      : "Letzte Bestätigung: löschen"}
+                </h2>
+
+                <dl className="mt-4 space-y-2 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-3 text-sm">
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                      Name
+                    </dt>
+                    <dd className="font-medium text-[var(--tf-navy)]">{event.name}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                      Location
+                    </dt>
+                    <dd className="font-medium text-[var(--tf-navy)]">
+                      {event.locationName ?? "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                      Ort
+                    </dt>
+                    <dd className="font-medium text-[var(--tf-navy)]">
+                      {event.locationCity ?? "—"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                      Datum
+                    </dt>
+                    <dd className="font-medium text-[var(--tf-navy)]">{event.whenLabel}</dd>
+                  </div>
+                </dl>
+
+                <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+                  {confirmStep === 1
+                    ? isCancelMode
+                      ? `Es wurden bereits ${ticketsSold} Tickets verkauft. Das Event wird abgesagt — Daten und Tickets bleiben erhalten, Kauf ist nicht mehr möglich.`
+                      : "Es wurden noch keine Tickets verkauft. Das Event wird unwiderruflich gelöscht — inklusive Kategorien und Saalplan-Zuordnung."
+                    : isCancelMode
+                      ? "Bitte bestätige noch einmal: Das Event wird öffentlich als abgesagt angezeigt."
+                      : "Bitte bestätige noch einmal: Das Event wird vollständig gelöscht und kann nicht wiederhergestellt werden."}
+                </p>
+
+                {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
+
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                    disabled={pending}
+                    onClick={closeConfirm}
+                  >
+                    Abbrechen
+                  </button>
+                  {confirmStep === 1 ? (
+                    <button
+                      type="button"
+                      className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                      disabled={pending}
+                      onClick={() => setConfirmStep(2)}
+                    >
+                      Ja, weiter
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="tf-btn tf-btn-primary !min-h-10 bg-[var(--danger)] text-sm hover:opacity-90"
+                      disabled={pending}
+                      onClick={onConfirmDanger}
+                    >
+                      {pending
+                        ? "Einen Moment…"
+                        : isCancelMode
+                          ? "Endgültig absagen"
+                          : "Endgültig löschen"}
+                    </button>
+                  )}
+                </div>
+                <p className="sr-only">Aktion: Event {dangerVerb}</p>
+              </>
+            )}
           </div>
         </div>
       ) : null}

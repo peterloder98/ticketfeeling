@@ -5,7 +5,7 @@ import type { PaymentMethodKey } from "@/lib/commerce/payment-fees";
 
 function paymentMethodTypesFor(method: string | null | undefined): string[] {
   if (method === "sepa_debit" || method === "stripe_sepa") return ["sepa_debit"];
-  if (method === "klarna") return ["klarna"];
+  if (method === "klarna" || method === "stripe_klarna") return ["klarna"];
   // card covers Apple Pay / Google Pay wallets in Payment Element
   return ["card"];
 }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { signOut } from "next-auth/react";
 import { BrandLogo } from "@/components/brand-logo";
 import { CartNavButton } from "@/components/cart-nav-button";
 import { Search, Ticket, HelpCircle, User } from "lucide-react";
@@ -126,12 +127,13 @@ export function SiteHeaderClient({
                   Tageskasse
                 </Link>
               ) : null}
-              <Link
-                href="/api/auth/signout"
+              <button
+                type="button"
                 className="tf-btn tf-btn-secondary !min-h-11 shrink-0 !px-3 text-sm"
+                onClick={() => void signOut({ callbackUrl: "/" })}
               >
                 Abmelden
-              </Link>
+              </button>
             </>
           ) : (
             <Link href="/login" className="tf-btn tf-btn-primary !min-h-11 shrink-0 !px-4 text-sm">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import {
   Minus,
@@ -42,7 +43,20 @@ type Props = {
   breakOutToTop?: boolean;
   cartHref?: string;
   checkoutHref?: string;
+  /**
+   * When set (public event page), the saalplan renders into this host element
+   * below the info section instead of inside the right ticket box.
+   */
+  mapHostId?: string;
+  /** Scroll target after seats are added (defaults to #tickets). */
+  cartScrollId?: string;
 };
+
+function scrollToId(id: string) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
 
 export function SeatBookingPanel({
   eventId,
@@ -52,6 +66,8 @@ export function SeatBookingPanel({
   showRemainingAvailability = false,
   cartHref = "/warenkorb",
   checkoutHref = "/checkout",
+  mapHostId,
+  cartScrollId = "tickets",
 }: Props) {
   const { bump } = useCart();
   const seatCategories = categories.filter((c) => c.needsSeats);
@@ -67,9 +83,13 @@ export function SeatBookingPanel({
   const [error, setError] = useState<string | null>(null);
   const [justAdded, setJustAdded] = useState(false);
   const [addedSeatLabels, setAddedSeatLabels] = useState<string[]>([]);
+  const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
   const [freeQty, setFreeQty] = useState<Record<string, number>>(
     Object.fromEntries(freeCategories.map((c) => [c.id, 1])),
   );
+
+  const useExternalMap = Boolean(mapHostId);
+  const showMap = mode === "seat_map";
 
   const selectedCategory = seatCategories.find((c) => c.id === categoryId) ?? null;
   const companionFree = Boolean(selectedCategory?.companionFree);
@@ -103,6 +123,14 @@ export function SeatBookingPanel({
     setSelectedIds((prev) => prev.slice(0, qty));
   }, [qty]);
 
+  useEffect(() => {
+    if (!mapHostId || typeof document === "undefined") {
+      setMapHostEl(null);
+      return;
+    }
+    setMapHostEl(document.getElementById(mapHostId));
+  }, [mapHostId, showMap]);
+
   const selectedSeats = useMemo(() => {
     if (!map) return [];
     const all = map.blocks.flatMap((b) => b.seats);
@@ -110,6 +138,15 @@ export function SeatBookingPanel({
       .map((id) => all.find((s) => s.id === id))
       .filter(Boolean) as PublicSeat[];
   }, [map, selectedIds]);
+
+  function openSeatMap() {
+    setMode("seat_map");
+    setJustAdded(false);
+    // Wait a tick so the map host mounts / portal paints, then scroll.
+    requestAnimationFrame(() => {
+      scrollToId(mapHostId ?? "saalplan-map");
+    });
+  }
 
   function toggleSeat(seat: PublicSeat) {
     if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
@@ -177,7 +214,6 @@ export function SeatBookingPanel({
       setJustAdded(true);
       const heldIds = new Set(selectedIds);
       setSelectedIds([]);
-      // Mark seats held locally — avoid a second full seat-map round-trip.
       if (heldIds.size > 0) {
         setMap((prev) => {
           if (!prev) return prev;
@@ -194,6 +230,8 @@ export function SeatBookingPanel({
           };
         });
       }
+      // After add: keep cart panel top-right in view.
+      requestAnimationFrame(() => scrollToId(cartScrollId));
     } finally {
       setLoading(false);
     }
@@ -234,10 +272,50 @@ export function SeatBookingPanel({
           : undefined,
       });
       setJustAdded(true);
+      requestAnimationFrame(() => scrollToId(cartScrollId));
     } finally {
       setLoading(false);
     }
   }
+
+  const mapBlock =
+    showMap ? (
+      <div className="space-y-3">
+        {mapLoading && !map ? (
+          <p className="text-sm text-[var(--tf-text-secondary)]">Saalplan wird geladen…</p>
+        ) : map ? (
+          <SeatMap
+            map={map}
+            selectedIds={selectedIds}
+            onToggle={toggleSeat}
+            maxSelect={qty}
+            activeCategoryId={categoryId}
+            initialZoom={1.5}
+            hint={
+              companionFree
+                ? "Wähle den Rollstuhlplatz — der Begleitplatz daneben wird automatisch mitreserviert."
+                : "Tippe auf freie Plätze deiner Kategorie. Türkis = deine Auswahl. Ziehe zum Verschieben."
+            }
+          />
+        ) : (
+          <p className="text-sm text-[var(--danger)]">Saalplan nicht verfügbar.</p>
+        )}
+      </div>
+    ) : null;
+
+  const externalMap =
+    useExternalMap && showMap && mapHostEl
+      ? createPortal(
+          <div className="scroll-mt-24 rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-8">
+            <h2 className="tf-display text-2xl md:text-3xl">Saalplan</h2>
+            <p className="mt-1 max-w-2xl text-base text-[var(--tf-text-secondary)]">
+              Wähle deine Plätze — die Auswahl erscheint rechts im Ticketkasten.
+            </p>
+            <div className="mt-5">{mapBlock}</div>
+          </div>,
+          mapHostEl,
+        )
+      : null;
 
   if (categories.length === 0) {
     return (
@@ -247,6 +325,7 @@ export function SeatBookingPanel({
 
   return (
     <div className="space-y-5">
+      {externalMap}
       {seatCategories.length > 0 ? (
         <div className="space-y-4">
           {bookingMode === "seat_map_and_best" ? (
@@ -273,7 +352,7 @@ export function SeatBookingPanel({
               </button>
               <button
                 type="button"
-                onClick={() => setMode("seat_map")}
+                onClick={openSeatMap}
                 className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
                   mode === "seat_map"
                     ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] ring-2 ring-[rgba(20,184,166,0.2)]"
@@ -353,27 +432,9 @@ export function SeatBookingPanel({
           </div>
 
           {mode === "seat_map" ? (
-            <div className="space-y-3">
-              {mapLoading && !map ? (
-                <p className="text-sm text-[var(--tf-text-secondary)]">Saalplan wird geladen…</p>
-              ) : map ? (
-                <SeatMap
-                  map={map}
-                  selectedIds={selectedIds}
-                  onToggle={toggleSeat}
-                  maxSelect={qty}
-                  activeCategoryId={categoryId}
-                  hint={
-                    companionFree
-                      ? "Wähle den Rollstuhlplatz — der Begleitplatz daneben wird automatisch mitreserviert."
-                      : "Tippe auf freie Plätze deiner Kategorie. Türkis = deine Auswahl."
-                  }
-                />
-              ) : (
-                <p className="text-sm text-[var(--danger)]">Saalplan nicht verfügbar.</p>
-              )}
+            <div className="space-y-2">
               {selectedSeats.length > 0 ? (
-                <ul className="space-y-1 text-sm text-[var(--tf-navy)]">
+                <ul className="space-y-1 rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.06)] px-3 py-2 text-sm text-[var(--tf-navy)]">
                   {selectedSeats.map((s) => (
                     <li key={s.id} className="font-medium">
                       {formatSeatLabel(s)}
@@ -385,7 +446,14 @@ export function SeatBookingPanel({
                     </li>
                   ))}
                 </ul>
-              ) : null}
+              ) : (
+                <p className="text-sm text-[var(--tf-text-secondary)]">
+                  {useExternalMap
+                    ? "Wähle unten im Saalplan deine Plätze — sie erscheinen hier."
+                    : "Tippe auf freie Plätze deiner Kategorie."}
+                </p>
+              )}
+              {!useExternalMap ? mapBlock : null}
             </div>
           ) : (
             <p className="text-sm text-[var(--tf-text-secondary)]">

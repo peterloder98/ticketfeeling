@@ -157,12 +157,6 @@ export function buildOrderPaidTicketsMail(input: {
   const appleOn = isAppleWalletConfigured();
   const googleOn = isGoogleWalletConfigured();
   const ticketId = input.firstTicketId?.trim() || null;
-  const ticketPdfUrl = ticketId
-    ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/pdf`, token)}`
-    : null;
-  const ticketOpenUrl = ticketId
-    ? `${base}${withAccessToken(`/ticket/${ticketId}`, token)}`
-    : null;
   const calendarUrl = ticketId
     ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/calendar`, token)}`
     : null;
@@ -191,11 +185,11 @@ export function buildOrderPaidTicketsMail(input: {
   const lines = [
     `${greeting},`,
     "",
-    "Wichtig: Diese Bestätigung enthält keinen Ticket-PDF-Anhang. Ihre Tickets öffnen Sie ausschließlich über die Links unten.",
+    "vielen Dank für Ihre Bestellung.",
+    "Wir freuen uns, dass Sie bei diesem Event dabei sind und sich Ihre Tickets gesichert haben.",
     "",
-    "vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei diesem Event dabei sind.",
-    "",
-    `${ticketCountLabel} samt QR-Codes finden Sie über die Links — PDF bei Bedarf dort herunterladen.`,
+    `${ticketCountLabel} samt den QR-Codes für den Einlass können Sie auf folgendem Link einsehen, speichern oder drucken:`,
+    orderUrl,
     "",
     `Event: ${input.eventName}`,
     `Termin: ${input.whenLabel}`,
@@ -204,11 +198,7 @@ export function buildOrderPaidTicketsMail(input: {
     ...(invoiceLine ? [invoiceLine] : []),
     "",
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
-    "",
-    `Bestellung & Tickets öffnen: ${orderUrl}`,
-    ...(ticketOpenUrl ? [`Ticket öffnen: ${ticketOpenUrl}`] : []),
-    ...(ticketPdfUrl ? [`Ticket als PDF: ${ticketPdfUrl}`] : []),
-    ...(calendarUrl ? [`Zum Kalender (.ics): ${calendarUrl}`] : []),
+    ...(calendarUrl ? [`Termin in den Kalender eintragen: ${calendarUrl}`] : []),
     ...(appleUrl ? [`Apple Wallet: ${appleUrl}`] : []),
     ...(googleUrl ? [`Google Wallet: ${googleUrl}`] : []),
     "",
@@ -232,9 +222,9 @@ export function buildOrderPaidTicketsMail(input: {
 
   const htmlParas = [
     escapeHtml(`${greeting},`),
-    "<strong>Wichtig:</strong> Diese Bestätigung enthält <strong>keinen Ticket-PDF-Anhang</strong>. Ihre Tickets öffnen Sie ausschließlich über die Links unten.",
-    "vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei diesem Event dabei sind.",
-    `${escapeHtml(ticketCountLabel)} samt QR-Codes finden Sie über die Links — <strong>PDF bei Bedarf dort herunterladen</strong>.`,
+    "vielen Dank für Ihre Bestellung.<br/>Wir freuen uns, dass Sie bei diesem Event dabei sind und sich Ihre Tickets gesichert haben.",
+    `${escapeHtml(ticketCountLabel)} samt den QR-Codes für den Einlass können Sie auf folgendem Link einsehen, speichern oder drucken:`,
+    `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a>`,
     `<strong style="font-size:18px">${escapeHtml(input.eventName)}</strong><br/>
      <span style="color:#334155">${escapeHtml(input.whenLabel)}</span>${
        place ? `<br/><span style="color:#334155">${escapeHtml(place)}</span>` : ""
@@ -242,20 +232,9 @@ export function buildOrderPaidTicketsMail(input: {
        invoiceNumber ? ` · Rechnung ${escapeHtml(invoiceNumber)}` : ""
      }</span>`,
     "Am Einlass einfach den QR-Code vorzeigen — digital auf dem Handy oder ausgedruckt.",
-    // Primary CTA + raw absolute URL (some clients strip button styles / rewrite hrefs).
-    `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a><br/><span style="font-size:13px;line-height:1.5;color:#64748B;font-family:system-ui,sans-serif;word-break:break-all">Link: <a href="${escapeHtml(orderUrl)}" style="color:#0D9488;text-decoration:underline">${escapeHtml(orderUrl)}</a></span>`,
-    ...(ticketOpenUrl
+    ...(calendarUrl
       ? [
-          `<a href="${escapeHtml(ticketOpenUrl)}" style="display:inline-block;background:#0F2747;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px">Ticket öffnen</a><br/><span style="font-size:13px;line-height:1.5;color:#64748B;font-family:system-ui,sans-serif;word-break:break-all">Ticket-Link: <a href="${escapeHtml(ticketOpenUrl)}" style="color:#0D9488;text-decoration:underline">${escapeHtml(ticketOpenUrl)}</a></span>`,
-        ]
-      : []),
-    ...(ticketPdfUrl
-      ? [
-          `<a href="${escapeHtml(ticketPdfUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1">Ticket als PDF</a>${
-            calendarUrl
-              ? ` <a href="${escapeHtml(calendarUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1;margin-left:8px">Zum Kalender</a>`
-              : ""
-          }`,
+          `<a href="${escapeHtml(calendarUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1">Termin in den Kalender eintragen</a>`,
         ]
       : []),
     ...(invoiceUrl

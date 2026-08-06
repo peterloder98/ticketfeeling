@@ -13,7 +13,11 @@ export type PaymentMethodKey =
   | "klarna";
 
 /** Legacy keys still accepted from older sessions / DB rows */
-export type LegacyPaymentMethodKey = "stripe_sepa" | "stripe_card" | "paypal";
+export type LegacyPaymentMethodKey =
+  | "stripe_sepa"
+  | "stripe_card"
+  | "stripe_klarna"
+  | "paypal";
 
 export type PaymentMethodFeeConfig = {
   percentageBps: number;
@@ -152,6 +156,7 @@ export function normalizePaymentMethodKey(value: string): PaymentMethodKey | nul
   }
   if (value === "stripe_card") return "card";
   if (value === "stripe_sepa") return "sepa_debit";
+  if (value === "stripe_klarna") return "klarna";
   return null;
 }
 
@@ -163,6 +168,7 @@ export function parsePaymentFeeConfig(raw: unknown): PaymentFeeConfigMap {
   const alias: Record<string, PaymentMethodKey> = {
     stripe_card: "card",
     stripe_sepa: "sepa_debit",
+    stripe_klarna: "klarna",
     card: "card",
     sepa_debit: "sepa_debit",
     apple_pay: "apple_pay",

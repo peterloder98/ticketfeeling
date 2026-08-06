@@ -16,6 +16,7 @@ import {
 } from "@/lib/commerce/channels";
 import { canSellAllBoxOfficeEvents } from "@/lib/commerce/box-office-access";
 import { formatBoxOfficeTicketLines } from "@/lib/commerce/box-office-ticket-label";
+import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 
 export const dynamic = "force-dynamic";
 
@@ -156,18 +157,30 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
           Zusammenfassung
         </p>
-        {order.items.map((item) => (
-          <div key={item.id} className="flex justify-between gap-4 text-sm">
+        {mergeSameCategoryLines(
+          order.items.map((item) => ({
+            quantity: item.quantity,
+            categoryLabel: item.categorySnapshot,
+            unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+            lineGrossCents: item.grossCents,
+            eventNameSnapshot: item.eventNameSnapshot,
+            locationSnapshot: item.locationSnapshot,
+          })),
+        ).map((line, idx) => (
+          <div
+            key={`${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
+            className="flex justify-between gap-4 text-sm"
+          >
             <div>
               <p className="font-semibold text-[var(--tf-navy)]">
-                {item.quantity}× {item.categorySnapshot}
+                {line.quantity}× {line.categoryLabel}
               </p>
-              <p className="text-[var(--tf-text-secondary)]">{item.eventNameSnapshot}</p>
-              {item.locationSnapshot ? (
-                <p className="text-xs text-[var(--tf-text-secondary)]">{item.locationSnapshot}</p>
+              <p className="text-[var(--tf-text-secondary)]">{line.eventNameSnapshot}</p>
+              {line.locationSnapshot ? (
+                <p className="text-xs text-[var(--tf-text-secondary)]">{line.locationSnapshot}</p>
               ) : null}
             </div>
-            <p className="tabular-nums">{formatEuroFromCents(item.grossCents)}</p>
+            <p className="tabular-nums">{formatEuroFromCents(line.lineGrossCents)}</p>
           </div>
         ))}
         {(order.feeGrossCents ?? 0) > 0 ? (
