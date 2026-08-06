@@ -16,8 +16,16 @@ type Props = {
   selectedIds: string[];
   onToggle: (seat: PublicSeat) => void;
   maxSelect: number;
-  /** When set, only seats for this category are selectable (once assignments exist). */
+  /**
+   * When set without multiCategory, only seats for this category are selectable
+   * (once assignments exist). Ignored when multiCategory is true.
+   */
   activeCategoryId?: string | null;
+  /**
+   * Allow picking seats from any assigned price category in one selection.
+   * Other categories stay fully visible (not faded).
+   */
+  multiCategory?: boolean;
   /** Hint under the map, e.g. companion info */
   hint?: string | null;
   /** Higher default zoom for public buy flow */
@@ -30,6 +38,7 @@ export function SeatMap({
   onToggle,
   maxSelect,
   activeCategoryId,
+  multiCategory = false,
   hint,
   initialZoom = DEFAULT_BUY_ZOOM,
 }: Props) {
@@ -96,9 +105,12 @@ export function SeatMap({
   function isSelectable(seat: PublicSeat) {
     if (seat.status === "taken" || seat.status === "locked" || seat.locked) return false;
     if (seat.status === "held_by_you") return true;
-    if (!hasAssignments) return seat.status === "available";
+    if (seat.status !== "available") return false;
+    if (!hasAssignments) return true;
+    if (!seat.categoryId) return false;
+    if (multiCategory) return true;
     if (!activeCategoryId) return false;
-    return seat.status === "available" && seat.categoryId === activeCategoryId;
+    return seat.categoryId === activeCategoryId;
   }
 
   function seatFill(seat: PublicSeat, isSel: boolean) {
@@ -108,7 +120,12 @@ export function SeatMap({
     if (seat.categoryId) {
       const catColor = colorByCategory.get(seat.categoryId);
       if (catColor) {
-        if (hasAssignments && activeCategoryId && seat.categoryId !== activeCategoryId) {
+        if (
+          hasAssignments &&
+          !multiCategory &&
+          activeCategoryId &&
+          seat.categoryId !== activeCategoryId
+        ) {
           return fadeHex(catColor, 0.35);
         }
         return fadeHex(catColor, 0.55);
@@ -122,7 +139,10 @@ export function SeatMap({
     if (taken) return `${base} — Bereits verkauft`;
     if (locked) return `${base} — noch nicht freigegeben`;
     if (seat.status === "held_by_you") return `${base} — in deinem Warenkorb`;
-    if (!selectable && hasAssignments) return `${base} — andere Kategorie`;
+    if (!selectable && hasAssignments && !multiCategory) return `${base} — andere Kategorie`;
+    if (!selectable && hasAssignments && !seat.categoryId) {
+      return `${base} — keiner Preiskategorie zugeordnet`;
+    }
     return base;
   }
 

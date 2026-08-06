@@ -71,7 +71,6 @@ export function BoxOfficeForm({
   const [eventId, setEventId] = useState("");
   const [qty, setQty] = useState<Record<string, number>>({});
   const [seatingChoice, setSeatingChoice] = useState<SeatingChoice>("best_available");
-  const [activeSeatCategoryId, setActiveSeatCategoryId] = useState("");
   const [selectedByCategory, setSelectedByCategory] = useState<Record<string, string[]>>({});
   const [map, setMap] = useState<SeatMapPayload | null>(null);
   const [mapLoading, setMapLoading] = useState(false);
@@ -132,28 +131,28 @@ export function BoxOfficeForm({
       ? cashTenderedCents - totalCents
       : null;
 
-  const activeSeatCategory =
-    seatCategories.find((c) => c.id === activeSeatCategoryId) ?? seatCategories[0] ?? null;
-  const activeQty = activeSeatCategory ? (qty[activeSeatCategory.id] ?? 0) : 0;
-  const activeSelected = activeSeatCategory
-    ? (selectedByCategory[activeSeatCategory.id] ?? [])
-    : [];
+  const allSelectedIds = useMemo(
+    () => Object.values(selectedByCategory).flat(),
+    [selectedByCategory],
+  );
+  const seatMapMaxSelect = useMemo(() => {
+    if (seatingChoice !== "seat_map") return 0;
+    return seatCategories.reduce((sum, c) => sum + Math.min(20, c.available), 0);
+  }, [seatingChoice, seatCategories]);
 
   const loadMap = useCallback(async () => {
     if (!eventId || !hasReservedSeating) return;
     setMapLoading(true);
     try {
-      const catQs = activeSeatCategoryId
-        ? `?categoryId=${encodeURIComponent(activeSeatCategoryId)}`
-        : "";
-      const res = await fetch(`/api/v1/events/${eventId}/seats${catQs}`);
+      // Full map (no category filter) so mixed categories can be picked in one go.
+      const res = await fetch(`/api/v1/events/${eventId}/seats`);
       const data = await res.json();
       if (res.ok) setMap(data.map as SeatMapPayload);
       else setMap(null);
     } finally {
       setMapLoading(false);
     }
-  }, [eventId, hasReservedSeating, activeSeatCategoryId]);
+  }, [eventId, hasReservedSeating]);
 
   useEffect(() => {
     if (step === 1 && hasReservedSeating && seatingChoice === "seat_map") {
@@ -161,51 +160,50 @@ export function BoxOfficeForm({
     }
   }, [step, hasReservedSeating, seatingChoice, loadMap]);
 
-  useEffect(() => {
-    if (!activeSeatCategoryId && seatCategories[0]) {
-      setActiveSeatCategoryId(seatCategories[0].id);
-    }
-  }, [activeSeatCategoryId, seatCategories]);
-
   function setCategoryQty(categoryId: string, next: number, max: number) {
     const clamped = Math.max(0, Math.min(max, next));
     setQty((prev) => ({ ...prev, [categoryId]: clamped }));
-    setSelectedByCategory((prev) => {
-      const cur = prev[categoryId] ?? [];
-      if (cur.length <= clamped) return prev;
-      return { ...prev, [categoryId]: cur.slice(0, clamped) };
-    });
+    if (seatingChoice === "seat_map") {
+      setSelectedByCategory((prev) => {
+        const cur = prev[categoryId] ?? [];
+        if (cur.length <= clamped) return prev;
+        return { ...prev, [categoryId]: cur.slice(0, clamped) };
+      });
+    }
   }
 
   function selectEvent(id: string) {
-    const ev = events.find((e) => e.id === id);
     setEventId(id);
     setQty({});
     setSelectedByCategory({});
     setMap(null);
     setSeatingChoice("best_available");
-    setActiveSeatCategoryId(ev?.categories.find((c) => c.needsSeats)?.id ?? "");
     setError(null);
     setStep(1);
   }
 
   function toggleSeat(seat: PublicSeat) {
-    if (!activeSeatCategory || activeQty < 1) return;
     if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
-    const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
-    if (hasAssignments && seat.categoryId && seat.categoryId !== activeSeatCategory.id) {
-      return;
-    }
     if (seat.status !== "available" && seat.status !== "held_by_you") return;
+    const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
+    const categoryId = hasAssignments
+      ? seat.categoryId
+      : seatCategories[0]?.id ?? null;
+    if (!categoryId) return;
+    const category = categories.find((c) => c.id === categoryId);
+    if (!category?.needsSeats) return;
+    const max = Math.min(20, category.available);
     setSelectedByCategory((prev) => {
-      const cur = prev[activeSeatCategory.id] ?? [];
+      const cur = prev[categoryId] ?? [];
       if (cur.includes(seat.id)) {
-        return { ...prev, [activeSeatCategory.id]: cur.filter((id) => id !== seat.id) };
+        const next = cur.filter((id) => id !== seat.id);
+        setQty((q) => ({ ...q, [categoryId]: next.length }));
+        return { ...prev, [categoryId]: next };
       }
-      if (cur.length >= activeQty) {
-        return { ...prev, [activeSeatCategory.id]: [...cur.slice(1), seat.id] };
-      }
-      return { ...prev, [activeSeatCategory.id]: [...cur, seat.id] };
+      if (cur.length >= max) return prev;
+      const next = [...cur, seat.id];
+      setQty((q) => ({ ...q, [categoryId]: next.length }));
+      return { ...prev, [categoryId]: next };
     });
   }
 
@@ -499,6 +497,15 @@ export function BoxOfficeForm({
                 type="button"
                 onClick={() => {
                   setSeatingChoice("seat_map");
+                  // Seats on the map drive quantities — drop leftover Bestplatz counts.
+                  setQty((prev) => {
+                    const next = { ...prev };
+                    for (const c of seatCategories) {
+                      next[c.id] = 0;
+                    }
+                    return next;
+                  });
+                  setSelectedByCategory({});
                   setError(null);
                 }}
                 className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
@@ -511,7 +518,7 @@ export function BoxOfficeForm({
                 <span>
                   <span className="font-semibold text-[var(--tf-navy)]">Saalplan</span>
                   <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Kunde wählt Reihe und Platz selbst auf dem Plan
+                    Plätze selbst wählen — auch gemischt aus mehreren Kategorien
                   </span>
                 </span>
               </button>
@@ -577,68 +584,70 @@ export function BoxOfficeForm({
                       <button
                         type="button"
                         className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
-                        disabled={soldOut || current >= max}
-                        onClick={() => {
-                          setCategoryQty(category.id, current + 1, max);
-                          if (category.needsSeats) setActiveSeatCategoryId(category.id);
-                        }}
+                        disabled={
+                          soldOut ||
+                          current >= max ||
+                          (seatingChoice === "seat_map" && Boolean(category.needsSeats))
+                        }
+                        onClick={() => setCategoryQty(category.id, current + 1, max)}
                         aria-label="Mehr"
+                        title={
+                          seatingChoice === "seat_map" && category.needsSeats
+                            ? "Plätze direkt im Saalplan antippen"
+                            : undefined
+                        }
                       >
                         <Plus className="h-4 w-4" />
                       </button>
                     </div>
                   </div>
-                  {seatingChoice === "seat_map" &&
-                  category.needsSeats &&
-                  current > 0 &&
-                  seatCategories.length > 1 ? (
-                    <button
-                      type="button"
-                      className={`mt-3 text-sm font-semibold ${
-                        activeSeatCategoryId === category.id
-                          ? "text-[var(--tf-teal)]"
-                          : "text-[var(--tf-navy)] underline-offset-2 hover:underline"
-                      }`}
-                      onClick={() => setActiveSeatCategoryId(category.id)}
-                    >
-                      {activeSeatCategoryId === category.id
-                        ? "Aktiv für Saalplan-Auswahl"
-                        : "Plätze für diese Kategorie wählen"}
-                    </button>
-                  ) : null}
                 </div>
               );
             })}
           </div>
 
-          {seatingChoice === "seat_map" && hasReservedSeating && activeQty > 0 ? (
+          {seatingChoice === "seat_map" && hasReservedSeating ? (
             <div className="space-y-3 rounded-2xl border border-[var(--tf-line)] bg-white p-4">
               <div>
                 <h3 className="text-base font-semibold text-[var(--tf-navy)]">Saalplan</h3>
                 <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-                  {activeSeatCategory
-                    ? `${activeSeatCategory.name}: ${activeSelected.length}/${activeQty} gewählt. Tippen zum Auswählen, ziehen zum Verschieben.`
-                    : "Anzahl wählen, dann Plätze tippen."}
-                  {activeSeatCategory?.companionFree
+                  Tippe freie Plätze — auch aus verschiedenen Preiskategorien in einem Kauf.
+                  {allSelectedIds.length > 0
+                    ? ` Aktuell ${allSelectedIds.length} Platz${allSelectedIds.length === 1 ? "" : "e"} gewählt.`
+                    : ""}
+                  {seatCategories.some((c) => c.companionFree)
                     ? " Beim Rollstuhlplatz wird der Begleitplatz automatisch mitreserviert."
                     : ""}
                 </p>
+                {lineItems.some((l) => l.category.needsSeats) ? (
+                  <ul className="mt-2 space-y-0.5 text-sm text-[var(--tf-navy)]">
+                    {lineItems
+                      .filter((l) => l.category.needsSeats)
+                      .map((l) => {
+                        const picked = selectedByCategory[l.category.id]?.length ?? 0;
+                        return (
+                          <li key={l.category.id} className="font-medium">
+                            {picked}× {l.category.name}
+                            <span className="ml-1 font-normal text-[var(--tf-text-secondary)]">
+                              ({formatEuroFromCents(l.category.priceGrossCents)})
+                            </span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                ) : null}
               </div>
               {mapLoading && !map ? (
                 <p className="text-sm text-[var(--tf-text-secondary)]">Saalplan wird geladen…</p>
               ) : map ? (
                 <SeatMap
                   map={map}
-                  selectedIds={activeSelected}
+                  selectedIds={allSelectedIds}
                   onToggle={toggleSeat}
-                  maxSelect={activeQty}
-                  activeCategoryId={activeSeatCategory?.id}
+                  maxSelect={Math.max(seatMapMaxSelect, allSelectedIds.length, 1)}
+                  multiCategory
                   initialZoom={2}
-                  hint={
-                    activeQty < 1
-                      ? "Zuerst eine Stückzahl für eine Sitzplatz-Kategorie wählen."
-                      : "Türkis = Auswahl. Verkauft und gesperrt sind grau."
-                  }
+                  hint="Türkis = Auswahl. Kategorienfarben zeigen die Preiszugehörigkeit. Verkauft und gesperrt sind grau."
                 />
               ) : (
                 <p className="text-sm text-[var(--danger)]">Saalplan nicht verfügbar.</p>
