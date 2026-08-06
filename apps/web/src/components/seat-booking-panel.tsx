@@ -230,6 +230,7 @@ export function SeatBookingPanel({
   function openSeatMap() {
     setMode("seat_map");
     setJustAdded(false);
+    void loadMap();
     requestAnimationFrame(() => {
       scrollToId(mapHostId ?? "saalplan-map");
     });
@@ -242,7 +243,8 @@ export function SeatBookingPanel({
 
   function toggleSeat(seat: PublicSeat) {
     if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
-    if (seat.status !== "available" && seat.status !== "held_by_you") return;
+    // Cart holds for this session stay visible but are not selectable again.
+    if (seat.status === "held_by_you" || seat.status !== "available") return;
     const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
     const catId = hasAssignments ? seat.categoryId : seatCategories[0]?.id ?? null;
     if (!catId) return;
@@ -306,7 +308,6 @@ export function SeatBookingPanel({
     setError(null);
     const allLabels: string[] = [];
     let lastData: Record<string, unknown> | null = null;
-    const heldIds = new Set<string>();
 
     try {
       // 1) Seated: Bestplatz or Saalplan
@@ -384,25 +385,8 @@ export function SeatBookingPanel({
             }
             lastData = data as Record<string, unknown>;
             allLabels.push(...seatLabelsFromResponse(data));
-            for (const id of seatIds) heldIds.add(id);
           }
           setSelectedByCategory({});
-          if (heldIds.size > 0) {
-            setMap((prev) => {
-              if (!prev) return prev;
-              return {
-                ...prev,
-                blocks: prev.blocks.map((block) => ({
-                  ...block,
-                  seats: block.seats.map((seat) =>
-                    heldIds.has(seat.id)
-                      ? { ...seat, status: "held_by_you" as const }
-                      : seat,
-                  ),
-                })),
-              };
-            });
-          }
         }
       }
 
@@ -458,6 +442,8 @@ export function SeatBookingPanel({
       if (lastData) applyCartBump(lastData);
       setAddedSeatLabels(allLabels);
       setJustAdded(true);
+      // Refresh so newly held seats render as held_by_you / „Bereits im Warenkorb“.
+      void loadMap();
       requestAnimationFrame(() => scrollToId(cartScrollId));
     } catch (err) {
       const code =

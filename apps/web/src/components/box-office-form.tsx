@@ -248,7 +248,7 @@ export function BoxOfficeForm({
 
   function toggleSeat(seat: PublicSeat) {
     if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
-    if (seat.status !== "available" && seat.status !== "held_by_you") return;
+    if (seat.status === "held_by_you" || seat.status !== "available") return;
     const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
     const categoryId = hasAssignments
       ? seat.categoryId

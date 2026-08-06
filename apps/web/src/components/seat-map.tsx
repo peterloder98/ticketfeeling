@@ -114,7 +114,8 @@ export function SeatMap({
 
   function isSelectable(seat: PublicSeat) {
     if (seat.status === "taken" || seat.status === "locked" || seat.locked) return false;
-    if (seat.status === "held_by_you") return true;
+    // Already held by this cart — visible but not pickable again.
+    if (seat.status === "held_by_you") return false;
     if (seat.status !== "available") return false;
     if (!hasAssignments) return true;
     if (!seat.categoryId) return false;
@@ -126,7 +127,9 @@ export function SeatMap({
   function seatFill(seat: PublicSeat, isSel: boolean) {
     if (seat.status === "locked" || seat.locked) return "#CBD5E1";
     if (seat.status === "taken") return "url(#tf-sold-hatch)";
-    if (isSel || seat.status === "held_by_you") return "#14B8A6";
+    if (isSel) return "#14B8A6";
+    // Soft mint — distinct from solid teal selection and from sold hatch.
+    if (seat.status === "held_by_you") return "#99F6E4";
     if (seat.categoryId) {
       const catColor = colorByCategory.get(seat.categoryId);
       if (catColor) {
@@ -148,7 +151,7 @@ export function SeatMap({
     const base = `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`;
     if (taken) return `${base} — Bereits verkauft`;
     if (locked) return `${base} — noch nicht freigegeben`;
-    if (seat.status === "held_by_you") return `${base} — in deinem Warenkorb`;
+    if (seat.status === "held_by_you") return `${base} — Bereits im Warenkorb`;
     if (!selectable && hasAssignments && !multiCategory) return `${base} — andere Kategorie`;
     if (!selectable && hasAssignments && !seat.categoryId) {
       return `${base} — keiner Preiskategorie zugeordnet`;
@@ -160,6 +163,7 @@ export function SeatMap({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--tf-text-secondary)]">
         <Legend color="#14B8A6" label="Ausgewählt" />
+        <Legend color="#99F6E4" border="#0F766E" label="Bereits im Warenkorb" />
         <Legend color="#E2E8F0" border="#0F2747" label="Frei" />
         <Legend color="#94A3B8" hatch label="Bereits verkauft" />
         <Legend color="#CBD5E1" border="#64748B" dashed label="Gesperrt" />
@@ -407,11 +411,13 @@ export function SeatMap({
                         ? "#64748B"
                         : taken
                           ? "#64748B"
-                          : isSel || heldByYou
+                          : isSel
                             ? "#0F766E"
-                            : "#0F2747";
+                            : heldByYou
+                              ? "#0F766E"
+                              : "#0F2747";
                       const lightText =
-                        (taken || isSel || heldByYou || Boolean(seat.categoryId && !locked)) &&
+                        (taken || isSel || Boolean(seat.categoryId && !locked && !heldByYou)) &&
                         !taken;
                       return (
                         <g key={seat.id} data-saalplan-interactive="">
@@ -421,13 +427,13 @@ export function SeatMap({
                             r={r}
                             fill={fill}
                             stroke={stroke}
-                            strokeWidth={isSel ? 2.25 : locked || taken ? 1.5 : 1}
+                            strokeWidth={isSel ? 2.25 : heldByYou || locked || taken ? 1.75 : 1}
                             strokeDasharray={locked ? "3 2" : taken ? "2 2" : undefined}
                             opacity={
                               selectable || isSel || heldByYou || locked || taken ? 1 : 0.45
                             }
                             style={{
-                              cursor: selectable ? "pointer" : "not-allowed",
+                              cursor: selectable ? "pointer" : "default",
                               transition: "fill 120ms ease, opacity 200ms ease",
                             }}
                             onClick={() => {
@@ -458,7 +464,19 @@ export function SeatMap({
                               />
                             </g>
                           ) : null}
-                          {r >= 6 && !taken ? (
+                          {heldByYou && r >= 5 ? (
+                            <g pointerEvents="none" aria-hidden>
+                              <path
+                                d={`M ${cx - r * 0.35} ${cy} L ${cx - r * 0.08} ${cy + r * 0.32} L ${cx + r * 0.4} ${cy - r * 0.28}`}
+                                fill="none"
+                                stroke="#0F766E"
+                                strokeWidth={Math.max(1.5, r * 0.28)}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </g>
+                          ) : null}
+                          {r >= 6 && !taken && !heldByYou ? (
                             <text
                               x={cx}
                               y={cy + 3}

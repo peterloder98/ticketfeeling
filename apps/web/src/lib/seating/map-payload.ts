@@ -4,6 +4,7 @@ import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materia
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
 import { countSellableAvailableSeats } from "@/lib/seating/availability";
+import { toPublicSeatStatus } from "@/lib/seating/public-seat-status";
 import type {
   PublicSeat,
   PublicSeatBlock,
@@ -29,12 +30,6 @@ function toPublicSeat(
   },
   viewerSet: Set<string>,
 ): PublicSeat {
-  let status: PublicSeat["status"] = "available";
-  if (s.locked) status = "locked";
-  else if (s.status === "sold") status = "taken";
-  else if (s.status === "held") {
-    status = s.cartItemId && viewerSet.has(s.cartItemId) ? "held_by_you" : "taken";
-  }
   return {
     id: s.id,
     seatKey: s.seatKey,
@@ -46,7 +41,7 @@ function toPublicSeat(
     seatNumber: s.seatNumber,
     categoryId: s.categoryId,
     locked: s.locked,
-    status,
+    status: toPublicSeatStatus(s, viewerSet),
   };
 }
 
