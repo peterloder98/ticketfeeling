@@ -177,10 +177,9 @@ export function buildOrderPaidTicketsMail(input: {
         ? `Rechnung: ${invoiceNumber}`
         : null;
   const datePart = input.eventDateLabel?.trim();
-  // Subject makes the link-only delivery unmistakable (also a deploy smoke-check).
   const subject = datePart
-    ? `Ihre Tickets (per Link, kein PDF-Anhang) – ${input.eventName} – ${datePart}`
-    : `Ihre Tickets (per Link, kein PDF-Anhang) – ${input.eventName}`;
+    ? `Ihre Ticket-Bestellung – ${input.eventName} – ${datePart}`
+    : `Ihre Ticket-Bestellung – ${input.eventName}`;
 
   const lines = [
     `${greeting},`,
