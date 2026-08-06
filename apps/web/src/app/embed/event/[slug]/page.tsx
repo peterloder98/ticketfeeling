@@ -160,6 +160,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
       priceGrossCents: priced.unitCents,
       listPriceGrossCents: priced.listCents,
       campaignName: priced.campaignName,
+      campaignValidUntil: priced.campaignValidUntil,
       available,
       maxPerOrder: category.maxPerOrder,
       needsSeats: categoryNeedsSeats({
@@ -210,12 +211,12 @@ export default async function EmbedEventShopPage({ params }: Props) {
         ) : (
           <EmbedBackLink fallbackHref="/embed/shop" label="Zurück" />
         )}
-        <div className="overflow-hidden rounded-xl border border-[var(--tf-line)]">
-          <div className="relative aspect-square w-full bg-[var(--tf-navy)]">
+        <div className="group overflow-hidden rounded-xl border border-[var(--tf-line)]">
+          <div className="relative aspect-square w-full overflow-hidden bg-[var(--tf-navy)]">
             <ResponsiveImage
               src={coverImageUrl}
               alt=""
-              className="absolute inset-0 h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
               fallback="event"
             />
           </div>

@@ -181,6 +181,7 @@ export default async function EventPage({ params }: Props) {
       priceGrossCents: priced.unitCents,
       listPriceGrossCents: priced.listCents,
       campaignName: priced.campaignName,
+      campaignValidUntil: priced.campaignValidUntil,
       available,
       maxPerOrder: category.maxPerOrder,
       needsSeats: categoryNeedsSeats({
@@ -308,12 +309,12 @@ export default async function EventPage({ params }: Props) {
             </div>
           </div>
 
-          <div className="mx-auto w-full max-w-[460px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
-            <div className="aspect-square">
+          <div className="group mx-auto w-full max-w-[460px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
+            <div className="aspect-square overflow-hidden">
               <ResponsiveImage
                 src={coverImageUrl}
                 alt={`Cover: ${event.name}`}
-                className="h-full w-full"
+                className="h-full w-full transition duration-300 group-hover:scale-[1.02]"
                 fallback="event"
               />
             </div>

@@ -20,7 +20,13 @@ export type EventCardData = {
   locationName?: string | null;
   locationCity?: string | null;
   coverImageUrl?: string | null;
+  /** Sale / regular from-price, e.g. "ab 49,00 €" */
   priceLabel?: string | null;
+  /** Strikethrough list from-price when campaign active */
+  listPriceLabel?: string | null;
+  /** e.g. "−20%" — same Aktion language as ticket UI */
+  saleBadge?: string | null;
+  campaignName?: string | null;
   /** Small note under price, e.g. "zzgl. 4 % Verwaltungsgebühr" */
   priceNote?: string | null;
   remainingTickets?: number | null;
@@ -89,6 +95,7 @@ export function EventCard({ event }: { event: EventCardData }) {
   const artists = event.artists?.slice(0, 4) ?? [];
   const href = event.href ?? `/event/${event.slug}`;
   const cta = event.ctaLabel ?? "Event ansehen";
+  const onSale = Boolean(event.listPriceLabel && event.saleBadge);
 
   return (
     <Link
@@ -142,11 +149,32 @@ export function EventCard({ event }: { event: EventCardData }) {
           </p>
         ) : null}
 
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-[var(--tf-line)] pt-2.5">
+        <div className="mt-auto flex items-end justify-between gap-2 border-t border-[var(--tf-line)] pt-2.5">
           <div className="min-w-0">
-            <span className="block text-sm font-semibold text-[var(--tf-navy)]">
-              {event.priceLabel ?? "Tickets"}
-            </span>
+            {onSale ? (
+              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                <span className="text-xs font-normal tabular-nums text-[var(--tf-text-secondary)] line-through">
+                  {event.listPriceLabel}
+                </span>
+                {event.saleBadge ? (
+                  <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
+                    {event.saleBadge}
+                  </span>
+                ) : null}
+                <span className="text-sm font-bold tabular-nums text-[var(--tf-sale)]">
+                  {event.priceLabel}
+                </span>
+              </div>
+            ) : (
+              <span className="block text-sm font-semibold text-[var(--tf-navy)]">
+                {event.priceLabel ?? "Tickets"}
+              </span>
+            )}
+            {onSale && event.campaignName ? (
+              <span className="mt-0.5 block text-[11px] font-medium text-[var(--tf-navy)]">
+                {event.campaignName}
+              </span>
+            ) : null}
             {event.priceNote ? (
               <span className="mt-0.5 block text-[11px] text-[var(--tf-text-secondary)]">
                 {event.priceNote}

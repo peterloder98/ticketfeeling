@@ -29,6 +29,7 @@ type Category = {
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
+  campaignValidUntil?: string | null;
   available: number;
   maxPerOrder?: number;
   saleLabel?: string | null;
@@ -114,10 +115,16 @@ export function BoxOfficeForm({
     [selectedEvent?.categories],
   );
   const hasReservedSeating = Boolean(selectedEvent?.hasReservedSeating);
-  const seatCategories = useMemo(
-    () => categories.filter((c) => c.needsSeats),
+  const seatedCategories = useMemo(
+    () => categories.filter((c) => c.needsSeats && c.categoryKind !== "standing"),
     [categories],
   );
+  const standingCategories = useMemo(
+    () => categories.filter((c) => c.categoryKind === "standing"),
+    [categories],
+  );
+  /** Numbered seats only — Stehplatz uses qty, not Saalplan pick. */
+  const seatCategories = seatedCategories;
 
   const lineItems = useMemo(
     () =>
@@ -159,7 +166,12 @@ export function BoxOfficeForm({
   }
 
   function displayAvailable(category: Category) {
-    if (seatingChoice === "seat_map" && map && category.needsSeats) {
+    if (
+      seatingChoice === "seat_map" &&
+      map &&
+      category.needsSeats &&
+      category.categoryKind !== "standing"
+    ) {
       return Math.min(category.available, countAvailableForCategory(map, category.id));
     }
     return category.available;
@@ -549,7 +561,7 @@ export function BoxOfficeForm({
                   <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
                     {seatCategories.every((c) => c.categoryKind === "standing")
                       ? "System reserviert freie Stehplätze aus dem zugeordneten Bereich"
-                      : "System vergibt die besten freien Plätze, möglichst nebeneinander"}
+                      : "System vergibt die besten freien Sitzplätze, möglichst nebeneinander"}
                   </span>
                 </span>
               </button>
@@ -578,7 +590,7 @@ export function BoxOfficeForm({
                 <span>
                   <span className="font-semibold text-[var(--tf-navy)]">Saalplan</span>
                   <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Plätze selbst wählen — auch gemischt aus mehreren Kategorien
+                    Sitzplätze selbst wählen — Stehplätze separat über Menge
                   </span>
                 </span>
               </button>
@@ -604,15 +616,31 @@ export function BoxOfficeForm({
                 </span>
               </label>
             ) : null}
+            {seatedCategories.length > 0 ? (
+              <p className="text-sm font-semibold text-[var(--tf-navy)]">Sitzplätze</p>
+            ) : null}
             {categories.map((category) => {
+              const isStanding = category.categoryKind === "standing";
+              const showStandingHeading =
+                isStanding &&
+                standingCategories[0]?.id === category.id &&
+                seatedCategories.length > 0;
               const current = qty[category.id] ?? 0;
               const available = displayAvailable(category);
               const max = Math.min(categoryOrderCap(category), available);
               const soldOut = available < 1;
               const picked = selectedByCategory[category.id]?.length ?? 0;
               return (
+                <div key={category.id} className="space-y-2">
+                  {showStandingHeading ? (
+                    <p className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">
+                      Stehplätze
+                      <span className="ml-2 font-normal text-[var(--tf-text-secondary)]">
+                        · Menge wählen, kein Saalplan
+                      </span>
+                    </p>
+                  ) : null}
                 <div
-                  key={category.id}
                   className={`rounded-2xl border bg-white p-4 ${
                     current > 0 ? "border-[var(--tf-teal)]" : "border-[var(--tf-line)]"
                   }`}
@@ -643,6 +671,11 @@ export function BoxOfficeForm({
                             ? selectedEvent.accessibilityOffer.label
                             : category.campaignName
                         }
+                        validUntil={
+                          accessibilitySelected && selectedEvent?.accessibilityOffer
+                            ? null
+                            : category.campaignValidUntil
+                        }
                         size="md"
                       />
                       <p className="text-xs text-[var(--tf-text-secondary)]">
@@ -650,7 +683,10 @@ export function BoxOfficeForm({
                         {feeConfig.enabled
                           ? ` · zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`
                           : ""}
-                        {seatingChoice === "seat_map" && category.needsSeats && current > 0
+                        {seatingChoice === "seat_map" &&
+                        category.needsSeats &&
+                        category.categoryKind !== "standing" &&
+                        current > 0
                           ? ` · ${picked}/${current} Plätze gewählt`
                           : ""}
                       </p>
@@ -674,12 +710,16 @@ export function BoxOfficeForm({
                         disabled={
                           soldOut ||
                           current >= max ||
-                          (seatingChoice === "seat_map" && Boolean(category.needsSeats))
+                          (seatingChoice === "seat_map" &&
+                            Boolean(category.needsSeats) &&
+                            category.categoryKind !== "standing")
                         }
                         onClick={() => setCategoryQty(category.id, current + 1, max)}
                         aria-label="Mehr"
                         title={
-                          seatingChoice === "seat_map" && category.needsSeats
+                          seatingChoice === "seat_map" &&
+                          category.needsSeats &&
+                          category.categoryKind !== "standing"
                             ? "Plätze direkt im Saalplan antippen"
                             : undefined
                         }
@@ -688,6 +728,7 @@ export function BoxOfficeForm({
                       </button>
                     </div>
                   </div>
+                </div>
                 </div>
               );
             })}
@@ -698,7 +739,7 @@ export function BoxOfficeForm({
               <div>
                 <h3 className="text-base font-semibold text-[var(--tf-navy)]">Saalplan</h3>
                 <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-                  Tippe freie Plätze — auch aus verschiedenen Preiskategorien in einem Kauf.
+                  Tippe freie Sitzplätze — Stehplätze wählst du über die Menge darüber.
                   {allSelectedIds.length > 0
                     ? ` Aktuell ${allSelectedIds.length} Platz${allSelectedIds.length === 1 ? "" : "e"} gewählt.`
                     : ""}

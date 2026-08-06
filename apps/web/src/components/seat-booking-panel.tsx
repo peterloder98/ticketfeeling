@@ -35,6 +35,7 @@ type Category = {
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
+  campaignValidUntil?: string | null;
   available: number;
   maxPerOrder: number;
   needsSeats: boolean;
@@ -108,9 +109,12 @@ export function SeatBookingPanel({
   const [addedSeatLabels, setAddedSeatLabels] = useState<string[]>([]);
   const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
   const [accessibilitySelected, setAccessibilitySelected] = useState(false);
-  const [cardQty, setCardQty] = useState<Record<string, number>>(
-    Object.fromEntries(cardCategories.map((c) => [c.id, c.available < 1 ? 0 : 1])),
-  );
+  const [cardQty, setCardQty] = useState<Record<string, number>>(() => {
+    const defaultQty = seatedCategories.length > 0 ? 0 : 1;
+    return Object.fromEntries(
+      cardCategories.map((c) => [c.id, c.available < 1 ? 0 : defaultQty]),
+    );
+  });
 
   function unitPriceFor(cat: Category) {
     const base = cat.priceGrossCents;
@@ -257,115 +261,6 @@ export function SeatBookingPanel({
     });
   }
 
-  async function addReserved() {
-    setLoading(true);
-    setError(null);
-    try {
-      if (mode === "best_available") {
-        if (!selectedCategory) return;
-        const response = await cartFetch("/api/v1/cart/items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          timeoutMs: 25_000,
-          body: JSON.stringify({
-            categoryId: selectedCategory.id,
-            quantity: qty,
-            seatingMode: "best_available",
-            accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          const code = String(data?.error?.code ?? "");
-          const available =
-            typeof data?.error?.available === "number" ? data.error.available : null;
-          if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
-            setQty(Math.min(selectedCategory.maxPerOrder, available));
-            setError(cartErrorMessage(code, { available }));
-          } else {
-            setError(cartErrorMessage(code, { available }));
-          }
-          void loadMap();
-          return;
-        }
-        applyCartBump(data);
-        const labels = seatLabelsFromResponse(data);
-        setAddedSeatLabels(labels);
-        setJustAdded(true);
-        requestAnimationFrame(() => scrollToId(cartScrollId));
-        return;
-      }
-
-      // Saalplan: one cart line per category with its seats.
-      const lines = selectionLines;
-      if (lines.length === 0) {
-        setError("Bitte mindestens einen Platz im Saalplan wählen.");
-        return;
-      }
-      for (const line of lines) {
-        if (line.seats.length > line.category.maxPerOrder) {
-          setError(
-            `Maximal ${line.category.maxPerOrder} Tickets für „${line.category.name}“ pro Bestellung.`,
-          );
-          return;
-        }
-      }
-
-      let lastData: Record<string, unknown> | null = null;
-      const allLabels: string[] = [];
-      const heldIds = new Set<string>();
-
-      for (const line of lines) {
-        const seatIds = line.seats.map((s) => s.id);
-        const response = await cartFetch("/api/v1/cart/items", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          timeoutMs: 25_000,
-          body: JSON.stringify({
-            categoryId: line.category.id,
-            quantity: seatIds.length,
-            seatingMode: "seat_map",
-            seatIds,
-            accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
-          }),
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          setError(cartErrorMessage(String(data?.error?.code ?? "")));
-          void loadMap();
-          return;
-        }
-        lastData = data as Record<string, unknown>;
-        allLabels.push(...seatLabelsFromResponse(data));
-        for (const id of seatIds) heldIds.add(id);
-      }
-
-      if (lastData) applyCartBump(lastData);
-      setAddedSeatLabels(allLabels);
-      setJustAdded(true);
-      setSelectedByCategory({});
-      if (heldIds.size > 0) {
-        setMap((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            blocks: prev.blocks.map((block) => ({
-              ...block,
-              seats: block.seats.map((seat) =>
-                heldIds.has(seat.id)
-                  ? { ...seat, status: "held_by_you" as const }
-                  : seat,
-              ),
-            })),
-          };
-        });
-      }
-      requestAnimationFrame(() => scrollToId(cartScrollId));
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function applyCartBump(data: Record<string, unknown>) {
     const summary = data?.summary as Record<string, unknown> | undefined;
     bump({
@@ -385,49 +280,189 @@ export function SeatBookingPanel({
     });
   }
 
-  async function addCardCategory(catId: string) {
-    const cat = cardCategories.find((c) => c.id === catId);
-    if (!cat) return;
+  const accessSelected = Boolean(accessibilityOffer && accessibilitySelected);
+
+  const cardLinesReady = cardCategories.filter((c) => {
+    const q = cardQty[c.id] ?? 0;
+    return c.available >= 1 && q >= 1;
+  });
+
+  const hasSeatedPart =
+    seatedCategories.length > 0 &&
+    (mode === "best_available"
+      ? Boolean(selectedCategory) && !categorySoldOut && qty >= 1
+      : allSelectedIds.length > 0);
+
+  const hasCardPart = cardLinesReady.length > 0;
+  const canAddAnything = hasSeatedPart || hasCardPart;
+
+  /** Adds Sitzplätze (if configured) then Stehplatz/freie Platzwahl qty — one CTA. */
+  async function addAllToCart() {
+    if (!canAddAnything) {
+      setError("Bitte Sitz- oder Stehplätze auswählen.");
+      return;
+    }
     setLoading(true);
     setError(null);
+    const allLabels: string[] = [];
+    let lastData: Record<string, unknown> | null = null;
+    const heldIds = new Set<string>();
+
     try {
-      const isStanding = cat.categoryKind === "standing";
-      const response = await cartFetch("/api/v1/cart/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        timeoutMs: 25_000,
-        body: JSON.stringify({
-          categoryId: catId,
-          quantity: cardQty[catId] ?? 1,
-          seatingMode: isStanding || cat.needsSeats ? "best_available" : "free",
-          accessibilitySelected: Boolean(accessibilityOffer && accessibilitySelected),
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        const code = String(data?.error?.code ?? "");
-        const available =
-          typeof data?.error?.available === "number" ? data.error.available : null;
-        if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
-          const max = Math.min(cat.maxPerOrder ?? available, available);
-          setCardQty((p) => ({ ...p, [catId]: Math.min(max, available) }));
-          setError(cartErrorMessage(code, { available }));
+      // 1) Seated: Bestplatz or Saalplan
+      if (hasSeatedPart && seatedCategories.length > 0) {
+        if (mode === "best_available") {
+          if (!selectedCategory) {
+            setError("Bitte eine Sitzplatz-Kategorie wählen.");
+            return;
+          }
+          const response = await cartFetch("/api/v1/cart/items", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            timeoutMs: 25_000,
+            body: JSON.stringify({
+              categoryId: selectedCategory.id,
+              quantity: qty,
+              seatingMode: "best_available",
+              accessibilitySelected: accessSelected,
+            }),
+          });
+          const data = await response.json();
+          if (!response.ok) {
+            const code = String(data?.error?.code ?? "");
+            const available =
+              typeof data?.error?.available === "number" ? data.error.available : null;
+            if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
+              setQty(Math.min(selectedCategory.maxPerOrder, available));
+            }
+            setError(
+              available != null
+                ? cartErrorMessage(code, { available })
+                : cartErrorMessage(code) || "Sitzplätze konnten nicht hinzugefügt werden.",
+            );
+            void loadMap();
+            return;
+          }
+          lastData = data as Record<string, unknown>;
+          allLabels.push(...seatLabelsFromResponse(data));
+        } else {
+          const lines = selectionLines;
+          if (lines.length === 0) {
+            setError("Bitte mindestens einen Platz im Saalplan wählen.");
+            return;
+          }
+          for (const line of lines) {
+            if (line.seats.length > line.category.maxPerOrder) {
+              setError(
+                `Maximal ${line.category.maxPerOrder} Tickets für „${line.category.name}“ pro Bestellung.`,
+              );
+              return;
+            }
+          }
+          for (const line of lines) {
+            const seatIds = line.seats.map((s) => s.id);
+            const response = await cartFetch("/api/v1/cart/items", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              timeoutMs: 25_000,
+              body: JSON.stringify({
+                categoryId: line.category.id,
+                quantity: seatIds.length,
+                seatingMode: "seat_map",
+                seatIds,
+                accessibilitySelected: accessSelected,
+              }),
+            });
+            const data = await response.json();
+            if (!response.ok) {
+              setError(
+                cartErrorMessage(String(data?.error?.code ?? "")) ||
+                  "Saalplan-Plätze konnten nicht hinzugefügt werden.",
+              );
+              void loadMap();
+              return;
+            }
+            lastData = data as Record<string, unknown>;
+            allLabels.push(...seatLabelsFromResponse(data));
+            for (const id of seatIds) heldIds.add(id);
+          }
+          setSelectedByCategory({});
+          if (heldIds.size > 0) {
+            setMap((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                blocks: prev.blocks.map((block) => ({
+                  ...block,
+                  seats: block.seats.map((seat) =>
+                    heldIds.has(seat.id)
+                      ? { ...seat, status: "held_by_you" as const }
+                      : seat,
+                  ),
+                })),
+              };
+            });
+          }
+        }
+      }
+
+      // 2) Standing / free-choice cards with qty > 0
+      for (const cat of cardLinesReady) {
+        const quantity = cardQty[cat.id] ?? 0;
+        if (quantity < 1) continue;
+        const isStanding = cat.categoryKind === "standing";
+        const response = await cartFetch("/api/v1/cart/items", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          timeoutMs: 25_000,
+          body: JSON.stringify({
+            categoryId: cat.id,
+            quantity,
+            seatingMode: isStanding || cat.needsSeats ? "best_available" : "free",
+            accessibilitySelected: accessSelected,
+          }),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+          const code = String(data?.error?.code ?? "");
+          const available =
+            typeof data?.error?.available === "number" ? data.error.available : null;
+          if (code === "INSUFFICIENT_STOCK" && available != null && available > 0) {
+            setCardQty((p) => ({
+              ...p,
+              [cat.id]: Math.min(cat.maxPerOrder ?? available, available),
+            }));
+          }
+          if ((code === "SOLD_OUT" || code === "INSUFFICIENT_STOCK") && available === 0) {
+            setCardQty((p) => ({ ...p, [cat.id]: 0 }));
+          }
+          const part =
+            cat.categoryKind === "standing" ? "Stehplätze" : cat.name;
+          setError(
+            (available != null
+              ? cartErrorMessage(code, { available })
+              : cartErrorMessage(code)) ||
+              `${part} konnten nicht hinzugefügt werden. Bitte Menge prüfen.`,
+          );
+          if (lastData) {
+            applyCartBump(lastData);
+            setAddedSeatLabels(allLabels);
+            setJustAdded(true);
+          }
           return;
         }
-        if ((code === "SOLD_OUT" || code === "INSUFFICIENT_STOCK") && available === 0) {
-          setCardQty((p) => ({ ...p, [catId]: 0 }));
-        }
-        setError(cartErrorMessage(code, { available }));
-        return;
+        lastData = data as Record<string, unknown>;
+        allLabels.push(...seatLabelsFromResponse(data));
       }
-      applyCartBump(data);
-      setAddedSeatLabels(seatLabelsFromResponse(data));
+
+      if (lastData) applyCartBump(lastData);
+      setAddedSeatLabels(allLabels);
       setJustAdded(true);
       requestAnimationFrame(() => scrollToId(cartScrollId));
     } catch (err) {
       const code =
         err instanceof Error && err.message === "REQUEST_TIMEOUT" ? "REQUEST_TIMEOUT" : "";
-      setError(cartErrorMessage(code));
+      setError(cartErrorMessage(code) || "Etwas ist schiefgelaufen — bitte nochmal versuchen.");
     } finally {
       setLoading(false);
     }
@@ -481,14 +516,6 @@ export function SeatBookingPanel({
     );
   }
 
-  const seatMapReady = allSelectedIds.length > 0;
-  const addLabel =
-    mode === "best_available"
-      ? `${qty}× Bestplätze in den Warenkorb`
-      : selectionLines.length === 0
-        ? "Plätze in den Warenkorb"
-        : `${selectionLines.map((l) => `${l.seats.length}× ${l.category.name}`).join(" + ")} in den Warenkorb`;
-
   return (
     <div className="space-y-5">
       {externalMap}
@@ -510,6 +537,12 @@ export function SeatBookingPanel({
       ) : null}
       {seatedCategories.length > 0 ? (
         <div className="space-y-4">
+          <div>
+            <h3 className="text-base font-semibold text-[var(--tf-navy)]">Sitzplätze</h3>
+            <p className="mt-0.5 text-xs text-[var(--tf-text-secondary)]">
+              Bestplatz oder Saalplan — nur für nummerierte Sitzplätze, nicht für Stehplätze.
+            </p>
+          </div>
           {bookingMode === "seat_map_and_best" ? (
             <div className="grid gap-2 sm:grid-cols-2">
               <button
@@ -545,7 +578,7 @@ export function SeatBookingPanel({
                 <span>
                   <span className="font-semibold text-[var(--tf-navy)]">Saalplan wählen</span>
                   <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Reihe und Platz selbst aussuchen — auch gemischt
+                    Sitzplätze selbst wählen — Stehplätze separat darunter
                   </span>
                 </span>
               </button>
@@ -599,6 +632,11 @@ export function SeatBookingPanel({
                           accessibilitySelected && accessibilityOffer
                             ? accessibilityOffer.label
                             : c.campaignName
+                        }
+                        validUntil={
+                          accessibilitySelected && accessibilityOffer
+                            ? null
+                            : c.campaignValidUntil
                         }
                         size="sm"
                       />
@@ -676,6 +714,11 @@ export function SeatBookingPanel({
                             ? accessibilityOffer.label
                             : line.category.campaignName
                         }
+                        validUntil={
+                          accessibilitySelected && accessibilityOffer
+                            ? null
+                            : line.category.campaignValidUntil
+                        }
                         size="sm"
                         inline
                       />
@@ -705,17 +748,6 @@ export function SeatBookingPanel({
             </div>
           )}
 
-          <button
-            type="button"
-            className="tf-btn tf-btn-primary w-full !min-h-12"
-            disabled={
-              loading ||
-              (mode === "best_available" ? categorySoldOut : !seatMapReady)
-            }
-            onClick={() => void addReserved()}
-          >
-            {loading ? "Reserviert…" : addLabel}
-          </button>
         </div>
       ) : null}
 
@@ -723,15 +755,20 @@ export function SeatBookingPanel({
         <div
           className={`space-y-3 ${seatedCategories.length > 0 ? "border-t border-[var(--tf-line)] pt-4" : ""}`}
         >
-          {seatedCategories.length > 0 ? (
-            <p className="text-sm font-semibold text-[var(--tf-navy)]">
+          <div>
+            <h3 className="text-base font-semibold text-[var(--tf-navy)]">
               {standingCategories.length > 0 && freeCategories.length > 0
-                ? "Stehplatz / freie Platzwahl"
+                ? "Stehplätze & freie Platzwahl"
                 : standingCategories.length > 0
                   ? "Stehplätze"
                   : "Freie Platzwahl"}
+            </h3>
+            <p className="mt-0.5 text-xs text-[var(--tf-text-secondary)]">
+              {standingCategories.length > 0
+                ? "Menge wählen — ohne Saalplan. Du kannst Sitz- und Stehplätze zusammen in den Warenkorb legen."
+                : "Menge wählen und unten alles zusammen in den Warenkorb legen."}
             </p>
-          ) : null}
+          </div>
           {cardCategories.map((category) => {
             const max = Math.min(category.maxPerOrder, Math.max(0, category.available));
             const soldOut = category.available < 1;
@@ -758,6 +795,11 @@ export function SeatBookingPanel({
                           ? accessibilityOffer.label
                           : category.campaignName
                       }
+                      validUntil={
+                        accessibilitySelected && accessibilityOffer
+                          ? null
+                          : category.campaignValidUntil
+                      }
                       feeNote={feeSurchargeNote}
                       size="md"
                     />
@@ -771,21 +813,22 @@ export function SeatBookingPanel({
                   ) : null}
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-medium text-[var(--tf-navy)]">Anzahl</span>
                   <div className="inline-flex items-center rounded-[14px] border border-[var(--tf-line)] bg-white">
                     <button
                       type="button"
                       className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
-                      disabled={soldOut || current <= 1}
+                      disabled={soldOut || current <= 0}
                       onClick={() =>
                         setCardQty((p) => ({
                           ...p,
-                          [category.id]: Math.max(1, current - 1),
+                          [category.id]: Math.max(0, current - 1),
                         }))
                       }
                     >
                       <Minus className="h-4 w-4" />
                     </button>
-                    <span className="min-w-10 text-center font-semibold">{current}</span>
+                    <span className="min-w-10 text-center font-semibold tabular-nums">{current}</span>
                     <button
                       type="button"
                       className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
@@ -793,26 +836,34 @@ export function SeatBookingPanel({
                       onClick={() =>
                         setCardQty((p) => ({
                           ...p,
-                          [category.id]: Math.min(max, Math.max(1, current + 1)),
+                          [category.id]: Math.min(max, Math.max(0, current + 1)),
                         }))
                       }
                     >
                       <Plus className="h-4 w-4" />
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    className="tf-btn tf-btn-primary !min-h-11 flex-1 text-sm"
-                    disabled={soldOut || current < 1 || loading}
-                    onClick={() => void addCardCategory(category.id)}
-                  >
-                    {soldOut ? "Ausverkauft" : "In den Warenkorb"}
-                  </button>
+                  {soldOut ? (
+                    <span className="text-xs text-[var(--tf-text-secondary)]">Ausverkauft</span>
+                  ) : current < 1 ? (
+                    <span className="text-xs text-[var(--tf-text-secondary)]">Optional</span>
+                  ) : null}
                 </div>
               </div>
             );
           })}
         </div>
+      ) : null}
+
+      {(seatedCategories.length > 0 || cardCategories.length > 0) ? (
+        <button
+          type="button"
+          className="tf-btn tf-btn-primary w-full !min-h-12"
+          disabled={loading || !canAddAnything}
+          onClick={() => void addAllToCart()}
+        >
+          {loading ? "Wird reserviert…" : "Alles in den Warenkorb"}
+        </button>
       ) : null}
 
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}

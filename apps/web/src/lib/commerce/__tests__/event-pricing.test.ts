@@ -105,6 +105,8 @@ describe("resolveTicketUnitPrice", () => {
       accessibilitySelected: true,
     });
     expect(resolved.campaignId).toBe("early");
+    expect(resolved.campaignName).toBe("Frühbucher");
+    expect(resolved.campaignValidUntil).toBe("2026-12-31T23:59:59.000Z");
     expect(resolved.unitCents).toBe(8100);
     expect(resolved.campaignDiscountCents).toBe(1000);
     expect(resolved.accessibilityDiscountCents).toBe(900);

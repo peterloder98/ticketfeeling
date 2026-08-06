@@ -17,6 +17,7 @@ type Category = {
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
+  campaignValidUntil?: string | null;
   available: number;
   maxPerOrder: number;
 };
@@ -187,6 +188,11 @@ export function AddToCartPanel({
                     accessibilitySelected && accessibilityOffer
                       ? accessibilityOffer.label
                       : category.campaignName
+                  }
+                  validUntil={
+                    accessibilitySelected && accessibilityOffer
+                      ? null
+                      : category.campaignValidUntil
                   }
                   feeNote={feeSurchargeNote}
                   size={compact ? "sm" : "md"}

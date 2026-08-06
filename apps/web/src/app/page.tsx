@@ -5,14 +5,10 @@ import { TrustBar } from "@/components/trust-bar";
 import { WhyTicketfeeling } from "@/components/why-ticketfeeling";
 import { PersonalSupportSection } from "@/components/personal-support-section";
 import { HeroEventCarousel } from "@/components/hero-event-carousel";
-import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
-import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { getDefaultOrganization } from "@/lib/commerce/org";
-import {
-  buildPublicListingCards,
-  remainingForCategories,
-} from "@/lib/commerce/public-listings";
+import { buildPublicListingCards } from "@/lib/commerce/public-listings";
+import { listingCardsToEventCardData } from "@/lib/commerce/listing-card-data";
 import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
 
 /** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
@@ -27,6 +23,7 @@ export default async function HomePage() {
   // Tours collapse to one card — hero + grid never list each tour date separately.
   const listings = buildPublicListingCards(events);
   const gridListings = listings.slice(0, 6);
+  const gridCards = await listingCardsToEventCardData(gridListings, feeConfig);
   const heroSlides = listings.slice(0, 3).map((card) => ({
     id: card.key,
     slug: card.href.startsWith("/tour/")
@@ -88,46 +85,11 @@ export default async function HomePage() {
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-            {gridListings.map((card) => {
-              const { remaining, capacity } = remainingForCategories(card.ticketCategories);
-              const cheapest = card.ticketCategories.reduce(
-                (min, c) => Math.min(min, c.priceGrossCents),
-                Number.POSITIVE_INFINITY,
-              );
-              const priced = Number.isFinite(cheapest)
-                ? formatCustomerPriceLabel({
-                    ticketGrossCents: cheapest,
-                    feeConfig,
-                    formatEuro: formatEuroFromCents,
-                    prefix: "ab",
-                  })
-                : null;
-              return (
-                <EventCard
-                  key={card.key}
-                  event={{
-                    id: card.key,
-                    slug: card.key,
-                    name: card.name,
-                    status: card.status,
-                    whenLabel: card.whenLabel,
-                    locationName: card.locationName,
-                    locationCity: card.locationCity,
-                    coverImageUrl: card.coverImageUrl,
-                    priceLabel: priced?.totalLabel ?? null,
-                    priceNote: priced?.surchargeLabel || null,
-                    remainingTickets: remaining,
-                    capacity,
-                    showRemainingAvailability: card.showRemainingAvailability,
-                    artists: card.artists,
-                    href: card.href,
-                    ctaLabel: card.ctaLabel,
-                  }}
-                />
-              );
-            })}
+            {gridCards.map((card) => (
+              <EventCard key={card.id} event={card} />
+            ))}
           </div>
-          {gridListings.length === 0 ? (
+          {gridCards.length === 0 ? (
             <p className="mt-8 text-base text-[var(--tf-text-secondary)]">
               Bald erscheinen hier die nächsten Events.
             </p>

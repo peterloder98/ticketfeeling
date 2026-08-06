@@ -76,12 +76,12 @@ export default async function PublicTourPage({ params }: Props) {
       </Link>
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[minmax(0,320px)_1fr] lg:items-start">
-        <div className="overflow-hidden rounded-[24px] border border-[var(--tf-line)] bg-[var(--tf-navy)]">
-          <div className="aspect-square">
+        <div className="group overflow-hidden rounded-[24px] border border-[var(--tf-line)] bg-[var(--tf-navy)]">
+          <div className="aspect-square overflow-hidden">
             <ResponsiveImage
               src={cover}
               alt={`Cover: ${tour.name}`}
-              className="h-full w-full"
+              className="h-full w-full transition duration-300 group-hover:scale-[1.02]"
               fallback="event"
             />
           </div>

@@ -1,16 +1,12 @@
 import Link from "next/link";
-import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
-import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { Calendar, MapPin } from "lucide-react";
-import {
-  buildPublicListingCards,
-  remainingForCategories,
-} from "@/lib/commerce/public-listings";
+import { buildPublicListingCards } from "@/lib/commerce/public-listings";
+import { listingCardsToEventCardData } from "@/lib/commerce/listing-card-data";
 import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
 
 /** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
@@ -24,6 +20,8 @@ export default async function EmbedShopPage() {
   const events = await loadPublicListingEvents({ take: 48 });
 
   const listings = buildPublicListingCards(events, { linkMode: "embed" });
+  const cards = await listingCardsToEventCardData(listings, feeConfig);
+  const byKey = new Map(listings.map((c) => [c.key, c]));
 
   return (
     <>
@@ -40,37 +38,26 @@ export default async function EmbedShopPage() {
         </div>
 
         <div className="space-y-3">
-          {listings.map((card) => {
-            const cheapest = Math.min(
-              ...card.ticketCategories.map((c) => c.priceGrossCents),
-              Number.POSITIVE_INFINITY,
-            );
-            const priced =
-              Number.isFinite(cheapest) && cheapest < Number.POSITIVE_INFINITY
-                ? formatCustomerPriceLabel({
-                    ticketGrossCents: cheapest,
-                    feeConfig,
-                    formatEuro: formatEuroFromCents,
-                    prefix: "ab",
-                  })
-                : null;
+          {cards.map((card) => {
+            const listing = byKey.get(card.id);
             const place =
               card.locationCity === "Mehrere Orte"
                 ? "Mehrere Orte"
                 : [card.locationName, card.locationCity].filter(Boolean).join(", ");
-            const { remaining } = remainingForCategories(card.ticketCategories);
+            const remaining = card.remainingTickets ?? 0;
+            const onSale = Boolean(card.listPriceLabel && card.saleBadge);
 
             return (
               <Link
-                key={card.key}
-                href={card.href}
-                className="flex gap-3 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white transition hover:border-[var(--tf-teal)] hover:shadow-[0_8px_24px_rgba(15,39,71,0.08)]"
+                key={card.id}
+                href={card.href ?? "#"}
+                className="group flex gap-3 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white transition hover:border-[var(--tf-teal)] hover:shadow-[0_8px_24px_rgba(15,39,71,0.08)]"
               >
-                <div className="relative h-28 w-28 shrink-0 bg-[var(--tf-navy)] sm:h-32 sm:w-32">
+                <div className="relative h-28 w-28 shrink-0 overflow-hidden bg-[var(--tf-navy)] sm:h-32 sm:w-32">
                   <ResponsiveImage
                     src={card.coverImageUrl}
                     alt=""
-                    className="h-full w-full object-cover"
+                    className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
                     fallback="event"
                   />
                 </div>
@@ -89,14 +76,31 @@ export default async function EmbedShopPage() {
                     </p>
                   ) : null}
                   <div className="mt-2 flex flex-wrap items-end justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-[var(--tf-navy)]">
-                        {priced?.totalLabel ?? "Tickets"}
-                      </p>
-                      {priced?.surchargeLabel ? (
-                        <p className="text-[11px] text-[var(--tf-text-secondary)]">
-                          {priced.surchargeLabel}
+                    <div className="min-w-0">
+                      {onSale ? (
+                        <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                          <span className="text-xs tabular-nums text-[var(--tf-text-secondary)] line-through">
+                            {card.listPriceLabel}
+                          </span>
+                          <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
+                            {card.saleBadge}
+                          </span>
+                          <span className="text-sm font-bold tabular-nums text-[var(--tf-sale)]">
+                            {card.priceLabel}
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-semibold text-[var(--tf-navy)]">
+                          {card.priceLabel ?? "Tickets"}
                         </p>
+                      )}
+                      {onSale && card.campaignName ? (
+                        <p className="text-[11px] font-medium text-[var(--tf-navy)]">
+                          {card.campaignName}
+                        </p>
+                      ) : null}
+                      {card.priceNote ? (
+                        <p className="text-[11px] text-[var(--tf-text-secondary)]">{card.priceNote}</p>
                       ) : null}
                       {card.showRemainingAvailability && remaining >= 0 ? (
                         <p className="text-[11px] text-[var(--tf-text-secondary)]">
@@ -105,7 +109,7 @@ export default async function EmbedShopPage() {
                       ) : null}
                     </div>
                     <span className="rounded-full bg-[var(--tf-navy)] px-3 py-1.5 text-xs font-semibold text-white">
-                      {card.dateCount > 1 ? "Termine" : "Tickets"}
+                      {(listing?.dateCount ?? 1) > 1 ? "Termine" : "Tickets"}
                     </span>
                   </div>
                 </div>
@@ -114,7 +118,7 @@ export default async function EmbedShopPage() {
           })}
         </div>
 
-        {listings.length === 0 ? (
+        {cards.length === 0 ? (
           <p className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-8 text-center text-sm text-[var(--tf-text-secondary)]">
             Aktuell sind keine Events im Vorverkauf.
           </p>

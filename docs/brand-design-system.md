@@ -11,6 +11,7 @@ Definiert in `apps/web/src/app/globals.css`:
 | `--tf-navy` | `#0F2747` | Primär, Typo, Vertrauen |
 | `--tf-teal` | `#14B8A6` | Buttons, Links, aktiv |
 | `--tf-gold` / `--vip` | `#D6A642` | Nur VIP/Premium |
+| `--tf-sale` | `#E45A4A` | Nur Aktions-/Rabatt-Badges (nicht CTA, nicht VIP) |
 | `--tf-bg` | `#F8FAFC` | Seite |
 | `--tf-card` | `#FFFFFF` | Cards |
 | `--tf-text` | `#0B1421` | Fließtext |

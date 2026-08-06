@@ -28,6 +28,8 @@ export type ResolvedTicketPrice = {
   accessibilityDiscountCents: number;
   campaignId: string | null;
   campaignName: string | null;
+  /** ISO end of active campaign — for countdown UI */
+  campaignValidUntil: string | null;
   accessibilityApplied: boolean;
   accessibilityLabel: string | null;
 };
@@ -140,6 +142,7 @@ export function resolveTicketUnitPrice(input: {
     accessibilityDiscountCents,
     campaignId: best?.id ?? null,
     campaignName: best?.name ?? null,
+    campaignValidUntil: best?.validUntil ? best.validUntil.toISOString() : null,
     accessibilityApplied: wantAccess && accessibilityDiscountCents > 0,
     accessibilityLabel: wantAccess ? offer?.label ?? null : null,
   };

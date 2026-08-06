@@ -19,6 +19,7 @@ export const publicListingInclude = {
   ticketCategories: {
     where: { status: "active", onlineBookable: true },
     select: {
+      id: true,
       priceGrossCents: true,
       capacity: true,
       pools: {

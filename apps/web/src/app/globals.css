@@ -10,6 +10,8 @@
   --tf-teal: #14b8a6;
   --tf-teal-hover: #0d9488;
   --tf-gold: #d6a642;
+  /* Sale / campaign badge only — not VIP gold, not CTA teal, not purple */
+  --tf-sale: #e45a4a;
 
   /* Semantic */
   --tf-success: #22c55e;
@@ -280,6 +282,18 @@ html.dark .tf-badge-vip {
 .tf-badge-teal {
   background: rgba(20, 184, 166, 0.12);
   color: var(--tf-teal-hover);
+}
+
+/* Campaign / Rabatt — coral for attention; navy text on soft tint. Not VIP gold. */
+.tf-badge-sale {
+  background: rgba(228, 90, 74, 0.16);
+  color: #b33a2e;
+  font-weight: 600;
+}
+
+html.dark .tf-badge-sale {
+  background: rgba(228, 90, 74, 0.22);
+  color: #ff8f82;
 }
 
 /* Typography helpers */

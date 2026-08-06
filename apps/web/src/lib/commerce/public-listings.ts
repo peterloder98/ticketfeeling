@@ -28,6 +28,7 @@ export type ListingEvent = {
     visibility?: string;
   } | null;
   ticketCategories: {
+    id: string;
     priceGrossCents: number;
     capacity: number;
     pools: { soldQuantity: number; heldQuantity: number; capacity: number }[];
@@ -49,7 +50,16 @@ export type PublicListingCard = {
   ctaLabel: string;
   eventStartsAt: Date | null;
   showRemainingAvailability: boolean;
-  ticketCategories: ListingEvent["ticketCategories"];
+  /** Flattened categories with eventId for campaign pricing */
+  ticketCategories: {
+    id: string;
+    eventId: string;
+    priceGrossCents: number;
+    capacity: number;
+    pools: { soldQuantity: number; heldQuantity: number; capacity: number }[];
+  }[];
+  /** Event ids represented on this card (tour collapses many). */
+  eventIds: string[];
   artists: { name: string; imageUrl: string | null }[];
   dateCount: number;
 };
@@ -147,7 +157,16 @@ function cardFromDates(
     ctaLabel: ordered.length > 1 ? "Termine wählen" : "Event ansehen",
     eventStartsAt: first.eventStartsAt,
     showRemainingAvailability: ordered.some((d) => d.showRemainingAvailability),
-    ticketCategories: ordered.flatMap((d) => d.ticketCategories),
+    ticketCategories: ordered.flatMap((d) =>
+      d.ticketCategories.map((c) => ({
+        id: c.id,
+        eventId: d.id,
+        priceGrossCents: c.priceGrossCents,
+        capacity: c.capacity,
+        pools: c.pools,
+      })),
+    ),
+    eventIds: ordered.map((d) => d.id),
     artists: first.artists.map((a) => ({
       name: a.artist.name,
       imageUrl: a.artist.profileImageUrl,
@@ -169,7 +188,14 @@ function cardFromSingle(event: ListingEvent): PublicListingCard {
     ctaLabel: "Event ansehen",
     eventStartsAt: event.eventStartsAt,
     showRemainingAvailability: event.showRemainingAvailability,
-    ticketCategories: event.ticketCategories,
+    ticketCategories: event.ticketCategories.map((c) => ({
+      id: c.id,
+      eventId: event.id,
+      priceGrossCents: c.priceGrossCents,
+      capacity: c.capacity,
+      pools: c.pools,
+    })),
+    eventIds: [event.id],
     artists: event.artists.map((a) => ({
       name: a.artist.name,
       imageUrl: a.artist.profileImageUrl,
