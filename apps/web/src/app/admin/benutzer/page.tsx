@@ -2,9 +2,10 @@ import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser } from "@/lib/rbac";
 import {
   STAFF_MANAGEABLE_ROLES,
+  canManageStaffUsers,
   ensureStaffManageableRoles,
   staffRoleLabel,
 } from "@/lib/admin/staff-access";
@@ -22,26 +23,39 @@ export default async function AdminBenutzerPage() {
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
-  const allowed = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "users:write",
-  );
+  // Sync role permissions first so organizer_admin gains users:write if missing.
+  await ensureStaffManageableRoles(membership.organizationId);
+
+  const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {
     return <p className="text-[var(--danger)]">Keine Berechtigung für die Benutzerverwaltung.</p>;
   }
 
-  await ensureStaffManageableRoles(membership.organizationId);
+  let invites: Awaited<ReturnType<typeof prisma.staffInvite.findMany>> = [];
+  let members: Awaited<ReturnType<typeof listStaffMemberships>> = [];
+  let customerCount = 0;
+  let schemaHint: string | null = null;
 
-  const [members, invites, customerCount] = await Promise.all([
-    listStaffMemberships(membership.organizationId),
-    prisma.staffInvite.findMany({
-      where: { organizationId: membership.organizationId },
-      orderBy: { invitedAt: "desc" },
-      take: 50,
-    }),
-    prisma.customer.count({ where: { organizationId: membership.organizationId } }),
-  ]);
+  try {
+    [members, invites, customerCount] = await Promise.all([
+      listStaffMemberships(membership.organizationId),
+      prisma.staffInvite.findMany({
+        where: { organizationId: membership.organizationId },
+        orderBy: { invitedAt: "desc" },
+        take: 50,
+      }),
+      prisma.customer.count({ where: { organizationId: membership.organizationId } }),
+    ]);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[admin/benutzer] load failed:", msg);
+    if (/staff_invites|StaffInvite|does not exist|P2021/i.test(msg)) {
+      schemaHint =
+        "Datenbanktabelle für Einladungen fehlt noch. Bitte Seite nach dem Deploy neu laden.";
+    } else {
+      schemaHint = "Benutzerliste konnte nicht geladen werden. Bitte erneut versuchen.";
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -58,6 +72,7 @@ export default async function AdminBenutzerPage() {
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.system} />
+      {schemaHint ? <p className="text-sm text-[var(--danger)]">{schemaHint}</p> : null}
       <BenutzerPanel
         roles={[...STAFF_MANAGEABLE_ROLES]}
         currentUserId={session.user.id}

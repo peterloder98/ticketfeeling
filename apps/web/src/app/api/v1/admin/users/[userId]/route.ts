@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser } from "@/lib/rbac";
+import { canManageStaffUsers, ensureStaffManageableRoles } from "@/lib/admin/staff-access";
 import {
   resetStaffPassword,
   setMembershipRoles,
@@ -18,11 +19,8 @@ async function requireUsersWrite() {
   if (!membership) {
     return { error: NextResponse.json({ error: { code: "NO_ORG" } }, { status: 403 }) };
   }
-  const allowed = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "users:write",
-  );
+  await ensureStaffManageableRoles(membership.organizationId);
+  const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {
     return { error: NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 }) };
   }

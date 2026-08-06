@@ -195,4 +195,12 @@ export function staffRoleLabel(key: string) {
   return key;
 }
 
+/** Admins may manage staff via users:write or broad org:write. */
+export async function canManageStaffUsers(userId: string, organizationId: string) {
+  return (
+    (await userHasPermission(userId, organizationId, "users:write")) ||
+    (await userHasPermission(userId, organizationId, "org:write"))
+  );
+}
+
 export { VORVERKAUF_ROLE_PERMISSIONS };

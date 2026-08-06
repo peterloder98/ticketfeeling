@@ -3,8 +3,12 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { ensureStaffManageableRoles, staffRoleLabel } from "@/lib/admin/staff-access";
+import { getDefaultOrganizationForUser } from "@/lib/rbac";
+import {
+  canManageStaffUsers,
+  ensureStaffManageableRoles,
+  staffRoleLabel,
+} from "@/lib/admin/staff-access";
 import { createStaffInvite } from "@/lib/admin/staff-invite";
 import { createStaffUser, listStaffMemberships } from "@/lib/admin/staff-users";
 
@@ -17,11 +21,8 @@ async function requireUsersWrite() {
   if (!membership) {
     return { error: NextResponse.json({ error: { code: "NO_ORG" } }, { status: 403 }) };
   }
-  const allowed = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "users:write",
-  );
+  await ensureStaffManageableRoles(membership.organizationId);
+  const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {
     return { error: NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 }) };
   }
@@ -35,8 +36,6 @@ export async function GET() {
   const { membership } = auth as Awaited<ReturnType<typeof requireUsersWrite>> & {
     membership: NonNullable<Awaited<ReturnType<typeof getDefaultOrganizationForUser>>>;
   };
-
-  await ensureStaffManageableRoles(membership.organizationId);
 
   const [members, invites, customerCount] = await Promise.all([
     listStaffMemberships(membership.organizationId),
