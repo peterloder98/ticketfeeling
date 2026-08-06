@@ -1,5 +1,9 @@
 import { createHash } from "crypto";
 import { prisma } from "@/lib/db";
+import {
+  categoryInventoryCapacity,
+  sharedRemainingQuantity,
+} from "@/lib/commerce/inventory-availability";
 import { writeAudit } from "@/lib/audit";
 import { formatEuroFromCents } from "@/lib/money";
 
@@ -254,8 +258,8 @@ function pickEvents(events: EventWithCats[], message: string, limit = 3) {
 function categoryAvailability(cat: EventWithCats["ticketCategories"][number]) {
   const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
   const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
-  const capacity = Math.max(cat.capacity, ...cat.pools.map((p) => p.capacity), 0);
-  const remaining = Math.max(0, capacity - sold - held);
+  const capacity = categoryInventoryCapacity(cat.capacity, cat.pools);
+  const remaining = sharedRemainingQuantity(cat.pools, cat.capacity);
   return { sold, held, capacity, remaining };
 }
 

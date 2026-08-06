@@ -238,6 +238,21 @@ export async function createOrderFromCart(input: {
         ? await tx.inventoryPool.findMany({ where: { id: { in: poolIds } } })
         : [];
     const poolById = new Map(pools.map((p) => [p.id, p]));
+    const categoryIds = [...new Set(pools.map((p) => p.categoryId))];
+    const siblingPools =
+      categoryIds.length > 0
+        ? await tx.inventoryPool.findMany({ where: { categoryId: { in: categoryIds } } })
+        : [];
+    const siblingsByCategory = new Map<string, typeof siblingPools>();
+    for (const p of siblingPools) {
+      const list = siblingsByCategory.get(p.categoryId) ?? [];
+      list.push(p);
+      siblingsByCategory.set(p.categoryId, list);
+    }
+    const {
+      categoryInventoryCapacity,
+      sharedCommittedQuantity,
+    } = await import("@/lib/commerce/inventory-availability");
 
     for (const item of cart.items) {
       if (!item.hold || item.hold.status !== "held" || item.hold.expiresAt < new Date()) {
@@ -246,6 +261,12 @@ export async function createOrderFromCart(input: {
       const pool = poolById.get(item.hold.poolId);
       if (!pool) throw new Error("INVENTORY_INVALID");
       if (pool.soldQuantity + pool.heldQuantity > pool.capacity) {
+        throw new Error("INVENTORY_INVALID");
+      }
+      // Shared Kontingent: Online + Tageskasse must not exceed category capacity.
+      const siblings = siblingsByCategory.get(pool.categoryId) ?? [pool];
+      const sharedCap = categoryInventoryCapacity(item.category.capacity, siblings);
+      if (sharedCommittedQuantity(siblings) > sharedCap) {
         throw new Error("INVENTORY_INVALID");
       }
 

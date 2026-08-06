@@ -21,6 +21,7 @@ import {
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
+import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
 import { BoxOfficeVoidButton } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
@@ -247,11 +248,14 @@ export default async function BoxOfficePage({ searchParams }: Props) {
         | "best_available"
         | "seat_map_and_best",
       categories: event.ticketCategories.map((category) => {
-        const pool =
-          category.pools.find((p) => p.channel === "box_office") ??
-          category.pools.find((p) => p.channel === "online");
-        const available = pool
-          ? Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity)
+        const available = category.pools.length
+          ? channelAvailableQuantity(
+              category.pools,
+              category.pools.some((p) => p.channel === "box_office")
+                ? "box_office"
+                : "online",
+              category.capacity,
+            )
           : Math.max(0, category.capacity - category.safetyReserve);
         let saleLabel: string | null = null;
         if (category.saleEndsAt && category.saleEndsAt.getTime() > now) {

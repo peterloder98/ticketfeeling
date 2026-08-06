@@ -452,8 +452,11 @@ export async function addToCart(input: {
   } as const;
 
   await prisma.$transaction(async (tx) => {
-    const locked = await tx.inventoryPool.findUniqueOrThrow({ where: { id: pool.id } });
-    const available = locked.capacity - locked.soldQuantity - locked.heldQuantity;
+    const { channelAvailableQuantity, lockCategoryInventoryPools } = await import(
+      "@/lib/commerce/inventory-availability"
+    );
+    const lockedPools = await lockCategoryInventoryPools(tx, category.id);
+    const available = channelAvailableQuantity(lockedPools, "online", category.capacity);
     if (available < input.quantity) throw new Error("SOLD_OUT");
 
     let seatIdsToHold: string[] = [];

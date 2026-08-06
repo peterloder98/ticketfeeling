@@ -132,9 +132,12 @@ export async function createBoxOfficeTapSale(input: {
   const reservedUntil = new Date(Date.now() + TAP_HOLD_MS);
 
   const result = await prisma.$transaction(async (tx) => {
-    for (const { item, pool } of resolved) {
-      const locked = await tx.inventoryPool.findUniqueOrThrow({ where: { id: pool.id } });
-      const available = locked.capacity - locked.soldQuantity - locked.heldQuantity;
+    const { channelAvailableQuantity, lockCategoryInventoryPools } = await import(
+      "@/lib/commerce/inventory-availability"
+    );
+    for (const { item, pool, category } of resolved) {
+      const lockedPools = await lockCategoryInventoryPools(tx, category.id);
+      const available = channelAvailableQuantity(lockedPools, pool.channel, category.capacity);
       if (available < item.quantity) throw new Error("SOLD_OUT");
       await tx.inventoryPool.update({
         where: { id: pool.id },

@@ -82,14 +82,17 @@ export default async function AdminDashboardPage() {
           <div className="mt-3 space-y-2 text-sm">
             {stats.inventory.map((row) => (
               <Link
-                key={`${row.eventId}-${row.categoryName}-${row.channel}`}
+                key={`${row.eventId}-${row.categoryName}`}
                 href={`/admin/events/${row.eventId}`}
                 className="flex justify-between gap-2 rounded-lg px-1 py-1 hover:bg-[var(--tf-overlay)]"
               >
                 <span className="text-[var(--tf-text-secondary)]">
-                  {row.eventName} · {row.categoryName} ({channelLabel(row.channel)})
+                  {row.eventName} · {row.categoryName}
+                  <span className="mt-0.5 block text-xs">
+                    Online {row.onlineSold} · Tageskasse {row.boxOfficeSold} verkauft
+                  </span>
                 </span>
-                <span className="tabular-nums font-medium text-[var(--tf-navy)]">
+                <span className="shrink-0 tabular-nums font-medium text-[var(--tf-navy)]">
                   {row.available}/{row.capacity}
                 </span>
               </Link>

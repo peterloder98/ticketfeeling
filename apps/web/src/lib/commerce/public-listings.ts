@@ -1,4 +1,8 @@
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import {
+  categoryInventoryCapacity,
+  sharedRemainingQuantity,
+} from "@/lib/commerce/inventory-availability";
 import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 
 export type ListingEvent = {
@@ -262,11 +266,9 @@ export function remainingForCategories(
   let capacity = 0;
   let remaining = 0;
   for (const cat of categories) {
-    const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
-    const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
-    const cap = Math.max(cat.capacity, ...cat.pools.map((p) => p.capacity), 0);
+    const cap = categoryInventoryCapacity(cat.capacity, cat.pools);
     capacity += cap;
-    remaining += Math.max(0, cap - sold - held);
+    remaining += sharedRemainingQuantity(cat.pools, cat.capacity);
   }
   return { capacity, remaining };
 }

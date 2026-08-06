@@ -22,6 +22,7 @@ import {
 } from "@/lib/commerce/public-price";
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
 
 export const dynamic = "force-dynamic";
 
@@ -127,9 +128,8 @@ export default async function EventPage({ params }: Props) {
       event.seatingBookingMode === "seat_map_and_best");
 
   const categories = event.ticketCategories.map((category) => {
-    const pool = category.pools.find((p) => p.channel === "online");
-    const available = pool
-      ? Math.max(0, pool.capacity - pool.soldQuantity - pool.heldQuantity)
+    const available = category.pools.length
+      ? channelAvailableQuantity(category.pools, "online", category.capacity)
       : Math.max(0, category.capacity - category.safetyReserve);
     return {
       id: category.id,

@@ -91,6 +91,8 @@ export async function syncPlanBackedCategoryCapacities(
       });
     }
 
+    // Each channel pool may carry the full category capacity (shared inventory).
+    // Availability is enforced as shared remaining across pools — never sum capacities.
     for (const pool of cat.pools) {
       const newCap = Math.max(pool.soldQuantity + pool.heldQuantity, capacity);
       if (pool.capacity !== newCap) {
