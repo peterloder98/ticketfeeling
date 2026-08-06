@@ -1,11 +1,12 @@
 import sharp from "sharp";
 
-/** Square cover for cards/hero — small enough for DB/CDN, sharp enough for retina. */
-export const COVER_SIZE_PX = 480;
+/** Square cover for cards/hero — sharp on retina (~444 CSS px → need ≥2–3×). */
+export const COVER_SIZE_PX = 1600;
+export const COVER_WEBP_QUALITY = 90;
 
 /**
  * Normalize uploads: strip EXIF, crop centre square, WebP.
- * Typical output ~25–60 KB instead of multi‑MB phone photos.
+ * High enough for hero/retina; still far smaller than phone originals.
  */
 export async function optimizeCoverImage(input: Buffer): Promise<{
   buffer: Buffer;
@@ -13,24 +14,24 @@ export async function optimizeCoverImage(input: Buffer): Promise<{
   height: number;
   mimeType: "image/webp";
 }> {
-  const buffer = await sharp(input)
+  const { data, info } = await sharp(input)
     .rotate()
     .resize(COVER_SIZE_PX, COVER_SIZE_PX, {
       fit: "cover",
       position: "centre",
-      withoutEnlargement: false,
+      withoutEnlargement: true,
     })
     .webp({
-      quality: 72,
+      quality: COVER_WEBP_QUALITY,
       effort: 4,
       smartSubsample: true,
     })
-    .toBuffer();
+    .toBuffer({ resolveWithObject: true });
 
   return {
-    buffer,
-    width: COVER_SIZE_PX,
-    height: COVER_SIZE_PX,
+    buffer: data,
+    width: info.width,
+    height: info.height,
     mimeType: "image/webp",
   };
 }

@@ -6,9 +6,12 @@ import { Upload, ZoomIn, Check } from "lucide-react";
 import { normalizeCoverImageUrl } from "@/lib/commerce/event-cover";
 import { ResponsiveImage } from "@/components/responsive-image";
 
-const SIZE = 444;
+/** On-screen crop preview (CSS/display only). */
+const PREVIEW_SIZE = 320;
+/** Export resolution — must match server COVER_SIZE_PX for sharp covers. */
+const OUT_SIZE = 1600;
 /** Downscale source before crop UI so large phone photos don't freeze the tab. */
-const PREVIEW_MAX = 1600;
+const PREVIEW_MAX = 2400;
 
 type Props = {
   name?: string;
@@ -126,8 +129,10 @@ export function CoverImageField({
   }, []);
 
   function coverMetrics(z: number) {
-    if (!imgSize.w || !imgSize.h) return { drawW: SIZE, drawH: SIZE, baseScale: 1 };
-    const baseScale = Math.max(SIZE / imgSize.w, SIZE / imgSize.h);
+    if (!imgSize.w || !imgSize.h) {
+      return { drawW: PREVIEW_SIZE, drawH: PREVIEW_SIZE, baseScale: 1 };
+    }
+    const baseScale = Math.max(PREVIEW_SIZE / imgSize.w, PREVIEW_SIZE / imgSize.h);
     const scale = baseScale * z;
     return {
       drawW: imgSize.w * scale,
@@ -138,8 +143,8 @@ export function CoverImageField({
 
   function clampOffset(x: number, y: number, z: number) {
     const { drawW, drawH } = coverMetrics(z);
-    const maxX = Math.max(0, (drawW - SIZE) / 2);
-    const maxY = Math.max(0, (drawH - SIZE) / 2);
+    const maxX = Math.max(0, (drawW - PREVIEW_SIZE) / 2);
+    const maxY = Math.max(0, (drawH - PREVIEW_SIZE) / 2);
     return {
       x: Math.min(maxX, Math.max(-maxX, x)),
       y: Math.min(maxY, Math.max(-maxY, y)),
@@ -155,9 +160,9 @@ export function CoverImageField({
     img.onload = () => {
       const { drawW, drawH } = coverMetrics(zoom);
       ctx.fillStyle = "#0f2747";
-      ctx.fillRect(0, 0, SIZE, SIZE);
-      const dx = (SIZE - drawW) / 2 + offset.x;
-      const dy = (SIZE - drawH) / 2 + offset.y;
+      ctx.fillRect(0, 0, PREVIEW_SIZE, PREVIEW_SIZE);
+      const dx = (PREVIEW_SIZE - drawW) / 2 + offset.x;
+      const dy = (PREVIEW_SIZE - drawH) / 2 + offset.y;
       ctx.drawImage(img, dx, dy, drawW, drawH);
     };
     img.src = source;
@@ -165,19 +170,39 @@ export function CoverImageField({
   }, [source, zoom, offset, imgSize]);
 
   async function uploadCrop() {
-    if (!canvasRef.current || !source) return;
+    if (!source || !imgSize.w) return;
     setUploading(true);
     setError(null);
     try {
-      const blob = await new Promise<Blob | null>((resolve, reject) => {
-        canvasRef.current!.toBlob(
+      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const el = new window.Image();
+        el.onload = () => resolve(el);
+        el.onerror = () => reject(new Error("IMAGE_FAILED"));
+        el.src = source;
+      });
+
+      const { drawW, drawH } = coverMetrics(zoom);
+      const scale = OUT_SIZE / PREVIEW_SIZE;
+      const out = document.createElement("canvas");
+      out.width = OUT_SIZE;
+      out.height = OUT_SIZE;
+      const ctx = out.getContext("2d");
+      if (!ctx) throw new Error("CANVAS_UNSUPPORTED");
+      ctx.fillStyle = "#0f2747";
+      ctx.fillRect(0, 0, OUT_SIZE, OUT_SIZE);
+      const dx = ((PREVIEW_SIZE - drawW) / 2 + offset.x) * scale;
+      const dy = ((PREVIEW_SIZE - drawH) / 2 + offset.y) * scale;
+      ctx.drawImage(img, dx, dy, drawW * scale, drawH * scale);
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        out.toBlob(
           (b) => (b ? resolve(b) : reject(new Error("ENCODE_FAILED"))),
           "image/jpeg",
-          0.88,
+          0.92,
         );
       });
       const body = new FormData();
-      body.append("file", blob!, "cover.jpg");
+      body.append("file", blob, "cover.jpg");
       if (eventId) body.append("eventId", eventId);
       if (tourId) body.append("tourId", tourId);
 
@@ -330,7 +355,7 @@ export function CoverImageField({
       {source ? (
         <div className="space-y-3">
           <p className="text-sm font-medium text-[var(--tf-navy)]">
-            Ausschnitt wählen ({SIZE}×{SIZE})
+            Ausschnitt wählen (quadratisch)
           </p>
           <div
             className="relative mx-auto touch-none overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-[var(--tf-navy)]"
@@ -349,8 +374,8 @@ export function CoverImageField({
           >
             <canvas
               ref={canvasRef}
-              width={SIZE}
-              height={SIZE}
+              width={PREVIEW_SIZE}
+              height={PREVIEW_SIZE}
               className="h-full w-full cursor-grab active:cursor-grabbing"
             />
           </div>
@@ -421,7 +446,7 @@ export function CoverImageField({
               Bild hierher ziehen oder klicken
             </p>
             <p className="max-w-xs text-xs text-[var(--tf-text-secondary)]">
-              Wird auf {SIZE}×{SIZE} eingepasst. Max. 12 MB.
+              Wird quadratisch in hoher Auflösung eingepasst. Max. 12 MB.
             </p>
           </div>
         </div>
