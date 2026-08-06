@@ -27,6 +27,7 @@ import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release"
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
@@ -283,8 +284,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   const needsSeatAssignment = seatingEnabled && unassignedSeatCount > 0;
 
   const when = event.eventStartsAt
-    ? event.eventStartsAt.toLocaleString("de-DE", {
-        timeZone: "Europe/Berlin",
+    ? formatDeDateTime(event.eventStartsAt, {
         dateStyle: "full",
         timeStyle: "short",
       })
