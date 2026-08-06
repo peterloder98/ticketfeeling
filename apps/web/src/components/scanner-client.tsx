@@ -214,7 +214,6 @@ function ScanGuide() {
 
 async function applyBestCameraConstraints(scanner: Html5Qrcode) {
   try {
-    const settings = scanner.getRunningTrackSettings?.() ?? {};
     const constraints: MediaTrackConstraints = {
       width: { ideal: 1920 },
       height: { ideal: 1080 },
@@ -224,7 +223,6 @@ async function applyBestCameraConstraints(scanner: Html5Qrcode) {
       advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
     };
     await scanner.applyVideoConstraints(constraints);
-    void settings;
   } catch {
     try {
       await scanner.applyVideoConstraints({
@@ -236,6 +234,186 @@ async function applyBestCameraConstraints(scanner: Html5Qrcode) {
     }
   }
 }
+
+type CameraHelpKind = "permission" | "missing" | "https" | "generic";
+
+function classifyCameraError(error: unknown): { message: string; help: CameraHelpKind } {
+  const raw =
+    error instanceof Error
+      ? `${error.name} ${error.message}`
+      : typeof error === "string"
+        ? error
+        : String(error ?? "");
+  const lower = raw.toLowerCase();
+
+  if (
+    !window.isSecureContext ||
+    lower.includes("insecure") ||
+    lower.includes("https") ||
+    lower.includes("secure origin")
+  ) {
+    return {
+      message: "Kamera braucht eine sichere Verbindung (HTTPS).",
+      help: "https",
+    };
+  }
+
+  if (
+    lower.includes("notallowed") ||
+    lower.includes("permission") ||
+    lower.includes("denied") ||
+    lower.includes("notallowederror")
+  ) {
+    return {
+      message: "Kamera-Zugriff wurde blockiert.",
+      help: "permission",
+    };
+  }
+
+  if (
+    lower.includes("notfound") ||
+    lower.includes("devicesnotfound") ||
+    lower.includes("no camera") ||
+    lower.includes("requested device not found")
+  ) {
+    return {
+      message: "Keine Kamera gefunden.",
+      help: "missing",
+    };
+  }
+
+  if (
+    lower.includes("notreadable") ||
+    lower.includes("trackstart") ||
+    lower.includes("could not start") ||
+    lower.includes("in use") ||
+    lower.includes("abort")
+  ) {
+    return {
+      message: "Kamera ist belegt oder nicht erreichbar.",
+      help: "generic",
+    };
+  }
+
+  return {
+    message: "Kamera nicht verfügbar.",
+    help: "generic",
+  };
+}
+
+function cameraHelpText(kind: CameraHelpKind): string {
+  switch (kind) {
+    case "https":
+      return "Öffne die Seite über https://… (z. B. die Live-URL). Lokal nur mit sicherem Kontext.";
+    case "permission":
+      return "Safari/Chrome: Einstellungen → Kamera → diese Website erlauben. Danach „Erneut versuchen“ tippen.";
+    case "missing":
+      return "Prüfe, ob das Gerät eine Kamera hat und keine andere App sie blockiert.";
+    default:
+      return "Safari/Chrome: Einstellungen → Kamera für diese Website erlauben, dann erneut versuchen.";
+  }
+}
+
+function isBackCameraLabel(label: string) {
+  const l = label.toLowerCase();
+  return (
+    l.includes("back") ||
+    l.includes("rear") ||
+    l.includes("environment") ||
+    l.includes("rück") ||
+    l.includes("hinten") ||
+    l.includes("world")
+  );
+}
+
+function isFrontCameraLabel(label: string) {
+  const l = label.toLowerCase();
+  return (
+    l.includes("front") ||
+    l.includes("user") ||
+    l.includes("face") ||
+    l.includes("vorne") ||
+    l.includes("selfie")
+  );
+}
+
+/**
+ * Prompt for camera permission, then build start configs for Html5Qrcode.start().
+ * Library only accepts a deviceId string OR an object with exactly one key:
+ * facingMode ("environment"|"user"|{exact}) or deviceId — never width/fps/ideal.
+ */
+async function buildCameraStartConfigs(): Promise<Array<string | MediaTrackConstraints>> {
+  if (typeof window === "undefined") {
+    throw new Error("Kamera nur im Browser verfügbar");
+  }
+  if (!window.isSecureContext) {
+    throw new Error("HTTPS required for camera");
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("getUserMedia not supported");
+  }
+
+  // Always touch getUserMedia so the browser permission prompt appears.
+  // Prefer rear camera; if that fails, any video stream unlocks labels/enumeration.
+  let permissionStream: MediaStream | null = null;
+  try {
+    try {
+      permissionStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: "environment" } },
+      });
+    } catch {
+      permissionStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: true,
+      });
+    }
+  } finally {
+    permissionStream?.getTracks().forEach((t) => t.stop());
+    permissionStream = null;
+  }
+  // Brief yield so mobile browsers fully release the permission stream
+  await new Promise((r) => window.setTimeout(r, 120));
+
+  const configs: Array<string | MediaTrackConstraints> = [];
+  const seen = new Set<string>();
+  const push = (c: string | MediaTrackConstraints) => {
+    const key = typeof c === "string" ? `id:${c}` : `c:${JSON.stringify(c)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    configs.push(c);
+  };
+
+  try {
+    const devices = await Html5Qrcode.getCameras();
+    const back = devices.filter((d) => isBackCameraLabel(d.label));
+    const front = devices.filter((d) => isFrontCameraLabel(d.label));
+    const rest = devices.filter((d) => !back.includes(d) && !front.includes(d));
+    for (const d of [...back, ...rest, ...front]) {
+      if (d.id) push(d.id);
+    }
+  } catch {
+    /* enumeration can fail even after permission — use facingMode fallbacks */
+  }
+
+  // Html5Qrcode rejects { ideal: … } — only string or { exact }
+  push({ facingMode: "environment" });
+  push({ facingMode: "user" });
+  push({ facingMode: { exact: "environment" } });
+  push({ facingMode: { exact: "user" } });
+
+  return configs;
+}
+
+const SCAN_CONFIG = {
+  fps: 18,
+  // Large ROI ≈ visual frame — better distance detection than a tiny crop
+  qrbox: (viewW: number, viewH: number) => {
+    const size = Math.floor(Math.min(viewW, viewH) * 0.82);
+    return { width: size, height: size };
+  },
+  disableFlip: false,
+};
 
 export function ScannerClient({
   eventId,
@@ -258,6 +436,7 @@ export function ScannerClient({
   const [stats, setStats] = useState(initialStats);
   const [phase, setPhase] = useState<"ready" | "scanning">("ready");
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [cameraHelp, setCameraHelp] = useState<CameraHelpKind | null>(null);
   const [gate, setGate] = useState(gateLabel);
   const [showSettings, setShowSettings] = useState(false);
   const [showManual, setShowManual] = useState(false);
@@ -454,6 +633,7 @@ export function ScannerClient({
     const gen = ++startGenRef.current;
 
     setCameraError(null);
+    setCameraHelp(null);
     getAudioCtx();
     setPhase("scanning");
 
@@ -470,50 +650,70 @@ export function ScannerClient({
       if (!host) throw new Error("Scanner-Element fehlt");
       host.replaceChildren();
 
-      const scanner = new Html5Qrcode("tf-qr-reader", {
-        verbose: false,
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        useBarCodeDetectorIfSupported: true,
-      });
-      if (gen !== startGenRef.current) {
-        try {
-          scanner.clear();
-        } catch {
-          /* ignore */
+      const cameraConfigs = await buildCameraStartConfigs();
+      if (gen !== startGenRef.current) return;
+
+      let lastError: unknown = null;
+      let started = false;
+
+      for (const cameraConfig of cameraConfigs) {
+        if (gen !== startGenRef.current) return;
+
+        host.replaceChildren();
+        const scanner = new Html5Qrcode("tf-qr-reader", {
+          verbose: false,
+          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          useBarCodeDetectorIfSupported: true,
+        });
+        if (gen !== startGenRef.current) {
+          try {
+            scanner.clear();
+          } catch {
+            /* ignore */
+          }
+          return;
         }
-        return;
+        scannerRef.current = scanner;
+
+        try {
+          await scanner.start(
+            cameraConfig,
+            SCAN_CONFIG,
+            (decoded) => {
+              onDecoded(decoded);
+            },
+            () => undefined,
+          );
+          started = true;
+          break;
+        } catch (err) {
+          lastError = err;
+          scannerRef.current = null;
+          try {
+            if (scanner.isScanning) await scanner.stop();
+          } catch {
+            /* ignore */
+          }
+          try {
+            scanner.clear();
+          } catch {
+            /* ignore */
+          }
+          host.replaceChildren();
+        }
       }
-      scannerRef.current = scanner;
 
-      const videoConstraints: MediaTrackConstraints = {
-        facingMode: { ideal: "environment" },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        frameRate: { ideal: 30 },
-        ...( { focusMode: "continuous" } as MediaTrackConstraints),
-      };
-
-      await scanner.start(
-        videoConstraints,
-        {
-          fps: 18,
-          // Large ROI ≈ visual frame — better distance detection than a tiny crop
-          qrbox: (viewW, viewH) => {
-            const size = Math.floor(Math.min(viewW, viewH) * 0.82);
-            return { width: size, height: size };
-          },
-          disableFlip: false,
-        },
-        (decoded) => {
-          onDecoded(decoded);
-        },
-        () => undefined,
-      );
+      if (!started) {
+        throw lastError ?? new Error("Kamera nicht verfügbar");
+      }
 
       if (gen !== startGenRef.current) {
         await stopScannerInstance();
         return;
       }
+
+      const scanner = scannerRef.current;
+      if (!scanner) throw new Error("Kamera nicht verfügbar");
 
       // Drop any accidental duplicate video nodes from overlapping starts
       const videos = host.querySelectorAll("video");
@@ -530,11 +730,9 @@ export function ScannerClient({
       if (gen !== startGenRef.current) return;
       await stopScannerInstance();
       setPhase("ready");
-      setCameraError(
-        error instanceof Error
-          ? error.message
-          : "Kamera nicht verfügbar — manuelle Eingabe nutzen.",
-      );
+      const classified = classifyCameraError(error);
+      setCameraError(classified.message);
+      setCameraHelp(classified.help);
       setShowManual(true);
     } finally {
       if (gen === startGenRef.current) startingRef.current = false;
@@ -703,17 +901,39 @@ export function ScannerClient({
 
         {phase === "ready" ? (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#111827] px-6 text-center">
-            <p className="max-w-sm text-sm text-white/75">
-              Kamera starten — Ergebnis erscheint groß auf dem Bild.
-            </p>
-            <button
-              type="button"
-              className="rounded-2xl bg-[var(--tf-teal)] px-6 py-3.5 text-base font-semibold text-[#0B1220]"
-              onClick={() => void startCamera()}
-            >
-              Kamera starten
-            </button>
-            {cameraError ? <p className="text-sm text-[#fca5a5]">{cameraError}</p> : null}
+            {cameraError ? (
+              <>
+                <p className="text-lg font-semibold text-white">{cameraError}</p>
+                {cameraHelp ? (
+                  <p className="max-w-sm text-sm leading-relaxed text-white/75">
+                    {cameraHelpText(cameraHelp)}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="rounded-2xl bg-[var(--tf-teal)] px-6 py-3.5 text-base font-semibold text-[#0B1220]"
+                  onClick={() => void startCamera()}
+                >
+                  Erneut versuchen
+                </button>
+                <p className="max-w-sm text-xs text-white/55">
+                  Alternativ unten manuell eingeben — du bleibst nicht stecken.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="max-w-sm text-sm text-white/75">
+                  Kamera aktivieren — der Browser fragt nach dem Zugriff.
+                </p>
+                <button
+                  type="button"
+                  className="rounded-2xl bg-[var(--tf-teal)] px-6 py-3.5 text-base font-semibold text-[#0B1220]"
+                  onClick={() => void startCamera()}
+                >
+                  Kamera aktivieren
+                </button>
+              </>
+            )}
             <button
               type="button"
               disabled={leaving}
