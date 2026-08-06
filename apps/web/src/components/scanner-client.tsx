@@ -193,16 +193,42 @@ function isScannerStats(value: unknown): value is ScannerStats {
   return typeof v.currentlyIn === "number" && typeof v.sold === "number";
 }
 
-/** Visual guide aligned with the detection ROI (large centered square). */
+const GUIDE_CORNER = "pointer-events-none absolute h-10 w-10 border-white";
+
+/**
+ * Single overlay: corner brackets + red line share one square.
+ * Library shaded UI is hidden — this is the only aim guide.
+ */
 function ScanGuide() {
   return (
-    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-4">
-      <div className="relative aspect-square w-[min(78vw,320px)] max-h-[min(52vh,320px)]">
-        <div className="absolute inset-0 rounded-md bg-white/10 ring-1 ring-white/35" />
-        {/* Red scan line — vertically centered in the frame */}
+    <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-5">
+      <div
+        className="relative"
+        style={{
+          width: "min(72vw, 300px)",
+          height: "min(72vw, 300px)",
+          maxHeight: "min(48vh, 300px)",
+          maxWidth: "min(48vh, 300px)",
+        }}
+      >
+        <span className={`${GUIDE_CORNER} left-0 top-0 border-l-[3px] border-t-[3px]`} />
+        <span className={`${GUIDE_CORNER} right-0 top-0 border-r-[3px] border-t-[3px]`} />
+        <span className={`${GUIDE_CORNER} bottom-0 left-0 border-b-[3px] border-l-[3px]`} />
+        <span className={`${GUIDE_CORNER} bottom-0 right-0 border-b-[3px] border-r-[3px]`} />
+        {/* Same box as corners — explicit centering (Tailwind top-1/2 alone was drifting vs library UI) */}
         <span
           aria-hidden
-          className="absolute left-[10%] right-[10%] top-1/2 h-[3px] -translate-y-1/2 rounded-full bg-[#ef4444] shadow-[0_0_10px_rgba(239,68,68,0.85)]"
+          style={{
+            position: "absolute",
+            left: "10%",
+            right: "10%",
+            top: "50%",
+            height: 3,
+            transform: "translateY(-50%)",
+            borderRadius: 9999,
+            background: "#ef4444",
+            boxShadow: "0 0 10px rgba(239,68,68,0.85)",
+          }}
         />
         <p className="absolute -bottom-9 left-0 right-0 text-center text-xs font-medium text-white/85">
           Code hier ausrichten
@@ -212,26 +238,22 @@ function ScanGuide() {
   );
 }
 
+function isAppleMobileBrowser() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  return iOS;
+}
+
+/** Soft focus nudge only — never force resolution/fps (breaks iOS decode loops). */
 async function applyBestCameraConstraints(scanner: Html5Qrcode) {
+  if (isAppleMobileBrowser()) return;
   try {
-    const constraints: MediaTrackConstraints = {
-      width: { ideal: 1920 },
-      height: { ideal: 1080 },
-      frameRate: { ideal: 30, min: 15 },
-      // Non-standard but widely supported on mobile Chrome / Safari
-      ...( { focusMode: "continuous" } as MediaTrackConstraints),
+    await scanner.applyVideoConstraints({
       advanced: [{ focusMode: "continuous" } as MediaTrackConstraintSet],
-    };
-    await scanner.applyVideoConstraints(constraints);
+    } as MediaTrackConstraints);
   } catch {
-    try {
-      await scanner.applyVideoConstraints({
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      });
-    } catch {
-      /* device may reject — keep default stream */
-    }
+    /* device may reject — keep default stream */
   }
 }
 
@@ -405,15 +427,23 @@ async function buildCameraStartConfigs(): Promise<Array<string | MediaTrackConst
   return configs;
 }
 
+/**
+ * Full viewfinder decode (no qrbox crop). html5-qrcode's qrbox + object-cover
+ * desync made iPhone aim at pixels the decoder never saw. Library shaded UI is CSS-hidden.
+ */
 const SCAN_CONFIG = {
-  fps: 18,
-  // Large ROI ≈ visual frame — better distance detection than a tiny crop
-  qrbox: (viewW: number, viewH: number) => {
-    const size = Math.floor(Math.min(viewW, viewH) * 0.82);
-    return { width: size, height: size };
-  },
+  fps: 12,
   disableFlip: false,
 };
+
+/** BarcodeDetector on iOS Safari can hang detect() and stall foreverScan. Always use ZXing. */
+function scannerEngineConfig() {
+  return {
+    verbose: false,
+    formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+    useBarCodeDetectorIfSupported: false,
+  };
+}
 
 export function ScannerClient({
   eventId,
@@ -442,6 +472,7 @@ export function ScannerClient({
   const [showManual, setShowManual] = useState(false);
   const [online, setOnline] = useState(true);
   const [leaving, setLeaving] = useState(false);
+  const [decodeHint, setDecodeHint] = useState<string | null>(null);
   const sessionHydratedRef = useRef(false);
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const startGenRef = useRef(0);
@@ -455,6 +486,9 @@ export function ScannerClient({
   const resultClearRef = useRef<number | null>(null);
   const flashClearRef = useRef<number | null>(null);
   const resumeTimerRef = useRef<number | null>(null);
+  const decodeAttemptsRef = useRef(0);
+  const lastDecodeTickRef = useRef(0);
+  const scanningSinceRef = useRef(0);
 
   useEffect(() => {
     const saved = loadSession(eventId);
@@ -525,18 +559,21 @@ export function ScannerClient({
       if (cleaned.length < 10) return;
 
       const now = Date.now();
-      if (now < pauseUntilRef.current) return;
-      if (scanInFlightRef.current) return;
-
-      const last = lastDecodedRef.current;
-      if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) {
-        return;
+      // Cooldown / locks apply only after a prior accepted decode — never block the first hit.
+      if (lastScanAt.current > 0) {
+        if (now < pauseUntilRef.current) return;
+        if (now - lastScanAt.current < SCAN_COOLDOWN_MS) return;
+        const last = lastDecodedRef.current;
+        if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) {
+          return;
+        }
       }
-      if (now - lastScanAt.current < SCAN_COOLDOWN_MS) return;
+      if (scanInFlightRef.current) return;
 
       lastScanAt.current = now;
       lastDecodedRef.current = { raw: cleaned, at: now };
       scanInFlightRef.current = true;
+      setDecodeHint(null);
       pauseDetectionBriefly();
 
       setLoading(true);
@@ -586,16 +623,29 @@ export function ScannerClient({
     (decoded: string) => {
       const cleaned = decoded.trim();
       if (!cleaned) return;
-      const now = Date.now();
-      if (now < pauseUntilRef.current) return;
       if (scanInFlightRef.current) return;
-      const last = lastDecodedRef.current;
-      // Ignore phantom frames of the same payload until lock expires or a different code appears
-      if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) return;
+      const now = Date.now();
+      if (lastScanAt.current > 0) {
+        if (now < pauseUntilRef.current) return;
+        const last = lastDecodedRef.current;
+        if (last && last.raw === cleaned && now - last.at < SAME_CODE_LOCK_MS) return;
+      }
       void runScan(cleaned);
     },
     [runScan],
   );
+
+  const onScanFrameMiss = useCallback(() => {
+    decodeAttemptsRef.current += 1;
+    lastDecodeTickRef.current = Date.now();
+    if (
+      decodeAttemptsRef.current >= 40 &&
+      lastScanAt.current === 0 &&
+      Date.now() - scanningSinceRef.current > 4000
+    ) {
+      setDecodeHint("Kamera läuft — Code näher / ruhiger halten");
+    }
+  }, []);
 
   const stopScannerInstance = useCallback(async () => {
     if (resumeTimerRef.current) {
@@ -634,6 +684,10 @@ export function ScannerClient({
 
     setCameraError(null);
     setCameraHelp(null);
+    setDecodeHint(null);
+    decodeAttemptsRef.current = 0;
+    lastDecodeTickRef.current = 0;
+    scanningSinceRef.current = Date.now();
     getAudioCtx();
     setPhase("scanning");
 
@@ -660,11 +714,7 @@ export function ScannerClient({
         if (gen !== startGenRef.current) return;
 
         host.replaceChildren();
-        const scanner = new Html5Qrcode("tf-qr-reader", {
-          verbose: false,
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-          useBarCodeDetectorIfSupported: true,
-        });
+        const scanner = new Html5Qrcode("tf-qr-reader", scannerEngineConfig());
         if (gen !== startGenRef.current) {
           try {
             scanner.clear();
@@ -682,7 +732,9 @@ export function ScannerClient({
             (decoded) => {
               onDecoded(decoded);
             },
-            () => undefined,
+            () => {
+              onScanFrameMiss();
+            },
           );
           started = true;
           break;
@@ -721,11 +773,34 @@ export function ScannerClient({
         if (index > 0) video.remove();
       });
 
-      // Continuous autofocus + resolution nudge after stream is live
+      // Keep video in normal flow with fill mapping — matches html5-qrcode crop math.
+      // object-cover + absolute inset broke decode sampling on iOS.
+      videos.forEach((video) => {
+        video.style.position = "relative";
+        video.style.inset = "auto";
+        video.style.width = "100%";
+        video.style.height = "100%";
+        video.style.objectFit = "fill";
+        video.setAttribute("playsinline", "true");
+        video.setAttribute("webkit-playsinline", "true");
+        video.muted = true;
+      });
+
+      // Soft focus only (skipped on iOS)
       window.setTimeout(() => {
         if (gen !== startGenRef.current) return;
         if (scannerRef.current === scanner) void applyBestCameraConstraints(scanner);
-      }, 400);
+      }, 500);
+
+      // If decode loop never ticks, surface it (BarcodeDetector hang / dead canvas)
+      window.setTimeout(() => {
+        if (gen !== startGenRef.current) return;
+        if (lastScanAt.current > 0) return;
+        if (lastDecodeTickRef.current === 0) {
+          setDecodeHint("Decoder startet nicht — Stop tippen und erneut versuchen");
+          console.warn("[tf-scanner] no decode ticks after start");
+        }
+      }, 5000);
     } catch (error) {
       if (gen !== startGenRef.current) return;
       await stopScannerInstance();
@@ -737,7 +812,7 @@ export function ScannerClient({
     } finally {
       if (gen === startGenRef.current) startingRef.current = false;
     }
-  }, [onDecoded, stopScannerInstance]);
+  }, [onDecoded, onScanFrameMiss, stopScannerInstance]);
 
   useEffect(() => {
     void startCamera();
@@ -894,10 +969,16 @@ export function ScannerClient({
       >
         <div
           id="tf-qr-reader"
-          className="relative h-full min-h-[48vh] w-full overflow-hidden bg-black md:min-h-[420px] [&_#qr-shaded-region]:!border-transparent [&_canvas]:!hidden [&_img]:!hidden [&_video]:!absolute [&_video]:!inset-0 [&_video]:!h-full [&_video]:!w-full [&_video]:!object-cover [&_video~video]:!hidden"
+          className="tf-qr-reader relative h-full min-h-[48vh] w-full overflow-hidden bg-black md:min-h-[420px]"
         />
 
         {phase === "scanning" ? <ScanGuide /> : null}
+
+        {phase === "scanning" && decodeHint ? (
+          <p className="absolute left-3 right-3 top-3 z-20 rounded-lg bg-black/55 px-3 py-2 text-center text-xs font-medium text-white/90 ring-1 ring-white/20">
+            {decodeHint}
+          </p>
+        ) : null}
 
         {phase === "ready" ? (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-[#111827] px-6 text-center">

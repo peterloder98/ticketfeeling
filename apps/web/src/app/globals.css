@@ -358,6 +358,31 @@ html.dark .tf-page-wash {
   }
 }
 
+/*
+ * html5-qrcode: keep video in-flow with object-fit:fill so crop math matches pixels.
+ * Hide library shaded corners — we draw our own guide. Never use object-cover here.
+ */
+.tf-qr-reader video {
+  position: relative !important;
+  inset: auto !important;
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  object-fit: fill !important;
+  background: #000;
+}
+.tf-qr-reader video ~ video {
+  display: none !important;
+}
+.tf-qr-reader #qr-shaded-region {
+  display: none !important;
+}
+.tf-qr-reader img {
+  display: none !important;
+}
+/* Library already uses display:none on decode canvas — don't force visibility hacks */
+
 /* Embed iframe shop: clean white shell, no site chrome padding */
 html.tf-embed-route,
 html.tf-embed-route body {
