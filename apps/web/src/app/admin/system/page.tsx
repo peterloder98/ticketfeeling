@@ -11,7 +11,9 @@ export default function SystemHubPage() {
           Admin
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">System</h1>
-        <p className="mt-2 text-[var(--tf-text-secondary)]">Support und Audit-Protokoll.</p>
+        <p className="mt-2 text-[var(--tf-text-secondary)]">
+          Benutzer, Support und Audit-Protokoll.
+        </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.system} />
       <AdminHubCards items={adminHubItems("system")} />

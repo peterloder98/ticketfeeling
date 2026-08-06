@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { getDefaultOrganizationForUser } from "@/lib/rbac";
 import { isBoxOfficeOnlyUser } from "@/lib/commerce/box-office-access";
+import { isScannerOnlyUser } from "@/lib/admin/staff-access";
 
 export default async function ScannerLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -12,16 +13,17 @@ export default async function ScannerLayout({ children }: { children: React.Reac
   }
 
   const membership = await getDefaultOrganizationForUser(session.user.id);
+  let scannerOnly = false;
   if (membership) {
-    const boxOnly = await isBoxOfficeOnlyUser(
-      session.user.id,
-      membership.organizationId,
-    );
-    if (boxOnly) redirect("/kasse");
+    const orgId = membership.organizationId;
+    if (await isBoxOfficeOnlyUser(session.user.id, orgId)) {
+      redirect("/kasse");
+    }
+    scannerOnly = await isScannerOnlyUser(session.user.id, orgId);
   }
 
   return (
-    <AdminShell email={session.user.email ?? ""} fullBleedMobile>
+    <AdminShell email={session.user.email ?? ""} fullBleedMobile scannerOnly={scannerOnly}>
       {children}
     </AdminShell>
   );

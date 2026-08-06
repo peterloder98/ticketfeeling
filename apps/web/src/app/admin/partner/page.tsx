@@ -68,6 +68,11 @@ export default async function AdminPartnersPage() {
           „Vorverkaufsstelle“ und landen in der Tageskasse — ohne Admin (keine Events, Finanzen
           oder Einstellungen). Sie sehen nur freigegebene Events und eigene Verkäufe; Storno
           eigener Verkäufe ist möglich, solange Tickets weder gedruckt noch versendet wurden.
+          Admins und Scanner verwalten Sie unter{" "}
+          <a href="/admin/benutzer" className="text-[var(--tf-teal)] underline">
+            Benutzerverwaltung
+          </a>
+          .
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.verkauf} />

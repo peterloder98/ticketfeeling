@@ -8,22 +8,33 @@ const BOX_OFFICE_NAV: { href: string; label: string; match?: string[] }[] = [
   { href: "/kasse", label: "Tageskasse", match: ["/kasse"] },
 ];
 
+const SCANNER_ONLY_NAV: { href: string; label: string; match?: string[] }[] = [
+  { href: "/scanner", label: "Scanner", match: ["/scanner"] },
+];
+
 export function AdminShell({
   email,
   children,
   fullBleedMobile = false,
   /** Vorverkaufsstelle: only Tageskasse in the sidebar. */
   boxOfficeOnly = false,
+  /** Scannerpersonal: only Scanner in the sidebar. */
+  scannerOnly = false,
 }: {
   email: string;
   children: React.ReactNode;
   /** Mobile: no sidebar / padding (e.g. scanner fullscreen). Desktop unchanged. */
   fullBleedMobile?: boolean;
   boxOfficeOnly?: boolean;
+  scannerOnly?: boolean;
 }) {
   const pathname = usePathname();
-  const navItems = boxOfficeOnly ? BOX_OFFICE_NAV : ADMIN_TOP_NAV;
-  // Single logo lives in SiteHeader (top); click → public `/` (or /kasse for Vorverkauf).
+  const navItems = boxOfficeOnly
+    ? BOX_OFFICE_NAV
+    : scannerOnly
+      ? SCANNER_ONLY_NAV
+      : ADMIN_TOP_NAV;
+  const restricted = boxOfficeOnly || scannerOnly;
 
   return (
     <div
@@ -49,7 +60,7 @@ export function AdminShell({
         >
           <div className="tf-card !p-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-text-secondary)]">
-              {boxOfficeOnly ? "Vorverkauf" : "Betrieb"}
+              {boxOfficeOnly ? "Vorverkauf" : scannerOnly ? "Einlass" : "Betrieb"}
             </p>
             <p className="mt-1 truncate text-sm text-[var(--tf-text-secondary)]">{email}</p>
 
@@ -72,7 +83,7 @@ export function AdminShell({
               })}
             </nav>
 
-            {!boxOfficeOnly ? (
+            {!restricted ? (
               <div className="mt-6 border-t border-[var(--tf-line)] pt-4">
                 <Link
                   href="/"

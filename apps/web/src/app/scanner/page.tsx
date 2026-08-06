@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getEventCheckinStats } from "@/lib/commerce/checkin";
 import { ScannerClient } from "@/components/scanner-client";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { isScannerOnlyUser } from "@/lib/admin/staff-access";
 import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
@@ -32,21 +33,25 @@ export default async function ScannerPage({
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) redirect("/login");
 
+  const orgId = membership.organizationId;
+  const scannerOnly = await isScannerOnlyUser(session.user.id, orgId);
+
   const canScan =
-    (await userHasPermission(session.user.id, membership.organizationId, "checkin:scan")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "org:write"));
+    (await userHasPermission(session.user.id, orgId, "checkin:scan")) ||
+    (await userHasPermission(session.user.id, orgId, "events:write")) ||
+    (await userHasPermission(session.user.id, orgId, "org:write"));
   const canRead =
-    canScan ||
-    (await userHasPermission(session.user.id, membership.organizationId, "events:read"));
+    canScan || (await userHasPermission(session.user.id, orgId, "events:read"));
 
   if (!canRead) {
     return (
       <div className="px-4 py-10 text-center md:text-left">
         <p className="text-[#fca5a5] md:text-[var(--danger)]">Keine Berechtigung für den Scanner.</p>
-        <Link href="/admin" className="mt-4 inline-block text-[var(--tf-teal)] underline">
-          Zum Admin
-        </Link>
+        {!scannerOnly ? (
+          <Link href="/admin" className="mt-4 inline-block text-[var(--tf-teal)] underline">
+            Zum Admin
+          </Link>
+        ) : null}
       </div>
     );
   }
@@ -54,7 +59,7 @@ export default async function ScannerPage({
   const sp = await searchParams;
   const events = await prisma.event.findMany({
     where: {
-      organizationId: membership.organizationId,
+      organizationId: orgId,
       status: { in: ["presale_active", "published", "announcement", "sold_out", "completed"] },
     },
     orderBy: { eventStartsAt: "asc" },
@@ -99,24 +104,28 @@ export default async function ScannerPage({
             </span>
           </p>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <Link
-            href="/admin"
-            className="rounded-lg px-3 py-2 text-sm font-medium text-white/90 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
-          >
-            Zum Admin
-          </Link>
-          <Link
-            href="/admin/verkauf"
-            className="rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
-          >
-            Verkauf
-          </Link>
+        {!scannerOnly ? (
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <Link
+              href="/admin"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-white/90 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
+            >
+              Zum Admin
+            </Link>
+            <Link
+              href="/admin/verkauf"
+              className="rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
+            >
+              Verkauf
+            </Link>
+          </div>
+        ) : null}
+      </div>
+      {!scannerOnly ? (
+        <div className="mt-4 hidden md:block">
+          <AdminSubnav items={ADMIN_SUBNAV.verkauf} />
         </div>
-      </div>
-      <div className="mt-4 hidden md:block">
-        <AdminSubnav items={ADMIN_SUBNAV.verkauf} />
-      </div>
+      ) : null}
 
       {!canScan ? (
         <p className="mt-4 rounded-xl border border-amber-400/40 bg-amber-400/10 p-3 text-sm text-amber-100 md:border-[var(--tf-line)] md:bg-[rgba(245,158,11,0.08)] md:text-[var(--tf-text)]">

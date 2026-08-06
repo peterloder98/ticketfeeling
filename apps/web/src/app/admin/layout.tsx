@@ -4,6 +4,7 @@ import { authOptions } from "@/lib/auth";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { getDefaultOrganizationForUser } from "@/lib/rbac";
 import { isBoxOfficeOnlyUser } from "@/lib/commerce/box-office-access";
+import { isScannerOnlyUser } from "@/lib/admin/staff-access";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -13,13 +14,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (membership) {
-    const boxOnly = await isBoxOfficeOnlyUser(
-      session.user.id,
-      membership.organizationId,
-    );
-    if (boxOnly) {
-      // Vorverkaufsstellen have no admin surface — Tageskasse only.
+    const orgId = membership.organizationId;
+    if (await isBoxOfficeOnlyUser(session.user.id, orgId)) {
       redirect("/kasse");
+    }
+    if (await isScannerOnlyUser(session.user.id, orgId)) {
+      redirect("/scanner");
     }
   }
 

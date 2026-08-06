@@ -44,7 +44,7 @@ export const ADMIN_TOP_NAV: AdminNavItem[] = [
   {
     href: "/admin/system",
     label: "System",
-    match: ["/admin/system", "/admin/support", "/admin/audit"],
+    match: ["/admin/system", "/admin/support", "/admin/audit", "/admin/benutzer"],
   },
 ];
 
@@ -140,6 +140,11 @@ export const ADMIN_SUBNAV = {
   ] satisfies AdminSubNavItem[],
   system: [
     { href: "/admin/system", label: "Übersicht", description: "Support & Protokoll" },
+    {
+      href: "/admin/benutzer",
+      label: "Benutzerverwaltung",
+      description: "Admin, Vorverkauf, Scanner",
+    },
     { href: "/admin/support", label: "Support", description: "Anfragen & Chat" },
     { href: "/admin/audit", label: "Audit-Log", description: "Protokoll" },
   ] satisfies AdminSubNavItem[],
