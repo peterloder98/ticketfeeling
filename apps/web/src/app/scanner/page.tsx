@@ -99,12 +99,20 @@ export default async function ScannerPage({
             </span>
           </p>
         </div>
-        <Link
-          href="/admin/verkauf"
-          className="shrink-0 rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
-        >
-          Verkauf
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <Link
+            href="/admin"
+            className="rounded-lg px-3 py-2 text-sm font-medium text-white/90 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
+          >
+            Zum Admin
+          </Link>
+          <Link
+            href="/admin/verkauf"
+            className="rounded-lg px-3 py-2 text-sm text-white/80 ring-1 ring-white/20 hover:bg-white/10 md:hidden"
+          >
+            Verkauf
+          </Link>
+        </div>
       </div>
       <div className="mt-4 hidden md:block">
         <AdminSubnav items={ADMIN_SUBNAV.verkauf} />

@@ -125,6 +125,7 @@ export async function scanTicket(input: {
       ticket: payload(),
       salesChannel,
       salesChannelLabel,
+      stats: await getEventCheckinStats(ticket.eventId),
     };
   }
 
@@ -148,6 +149,31 @@ export async function scanTicket(input: {
       ticket: payload(),
       salesChannel,
       salesChannelLabel,
+      stats: await getEventCheckinStats(ticket.eventId),
+    };
+  }
+
+  if (action === "out" && ticket.presence === "out") {
+    await prisma.checkinEvent.create({
+      data: {
+        eventId: ticket.eventId,
+        ticketId: ticket.id,
+        action: "out",
+        result: "red",
+        previousPresence: ticket.presence,
+        newPresence: ticket.presence,
+        reason: "already_out",
+        actorUserId: input.actorUserId,
+        deviceLabel: input.deviceLabel,
+      },
+    });
+    return {
+      color: "red" as const,
+      message: "Bereits ausgecheckt",
+      ticket: payload(),
+      salesChannel,
+      salesChannelLabel,
+      stats: await getEventCheckinStats(ticket.eventId),
     };
   }
 
@@ -161,6 +187,7 @@ export async function scanTicket(input: {
       ticket: payload(),
       salesChannel,
       salesChannelLabel,
+      stats: await getEventCheckinStats(ticket.eventId),
     };
   }
 
@@ -194,10 +221,11 @@ export async function scanTicket(input: {
   const isVip = /vip/i.test(ticket.categorySnapshot);
   return {
     color: isVip ? ("blue" as const) : ("green" as const),
-    message: action === "in" ? "Einlass OK" : "Check-out OK",
+    message: action === "in" ? "Einlass OK" : "Ausgecheckt",
     ticket: ticketPayload({ ...ticket, presence: nextPresence }),
     salesChannel,
     salesChannelLabel,
+    stats: await getEventCheckinStats(ticket.eventId),
   };
 }
 
