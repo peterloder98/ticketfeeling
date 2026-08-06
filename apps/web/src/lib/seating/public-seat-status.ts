@@ -10,7 +10,8 @@ export function toPublicSeatStatus(
   if (s.locked) return "locked";
   if (s.status === "sold") return "taken";
   if (s.status === "held") {
-    return s.cartItemId && viewerSet.has(s.cartItemId) ? "held_by_you" : "taken";
+    // Own cart → mint in-cart. Other carts → reserved (not sold hatch).
+    return s.cartItemId && viewerSet.has(s.cartItemId) ? "held_by_you" : "held";
   }
   return "available";
 }

@@ -4,9 +4,51 @@ import { createSecureToken } from "@/lib/crypto-token";
 export const CART_COOKIE = "tf_cart";
 export const CART_SESSION_HEADER = "x-cart-session";
 
+const SESSION_KEY_RE = /^[A-Za-z0-9_-]{8,128}$/;
+
 export async function readCartSessionKey() {
   const jar = await cookies();
   return jar.get(CART_COOKIE)?.value ?? null;
+}
+
+/** Parse `tf_cart` from a raw Cookie request header (Route Handler–safe). */
+export function parseCartSessionFromCookieHeader(
+  cookieHeader: string | null | undefined,
+): string | null {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(/(?:^|;\s*)tf_cart=([^;]*)/i);
+  const raw = match?.[1]?.trim();
+  if (!raw) return null;
+  try {
+    const decoded = decodeURIComponent(raw);
+    return SESSION_KEY_RE.test(decoded) ? decoded : null;
+  } catch {
+    return SESSION_KEY_RE.test(raw) ? raw : null;
+  }
+}
+
+/**
+ * Ordered session candidates for API routes.
+ * 1) x-cart-session (embed / sessionStorage backup)
+ * 2) Cookie header on the request (reliable in Route Handlers)
+ * 3) next/headers cookies() jar
+ *
+ * Callers that need cart items (seat map held_by_you) should try each until
+ * an open cart with items is found — a stale header must not mask a valid cookie.
+ */
+export async function readCartSessionCandidatesFromRequest(
+  request?: Request | null,
+): Promise<string[]> {
+  const out: string[] = [];
+  const push = (value: string | null | undefined) => {
+    const v = value?.trim();
+    if (v && SESSION_KEY_RE.test(v) && !out.includes(v)) out.push(v);
+  };
+
+  push(request?.headers.get(CART_SESSION_HEADER));
+  push(parseCartSessionFromCookieHeader(request?.headers.get("cookie")));
+  push(await readCartSessionKey());
+  return out;
 }
 
 /**
@@ -16,11 +58,8 @@ export async function readCartSessionKey() {
  * sessionStorage + x-cart-session still holds the real cart.
  */
 export async function readCartSessionKeyFromRequest(request?: Request | null) {
-  const fromHeader = request?.headers.get(CART_SESSION_HEADER)?.trim();
-  if (fromHeader && /^[A-Za-z0-9_-]{8,128}$/.test(fromHeader)) {
-    return fromHeader;
-  }
-  return readCartSessionKey();
+  const candidates = await readCartSessionCandidatesFromRequest(request);
+  return candidates[0] ?? null;
 }
 
 /** Mint only on write paths (add-to-cart / getOpenCart creating a cart). */

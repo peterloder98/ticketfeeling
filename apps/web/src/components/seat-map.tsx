@@ -6,8 +6,8 @@ import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { categoryFillRgba, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 
-/** Public buy flow: closer default than the previous 1.5× framing. */
-const DEFAULT_BUY_ZOOM = 2.25;
+/** Public buy flow: two zoom steps further out than the previous 2.25 default. */
+const DEFAULT_BUY_ZOOM = 1.75;
 const MIN_ZOOM = 0.75;
 const MAX_ZOOM = 4;
 
@@ -113,7 +113,14 @@ export function SeatMap({
   }, [zoom, map.widthCm, map.depthCm, map.stage?.xCm, map.stage?.yCm, map.stage?.heightCm, scale, offsetY]);
 
   function isSelectable(seat: PublicSeat) {
-    if (seat.status === "taken" || seat.status === "locked" || seat.locked) return false;
+    if (
+      seat.status === "taken" ||
+      seat.status === "held" ||
+      seat.status === "locked" ||
+      seat.locked
+    ) {
+      return false;
+    }
     // Already held by this cart — visible but not pickable again.
     if (seat.status === "held_by_you") return false;
     if (seat.status !== "available") return false;
@@ -127,6 +134,8 @@ export function SeatMap({
   function seatFill(seat: PublicSeat, isSel: boolean) {
     if (seat.status === "locked" || seat.locked) return "#CBD5E1";
     if (seat.status === "taken") return "url(#tf-sold-hatch)";
+    // Other carts' holds — solid grey, not sold X-hatch.
+    if (seat.status === "held") return "#94A3B8";
     if (isSel) return "#14B8A6";
     // Soft mint — distinct from solid teal selection and from sold hatch.
     if (seat.status === "held_by_you") return "#99F6E4";
@@ -147,9 +156,16 @@ export function SeatMap({
     return "#E2E8F0";
   }
 
-  function seatTitle(seat: PublicSeat, selectable: boolean, locked: boolean, taken: boolean) {
+  function seatTitle(
+    seat: PublicSeat,
+    selectable: boolean,
+    locked: boolean,
+    taken: boolean,
+    heldOther: boolean,
+  ) {
     const base = `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`;
     if (taken) return `${base} — Bereits verkauft`;
+    if (heldOther) return `${base} — Zurzeit nicht verfügbar`;
     if (locked) return `${base} — noch nicht freigegeben`;
     if (seat.status === "held_by_you") return `${base} — Bereits im Warenkorb`;
     if (!selectable && hasAssignments && !multiCategory) return `${base} — andere Kategorie`;
@@ -165,6 +181,7 @@ export function SeatMap({
         <Legend color="#14B8A6" label="Ausgewählt" />
         <Legend color="#99F6E4" border="#0F766E" label="Bereits im Warenkorb" />
         <Legend color="#E2E8F0" border="#0F2747" label="Frei" />
+        <Legend color="#94A3B8" border="#64748B" label="Nicht verfügbar" />
         <Legend color="#94A3B8" hatch label="Bereits verkauft" />
         <Legend color="#CBD5E1" border="#64748B" dashed label="Gesperrt" />
         <div className="ml-auto flex items-center gap-2">
@@ -401,6 +418,7 @@ export function SeatMap({
                       const isSel = selected.has(seat.id);
                       const selectable = isSelectable(seat);
                       const taken = seat.status === "taken";
+                      const heldOther = seat.status === "held";
                       const locked = seat.status === "locked" || seat.locked;
                       const heldByYou = seat.status === "held_by_you";
                       const cx = left + seatPadX + cellW * (seat.seatIndex - 0.5);
@@ -409,7 +427,7 @@ export function SeatMap({
                       const fill = seatFill(seat, isSel);
                       const stroke = locked
                         ? "#64748B"
-                        : taken
+                        : taken || heldOther
                           ? "#64748B"
                           : isSel
                             ? "#0F766E"
@@ -417,8 +435,12 @@ export function SeatMap({
                               ? "#0F766E"
                               : "#0F2747";
                       const lightText =
-                        (taken || isSel || Boolean(seat.categoryId && !locked && !heldByYou)) &&
-                        !taken;
+                        (taken ||
+                          heldOther ||
+                          isSel ||
+                          Boolean(seat.categoryId && !locked && !heldByYou)) &&
+                        !taken &&
+                        !heldOther;
                       return (
                         <g key={seat.id} data-saalplan-interactive="">
                           <circle
@@ -427,10 +449,23 @@ export function SeatMap({
                             r={r}
                             fill={fill}
                             stroke={stroke}
-                            strokeWidth={isSel ? 2.25 : heldByYou || locked || taken ? 1.75 : 1}
+                            strokeWidth={
+                              isSel
+                                ? 2.25
+                                : heldByYou || locked || taken || heldOther
+                                  ? 1.75
+                                  : 1
+                            }
                             strokeDasharray={locked ? "3 2" : taken ? "2 2" : undefined}
                             opacity={
-                              selectable || isSel || heldByYou || locked || taken ? 1 : 0.45
+                              selectable ||
+                              isSel ||
+                              heldByYou ||
+                              locked ||
+                              taken ||
+                              heldOther
+                                ? 1
+                                : 0.45
                             }
                             style={{
                               cursor: selectable ? "pointer" : "default",
@@ -440,7 +475,9 @@ export function SeatMap({
                               if (selectable) onToggle(seat);
                             }}
                           >
-                            <title>{seatTitle(seat, selectable, locked, taken)}</title>
+                            <title>
+                              {seatTitle(seat, selectable, locked, taken, heldOther)}
+                            </title>
                           </circle>
                           {taken && r >= 5 ? (
                             <g pointerEvents="none" opacity={0.9}>
@@ -476,7 +513,7 @@ export function SeatMap({
                               />
                             </g>
                           ) : null}
-                          {r >= 6 && !taken && !heldByYou ? (
+                          {r >= 6 && !taken && !heldByYou && !heldOther ? (
                             <text
                               x={cx}
                               y={cy + 3}

@@ -1,50 +1,66 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganization } from "@/lib/commerce/org";
-import { readCartSessionKeyFromRequest } from "@/lib/commerce/cart-session";
+import { readCartSessionCandidatesFromRequest } from "@/lib/commerce/cart-session";
 import { getSeatMapPayload } from "@/lib/seating/map-payload";
 
 type Props = { params: Promise<{ eventId: string }> };
 
-/** Light lookup — avoid full cart include just for held_by_you highlighting. */
+/**
+ * Resolve cart item ids for held_by_you highlighting.
+ * Tries each session candidate (header, then cookie) so a stale sessionStorage
+ * key cannot make this cart's holds look sold.
+ */
 async function viewerCartItemIdsForEvent(
   eventId: string,
-  sessionKey: string | null,
-): Promise<string[]> {
-  if (!sessionKey) return [];
+  sessionKeys: string[],
+): Promise<{ itemIds: string[]; sessionKey: string | null }> {
+  if (sessionKeys.length === 0) return { itemIds: [], sessionKey: null };
   const org = await getDefaultOrganization();
-  if (!org) return [];
+  if (!org) return { itemIds: [], sessionKey: null };
   const now = new Date();
-  const cart = await prisma.cart.findUnique({
-    where: {
-      organizationId_sessionKey: {
-        organizationId: org.id,
-        sessionKey,
+
+  let fallbackEmptyKey: string | null = null;
+  for (const sessionKey of sessionKeys) {
+    const cart = await prisma.cart.findUnique({
+      where: {
+        organizationId_sessionKey: {
+          organizationId: org.id,
+          sessionKey,
+        },
       },
-    },
-    select: {
-      status: true,
-      expiresAt: true,
-      items: {
-        where: { eventId },
-        select: { id: true },
+      select: {
+        status: true,
+        expiresAt: true,
+        items: {
+          where: { eventId },
+          select: { id: true },
+        },
       },
-    },
-  });
-  if (!cart || cart.status !== "open" || cart.expiresAt < now) return [];
-  return cart.items.map((item) => item.id);
+    });
+    if (!cart || cart.status !== "open" || cart.expiresAt < now) continue;
+    const itemIds = cart.items.map((item) => item.id);
+    if (itemIds.length > 0) {
+      return { itemIds, sessionKey };
+    }
+    if (!fallbackEmptyKey) fallbackEmptyKey = sessionKey;
+  }
+  return { itemIds: [], sessionKey: fallbackEmptyKey ?? sessionKeys[0] ?? null };
 }
 
 export async function GET(request: Request, { params }: Props) {
   try {
-    const [{ eventId }, sessionKey] = await Promise.all([
+    const [{ eventId }, sessionKeys] = await Promise.all([
       params,
-      readCartSessionKeyFromRequest(request),
+      readCartSessionCandidatesFromRequest(request),
     ]);
     const url = new URL(request.url);
     const categoryId = url.searchParams.get("categoryId");
 
-    const viewerCartItemIds = await viewerCartItemIdsForEvent(eventId, sessionKey);
+    const { itemIds: viewerCartItemIds, sessionKey } = await viewerCartItemIdsForEvent(
+      eventId,
+      sessionKeys,
+    );
     const map = await getSeatMapPayload(eventId, {
       viewerCartItemIds,
       categoryId: categoryId || null,
@@ -52,7 +68,13 @@ export async function GET(request: Request, { params }: Props) {
     if (!map) {
       return NextResponse.json({ error: { code: "NO_SEAT_MAP" } }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, map });
+    // Echo sessionKey so cartFetch can sync sessionStorage (cookie is HttpOnly).
+    return NextResponse.json({
+      ok: true,
+      map,
+      sessionKey,
+      viewerHoldCount: viewerCartItemIds.length,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";
     return NextResponse.json({ error: { code: message } }, { status: 400 });

@@ -11,8 +11,14 @@ export type PublicSeat = {
   seatNumber: string;
   categoryId: string | null;
   locked: boolean;
-  /** available for this viewer; held by others looks sold; locked withheld */
-  status: "available" | "taken" | "held_by_you" | "locked";
+  /**
+   * available — pickable
+   * held_by_you — in this cart (mint)
+   * held — held by another cart (unavailable, not sold)
+   * taken — sold
+   * locked — withheld from sale
+   */
+  status: "available" | "taken" | "held" | "held_by_you" | "locked";
 };
 
 export type PublicSeatBlock = {

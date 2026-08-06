@@ -13,19 +13,19 @@ describe("toPublicSeatStatus", () => {
     ).toBe("held_by_you");
   });
 
-  it("marks held seats for other carts as taken", () => {
+  it("marks held seats for other carts as held (not sold)", () => {
     expect(
       toPublicSeatStatus(
         { status: "held", cartItemId: "other-item", locked: false },
         viewer,
       ),
-    ).toBe("taken");
+    ).toBe("held");
   });
 
-  it("marks held seats without cartItemId as taken", () => {
+  it("marks held seats without cartItemId as held", () => {
     expect(
       toPublicSeatStatus({ status: "held", cartItemId: null, locked: false }, viewer),
-    ).toBe("taken");
+    ).toBe("held");
   });
 
   it("keeps available / sold / locked", () => {
