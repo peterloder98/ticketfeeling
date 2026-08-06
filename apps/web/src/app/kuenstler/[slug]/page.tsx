@@ -7,7 +7,18 @@ import { ArtistYoutubeEmbed } from "@/components/artist-youtube-embed";
 
 export const dynamic = "force-dynamic";
 
-type Props = { params: Promise<{ slug: string }> };
+type Props = {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ event?: string }>;
+};
+
+/** Only allow simple public event slugs — no open redirects. */
+function safeEventSlug(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const slug = raw.trim();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/i.test(slug)) return null;
+  return slug;
+}
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
@@ -15,8 +26,9 @@ export async function generateMetadata({ params }: Props) {
   return { title: artist?.name ?? "Künstler" };
 }
 
-export default async function ArtistPage({ params }: Props) {
+export default async function ArtistPage({ params, searchParams }: Props) {
   const { slug } = await params;
+  const sp = await searchParams;
   const artist = await prisma.artist.findFirst({
     where: { slug, visibility: "published" },
     include: {
@@ -28,6 +40,11 @@ export default async function ArtistPage({ params }: Props) {
   });
 
   if (!artist) notFound();
+
+  const fromEventSlug = safeEventSlug(sp.event);
+  const backEvent =
+    fromEventSlug &&
+    artist.eventLinks.find((link) => link.event.slug === fromEventSlug)?.event;
 
   const homepage =
     artist.homepage && /^https?:\/\//i.test(artist.homepage) ? artist.homepage : null;
@@ -65,6 +82,15 @@ export default async function ArtistPage({ params }: Props) {
             />
           </div>
           <div>
+            {backEvent ? (
+              <Link
+                href={`/event/${backEvent.slug}`}
+                className="mb-4 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/10 px-3.5 py-1.5 text-sm font-medium text-white backdrop-blur-sm transition hover:border-[var(--tf-teal)] hover:bg-white/15"
+              >
+                ← Zurück zum Event
+                <span className="hidden text-white/70 sm:inline">· {backEvent.name}</span>
+              </Link>
+            ) : null}
             <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--tf-teal)]">
               {artist.genre ?? artist.artistType}
             </p>
@@ -89,6 +115,17 @@ export default async function ArtistPage({ params }: Props) {
       </section>
 
       <div className="tf-container py-12">
+        {backEvent ? (
+          <div className="mb-8">
+            <Link
+              href={`/event/${backEvent.slug}`}
+              className="tf-btn tf-btn-secondary !min-h-11 inline-flex text-sm"
+            >
+              ← Zurück zum Event
+            </Link>
+          </div>
+        ) : null}
+
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
           <div className="tf-card">
             <h2 className="tf-display text-2xl">Biografie</h2>

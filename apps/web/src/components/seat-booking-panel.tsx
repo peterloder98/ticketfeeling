@@ -93,9 +93,19 @@ export function SeatBookingPanel({
 
   const selectedCategory = seatCategories.find((c) => c.id === categoryId) ?? null;
   const companionFree = Boolean(selectedCategory?.companionFree);
+  /** Cap by pool stock and (when map loaded) actually sellable seats for this category. */
+  const sellableStock = selectedCategory
+    ? Math.max(
+        0,
+        map
+          ? Math.min(selectedCategory.available, map.availableCount)
+          : selectedCategory.available,
+      )
+    : 0;
   const maxQty = selectedCategory
-    ? Math.min(selectedCategory.maxPerOrder, Math.max(0, selectedCategory.available))
-    : 1;
+    ? Math.min(selectedCategory.maxPerOrder, sellableStock)
+    : 0;
+  const categorySoldOut = !selectedCategory || sellableStock < 1;
 
   const loadMap = useCallback(async () => {
     setMapLoading(true);
@@ -116,8 +126,23 @@ export function SeatBookingPanel({
   }, [bookingMode, seatCategories.length, loadMap]);
 
   useEffect(() => {
+    // Never carry seats into a category that has nothing sellable — and never auto-pick.
     setSelectedIds([]);
   }, [categoryId]);
+
+  useEffect(() => {
+    if (map && map.availableCount < 1) {
+      setSelectedIds([]);
+    }
+  }, [map]);
+
+  useEffect(() => {
+    if (maxQty < 1) {
+      setQty(1);
+      return;
+    }
+    setQty((q) => Math.min(q, maxQty));
+  }, [maxQty]);
 
   useEffect(() => {
     setSelectedIds((prev) => prev.slice(0, qty));
@@ -150,8 +175,10 @@ export function SeatBookingPanel({
 
   function toggleSeat(seat: PublicSeat) {
     if (seat.locked || seat.status === "locked" || seat.status === "taken") return;
+    if (categorySoldOut || maxQty < 1) return;
     const hasAssignments = map?.blocks.some((b) => b.seats.some((s) => s.categoryId));
     if (hasAssignments && seat.categoryId && seat.categoryId !== categoryId) return;
+    if (seat.status !== "available" && seat.status !== "held_by_you") return;
     setSelectedIds((prev) => {
       if (prev.includes(seat.id)) return prev.filter((id) => id !== seat.id);
       if (prev.length >= qty) {
@@ -290,11 +317,13 @@ export function SeatBookingPanel({
             onToggle={toggleSeat}
             maxSelect={qty}
             activeCategoryId={categoryId}
-            initialZoom={1.5}
+            initialZoom={2.25}
             hint={
-              companionFree
-                ? "Wähle den Rollstuhlplatz — der Begleitplatz daneben wird automatisch mitreserviert."
-                : "Tippe auf freie Plätze deiner Kategorie. Türkis = deine Auswahl. Ziehe zum Verschieben."
+              categorySoldOut
+                ? "In dieser Kategorie sind aktuell keine Plätze verkaufbar."
+                : companionFree
+                  ? "Wähle den Rollstuhlplatz — der Begleitplatz daneben wird automatisch mitreserviert."
+                  : "Tippe auf freie Plätze deiner Kategorie. Türkis = deine Auswahl. Ziehe zum Verschieben."
             }
           />
         ) : (
@@ -409,7 +438,7 @@ export function SeatBookingPanel({
               <button
                 type="button"
                 className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
-                disabled={qty <= 1}
+                disabled={categorySoldOut || qty <= 1}
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
               >
                 <Minus className="h-4 w-4" />
@@ -418,15 +447,17 @@ export function SeatBookingPanel({
               <button
                 type="button"
                 className="inline-flex h-11 w-11 items-center justify-center disabled:opacity-40"
-                disabled={qty >= maxQty}
-                onClick={() => setQty((q) => Math.min(maxQty, q + 1))}
+                disabled={categorySoldOut || qty >= maxQty}
+                onClick={() => setQty((q) => Math.min(maxQty, Math.max(1, q + 1)))}
               >
                 <Plus className="h-4 w-4" />
               </button>
             </div>
-            {showRemainingAvailability && selectedCategory ? (
+            {categorySoldOut ? (
+              <span className="text-xs text-[var(--tf-text-secondary)]">Keine Plätze verfügbar</span>
+            ) : showRemainingAvailability && selectedCategory ? (
               <span className="text-xs text-[var(--tf-text-secondary)]">
-                Noch {selectedCategory.available} verfügbar
+                Noch {sellableStock} verfügbar
               </span>
             ) : null}
           </div>
@@ -468,8 +499,7 @@ export function SeatBookingPanel({
             className="tf-btn tf-btn-primary w-full !min-h-12"
             disabled={
               loading ||
-              !selectedCategory ||
-              selectedCategory.available < 1 ||
+              categorySoldOut ||
               (mode === "seat_map" && selectedIds.length !== qty)
             }
             onClick={() => void addReserved()}

@@ -13,15 +13,29 @@ type PanSession = {
   moved: boolean;
 };
 
+type Options = {
+  /**
+   * When true, drag-to-pan works over interactive seats too.
+   * Click vs drag is distinguished by movement threshold (seat tap stays intact).
+   * Keep false for the admin editor so object drag is unaffected.
+   */
+  panOverInteractive?: boolean;
+};
+
 /**
  * Map-style pan for scrollable saalplan canvases.
  * - Drag empty background (not `[data-saalplan-interactive]`) → pan
  * - Space / Alt / middle-mouse → pan even over interactive seats/blocks
- * Seat click-to-assign stays intact when the pointer doesn't drag.
+ * - With `panOverInteractive`: drag anywhere on the plan; short taps still select
  */
-export function useCanvasPan(canvasRef: RefObject<HTMLDivElement | null>) {
+export function useCanvasPan(
+  canvasRef: RefObject<HTMLDivElement | null>,
+  options?: Options,
+) {
+  const panOverInteractive = options?.panOverInteractive ?? false;
   const sessionRef = useRef<PanSession | null>(null);
   const spaceDownRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const [panning, setPanning] = useState(false);
 
   useEffect(() => {
@@ -53,6 +67,9 @@ export function useCanvasPan(canvasRef: RefObject<HTMLDivElement | null>) {
 
   const endPan = useCallback(() => {
     if (!sessionRef.current) return;
+    if (sessionRef.current.moved) {
+      suppressClickRef.current = true;
+    }
     sessionRef.current = null;
     setPanning(false);
   }, []);
@@ -65,7 +82,7 @@ export function useCanvasPan(canvasRef: RefObject<HTMLDivElement | null>) {
       if (e.button !== 0 && e.button !== 1) return;
       const target = e.target as Element | null;
       const onInteractive = Boolean(target?.closest?.("[data-saalplan-interactive]"));
-      if (!forcePan && onInteractive) return;
+      if (!forcePan && onInteractive && !panOverInteractive) return;
 
       if (e.button === 1 || spaceDownRef.current) e.preventDefault();
 
@@ -83,7 +100,7 @@ export function useCanvasPan(canvasRef: RefObject<HTMLDivElement | null>) {
         /* ignore */
       }
     },
-    [canvasRef],
+    [canvasRef, panOverInteractive],
   );
 
   const onPointerMove = useCallback(
@@ -120,6 +137,13 @@ export function useCanvasPan(canvasRef: RefObject<HTMLDivElement | null>) {
     [canvasRef, endPan],
   );
 
+  const onClickCapture = useCallback((e: React.MouseEvent) => {
+    if (!suppressClickRef.current) return;
+    suppressClickRef.current = false;
+    e.preventDefault();
+    e.stopPropagation();
+  }, []);
+
   return {
     panning,
     /** True while Space is held (for callers that should defer object drag). */
@@ -129,6 +153,7 @@ export function useCanvasPan(canvasRef: RefObject<HTMLDivElement | null>) {
       onPointerMove,
       onPointerUp,
       onPointerCancel: onPointerUp,
+      onClickCapture,
     },
   };
 }

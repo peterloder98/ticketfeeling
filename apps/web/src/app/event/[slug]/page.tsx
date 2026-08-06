@@ -310,7 +310,7 @@ export default async function EventPage({ params }: Props) {
                 return (
                   <Link
                     key={link.id}
-                    href={`/kuenstler/${link.artist.slug}`}
+                    href={`/kuenstler/${link.artist.slug}?event=${encodeURIComponent(event.slug)}`}
                     className="flex items-center gap-4 rounded-[20px] border border-[var(--tf-line)] bg-white p-4 transition hover:border-[var(--tf-teal)]"
                   >
                     <ResponsiveImage

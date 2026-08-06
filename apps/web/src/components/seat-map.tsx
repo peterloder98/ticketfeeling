@@ -1,10 +1,15 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
+
+/** Public buy flow: closer default than the previous 1.5× framing. */
+const DEFAULT_BUY_ZOOM = 2.25;
+const MIN_ZOOM = 0.75;
+const MAX_ZOOM = 4;
 
 type Props = {
   map: SeatMapPayload;
@@ -26,12 +31,12 @@ export function SeatMap({
   maxSelect,
   activeCategoryId,
   hint,
-  initialZoom = 1.5,
+  initialZoom = DEFAULT_BUY_ZOOM,
 }: Props) {
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [zoom, setZoom] = useState(initialZoom);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const { panning, panHandlers } = useCanvasPan(canvasRef);
+  const { panning, panHandlers } = useCanvasPan(canvasRef, { panOverInteractive: true });
 
   const colorByCategory = useMemo(() => {
     const m = new Map<string, string>();
@@ -47,20 +52,46 @@ export function SeatMap({
     [map.blocks],
   );
 
-  const pad = 48;
+  const padX = 48;
+  const padTop = 28;
+  const padBottom = 48;
   const baseW = 1100;
   const baseH = 780;
   const viewW = baseW;
   const viewH = baseH;
   const scale =
-    Math.min((viewW - pad * 2) / map.widthCm, (viewH - pad * 2) / map.depthCm) * zoom;
+    Math.min((viewW - padX * 2) / map.widthCm, (viewH - padTop - padBottom) / map.depthCm) *
+    zoom;
   const contentW = map.widthCm * scale;
   const contentH = map.depthCm * scale;
-  const offsetX = (viewW - contentW) / 2;
-  const offsetY = (viewH - contentH) / 2;
+  // Top-align the plan so the stage (usually at y≈0) sits at the top of the canvas.
+  const svgWidth = Math.max(viewW, contentW + padX * 2);
+  const svgHeight = Math.max(viewH, contentH + padTop + padBottom);
+  const offsetX = (svgWidth - contentW) / 2;
+  const offsetY = padTop;
   const toX = (cm: number) => offsetX + cm * scale;
   const toY = (cm: number) => offsetY + cm * scale;
   const toS = (cm: number) => cm * scale;
+
+  // On open / zoom change: stage near top of the visible area, plan centered horizontally.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    const frame = () => {
+      const maxX = Math.max(0, el.scrollWidth - el.clientWidth);
+      el.scrollLeft = maxX / 2;
+      if (map.stage) {
+        const stageTop =
+          toY(map.stage.yCm) - toS(map.stage.heightCm) / 2;
+        el.scrollTop = Math.max(0, stageTop - 16);
+      } else {
+        el.scrollTop = 0;
+      }
+    };
+    requestAnimationFrame(frame);
+    // toY/toS are stable for this render's scale; zoom + plan size drive reframing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reframe on zoom/plan geometry
+  }, [zoom, map.widthCm, map.depthCm, map.stage?.xCm, map.stage?.yCm, map.stage?.heightCm, scale, offsetY]);
 
   function isSelectable(seat: PublicSeat) {
     if (seat.status === "taken" || seat.status === "locked" || seat.locked) return false;
@@ -72,7 +103,7 @@ export function SeatMap({
 
   function seatFill(seat: PublicSeat, isSel: boolean) {
     if (seat.status === "locked" || seat.locked) return "#CBD5E1";
-    if (seat.status === "taken") return "#94A3B8";
+    if (seat.status === "taken") return "url(#tf-sold-hatch)";
     if (isSel || seat.status === "held_by_you") return "#14B8A6";
     if (seat.categoryId) {
       const catColor = colorByCategory.get(seat.categoryId);
@@ -86,15 +117,21 @@ export function SeatMap({
     return "#E2E8F0";
   }
 
-  const svgWidth = Math.max(viewW, contentW + pad * 2);
-  const svgHeight = Math.max(viewH, contentH + pad * 2);
+  function seatTitle(seat: PublicSeat, selectable: boolean, locked: boolean, taken: boolean) {
+    const base = `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`;
+    if (taken) return `${base} — Bereits verkauft`;
+    if (locked) return `${base} — noch nicht freigegeben`;
+    if (seat.status === "held_by_you") return `${base} — in deinem Warenkorb`;
+    if (!selectable && hasAssignments) return `${base} — andere Kategorie`;
+    return base;
+  }
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--tf-text-secondary)]">
         <Legend color="#14B8A6" label="Ausgewählt" />
         <Legend color="#E2E8F0" border="#0F2747" label="Frei" />
-        <Legend color="#94A3B8" label="Belegt" />
+        <Legend color="#94A3B8" hatch label="Bereits verkauft" />
         <Legend color="#CBD5E1" border="#64748B" dashed label="Gesperrt" />
         <div className="ml-auto flex items-center gap-2">
           <span className="tabular-nums">
@@ -104,8 +141,10 @@ export function SeatMap({
             <button
               type="button"
               className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
-              disabled={zoom <= 0.75}
-              onClick={() => setZoom((z) => Math.max(0.75, Math.round((z - 0.25) * 100) / 100))}
+              disabled={zoom <= MIN_ZOOM}
+              onClick={() =>
+                setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - 0.25) * 100) / 100))
+              }
               aria-label="Verkleinern"
             >
               <Minus className="h-3.5 w-3.5" />
@@ -121,8 +160,10 @@ export function SeatMap({
             <button
               type="button"
               className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
-              disabled={zoom >= 3}
-              onClick={() => setZoom((z) => Math.min(3, Math.round((z + 0.25) * 100) / 100))}
+              disabled={zoom >= MAX_ZOOM}
+              onClick={() =>
+                setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + 0.25) * 100) / 100))
+              }
               aria-label="Vergrößern"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -132,7 +173,7 @@ export function SeatMap({
       </div>
 
       <p className="text-xs text-[var(--tf-text-secondary)]">
-        Ziehe mit der Maus (oder dem Finger), um den Saalplan zu verschieben.
+        Ziehe mit der Hand über den Saalplan, um ihn zu verschieben — kurze Tipps wählen Plätze.
       </p>
 
       <div
@@ -154,6 +195,16 @@ export function SeatMap({
           <defs>
             <pattern id="tf-seat-grid" width="24" height="24" patternUnits="userSpaceOnUse">
               <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(15,39,71,0.04)" strokeWidth="1" />
+            </pattern>
+            <pattern
+              id="tf-sold-hatch"
+              width="6"
+              height="6"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="6" height="6" fill="#94A3B8" />
+              <line x1="0" y1="0" x2="0" y2="6" stroke="#64748B" strokeWidth="2" />
             </pattern>
           </defs>
           <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="#f8fafc" />
@@ -249,12 +300,12 @@ export function SeatMap({
             const w = toS(block.widthCm);
             const h = toS(block.heightCm);
             const numbered = block.numberedSeats !== false;
-            const padX = w * (numbered ? 0.05 : 0.03);
-            const padY = h * 0.05;
+            const seatPadX = w * (numbered ? 0.05 : 0.03);
+            const seatPadY = h * 0.05;
             const cols = Math.max(1, block.seatsPerRow);
             const rows = Math.max(1, block.rows);
-            const cellW = (w - padX * 2) / cols;
-            const cellH = (h - padY * 2) / rows;
+            const cellW = (w - seatPadX * 2) / cols;
+            const cellH = (h - seatPadY * 2) / rows;
 
             return (
               <g
@@ -284,12 +335,12 @@ export function SeatMap({
                 {numbered
                   ? Array.from({ length: rows }, (_, ri) => {
                       const rowNum = ri + 1;
-                      const cy = top + padY + cellH * (rowNum - 0.5);
+                      const cy = top + seatPadY + cellH * (rowNum - 0.5);
                       const fontSize = Math.max(6, Math.min(10, cellH * 0.28));
                       return (
                         <g key={`row-${rowNum}`}>
                           <text
-                            x={left + Math.max(6, padX * 0.55)}
+                            x={left + Math.max(6, seatPadX * 0.55)}
                             y={cy + 3}
                             textAnchor="middle"
                             style={{ fontSize, fontWeight: 600, fill: "#64748B" }}
@@ -297,7 +348,7 @@ export function SeatMap({
                             {rowNum}
                           </text>
                           <text
-                            x={left + w - Math.max(6, padX * 0.55)}
+                            x={left + w - Math.max(6, seatPadX * 0.55)}
                             y={cy + 3}
                             textAnchor="middle"
                             style={{ fontSize, fontWeight: 600, fill: "#64748B" }}
@@ -315,16 +366,20 @@ export function SeatMap({
                       const taken = seat.status === "taken";
                       const locked = seat.status === "locked" || seat.locked;
                       const heldByYou = seat.status === "held_by_you";
-                      const cx = left + padX + cellW * (seat.seatIndex - 0.5);
-                      const cy = top + padY + cellH * (seat.rowIndex - 0.5);
+                      const cx = left + seatPadX + cellW * (seat.seatIndex - 0.5);
+                      const cy = top + seatPadY + cellH * (seat.rowIndex - 0.5);
                       const r = Math.max(3.5, Math.min(cellW, cellH) * 0.34);
                       const fill = seatFill(seat, isSel);
                       const stroke = locked
                         ? "#64748B"
-                        : isSel || heldByYou
-                          ? "#0F766E"
-                          : "#0F2747";
-                      const lightText = taken || isSel || heldByYou || Boolean(seat.categoryId && !locked);
+                        : taken
+                          ? "#64748B"
+                          : isSel || heldByYou
+                            ? "#0F766E"
+                            : "#0F2747";
+                      const lightText =
+                        (taken || isSel || heldByYou || Boolean(seat.categoryId && !locked)) &&
+                        !taken;
                       return (
                         <g key={seat.id} data-saalplan-interactive="">
                           <circle
@@ -333,9 +388,11 @@ export function SeatMap({
                             r={r}
                             fill={fill}
                             stroke={stroke}
-                            strokeWidth={isSel ? 2.25 : locked ? 1.5 : 1}
-                            strokeDasharray={locked ? "3 2" : undefined}
-                            opacity={selectable || isSel || heldByYou || locked || taken ? 1 : 0.45}
+                            strokeWidth={isSel ? 2.25 : locked || taken ? 1.5 : 1}
+                            strokeDasharray={locked ? "3 2" : taken ? "2 2" : undefined}
+                            opacity={
+                              selectable || isSel || heldByYou || locked || taken ? 1 : 0.45
+                            }
                             style={{
                               cursor: selectable ? "pointer" : "not-allowed",
                               transition: "fill 120ms ease, opacity 200ms ease",
@@ -344,20 +401,31 @@ export function SeatMap({
                               if (selectable) onToggle(seat);
                             }}
                           >
-                            <title>
-                              {seat.blockLabel} · Reihe {seat.rowLabel} · Platz {seat.seatNumber}
-                              {locked
-                                ? " (noch nicht freigegeben)"
-                                : taken
-                                  ? " (belegt)"
-                                  : heldByYou
-                                    ? " (in deinem Warenkorb)"
-                                    : !selectable && hasAssignments
-                                      ? " (andere Kategorie)"
-                                      : ""}
-                            </title>
+                            <title>{seatTitle(seat, selectable, locked, taken)}</title>
                           </circle>
-                          {r >= 6 ? (
+                          {taken && r >= 5 ? (
+                            <g pointerEvents="none" opacity={0.9}>
+                              <line
+                                x1={cx - r * 0.45}
+                                y1={cy - r * 0.45}
+                                x2={cx + r * 0.45}
+                                y2={cy + r * 0.45}
+                                stroke="#475569"
+                                strokeWidth={Math.max(1.25, r * 0.22)}
+                                strokeLinecap="round"
+                              />
+                              <line
+                                x1={cx + r * 0.45}
+                                y1={cy - r * 0.45}
+                                x2={cx - r * 0.45}
+                                y2={cy + r * 0.45}
+                                stroke="#475569"
+                                strokeWidth={Math.max(1.25, r * 0.22)}
+                                strokeLinecap="round"
+                              />
+                            </g>
+                          ) : null}
+                          {r >= 6 && !taken ? (
                             <text
                               x={cx}
                               y={cy + 3}
@@ -422,19 +490,23 @@ function Legend({
   label,
   border,
   dashed,
+  hatch,
 }: {
   color: string;
   label: string;
   border?: string;
   dashed?: boolean;
+  hatch?: boolean;
 }) {
   return (
     <span className="inline-flex items-center gap-1.5">
       <span
-        className="inline-block h-3 w-3 rounded-full"
+        className="relative inline-block h-3 w-3 overflow-hidden rounded-full"
         style={{
-          background: color,
-          border: `1px ${dashed ? "dashed" : "solid"} ${border ?? color}`,
+          background: hatch
+            ? `repeating-linear-gradient(-45deg, #CBD5E1, #CBD5E1 1px, ${color} 1px, ${color} 3px)`
+            : color,
+          border: `1px ${dashed || hatch ? "dashed" : "solid"} ${border ?? (hatch ? "#64748B" : color)}`,
         }}
       />
       {label}
