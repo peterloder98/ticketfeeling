@@ -7,6 +7,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { formatEuroFromCents } from "@/lib/money";
+import { ensureStripePayoutSchema } from "@/lib/stripe-payout/ensure-schema";
 import { runDailyReconcileAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,7 @@ export default async function StripePayoutsPage() {
   if (!allowed) redirect("/admin");
 
   const prisma = getPrisma();
+  await ensureStripePayoutSchema(prisma);
   const payouts = await prisma.stripePayout.findMany({
     orderBy: [{ arrivalDate: "desc" }, { createdAt: "desc" }],
     take: 100,

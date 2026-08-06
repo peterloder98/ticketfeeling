@@ -17,7 +17,6 @@ type CustomerEditFormProps = {
     id: string;
     firstName: string;
     lastName: string;
-    salutation: string | null;
     gender: string | null;
     phone: string | null;
     street: string | null;
@@ -38,6 +37,21 @@ function birthDateValue(value: Date | string | null): string {
   return d.toISOString().slice(0, 10);
 }
 
+function genderLabel(gender: string | null): string | null {
+  switch (gender) {
+    case "female":
+      return "weiblich";
+    case "male":
+      return "männlich";
+    case "diverse":
+      return "divers";
+    case "undisclosed":
+      return "keine Angabe";
+    default:
+      return null;
+  }
+}
+
 export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
   const [pending, startTransition] = useTransition();
   const [street, setStreet] = useState(customer.street ?? "");
@@ -49,8 +63,8 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
     return (
       <div className="space-y-2 text-sm text-[var(--muted)]">
         <p>
-          {customer.salutation ? `${customer.salutation} ` : null}
           {customer.firstName} {customer.lastName}
+          {genderLabel(customer.gender) ? ` · ${genderLabel(customer.gender)}` : null}
         </p>
         {customer.phone ? <p>Telefon: {customer.phone}</p> : null}
         {(customer.street || customer.city) && (
@@ -84,15 +98,6 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
     >
       <input type="hidden" name="customerId" value={customer.id} />
       <label className="grid gap-1">
-        <span className="text-[var(--muted)]">Anrede</span>
-        <input
-          name="salutation"
-          defaultValue={customer.salutation ?? ""}
-          className="tf-input"
-          placeholder="Herr / Frau / …"
-        />
-      </label>
-      <label className="grid gap-1">
         <span className="text-[var(--muted)]">Geschlecht</span>
         <select name="gender" defaultValue={customer.gender ?? ""} className="tf-input">
           <option value="">—</option>
@@ -102,6 +107,7 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
           <option value="undisclosed">keine Angabe</option>
         </select>
       </label>
+      <div className="hidden sm:block" aria-hidden />
       <label className="grid gap-1">
         <span className="text-[var(--muted)]">Vorname</span>
         <input name="firstName" defaultValue={customer.firstName} required className="tf-input" />

@@ -7,6 +7,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { formatEuroFromCents } from "@/lib/money";
 import {
   customerDisplayEmail,
+  isAnonymousBoxOfficeCustomer,
   isOrderCountedInRevenue,
   isWalkInCustomerEmail,
 } from "@/lib/commerce/customers";
@@ -15,7 +16,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Kunden" };
 
 type Props = {
-  searchParams: Promise<{ q?: string; realEmail?: string }>;
+  searchParams: Promise<{ q?: string; includeWalkIns?: string }>;
 };
 
 export default async function AdminCustomersPage({ searchParams }: Props) {
@@ -32,13 +33,26 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
 
   const sp = await searchParams;
   const q = String(sp.q ?? "").trim();
-  const realEmailOnly = sp.realEmail === "1" || sp.realEmail === "on";
+  const includeWalkIns = sp.includeWalkIns === "1" || sp.includeWalkIns === "on";
 
   const customers = await prisma.customer.findMany({
     where: {
       organizationId: membership.organizationId,
-      ...(realEmailOnly
-        ? { NOT: { emailNormalized: { contains: "@ticketfeeling.local" } } }
+      // Hide anonymous Tageskasse guests by default — CRM is for real contacts only.
+      ...(!includeWalkIns
+        ? {
+            AND: [
+              { NOT: { emailNormalized: { contains: "@ticketfeeling.local" } } },
+              {
+                NOT: {
+                  AND: [
+                    { firstName: { equals: "Tageskasse", mode: "insensitive" } },
+                    { lastName: { equals: "Gast", mode: "insensitive" } },
+                  ],
+                },
+              },
+            ],
+          }
         : {}),
       ...(q
         ? {
@@ -70,29 +84,31 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
     },
   });
 
-  const rows = customers.map((customer) => {
-    const orderCount = customer.orders.length;
-    const cancelledCount = customer.orders.filter(
-      (o) => o.voidedAt || o.status === "cancelled" || o.status === "refunded",
-    ).length;
-    const revenueCents = customer.orders
-      .filter((o) => isOrderCountedInRevenue(o))
-      .reduce((sum, o) => sum + (o.customerTotalCents || o.grossCents), 0);
-    const lastOrderAt = customer.orders.reduce<Date | null>((latest, o) => {
-      if (!latest || o.createdAt > latest) return o.createdAt;
-      return latest;
-    }, null);
-    const email = customerDisplayEmail(customer.email);
-    return {
-      customer,
-      orderCount,
-      cancelledCount,
-      revenueCents,
-      lastOrderAt,
-      email,
-      walkIn: isWalkInCustomerEmail(customer.email),
-    };
-  });
+  const rows = customers
+    .filter((customer) => includeWalkIns || !isAnonymousBoxOfficeCustomer(customer))
+    .map((customer) => {
+      const orderCount = customer.orders.length;
+      const cancelledCount = customer.orders.filter(
+        (o) => o.voidedAt || o.status === "cancelled" || o.status === "refunded",
+      ).length;
+      const revenueCents = customer.orders
+        .filter((o) => isOrderCountedInRevenue(o))
+        .reduce((sum, o) => sum + (o.customerTotalCents || o.grossCents), 0);
+      const lastOrderAt = customer.orders.reduce<Date | null>((latest, o) => {
+        if (!latest || o.createdAt > latest) return o.createdAt;
+        return latest;
+      }, null);
+      const email = customerDisplayEmail(customer.email);
+      return {
+        customer,
+        orderCount,
+        cancelledCount,
+        revenueCents,
+        lastOrderAt,
+        email,
+        walkIn: isWalkInCustomerEmail(customer.email),
+      };
+    });
 
   return (
     <div>
@@ -103,6 +119,7 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
           </h1>
           <p className="mt-2 text-sm text-[var(--muted)]">
             Ein Kunde pro E-Mail — Stammdaten, Bestellungen und Umsatz im Überblick.
+            Anonyme Tageskasse-Gäste sind ausgeblendet.
           </p>
         </div>
       </div>
@@ -124,12 +141,12 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
         <label className="flex items-center gap-2 pb-2 text-[var(--muted)]">
           <input
             type="checkbox"
-            name="realEmail"
+            name="includeWalkIns"
             value="1"
-            defaultChecked={realEmailOnly}
+            defaultChecked={includeWalkIns}
             className="rounded border-[var(--line)]"
           />
-          Nur mit echter E-Mail
+          Walk-ins anzeigen
         </label>
         <button type="submit" className="tf-btn tf-btn-secondary !py-2 text-sm">
           Filtern

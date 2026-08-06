@@ -6,6 +6,7 @@ import { getPrisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
+import { ensureStripePayoutSchema } from "@/lib/stripe-payout/ensure-schema";
 import { runDailyReconcileAction } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,7 @@ export default async function StripePayoutSystemPage() {
   if (!allowed) redirect("/admin");
 
   const prisma = getPrisma();
+  await ensureStripePayoutSchema(prisma);
   const [lastRun, lastWebhook, openPayouts, failedPayouts, unmapped, diffs] = await Promise.all([
     prisma.stripePayoutReconcileRun.findFirst({ orderBy: { startedAt: "desc" } }),
     prisma.stripeWebhookEvent.findFirst({

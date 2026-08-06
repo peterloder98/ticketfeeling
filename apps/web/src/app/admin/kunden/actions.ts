@@ -40,7 +40,6 @@ export async function updateCustomerAction(formData: FormData) {
 
   const firstName = String(formData.get("firstName") ?? "").trim() || existing.firstName;
   const lastName = String(formData.get("lastName") ?? "").trim() || existing.lastName;
-  const salutation = emptyToNull(formData.get("salutation"));
   const phone = emptyToNull(formData.get("phone"));
   const street = emptyToNull(formData.get("street"));
   if (street && streetContainsDigits(street)) {
@@ -64,7 +63,6 @@ export async function updateCustomerAction(formData: FormData) {
   const before = {
     firstName: existing.firstName,
     lastName: existing.lastName,
-    salutation: existing.salutation,
     phone: existing.phone,
     street: existing.street,
     houseNumber: existing.houseNumber,
@@ -79,7 +77,6 @@ export async function updateCustomerAction(formData: FormData) {
   const after = {
     firstName,
     lastName,
-    salutation,
     phone,
     street,
     houseNumber,

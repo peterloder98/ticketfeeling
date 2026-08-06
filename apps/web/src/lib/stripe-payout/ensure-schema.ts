@@ -1,69 +1,12 @@
+import type { PrismaClient } from "@prisma/client";
+import { withTimeoutFallback } from "@/lib/async-timeout";
+
 /**
- * Best-effort schema patch on Vercel build.
- * Avoid hanging `prisma migrate deploy` (Neon pooler / lock waits can stall the whole deploy).
- * Critical columns are applied with short-timeout DDL instead.
+ * Idempotent CREATE TABLE / INDEX for Stripe payout reconciliation.
+ * Vercel builds skip full `prisma migrate deploy` unless PRISMA_MIGRATE_DEPLOY=1,
+ * so Finanzen pages must self-heal missing tables.
  */
-const { PrismaClient } = require("@prisma/client");
-
-const DDL_TIMEOUT_MS = 20_000;
-
-const FALLBACK_STATEMENTS = [
-  `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "payment_ui_config" JSONB NOT NULL DEFAULT '{}'`,
-  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "sepa_min_days_before_event" INTEGER`,
-  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "status_before_pause" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "stripe_payment_method_id" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "stripe_mandate_id" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "iban_last4" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "account_holder_name" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "reservation_status" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "reserved_until" TIMESTAMP(3)`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_processing_at" TIMESTAMP(3)`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "payment_succeeded_at" TIMESTAMP(3)`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "ticket_released_at" TIMESTAMP(3)`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "ticket_sent_at" TIMESTAMP(3)`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "failed_reason_code" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "failed_reason_message" TEXT`,
-  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "webhook_processing_version" INTEGER NOT NULL DEFAULT 1`,
-  `ALTER TABLE "inventory_holds" ADD COLUMN IF NOT EXISTS "order_id" UUID`,
-  `CREATE INDEX IF NOT EXISTS "inventory_holds_order_id_idx" ON "inventory_holds"("order_id")`,
-  `ALTER TABLE "legal_documents" ADD COLUMN IF NOT EXISTS "enabled" BOOLEAN NOT NULL DEFAULT true`,
-  `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "changelog" TEXT`,
-  `ALTER TABLE "legal_document_versions" ADD COLUMN IF NOT EXISTS "created_by_user_id" UUID`,
-  // Seat category assignment + locks (migration 20260803090000)
-  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seating_layout_config" JSONB NOT NULL DEFAULT '{}'`,
-  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "category_id" UUID`,
-  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false`,
-  `CREATE INDEX IF NOT EXISTS "event_seats_event_id_category_id_status_idx" ON "event_seats"("event_id", "category_id", "status")`,
-  `CREATE INDEX IF NOT EXISTS "event_seats_event_id_locked_status_idx" ON "event_seats"("event_id", "locked", "status")`,
-  // Venue plan category slots (migration 20260803140000)
-  `ALTER TABLE "venue_plans" ADD COLUMN IF NOT EXISTS "category_slots" JSONB NOT NULL DEFAULT '[]'`,
-  // Invoice PDF storage (migration 20260803093000)
-  `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_data" BYTEA`,
-  `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_filename" TEXT`,
-  `ALTER TABLE "invoices" ADD COLUMN IF NOT EXISTS "pdf_emailed_at" TIMESTAMP(3)`,
-  // Public vs billing company addresses (migration 20260805190000)
-  `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "public_company_address" JSONB NOT NULL DEFAULT '{}'`,
-  `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "billing_company_address" JSONB NOT NULL DEFAULT '{}'`,
-  `UPDATE "organization_settings"
-   SET
-     "public_company_address" = jsonb_build_object(
-       'street', COALESCE(NULLIF(TRIM("street"), ''), 'Innere Münchener Str.'),
-       'houseNumber', COALESCE(NULLIF(TRIM("house_number"), ''), '36'),
-       'postalCode', COALESCE(NULLIF(TRIM("postal_code"), ''), '84028'),
-       'city', COALESCE(NULLIF(TRIM("city"), ''), 'Landshut'),
-       'country', COALESCE(NULLIF(TRIM("country"), ''), 'DE')
-     ),
-     "billing_company_address" = jsonb_build_object(
-       'street', 'Konradinstr.',
-       'houseNumber', '6',
-       'postalCode', '84032',
-       'city', 'Altdorf',
-       'country', 'DE'
-     )
-   WHERE "public_company_address" = '{}'::jsonb
-      OR "billing_company_address" = '{}'::jsonb`,
-  // Stripe payout reconciliation (migration 20260805180000) — CREATE TABLE missing from
-  // earlier fallback DDL caused Finanzen Application errors on Vercel.
+const STRIPE_PAYOUT_SCHEMA_STATEMENTS = [
   `CREATE TABLE IF NOT EXISTS "stripe_payouts" (
     "id" UUID NOT NULL,
     "organization_id" UUID,
@@ -108,6 +51,7 @@ const FALLBACK_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "stripe_payouts_organization_id_arrival_date_idx" ON "stripe_payouts"("organization_id", "arrival_date")`,
   `CREATE INDEX IF NOT EXISTS "stripe_payouts_transaction_reconciliation_status_last_synced_at_idx" ON "stripe_payouts"("transaction_reconciliation_status", "last_synced_at")`,
   `CREATE INDEX IF NOT EXISTS "stripe_payouts_document_status_idx" ON "stripe_payouts"("document_status")`,
+
   `CREATE TABLE IF NOT EXISTS "stripe_balance_transactions" (
     "id" UUID NOT NULL,
     "organization_id" UUID,
@@ -146,6 +90,7 @@ const FALLBACK_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "stripe_balance_transactions_stripe_charge_id_idx" ON "stripe_balance_transactions"("stripe_charge_id")`,
   `CREATE INDEX IF NOT EXISTS "stripe_balance_transactions_ticketfeeling_order_id_idx" ON "stripe_balance_transactions"("ticketfeeling_order_id")`,
   `CREATE INDEX IF NOT EXISTS "stripe_balance_transactions_classification_mapping_status_idx" ON "stripe_balance_transactions"("classification", "mapping_status")`,
+
   `CREATE TABLE IF NOT EXISTS "stripe_webhook_events" (
     "id" UUID NOT NULL,
     "organization_id" UUID,
@@ -165,6 +110,7 @@ const FALLBACK_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "stripe_webhook_events_stripe_event_id_key" ON "stripe_webhook_events"("stripe_event_id")`,
   `CREATE INDEX IF NOT EXISTS "stripe_webhook_events_processing_status_received_at_idx" ON "stripe_webhook_events"("processing_status", "received_at")`,
   `CREATE INDEX IF NOT EXISTS "stripe_webhook_events_event_type_received_at_idx" ON "stripe_webhook_events"("event_type", "received_at")`,
+
   `CREATE TABLE IF NOT EXISTS "payout_document_sequences" (
     "id" UUID NOT NULL,
     "organization_id" UUID NOT NULL,
@@ -175,6 +121,7 @@ const FALLBACK_STATEMENTS = [
     CONSTRAINT "payout_document_sequences_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "payout_document_sequences_organization_id_year_document_type_key" ON "payout_document_sequences"("organization_id", "year", "document_type")`,
+
   `CREATE TABLE IF NOT EXISTS "payout_documents" (
     "id" UUID NOT NULL,
     "organization_id" UUID NOT NULL,
@@ -194,6 +141,7 @@ const FALLBACK_STATEMENTS = [
   )`,
   `CREATE INDEX IF NOT EXISTS "payout_documents_local_payout_id_document_type_idx" ON "payout_documents"("local_payout_id", "document_type")`,
   `CREATE UNIQUE INDEX IF NOT EXISTS "payout_documents_organization_id_document_number_key" ON "payout_documents"("organization_id", "document_number")`,
+
   `CREATE TABLE IF NOT EXISTS "payout_audit_logs" (
     "id" UUID NOT NULL,
     "organization_id" UUID,
@@ -208,6 +156,7 @@ const FALLBACK_STATEMENTS = [
     CONSTRAINT "payout_audit_logs_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE INDEX IF NOT EXISTS "payout_audit_logs_local_payout_id_created_at_idx" ON "payout_audit_logs"("local_payout_id", "created_at")`,
+
   `CREATE TABLE IF NOT EXISTS "stripe_original_uploads" (
     "id" UUID NOT NULL,
     "organization_id" UUID NOT NULL,
@@ -225,6 +174,7 @@ const FALLBACK_STATEMENTS = [
     CONSTRAINT "stripe_original_uploads_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE INDEX IF NOT EXISTS "stripe_original_uploads_organization_id_local_payout_id_idx" ON "stripe_original_uploads"("organization_id", "local_payout_id")`,
+
   `CREATE TABLE IF NOT EXISTS "stripe_payout_reconcile_runs" (
     "id" UUID NOT NULL,
     "organization_id" UUID,
@@ -240,120 +190,65 @@ const FALLBACK_STATEMENTS = [
     CONSTRAINT "stripe_payout_reconcile_runs_pkey" PRIMARY KEY ("id")
   )`,
   `CREATE INDEX IF NOT EXISTS "stripe_payout_reconcile_runs_started_at_idx" ON "stripe_payout_reconcile_runs"("started_at")`,
-  // Staff invites (migration 20260806120000) — without this, /admin/benutzer 500s on
-  // soft navigation when prisma migrate deploy is skipped on Vercel builds.
-  `CREATE TABLE IF NOT EXISTS "staff_invites" (
-    "id" UUID NOT NULL,
-    "organization_id" UUID NOT NULL,
-    "email" TEXT NOT NULL,
-    "email_normalized" TEXT NOT NULL,
-    "first_name" TEXT NOT NULL,
-    "last_name" TEXT NOT NULL,
-    "role_key" TEXT NOT NULL,
-    "token_hash" TEXT NOT NULL,
-    "token" TEXT NOT NULL,
-    "status" TEXT NOT NULL DEFAULT 'pending',
-    "invited_by_user_id" UUID NOT NULL,
-    "invited_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "expires_at" TIMESTAMP(3) NOT NULL,
-    "accepted_at" TIMESTAMP(3),
-    "accepted_user_id" UUID,
-    "created_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at" TIMESTAMP(3) NOT NULL,
-    CONSTRAINT "staff_invites_pkey" PRIMARY KEY ("id")
-  )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS "staff_invites_token_hash_key" ON "staff_invites"("token_hash")`,
-  `CREATE INDEX IF NOT EXISTS "staff_invites_organization_id_status_idx" ON "staff_invites"("organization_id", "status")`,
-  `CREATE INDEX IF NOT EXISTS "staff_invites_email_normalized_idx" ON "staff_invites"("email_normalized")`,
 ];
 
-function withTimeout(promise, ms, label) {
-  return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      console.warn(`[migrate-deploy] ${label} timed out after ${ms}ms`);
-      resolve({ ok: false, timedOut: true });
-    }, ms);
-    promise
-      .then((value) => {
-        clearTimeout(timer);
-        resolve({ ok: true, value });
-      })
-      .catch((error) => {
-        clearTimeout(timer);
-        resolve({ ok: false, error });
-      });
-  });
+const ENSURE_BUDGET_MS = 8_000;
+
+let ensurePromise: Promise<void> | null = null;
+let schemaReady = false;
+
+async function probeStripePayoutSchemaReady(db: PrismaClient): Promise<boolean> {
+  try {
+    const rows = await db.$queryRawUnsafe<Array<{ exists: boolean }>>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.tables
+         WHERE table_schema = 'public' AND table_name = 'stripe_payouts'
+       ) AS exists`,
+    );
+    return Boolean(rows[0]?.exists);
+  } catch {
+    return false;
+  }
 }
 
-async function applyFallbackSchema() {
-  const url =
-    process.env.DIRECT_URL ||
-    process.env.DATABASE_URL_UNPOOLED ||
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.DATABASE_URL;
+/** Best-effort DDL so Finanzen works before migrate deploy catches up. */
+export async function ensureStripePayoutSchema(db: PrismaClient) {
+  if (schemaReady) return;
+  if (!ensurePromise) {
+    ensurePromise = (async () => {
+      if (await probeStripePayoutSchemaReady(db)) {
+        schemaReady = true;
+        return;
+      }
 
-  if (!url) {
-    console.warn("[migrate-deploy] no DATABASE_URL — skipping schema patch");
-    return;
-  }
-
-  const prisma = new PrismaClient({ datasources: { db: { url } } });
-  try {
-    for (const sql of FALLBACK_STATEMENTS) {
-      const result = await withTimeout(
-        prisma.$executeRawUnsafe(sql),
-        DDL_TIMEOUT_MS,
-        sql.slice(0, 60),
-      );
-      if (!result.ok) {
-        if (result.error) {
-          console.warn(
-            "[migrate-deploy] statement skipped:",
-            result.error instanceof Error ? result.error.message : result.error,
+      let failed = false;
+      for (const sql of STRIPE_PAYOUT_SCHEMA_STATEMENTS) {
+        try {
+          await db.$executeRawUnsafe(sql);
+        } catch (error) {
+          failed = true;
+          console.error(
+            "[stripe-payout] ensureStripePayoutSchema failed",
+            sql.slice(0, 80),
+            error,
           );
         }
       }
-    }
-    console.log("[migrate-deploy] fallback schema patch finished");
-  } finally {
-    await prisma.$disconnect().catch(() => undefined);
-  }
-}
-
-async function main() {
-  // Full migrate deploy is optional and often hangs on serverless/Neon builds.
-  // Prefer fast, idempotent DDL so `next build` always proceeds.
-  if (process.env.PRISMA_MIGRATE_DEPLOY === "1") {
-    const { spawn } = require("node:child_process");
-    await new Promise((resolve) => {
-      const child = spawn("npx", ["prisma", "migrate", "deploy"], {
-        stdio: "inherit",
-        env: process.env,
-        shell: true,
-      });
-      const timer = setTimeout(() => {
-        console.warn("[migrate-deploy] prisma migrate deploy timed out — continuing");
-        child.kill("SIGTERM");
-        resolve();
-      }, 45_000);
-      child.on("exit", () => {
-        clearTimeout(timer);
-        resolve();
-      });
-      child.on("error", () => {
-        clearTimeout(timer);
-        resolve();
-      });
+      if (failed) {
+        ensurePromise = null;
+        return;
+      }
+      schemaReady = true;
+    })().catch((error) => {
+      ensurePromise = null;
+      throw error;
     });
   }
 
-  await applyFallbackSchema();
-}
-
-main().catch((error) => {
-  console.warn(
-    "[migrate-deploy] unexpected error (continuing build):",
-    error instanceof Error ? error.message : error,
+  await withTimeoutFallback(
+    ensurePromise,
+    ENSURE_BUDGET_MS,
+    undefined,
+    "ensureStripePayoutSchema",
   );
-  process.exit(0);
-});
+}

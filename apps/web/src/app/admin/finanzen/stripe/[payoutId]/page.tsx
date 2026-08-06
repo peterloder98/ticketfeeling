@@ -7,6 +7,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { formatEuroFromCents } from "@/lib/money";
+import { ensureStripePayoutSchema } from "@/lib/stripe-payout/ensure-schema";
 import {
   finalizeDocumentsAction,
   mapOrderAction,
@@ -37,6 +38,7 @@ export default async function StripePayoutDetailPage({
   if (!allowed) redirect("/admin");
 
   const prisma = getPrisma();
+  await ensureStripePayoutSchema(prisma);
   const payout = await prisma.stripePayout.findUnique({
     where: { id: payoutId },
     include: {
