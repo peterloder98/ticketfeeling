@@ -559,7 +559,7 @@ export async function updateEventAction(formData: FormData) {
     seatingBookingMode = "none";
   }
 
-  let eventStartsAt = parseDt(formData, "eventStartsAt");
+  const eventStartsAt = parseDt(formData, "eventStartsAt");
   let eventEndsAt = parseDt(formData, "eventEndsAt");
   let doorsOpenAt = parseDt(formData, "doorsOpenAt");
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
