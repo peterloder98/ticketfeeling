@@ -10,6 +10,7 @@ import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { useCart } from "@/components/cart-context";
 import { FeeInfoDialog } from "@/components/fee-info-dialog";
+import { DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS } from "@/lib/commerce/platform-fee";
 
 type CartItem = {
   id: string;
@@ -199,12 +200,13 @@ export function EmbedCartView() {
                   <span className="text-[var(--tf-text-secondary)]">{feeLabel}</span>
                   <span className="tabular-nums">{formatEuroFromCents(fee)}</span>
                 </p>
-                {typeof data?.summary?.administrationFeePercentageBasisPoints === "number" ? (
-                  <FeeInfoDialog
-                    feePercentageBasisPoints={data.summary.administrationFeePercentageBasisPoints}
-                    description={data.summary.feeCustomerDescription}
-                  />
-                ) : null}
+                <FeeInfoDialog
+                  feePercentageBasisPoints={
+                    data?.summary?.administrationFeePercentageBasisPoints ??
+                    DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
+                  }
+                  description={data?.summary?.feeCustomerDescription}
+                />
               </div>
             ) : null}
             <p className="flex justify-between gap-3 pt-1 text-base font-semibold text-[var(--tf-navy)]">

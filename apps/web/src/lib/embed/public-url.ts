@@ -1,12 +1,35 @@
+import type { EmbedHeightMode, EmbedWidthPreset } from "@/lib/embed/frame-size";
+import {
+  DEFAULT_EMBED_HEIGHT,
+  DEFAULT_EMBED_WIDTH,
+  EMBED_AUTO_MAX_HEIGHT,
+  EMBED_FIXED_HEIGHT_EVENT,
+  EMBED_FIXED_HEIGHT_SHOP,
+  embedWidthCss,
+} from "@/lib/embed/frame-size";
+
 function stripTrailingSlash(url: string) {
   return url.replace(/\/$/, "");
 }
 
-/** Fixed inner + iframe width for all public embeds (px). */
+/** Default iframe width for Standard preset (px). Inner layout fills the iframe. */
 export const EMBED_FRAME_WIDTH = 420;
 
 /** Max iframe height so header stays pinned and body scrolls inside the frame. */
 export const EMBED_FRAME_MAX_HEIGHT = 780;
+
+export type { EmbedHeightMode, EmbedWidthPreset } from "@/lib/embed/frame-size";
+export {
+  DEFAULT_EMBED_HEIGHT,
+  DEFAULT_EMBED_WIDTH,
+  EMBED_AUTO_MAX_HEIGHT,
+  EMBED_FIXED_HEIGHT_EVENT,
+  EMBED_FIXED_HEIGHT_SHOP,
+  EMBED_HEIGHT_MODES,
+  EMBED_WIDTH_PRESETS,
+  embedPreviewWidthClass,
+  embedWidthCss,
+} from "@/lib/embed/frame-size";
 
 /**
  * Live Ticketfeeling host (Vercel). Change only when the production domain moves
@@ -107,32 +130,15 @@ export function getTrackingLinkerDomains(): string[] {
   ];
 }
 
-export function buildEventEmbedSnippet(input: {
-  appUrl: string;
-  slug: string;
-  title?: string;
-  minHeight?: number;
-}) {
-  const src = `${input.appUrl}/embed/event/${encodeURIComponent(input.slug)}`;
-  const title = input.title?.trim() || "Tickets";
-  const minHeight = input.minHeight ?? 520;
-  const maxHeight = EMBED_FRAME_MAX_HEIGHT;
-  const w = EMBED_FRAME_WIDTH;
-  return `<iframe
-  src="${src}"
-  title="${title.replace(/"/g, "&quot;")} – Tickets"
-  style="width:${w}px;max-width:100%;height:${minHeight}px;max-height:${maxHeight}px;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
-  referrerpolicy="strict-origin-when-cross-origin"
-  allow="payment *"
-></iframe>
-<script>
+function buildEmbedResizeScript(matchSrcFragment: string, minHeight: number, maxHeight: number) {
+  return `<script>
 (function(){
   function onMsg(e){
     if(!e.data||e.data.type!=="tf:embed-height")return;
     var frames=document.querySelectorAll("iframe");
     for(var i=0;i<frames.length;i++){
       var f=frames[i];
-      if(f.src&&f.src.indexOf(${JSON.stringify(`/embed/event/${input.slug}`)})!==-1&&e.data.height){
+      if(f.src&&f.src.indexOf(${JSON.stringify(matchSrcFragment)})!==-1&&e.data.height){
         f.style.height=Math.min(${maxHeight},Math.max(${minHeight},e.data.height))+"px";
       }
     }
@@ -142,42 +148,78 @@ export function buildEventEmbedSnippet(input: {
 </script>`;
 }
 
+function buildIframeSnippet(input: {
+  src: string;
+  title: string;
+  matchSrcFragment: string;
+  widthPreset?: EmbedWidthPreset;
+  heightMode?: EmbedHeightMode;
+  minHeight: number;
+}) {
+  const widthPreset = input.widthPreset ?? DEFAULT_EMBED_WIDTH;
+  const heightMode = input.heightMode ?? DEFAULT_EMBED_HEIGHT;
+  const minHeight = Math.max(input.minHeight, 320);
+  const maxHeight = heightMode === "auto" ? EMBED_AUTO_MAX_HEIGHT : minHeight;
+  const heightCss =
+    heightMode === "auto"
+      ? `height:${minHeight}px;min-height:${minHeight}px;max-height:${maxHeight}px;`
+      : `height:${minHeight}px;min-height:${minHeight}px;max-height:${minHeight}px;`;
+  const widthCss = embedWidthCss(widthPreset);
+  const iframe = `<iframe
+  src="${input.src}"
+  title="${input.title.replace(/"/g, "&quot;")}"
+  style="${widthCss}${heightCss}border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
+  referrerpolicy="strict-origin-when-cross-origin"
+  allow="payment *"
+></iframe>`;
+  if (heightMode !== "auto") return iframe;
+  return `${iframe}
+${buildEmbedResizeScript(input.matchSrcFragment, minHeight, maxHeight)}`;
+}
+
+export function buildEventEmbedSnippet(input: {
+  appUrl: string;
+  slug: string;
+  title?: string;
+  minHeight?: number;
+  widthPreset?: EmbedWidthPreset;
+  heightMode?: EmbedHeightMode;
+}) {
+  const src = `${input.appUrl}/embed/event/${encodeURIComponent(input.slug)}`;
+  const title = input.title?.trim() || "Tickets";
+  return buildIframeSnippet({
+    src,
+    title: `${title} – Tickets`,
+    matchSrcFragment: `/embed/event/${input.slug}`,
+    widthPreset: input.widthPreset,
+    heightMode: input.heightMode,
+    minHeight: input.minHeight ?? EMBED_FIXED_HEIGHT_EVENT,
+  });
+}
+
 export function buildShopEmbedSnippet(input: {
   appUrl: string;
   minHeight?: number;
+  widthPreset?: EmbedWidthPreset;
+  heightMode?: EmbedHeightMode;
 }) {
   const src = `${input.appUrl}/embed/shop`;
-  const minHeight = input.minHeight ?? 560;
-  const maxHeight = EMBED_FRAME_MAX_HEIGHT;
-  const w = EMBED_FRAME_WIDTH;
-  return `<iframe
-  src="${src}"
-  title="Ticketfeeling – Events & Tickets"
-  style="width:${w}px;max-width:100%;height:${minHeight}px;max-height:${maxHeight}px;min-height:${minHeight}px;border:0;border-radius:16px;display:block;background:transparent;margin:0 auto;"
-  referrerpolicy="strict-origin-when-cross-origin"
-  allow="payment *"
-></iframe>
-<script>
-(function(){
-  function onMsg(e){
-    if(!e.data||e.data.type!=="tf:embed-height")return;
-    var frames=document.querySelectorAll("iframe");
-    for(var i=0;i<frames.length;i++){
-      var f=frames[i];
-      if(f.src&&f.src.indexOf("/embed/shop")!==-1&&e.data.height){
-        f.style.height=Math.min(${maxHeight},Math.max(${minHeight},e.data.height))+"px";
-      }
-    }
-  }
-  window.addEventListener("message",onMsg);
-})();
-</script>`;
+  return buildIframeSnippet({
+    src,
+    title: "Ticketfeeling – Events & Tickets",
+    matchSrcFragment: "/embed/shop",
+    widthPreset: input.widthPreset,
+    heightMode: input.heightMode,
+    minHeight: input.minHeight ?? EMBED_FIXED_HEIGHT_SHOP,
+  });
 }
 
 export function buildEventEmbedSnippetForLive(input: {
   slug: string;
   title?: string;
   minHeight?: number;
+  widthPreset?: EmbedWidthPreset;
+  heightMode?: EmbedHeightMode;
 }) {
   const appUrl = getEmbedAppUrl();
   return {
@@ -187,7 +229,11 @@ export function buildEventEmbedSnippetForLive(input: {
   };
 }
 
-export function buildShopEmbedSnippetForLive(input?: { minHeight?: number }) {
+export function buildShopEmbedSnippetForLive(input?: {
+  minHeight?: number;
+  widthPreset?: EmbedWidthPreset;
+  heightMode?: EmbedHeightMode;
+}) {
   const appUrl = getEmbedAppUrl();
   return {
     appUrl,

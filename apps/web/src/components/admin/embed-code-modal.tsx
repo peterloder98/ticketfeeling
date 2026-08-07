@@ -3,6 +3,15 @@
 import { useEffect, useId, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { buildEventEmbedSnippet, getEmbedAppUrl } from "@/lib/embed/public-url";
+import {
+  DEFAULT_EMBED_HEIGHT,
+  DEFAULT_EMBED_WIDTH,
+  EMBED_FIXED_HEIGHT_EVENT,
+  embedPreviewWidthClass,
+  type EmbedHeightMode,
+  type EmbedWidthPreset,
+} from "@/lib/embed/frame-size";
+import { EmbedSizeControls } from "@/components/admin/embed-size-controls";
 
 export function EmbedCodeModalButton({
   buttonLabel = "iframe codes des Events anzeigen",
@@ -20,6 +29,8 @@ export function EmbedCodeModalButton({
   const titleId = useId();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [widthPreset, setWidthPreset] = useState<EmbedWidthPreset>(DEFAULT_EMBED_WIDTH);
+  const [heightMode, setHeightMode] = useState<EmbedHeightMode>(DEFAULT_EMBED_HEIGHT);
 
   const appUrl = getEmbedAppUrl();
   const previewUrl = `${appUrl}/embed/event/${encodeURIComponent(slug)}`;
@@ -29,9 +40,14 @@ export function EmbedCodeModalButton({
         appUrl,
         slug,
         title: eventTitle,
+        widthPreset,
+        heightMode,
+        minHeight: EMBED_FIXED_HEIGHT_EVENT,
       }),
-    [appUrl, slug, eventTitle],
+    [appUrl, slug, eventTitle, widthPreset, heightMode],
   );
+  const previewHeight =
+    heightMode === "auto" ? Math.min(720, EMBED_FIXED_HEIGHT_EVENT + 120) : EMBED_FIXED_HEIGHT_EVENT;
 
   useEffect(() => {
     if (!open) return;
@@ -77,7 +93,7 @@ export function EmbedCodeModalButton({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
-            className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
+            className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
             onClick={(e) => e.stopPropagation()}
           >
             <button
@@ -94,7 +110,11 @@ export function EmbedCodeModalButton({
             </h3>
             {description ? (
               <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">{description}</p>
-            ) : null}
+            ) : (
+              <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+                Breite und Höhe wählen, Code kopieren — fertig.
+              </p>
+            )}
             <p className="mt-2 break-all text-xs text-[var(--tf-text-secondary)]">
               src:{" "}
               <a
@@ -106,6 +126,15 @@ export function EmbedCodeModalButton({
                 {previewUrl}
               </a>
             </p>
+
+            <div className="mt-4">
+              <EmbedSizeControls
+                widthPreset={widthPreset}
+                heightMode={heightMode}
+                onWidthChange={setWidthPreset}
+                onHeightChange={setHeightMode}
+              />
+            </div>
 
             <pre className="mt-4 max-h-48 overflow-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3 text-[11px] leading-relaxed text-[var(--tf-navy)]">
               {snippet}
@@ -122,11 +151,14 @@ export function EmbedCodeModalButton({
               <p className="border-b border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-xs font-medium text-[var(--tf-text-secondary)]">
                 Live-Vorschau
               </p>
-              <iframe
-                src={previewUrl}
-                title="Embed-Vorschau"
-                className="mx-auto block h-[520px] w-[420px] max-w-full bg-transparent"
-              />
+              <div className="bg-[#f8fafc] p-3">
+                <iframe
+                  src={previewUrl}
+                  title="Embed-Vorschau"
+                  className={`mx-auto block bg-transparent ${embedPreviewWidthClass(widthPreset)}`}
+                  style={{ height: previewHeight }}
+                />
+              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap justify-end gap-2">

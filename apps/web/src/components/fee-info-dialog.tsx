@@ -4,23 +4,30 @@ import { useEffect, useId, useState } from "react";
 import { Info, X } from "lucide-react";
 import {
   PLATFORM_FEE_INFO_BULLETS,
+  buildDefaultPlatformFeeCustomerDescription,
   buildPlatformFeeInfoClosing,
 } from "@/lib/commerce/platform-fee";
 
 /**
- * Small info icon under the Verwaltungsgebühr line → calm dialog for older users.
+ * Visible Verwaltungsgebühr explanation for buyers (cart / checkout / embed).
+ * Always shows human prose + a calm dialog with the full list.
  */
 export function FeeInfoDialog({
   feePercentageBasisPoints,
   description,
 }: {
   feePercentageBasisPoints: number;
-  /** Optional customer-facing prose under the trigger (checkout / cart). */
+  /** Optional customer-facing prose; falls back to the default explanation. */
   description?: string | null;
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
-  const closing = buildPlatformFeeInfoClosing(feePercentageBasisPoints);
+  const bps = Math.max(0, feePercentageBasisPoints);
+  const closing = buildPlatformFeeInfoClosing(bps);
+  const prose =
+    typeof description === "string" && description.trim()
+      ? description.trim()
+      : buildDefaultPlatformFeeCustomerDescription(bps || 400);
 
   useEffect(() => {
     if (!open) return;
@@ -37,18 +44,16 @@ export function FeeInfoDialog({
   }, [open]);
 
   return (
-    <div className="space-y-1.5">
-      {description ? (
-        <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">{description}</p>
-      ) : null}
+    <div className="rounded-xl border border-[rgba(20,184,166,0.28)] bg-[rgba(20,184,166,0.06)] px-3 py-2.5">
+      <p className="text-sm leading-relaxed text-[var(--tf-navy)]">{prose}</p>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 text-xs text-[var(--tf-teal-hover)] underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]"
+        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--tf-teal-hover)] underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]"
         aria-haspopup="dialog"
         aria-expanded={open}
       >
-        <Info className="h-3.5 w-3.5 shrink-0" aria-hidden />
+        <Info className="h-4 w-4 shrink-0" aria-hidden />
         Was ist die Verwaltungsgebühr?
       </button>
 

@@ -6,6 +6,16 @@ import {
   buildShopEmbedSnippet,
   getEmbedAppUrl,
 } from "@/lib/embed/public-url";
+import {
+  DEFAULT_EMBED_HEIGHT,
+  DEFAULT_EMBED_WIDTH,
+  EMBED_FIXED_HEIGHT_EVENT,
+  EMBED_FIXED_HEIGHT_SHOP,
+  embedPreviewWidthClass,
+  type EmbedHeightMode,
+  type EmbedWidthPreset,
+} from "@/lib/embed/frame-size";
+import { EmbedSizeControls } from "@/components/admin/embed-size-controls";
 
 type ShopProps = {
   kind: "shop";
@@ -27,12 +37,22 @@ type Props = ShopProps | EventProps;
 
 export function EmbedCodePanel(props: Props) {
   const [copied, setCopied] = useState(false);
+  const [widthPreset, setWidthPreset] = useState<EmbedWidthPreset>(DEFAULT_EMBED_WIDTH);
+  const [heightMode, setHeightMode] = useState<EmbedHeightMode>(DEFAULT_EMBED_HEIGHT);
   const appUrl = getEmbedAppUrl();
+  const defaultMin =
+    props.minHeight ??
+    (props.kind === "shop" ? EMBED_FIXED_HEIGHT_SHOP : EMBED_FIXED_HEIGHT_EVENT);
 
   const { snippet, previewUrl } = useMemo(() => {
     if (props.kind === "shop") {
       return {
-        snippet: buildShopEmbedSnippet({ appUrl, minHeight: props.minHeight }),
+        snippet: buildShopEmbedSnippet({
+          appUrl,
+          minHeight: defaultMin,
+          widthPreset,
+          heightMode,
+        }),
         previewUrl: `${appUrl}/embed/shop`,
       };
     }
@@ -41,11 +61,16 @@ export function EmbedCodePanel(props: Props) {
         appUrl,
         slug: props.slug,
         title: props.eventTitle,
-        minHeight: props.minHeight,
+        minHeight: defaultMin,
+        widthPreset,
+        heightMode,
       }),
       previewUrl: `${appUrl}/embed/event/${encodeURIComponent(props.slug)}`,
     };
-  }, [appUrl, props]);
+  }, [appUrl, props, widthPreset, heightMode, defaultMin]);
+
+  const previewHeight =
+    heightMode === "auto" ? Math.min(720, defaultMin + 120) : defaultMin;
 
   async function copy() {
     try {
@@ -93,6 +118,16 @@ export function EmbedCodePanel(props: Props) {
           </button>
         </div>
       </div>
+
+      <div className="mt-4">
+        <EmbedSizeControls
+          widthPreset={widthPreset}
+          heightMode={heightMode}
+          onWidthChange={setWidthPreset}
+          onHeightChange={setHeightMode}
+        />
+      </div>
+
       <pre className="mt-4 max-h-56 overflow-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3 text-[11px] leading-relaxed text-[var(--tf-navy)]">
         {snippet}
       </pre>
@@ -100,11 +135,14 @@ export function EmbedCodePanel(props: Props) {
         <p className="border-b border-[var(--tf-line)] px-3 py-2 text-xs font-medium text-[var(--tf-text-secondary)]">
           Live-Vorschau
         </p>
-        <iframe
-          src={previewUrl}
-          title="Embed-Vorschau"
-          className="mx-auto block h-[560px] w-[420px] max-w-full bg-transparent"
-        />
+        <div className="p-3">
+          <iframe
+            src={previewUrl}
+            title="Embed-Vorschau"
+            className={`mx-auto block bg-transparent ${embedPreviewWidthClass(widthPreset)}`}
+            style={{ height: previewHeight }}
+          />
+        </div>
       </div>
     </div>
   );

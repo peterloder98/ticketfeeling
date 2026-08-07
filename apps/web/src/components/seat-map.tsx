@@ -456,9 +456,6 @@ export function SeatMap({
           style={{ touchAction: "none" }}
         >
           <defs>
-            <pattern id="tf-seat-grid" width="24" height="24" patternUnits="userSpaceOnUse">
-              <path d="M 24 0 L 0 0 0 24" fill="none" stroke="rgba(15,39,71,0.04)" strokeWidth="1" />
-            </pattern>
             <pattern
               id="tf-sold-hatch"
               width="6"
@@ -480,13 +477,6 @@ export function SeatMap({
             stroke="#0F2747"
             strokeWidth={1.5}
             rx={6}
-          />
-          <rect
-            x={toX(0)}
-            y={toY(0)}
-            width={toS(map.widthCm)}
-            height={toS(map.depthCm)}
-            fill="url(#tf-seat-grid)"
           />
 
           {map.stage ? (

@@ -4,7 +4,6 @@ import { EmbedResizeNotifier } from "@/components/embed/embed-resize";
 import { EmbedCartBar } from "@/components/embed/embed-cart-bar";
 import { EmbedHistoryTracker } from "@/components/embed/embed-back-link";
 import { EmbedStayInFrame } from "@/components/embed/embed-stay-in-frame";
-import { EMBED_FRAME_WIDTH, EMBED_FRAME_MAX_HEIGHT } from "@/lib/embed/public-url";
 
 export default function EmbedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -29,13 +28,7 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
       `}</style>
       <div
         data-embed-root
-        className="mx-auto flex flex-col overflow-hidden bg-transparent text-[#0F2747]"
-        style={{
-          width: EMBED_FRAME_WIDTH,
-          maxWidth: "100%",
-          height: "100%",
-          maxHeight: EMBED_FRAME_MAX_HEIGHT,
-        }}
+        className="mx-auto flex h-full w-full max-w-full flex-col overflow-hidden bg-transparent text-[#0F2747]"
       >
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e2e8f0] bg-white shadow-[0_8px_28px_rgba(15,39,71,0.08)]">
           <div className="shrink-0 border-b border-[#e2e8f0] bg-white">

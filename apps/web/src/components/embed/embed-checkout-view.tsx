@@ -7,9 +7,11 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
+import { FeeInfoDialog } from "@/components/fee-info-dialog";
 import { useCart } from "@/components/cart-context";
 import type { CheckoutPaymentOption } from "@/lib/commerce/payment-fees";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
+import { DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS } from "@/lib/commerce/platform-fee";
 
 type Bootstrap = {
   empty: boolean;
@@ -26,7 +28,15 @@ type Bootstrap = {
     locationName?: string | null;
     locationCity?: string | null;
   }>;
-  summary: { grossCents: number; grossFormatted?: string | null } | null;
+  summary: {
+    grossCents: number;
+    grossFormatted?: string | null;
+    ticketsGrossCents?: number;
+    feeGrossCents?: number;
+    feeLabel?: string | null;
+    feeCustomerDescription?: string | null;
+    administrationFeePercentageBasisPoints?: number;
+  } | null;
   paymentOptions: CheckoutPaymentOption[];
   customerTotalCents: number;
   isLoggedIn: boolean;
@@ -149,12 +159,39 @@ export function EmbedCheckoutView() {
             </li>
           ))}
         </ul>
-        <p className="mt-2 flex justify-between border-t border-[var(--tf-line)] pt-2 text-sm font-semibold text-[var(--tf-navy)]">
-          <span>Gesamtbetrag</span>
-          <span className="tabular-nums">
-            {formatEuroFromCents(data.customerTotalCents)}
-          </span>
-        </p>
+        <div className="mt-2 space-y-1.5 border-t border-[var(--tf-line)] pt-2 text-xs">
+          {typeof data.summary?.ticketsGrossCents === "number" ? (
+            <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
+              <span>Tickets</span>
+              <span className="tabular-nums">
+                {formatEuroFromCents(data.summary.ticketsGrossCents)}
+              </span>
+            </p>
+          ) : null}
+          {(data.summary?.feeGrossCents ?? 0) > 0 ? (
+            <div className="space-y-1.5">
+              <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
+                <span>{data.summary?.feeLabel ?? "Verwaltungsgebühr"}</span>
+                <span className="tabular-nums">
+                  {formatEuroFromCents(data.summary!.feeGrossCents!)}
+                </span>
+              </p>
+              <FeeInfoDialog
+                feePercentageBasisPoints={
+                  data.summary?.administrationFeePercentageBasisPoints ??
+                  DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
+                }
+                description={data.summary?.feeCustomerDescription}
+              />
+            </div>
+          ) : null}
+          <p className="flex justify-between gap-3 pt-1 text-sm font-semibold text-[var(--tf-navy)]">
+            <span>Gesamtbetrag</span>
+            <span className="tabular-nums">
+              {formatEuroFromCents(data.customerTotalCents)}
+            </span>
+          </p>
+        </div>
       </div>
 
       <CheckoutForm

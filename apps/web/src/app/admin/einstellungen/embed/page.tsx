@@ -39,8 +39,9 @@ export default async function EmbedSettingsPage() {
           Website-Einbindung
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
-          Ticketshop als iframe (feste Breite 420px, Höhe passt sich dem Inhalt an). Kompletter Kauf —
-          Warenkorb, Kasse, Zahlung und Tickets — bleibt im iframe.
+          Ticketshop als iframe einbinden. Breite und Höhe wählst du im Code-Dialog (Standard + Fest =
+          bisheriges Verhalten). Kompletter Kauf — Warenkorb, Kasse, Zahlung und Tickets — bleibt im
+          iframe.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />
@@ -91,8 +92,8 @@ export default async function EmbedSettingsPage() {
             <code>{`iframe.contentWindow.postMessage({type:'tf:consent',statistics:true,marketing:true}, '*')`}</code>
           </li>
           <li>
-            Parent empfängt Höhe: Message-Typ <code>tf:embed-height</code> (im Snippet schon
-            enthalten).
+            Bei Höhe „Automatisch“ empfängt die Host-Seite Höhe via Message-Typ{" "}
+            <code>tf:embed-height</code> (im Snippet enthalten). „Fest“ braucht kein Script.
           </li>
         </ul>
       </div>

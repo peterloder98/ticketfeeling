@@ -2,11 +2,11 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
-import { EMBED_FRAME_MAX_HEIGHT } from "@/lib/embed/public-url";
+import { EMBED_AUTO_MAX_HEIGHT } from "@/lib/embed/public-url";
 
 /**
- * Posts iframe height to the parent. Caps at EMBED_FRAME_MAX_HEIGHT so the
- * header stays visible and the embed body scrolls internally.
+ * Posts iframe height to the parent (used when snippet height mode = Automatisch).
+ * Soft-capped so host pages stay usable; fixed-height snippets ignore the message.
  */
 export function EmbedResizeNotifier() {
   const pathname = usePathname();
@@ -21,11 +21,7 @@ export function EmbedResizeNotifier() {
       const contentHeight = Math.ceil(
         (header?.offsetHeight ?? 0) + (scroll?.scrollHeight ?? 0) + 4,
       );
-      const viewportCap = Math.min(
-        EMBED_FRAME_MAX_HEIGHT,
-        Math.round(window.innerHeight * 0.9) || EMBED_FRAME_MAX_HEIGHT,
-      );
-      const height = Math.max(320, Math.min(contentHeight, viewportCap));
+      const height = Math.max(320, Math.min(contentHeight, EMBED_AUTO_MAX_HEIGHT));
 
       try {
         window.parent.postMessage({ type: "tf:embed-height", height }, "*");
