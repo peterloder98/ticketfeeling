@@ -66,7 +66,36 @@ type Props = {
 function scrollToId(id: string) {
   const el = document.getElementById(id);
   if (!el) return;
+  const embedScroll =
+    (el.closest("[data-embed-scroll]") as HTMLElement | null) ??
+    document.querySelector<HTMLElement>("[data-embed-scroll]");
+  if (embedScroll && embedScroll.contains(el)) {
+    const elRect = el.getBoundingClientRect();
+    const rootRect = embedScroll.getBoundingClientRect();
+    const nextTop = embedScroll.scrollTop + (elRect.top - rootRect.top) - 8;
+    embedScroll.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+    return;
+  }
   el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function isEmbedFrame(): boolean {
+  return Boolean(document.querySelector("[data-embed-scroll]"));
+}
+
+/** In iframe embeds, scroll to the drawn map; elsewhere keep the Saalplan heading. */
+function scrollToSaalplanOpen(mapHostId?: string) {
+  if (isEmbedFrame()) {
+    if (document.getElementById("saalplan-map-start")) {
+      scrollToId("saalplan-map-start");
+      return;
+    }
+  }
+  if (document.getElementById("saalplan-heading")) {
+    scrollToId("saalplan-heading");
+    return;
+  }
+  scrollToId(mapHostId ?? "saalplan-map");
 }
 
 /** Mark seats as in-cart on the local map (optimistic + race-safe fallback). */
@@ -123,6 +152,7 @@ export function SeatBookingPanel({
   const [addedSeatLabels, setAddedSeatLabels] = useState<string[]>([]);
   const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
   const mapLoadSeq = useRef(0);
+  const embedMapScrollDone = useRef(false);
   const [accessibilitySelected, setAccessibilitySelected] = useState(false);
   const [cardQty, setCardQty] = useState<Record<string, number>>(() => {
     const defaultQty = seatedCategories.length > 0 ? 0 : 1;
@@ -261,18 +291,28 @@ export function SeatBookingPanel({
     setMapHostEl(document.getElementById(mapHostId));
   }, [mapHostId, showMap]);
 
+  // Embed: when the map finishes loading, scroll so the drawn plan is visible.
+  useEffect(() => {
+    if (!showMap) {
+      embedMapScrollDone.current = false;
+      return;
+    }
+    if (!map || embedMapScrollDone.current) return;
+    if (typeof document === "undefined" || !isEmbedFrame()) return;
+    embedMapScrollDone.current = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollToSaalplanOpen(mapHostId));
+    });
+  }, [showMap, map, mapHostId]);
+
   function openSeatMap() {
     setMode("seat_map");
     setJustAdded(false);
     void loadMap();
-    // Wait for portal/heading paint, then jump to „Saalplan“ — not into the canvas.
+    // Wait for portal/heading/map paint, then scroll into view.
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
-        if (document.getElementById("saalplan-heading")) {
-          scrollToId("saalplan-heading");
-        } else {
-          scrollToId(mapHostId ?? "saalplan-map");
-        }
+        scrollToSaalplanOpen(mapHostId);
       });
     });
   }
@@ -509,7 +549,7 @@ export function SeatBookingPanel({
 
   const mapCanvas =
     showMap ? (
-      <div>
+      <div id="saalplan-map-start" className="scroll-mt-3">
         {mapLoading && !map ? (
           <p className="text-sm text-[var(--tf-text-secondary)]">Saalplan wird geladen…</p>
         ) : map ? (

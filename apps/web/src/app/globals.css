@@ -417,3 +417,15 @@ html.tf-embed-route main {
 html.tf-popup-route main {
   padding-bottom: 0 !important;
 }
+
+/* Saalplan viewport: drag-to-pan (hide native scrollbars; wheel still pans via JS) */
+.tf-saalplan-viewport {
+  overscroll-behavior: none;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tf-saalplan-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

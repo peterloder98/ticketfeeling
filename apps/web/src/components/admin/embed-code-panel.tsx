@@ -89,7 +89,7 @@ export function EmbedCodePanel(props: Props) {
             className="tf-btn tf-btn-primary !min-h-10 text-sm"
             onClick={() => void copy()}
           >
-            {copied ? "Kopiert" : "Code kopieren"}
+            {copied ? "Kopiert!" : "Code kopieren"}
           </button>
         </div>
       </div>

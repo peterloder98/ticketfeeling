@@ -232,6 +232,7 @@ export default async function CheckoutPage() {
                   <div className="pl-0">
                     <FeeInfoDialog
                       feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
+                      description={summary.feeCustomerDescription}
                     />
                   </div>
                 </div>
@@ -255,12 +256,6 @@ export default async function CheckoutPage() {
                 <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                   Die gewählte Zahlungsart verändert den Gesamtpreis nicht.
                 </p>
-                {feePercentLabel ? (
-                  <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
-                    Unsere Verwaltungsgebühr beträgt nur {feePercentLabel}&nbsp;% — deutlich
-                    günstiger als bei vielen klassischen Ticketplattformen.
-                  </p>
-                ) : null}
               </div>
             </div>
 

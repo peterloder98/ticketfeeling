@@ -298,7 +298,7 @@ export function SeatMap({
               while (i < tooltip.lines.length) {
                 const line = tooltip.lines[i]!;
                 if (line.kind === "strike" || line.kind === "badge" || line.kind === "sale") {
-                  const row: typeof tooltip.lines = [];
+                  const row: HoverTooltip["lines"] = [];
                   while (
                     i < tooltip.lines.length &&
                     (tooltip.lines[i]!.kind === "strike" ||
@@ -437,9 +437,10 @@ export function SeatMap({
       </div>
       <div
         ref={canvasRef}
-        className={`max-h-[min(86vh,920px)] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-white shadow-inner ${
+        className={`tf-saalplan-viewport max-h-[min(86vh,920px)] overflow-auto overscroll-none rounded-2xl border border-[var(--tf-line)] bg-white shadow-inner ${
           panning ? "cursor-grabbing select-none" : "cursor-grab"
         }`}
+        style={{ touchAction: "none" }}
         {...panHandlers}
         onMouseLeave={() => {
           setTooltip(null);

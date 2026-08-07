@@ -251,7 +251,9 @@ export default async function EmbedEventShopPage({ params }: Props) {
         ) : null}
 
         <section>
-          <h2 className="text-sm font-semibold text-[var(--tf-navy)]">Tickets</h2>
+          <h2 id="tickets" className="scroll-mt-3 text-sm font-semibold text-[var(--tf-navy)]">
+            Tickets
+          </h2>
           <div className="mt-2">
             {saleOpen ? (
               hasReservedSeating ? (

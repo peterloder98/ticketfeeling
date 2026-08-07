@@ -660,9 +660,10 @@ export function SaalplanEditor({
 
           <div
             ref={canvasRef}
-            className={`h-[min(72vh,640px)] w-full overflow-auto bg-[#f8fafc] ${
+            className={`tf-saalplan-viewport h-[min(72vh,640px)] w-full overflow-auto overscroll-none bg-[#f8fafc] ${
               panning ? "cursor-grabbing" : "cursor-grab"
             }`}
+            style={{ touchAction: "none" }}
             {...panHandlers}
           >
             <svg

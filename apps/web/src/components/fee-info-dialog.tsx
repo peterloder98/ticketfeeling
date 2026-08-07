@@ -12,8 +12,11 @@ import {
  */
 export function FeeInfoDialog({
   feePercentageBasisPoints,
+  description,
 }: {
   feePercentageBasisPoints: number;
+  /** Optional customer-facing prose under the trigger (checkout / cart). */
+  description?: string | null;
 }) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
@@ -34,7 +37,10 @@ export function FeeInfoDialog({
   }, [open]);
 
   return (
-    <>
+    <div className="space-y-1.5">
+      {description ? (
+        <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">{description}</p>
+      ) : null}
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -90,6 +96,6 @@ export function FeeInfoDialog({
           </div>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

@@ -110,6 +110,13 @@ export function EmbedCodeModalButton({
             <pre className="mt-4 max-h-48 overflow-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3 text-[11px] leading-relaxed text-[var(--tf-navy)]">
               {snippet}
             </pre>
+            <button
+              type="button"
+              className="tf-btn tf-btn-primary mt-3 w-full !min-h-11 text-sm"
+              onClick={() => void copy()}
+            >
+              {copied ? "Kopiert!" : "Code kopieren"}
+            </button>
 
             <div className="mt-4 overflow-hidden rounded-xl border border-[var(--tf-line)]">
               <p className="border-b border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2 text-xs font-medium text-[var(--tf-text-secondary)]">
@@ -131,13 +138,6 @@ export function EmbedCodeModalButton({
               >
                 In neuem Tab
               </a>
-              <button
-                type="button"
-                className="tf-btn tf-btn-primary !min-h-10 text-sm"
-                onClick={() => void copy()}
-              >
-                {copied ? "Kopiert" : "Kopieren"}
-              </button>
               <button
                 type="button"
                 className="tf-btn !min-h-10 text-sm"

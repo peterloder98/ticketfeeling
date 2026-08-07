@@ -27,6 +27,7 @@ type Options = {
  * - Drag empty background (not `[data-saalplan-interactive]`) → pan
  * - Space / Alt / middle-mouse → pan even over interactive seats/blocks
  * - With `panOverInteractive`: drag anywhere on the plan; short taps still select
+ * - Wheel / trackpad pans the canvas (no native scrollbar fight)
  */
 export function useCanvasPan(
   canvasRef: RefObject<HTMLDivElement | null>,
@@ -64,6 +65,22 @@ export function useCanvasPan(
       window.removeEventListener("keyup", onKeyUp);
     };
   }, []);
+
+  // Prefer drag/wheel-pan over native scrollbar scroll (esp. inside iframes).
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return;
+    function onWheel(e: WheelEvent) {
+      const target = canvasRef.current;
+      if (!target) return;
+      // Always consume wheel on the map — pan instead of bubbling to page/iframe.
+      e.preventDefault();
+      target.scrollLeft += e.deltaX;
+      target.scrollTop += e.deltaY;
+    }
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [canvasRef]);
 
   const endPan = useCallback(() => {
     if (!sessionRef.current) return;
