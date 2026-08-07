@@ -89,6 +89,7 @@ export function BoxOfficeForm({
   const [paymentMethod, setPaymentMethod] = useState<
     "cash" | "card_present" | "card_terminal"
   >("cash");
+  const [deliveryMode, setDeliveryMode] = useState<"print" | "email" | "both">("print");
   const [cashGiven, setCashGiven] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -308,6 +309,13 @@ export function BoxOfficeForm({
 
   async function confirmSale() {
     if (!eventId || lineItems.length === 0) return;
+    if (
+      (deliveryMode === "email" || deliveryMode === "both") &&
+      !email.trim()
+    ) {
+      setError("Für E-Mail-Ausgabe bitte eine E-Mail-Adresse angeben.");
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -387,6 +395,7 @@ export function BoxOfficeForm({
           paymentMethod,
           cashTenderedCents:
             paymentMethod === "cash" && cashTenderedCents != null ? cashTenderedCents : undefined,
+          preferredDelivery: deliveryMode,
           customerFirstName: firstName.trim() || undefined,
           customerLastName: lastName.trim() || undefined,
           customerEmail: email.trim() || undefined,
@@ -1116,6 +1125,48 @@ export function BoxOfficeForm({
               >
                 Externes Terminal (manuell bestätigen, ohne Stripe)
               </button>
+
+              <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4 space-y-3">
+                <p className="text-sm font-semibold text-[var(--tf-navy)]">Ticket-Ausgabe</p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {(
+                    [
+                      ["print", "Drucken"],
+                      ["email", "E-Mail"],
+                      ["both", "Drucken + E-Mail"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setDeliveryMode(value)}
+                      className={`rounded-xl border px-3 py-2 text-sm ${
+                        deliveryMode === value
+                          ? "border-[var(--tf-teal)] bg-[rgba(20,184,166,0.08)] font-semibold text-[var(--tf-navy)]"
+                          : "border-[var(--tf-line)] text-[var(--tf-text-secondary)]"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {(deliveryMode === "email" || deliveryMode === "both") && !email.trim() ? (
+                  <label className="grid gap-1 text-sm">
+                    <span className="font-medium">E-Mail für Versand</span>
+                    <input
+                      type="email"
+                      className="tf-input"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="kunde@beispiel.de"
+                      required
+                    />
+                  </label>
+                ) : null}
+                <p className="text-xs text-[var(--tf-text-secondary)]">
+                  Nur Drucken: keine E-Mail nötig. Dieselbe Ticketnr. und derselbe QR — nie doppelt.
+                </p>
+              </div>
 
               {paymentMethod === "cash" ? (
                 <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-4">

@@ -16,6 +16,7 @@ import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { resolveTicketDoors } from "@/lib/commerce/ticket-doors";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
     where: { id: ticketId },
     include: {
       event: { include: { location: true } },
+      category: true,
       holder: true,
       qrTokens: { where: { status: "active" }, take: 1 },
       order: { include: { customer: true } },
@@ -98,13 +100,10 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
         minute: "2-digit",
       })
     : "—";
-  const doorsOpenLabel = ticket.event.doorsOpenAt
-    ? ticket.event.doorsOpenAt.toLocaleTimeString("de-DE", {
-        timeZone: "Europe/Berlin",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
+  const doors = resolveTicketDoors(ticket.event, ticket.category);
+  const doorsOpenLabel = doors.timeLabel;
+  const doorsHeadline = doors.headline;
+  const doorsNote = doors.doorsNote;
   const place = ticket.event.location
     ? [ticket.event.location.name, ticket.event.location.city].filter(Boolean).join(", ")
     : "—";
@@ -167,14 +166,17 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                   </dt>
                   <dd className="mt-0.5 font-medium text-[var(--tf-navy)]">{when}</dd>
                 </div>
-                {doorsOpenLabel ? (
+                {doorsHeadline ? (
                   <div>
                     <dt className="text-xs font-medium uppercase tracking-wide text-[var(--tf-text-secondary)]">
-                      Einlasszeit
+                      {doors.headlineLabel}
                     </dt>
-                    <dd className="mt-0.5 font-medium text-[var(--tf-navy)]">
-                      ab {doorsOpenLabel} Uhr
+                    <dd className="mt-0.5 text-lg font-semibold text-[var(--tf-navy)]">
+                      {doorsOpenLabel} Uhr
                     </dd>
+                    {doorsNote ? (
+                      <p className="mt-0.5 text-sm text-[var(--tf-text-secondary)]">{doorsNote}</p>
+                    ) : null}
                   </div>
                 ) : null}
                 <div>
@@ -267,7 +269,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                     `Ticket ${ticket.ticketNumber}${
                       ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
                     } · ${ticket.categorySnapshot}`,
-                    doorsOpenLabel ? `Einlass ab ${doorsOpenLabel} Uhr` : null,
+                    doorsHeadline ?? (doorsOpenLabel ? `Einlass ab ${doorsOpenLabel} Uhr` : null),
                   ]
                     .filter(Boolean)
                     .join("\n"),

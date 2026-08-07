@@ -45,8 +45,10 @@ type ConsignmentRow = {
   categoryName: string;
   allocated: number;
   activeCount: number;
+  assignedCount?: number;
+  soldCount?: number;
   voidedCount: number;
-  status: "open" | "settled" | "cancelled";
+  status: "open" | "settled" | "cancelled" | "sold_out";
 };
 
 type PartnerGroup = {
@@ -157,7 +159,7 @@ export function PartnerInvitePanel({
     let openRows = 0;
     for (const row of consignments) {
       allocated += row.allocated;
-      remaining += row.activeCount;
+      remaining += row.assignedCount ?? row.activeCount;
       voided += row.voidedCount;
       if (row.status === "open") openRows += 1;
     }
@@ -631,16 +633,17 @@ export function PartnerInvitePanel({
       <section className="tf-card space-y-4">
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
-            Kontingent Vorverkaufsstelle
+            Tickets für Vorverkaufsstelle vorbereiten
           </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             Typischer Ablauf: Tickets vorabbuchen (z. B. 10–20), PDF drucken, vor Ort verkaufen und
-            Geld einnehmen, bei Bedarf nachbuchen, am Ende Rest stornieren. Das Kontingent wird vom
-            gemeinsamen Online-/Tageskasse-Bestand abgezogen — kein Doppelverkauf.
+            als verkauft markieren (gleiche Ticketnr./QR), Bargeld einnehmen, bei Bedarf nachbuchen,
+            am Ende nur den Rest (noch zugewiesen) stornieren. Das Kontingent wird vom gemeinsamen
+            Online-/Tageskasse-Bestand abgezogen — kein Doppelverkauf.
           </p>
           <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
-            Hinweis MVP: Einzelne vor-Ort-Verkäufe und Bargeld bleiben beim Partner (nicht in TF
-            erfasst). Offen = noch aktive Tickets beim Partner; Rest stornieren gibt Bestand zurück.
+            Status: zugewiesen = vorgedruckt, noch nicht final verkauft · verkauft = Partner hat
+            verkauft · Rest stornieren gibt nur zugewiesene Tickets zurück.
           </p>
           {consignments.length > 0 ? (
             <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-2.5 text-sm">
@@ -648,7 +651,7 @@ export function PartnerInvitePanel({
                 <span className="font-medium">Übersicht:</span> vorgebucht{" "}
                 <strong>{consignmentSummary.allocated}</strong>
                 {" · "}
-                Rest aktiv <strong>{consignmentSummary.remaining}</strong>
+                zugewiesen <strong>{consignmentSummary.remaining}</strong>
                 {" · "}
                 storniert <strong>{consignmentSummary.voided}</strong>
                 {" · "}
@@ -780,12 +783,15 @@ export function PartnerInvitePanel({
                       Vorgebucht: {row.allocated}
                     </p>
                     <p>
-                      Rest aktiv: {row.activeCount}
+                      Zugewiesen: {row.assignedCount ?? row.activeCount}
+                      {typeof row.soldCount === "number" ? ` · Verkauft: ${row.soldCount}` : ""}
                     </p>
                     {row.voidedCount > 0 ? <p>Storniert: {row.voidedCount}</p> : null}
                     <p className="text-[var(--tf-text-secondary)]">
                       {row.status === "open"
-                        ? "Offen (Partner hat noch Tickets)"
+                        ? "Offen (noch zugewiesene Tickets)"
+                        : row.status === "sold_out"
+                          ? "Alles verkauft (kein Rest)"
                         : row.status === "cancelled"
                           ? "Abgeschlossen / Rest storniert"
                           : "Erledigt (kein Rest)"}
@@ -793,7 +799,7 @@ export function PartnerInvitePanel({
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex flex-wrap gap-2">
-                      {row.activeCount > 0 ? (
+                      {(row.assignedCount ?? row.activeCount) > 0 ? (
                         <>
                           <button
                             type="button"

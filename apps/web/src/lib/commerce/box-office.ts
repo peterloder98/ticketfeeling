@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { buildSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/seller";
+import { organizerSnapshotFromEvent } from "@/lib/legal/event-organizer";
 import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 import { writeAudit } from "@/lib/audit";
 import { signBoxOfficeSale } from "@/lib/fiscal/tse";
@@ -52,6 +53,8 @@ export async function createBoxOfficeSale(input: {
   maxTotalQuantity?: number;
   /** Override contractSnapshot.notice (German). */
   contractNotice?: string;
+  /** print | email | both — preferred ticket delivery after sale */
+  preferredDelivery?: "print" | "email" | "both";
 }) {
   const maxPerItem = input.maxQuantityPerItem ?? 20;
   const maxTotal = input.maxTotalQuantity ?? 40;
@@ -269,6 +272,7 @@ export async function createBoxOfficeSale(input: {
     );
 
     const sellerSnapshot = sellerSnapshotPayload(seller, "seller");
+    const organizerSnapshot = organizerSnapshotFromEvent(org, org.settings, event);
 
     if (priced.lineSplits.length !== resolved.length) throw new Error("PRICE_MISMATCH");
 
@@ -313,7 +317,7 @@ export async function createBoxOfficeSale(input: {
           country: "DE",
         },
         sellerSnapshot,
-        organizerSnapshot: { ...sellerSnapshot, role: "organizer" },
+        organizerSnapshot,
         contractSnapshot: {
           locale: "de-DE",
           channel: "box_office",
@@ -328,6 +332,9 @@ export async function createBoxOfficeSale(input: {
           partnerUserId: input.paymentMethod === "consignment" ? soldByUserId : undefined,
           cashTenderedCents,
           changeCents,
+          ...(input.preferredDelivery
+            ? { preferredDelivery: input.preferredDelivery }
+            : {}),
           ...(seatAssignments.length > 0
             ? {
                 seating: {

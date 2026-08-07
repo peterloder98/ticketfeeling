@@ -155,6 +155,25 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
             blockLabel: t.blockLabel,
           }))}
           voided={voided}
+          paymentMethod={order.paymentMethod}
+          preferredDelivery={
+            (() => {
+              const snap =
+                order.contractSnapshot && typeof order.contractSnapshot === "object"
+                  ? (order.contractSnapshot as { preferredDelivery?: string })
+                  : null;
+              const d = snap?.preferredDelivery;
+              return d === "print" || d === "email" || d === "both" ? d : null;
+            })()
+          }
+          assignedTicketIds={order.tickets
+            .filter(
+              (t) =>
+                t.status === "active" &&
+                (t.consignmentState === "assigned" || t.consignmentState == null) &&
+                order.paymentMethod === "consignment",
+            )
+            .map((t) => t.id)}
         />
       </div>
 

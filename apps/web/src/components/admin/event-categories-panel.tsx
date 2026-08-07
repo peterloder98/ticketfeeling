@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { formatEuroFromCents } from "@/lib/money";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity";
+import { toDatetimeLocalValue } from "@/lib/admin/event-form";
 
 export type EventCategoryRow = {
   id: string;
@@ -17,6 +18,8 @@ export type EventCategoryRow = {
   companionFree?: boolean;
   color?: string | null;
   freeSeating?: boolean;
+  doorsOpenAt?: string | Date | null;
+  doorsNote?: string | null;
   pools: { channel: string; soldQuantity: number; heldQuantity: number; capacity: number }[];
 };
 
@@ -327,6 +330,8 @@ export function EventCategoriesPanel({
           categoryKind: String(fd.get("categoryKind") ?? "standard"),
           companionFree: fd.get("companionFree") === "on",
           color: String(fd.get("color") ?? "").trim() || null,
+          doorsOpenAt: String(fd.get("doorsOpenAt") ?? "").trim() || null,
+          doorsNote: String(fd.get("doorsNote") ?? "").trim() || null,
         }),
       });
       const data = await response.json();
@@ -485,6 +490,34 @@ export function EventCategoriesPanel({
                     defaultKind={cat.categoryKind ?? "standard"}
                     defaultCompanionFree={Boolean(cat.companionFree)}
                   />
+                  <label className="col-span-2 grid gap-0.5">
+                    <span className="text-[11px] text-[var(--tf-text-secondary)]">
+                      Sonder-Einlass (optional)
+                    </span>
+                    <input
+                      name="doorsOpenAt"
+                      type="datetime-local"
+                      className="tf-input !min-h-9 !py-1.5 text-sm"
+                      defaultValue={toDatetimeLocalValue(
+                        cat.doorsOpenAt ? new Date(cat.doorsOpenAt) : null,
+                      )}
+                    />
+                    <span className="text-[10px] text-[var(--tf-text-secondary)]">
+                      Leer = Event-Einlass. Sonst z. B. VIP früher.
+                    </span>
+                  </label>
+                  <label className="col-span-2 grid gap-0.5">
+                    <span className="text-[11px] text-[var(--tf-text-secondary)]">
+                      Einlass-Hinweis (optional)
+                    </span>
+                    <input
+                      name="doorsNote"
+                      className="tf-input !min-h-9 !py-1.5 text-sm"
+                      maxLength={200}
+                      defaultValue={cat.doorsNote ?? ""}
+                      placeholder="z. B. VIP-Einlass über den Haupteingang"
+                    />
+                  </label>
                   <div className="col-span-2 flex flex-wrap items-center justify-between gap-2">
                     <CategoryColorSwatches defaultColor={cat.color} />
                     <p className="text-[11px] tabular-nums text-[var(--tf-text-secondary)]">
@@ -568,6 +601,22 @@ export function EventCategoriesPanel({
           <label className="grid gap-1">
             <span>Max. / Bestellung</span>
             <input name="maxPerOrder" type="number" className="tf-input" defaultValue="10" required />
+          </label>
+          <label className="grid gap-1">
+            <span>Sonder-Einlass (optional)</span>
+            <input name="doorsOpenAt" type="datetime-local" className="tf-input" />
+            <span className="text-xs text-[var(--tf-text-secondary)]">
+              Leer = Event-Einlass.
+            </span>
+          </label>
+          <label className="grid gap-1">
+            <span>Einlass-Hinweis (optional)</span>
+            <input
+              name="doorsNote"
+              className="tf-input"
+              maxLength={200}
+              placeholder="z. B. VIP-Einlass über den Haupteingang"
+            />
           </label>
           <button type="submit" className="tf-btn tf-btn-primary w-fit" disabled={savingId === "new"}>
             {savingId === "new" ? "…" : "Anlegen"}

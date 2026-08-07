@@ -2,11 +2,11 @@
  * Production check-in unlock rules.
  *
  * Real presence changes (in/out) are allowed when either:
- * 1. Doors open time is reached (`doorsOpenAt`), or
+ * 1. Effective doors open time is reached (category override or event `doorsOpenAt`), or
  * 2. Sale was closed early by admin (`saleClosedEarly`).
  *
  * Before that, only lookup / Testmodus (`info`) is allowed.
- * Events without `doorsOpenAt` stay locked until sale is closed early
+ * Events without doors stay locked until sale is closed early
  * (so organizers set Einlassbeginn or explicitly end sale).
  */
 
@@ -52,5 +52,5 @@ export function checkinLockedMessage(
   if (gate.reason === "doors_not_set") {
     return "Einlass noch nicht geöffnet — Einlassbeginn ist nicht hinterlegt.";
   }
-  return "Einlass noch nicht geöffnet";
+  return "NOCH ZU FRÜH";
 }

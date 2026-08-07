@@ -733,6 +733,16 @@ model Event {
   accessibilityDiscountType  String @default("percent") @map("accessibility_discount_type")
   /// percent: basis points (1000 = 10%); fixed: cents off
   accessibilityDiscountValue Int    @default(0) @map("accessibility_discount_value")
+  /// Optional per-event Veranstalter overrides (empty = OrganizationSettings / seller identity)
+  organizerName        String? @map("organizer_name")
+  organizerContact     String? @map("organizer_contact")
+  organizerStreet      String? @map("organizer_street")
+  organizerHouseNumber String? @map("organizer_house_number")
+  organizerPostalCode  String? @map("organizer_postal_code")
+  organizerCity        String? @map("organizer_city")
+  organizerEmail       String? @map("organizer_email")
+  organizerPhone       String? @map("organizer_phone")
+  organizerWebsite     String? @map("organizer_website")
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
 
@@ -1024,6 +1034,10 @@ model EventTicketCategory {
   categoryKind     String    @default("standard") @map("category_kind")
   /// Wheelchair: companion ticket free of charge
   companionFree    Boolean   @default(false) @map("companion_free")
+  /// Optional category-specific doors (else event.doorsOpenAt)
+  doorsOpenAt      DateTime? @map("doors_open_at")
+  /// Short note e.g. „VIP-Einlass über den Haupteingang“
+  doorsNote        String?   @map("doors_note") @db.Text
   transferable     Boolean   @default(true)
   refundable       Boolean   @default(true)
   sortOrder        Int       @default(0) @map("sort_order")
@@ -1450,6 +1464,9 @@ model Ticket {
   seatRow          String?  @map("seat_row")
   seatNumber       String?  @map("seat_number")
   blockLabel       String?  @map("block_label")
+  /// null = normal sale; assigned = Vorverkaufskontingent not finally sold; sold = partner sold
+  consignmentState String?  @map("consignment_state")
+  consignmentSoldAt DateTime? @map("consignment_sold_at")
   issuedAt         DateTime @default(now()) @map("issued_at")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")

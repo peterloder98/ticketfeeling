@@ -24,7 +24,7 @@ describe("checkin gate", () => {
       reason: "doors_not_open",
     });
     expect(checkinLockedMessage({ doorsOpenAt: doorsFuture }, now)).toBe(
-      "Einlass noch nicht geöffnet",
+      "NOCH ZU FRÜH",
     );
   });
 

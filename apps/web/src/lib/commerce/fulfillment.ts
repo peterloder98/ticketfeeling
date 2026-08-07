@@ -517,6 +517,9 @@ export async function fulfillPaidOrder(orderId: string) {
           seatRow: p.seat?.rowLabel ?? null,
           seatNumber: p.seat?.seatNumber ?? null,
           blockLabel: p.seat?.blockLabel ?? null,
+          ...(order.paymentMethod === "consignment"
+            ? { consignmentState: "assigned" as const }
+            : {}),
         })),
       });
 

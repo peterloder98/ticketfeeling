@@ -14,6 +14,7 @@ import {
   isPlanBackedTicketCategory,
   syncPlanBackedCategoryCapacities,
 } from "@/lib/seating/sync-category-capacity";
+import { parseDatetimeLocalBerlin } from "@/lib/admin/event-form";
 
 const CATEGORY_KINDS = [
   "standard",
@@ -38,7 +39,21 @@ const upsertSchema = z.object({
     .regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/)
     .optional()
     .nullable(),
+  /** ISO datetime, datetime-local, or null to clear */
+  doorsOpenAt: z.string().nullable().optional(),
+  doorsNote: z.string().max(200).nullable().optional(),
 });
+
+function parseOptionalDoorsAt(raw: string | null | undefined): Date | null | undefined {
+  if (raw === undefined) return undefined;
+  if (raw === null || raw.trim() === "") return null;
+  const trimmed = raw.trim();
+  const berlin = parseDatetimeLocalBerlin(trimmed);
+  if (berlin) return berlin;
+  const d = new Date(trimmed);
+  if (Number.isNaN(d.getTime())) throw new Error("INVALID_DOORS_OPEN_AT");
+  return d;
+}
 
 async function requireWrite() {
   const session = await getServerSession(authOptions);
@@ -85,6 +100,13 @@ export async function PUT(request: Request) {
     });
     // Plan-backed: Kontingent is derived from Saalplan; ignore manual input on create.
     const capacity = planBacked ? 0 : body.capacity;
+    const doorsOpenAt = parseOptionalDoorsAt(body.doorsOpenAt);
+    const doorsNote =
+      body.doorsNote === undefined
+        ? undefined
+        : body.doorsNote?.trim()
+          ? body.doorsNote.trim().slice(0, 200)
+          : null;
 
     if (body.categoryId) {
       const category = await prisma.eventTicketCategory.findFirst({
@@ -111,6 +133,8 @@ export async function PUT(request: Request) {
             companionFree,
             freeSeating,
             color: body.color === undefined ? undefined : body.color,
+            ...(doorsOpenAt !== undefined ? { doorsOpenAt } : {}),
+            ...(doorsNote !== undefined ? { doorsNote } : {}),
           },
         });
         if (!planBacked) {
@@ -182,6 +206,8 @@ export async function PUT(request: Request) {
           categoryKind,
           companionFree,
           color: body.color ?? null,
+          doorsOpenAt: doorsOpenAt ?? null,
+          doorsNote: doorsNote ?? null,
           sortOrder,
           status: "active",
         },

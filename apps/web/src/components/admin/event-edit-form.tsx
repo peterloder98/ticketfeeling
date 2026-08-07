@@ -115,6 +115,15 @@ export function EventEditForm({
     seatOptPreventNewSingletons?: boolean;
     seatOptIntelligentRemnants?: boolean;
     seatOptGapRelaxOccupancyPercent?: number;
+    organizerName?: string | null;
+    organizerContact?: string | null;
+    organizerStreet?: string | null;
+    organizerHouseNumber?: string | null;
+    organizerPostalCode?: string | null;
+    organizerCity?: string | null;
+    organizerEmail?: string | null;
+    organizerPhone?: string | null;
+    organizerWebsite?: string | null;
   };
   locations: LocationOpt[];
   planOptions: PlanOpt[];
@@ -443,6 +452,94 @@ export function EventEditForm({
             onChange={setPresaleStartsAt}
           />
         </div>
+
+        <fieldset className="md:col-span-2 grid gap-3 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.02)] p-4">
+          <legend className="px-1 text-sm font-semibold text-[var(--tf-navy)]">
+            Veranstalter (Ticket-Fußzeile)
+          </legend>
+          <p className="text-xs text-[var(--tf-text-secondary)]">
+            Standard: Stammdaten der Organisation (z. B. SCHLAGERfeeling / Peter Loder). Optional
+            pro Event überschreiben — Ticketfeeling erscheint nie als Veranstalter.
+          </p>
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Firma / Name</span>
+              <input
+                name="organizerName"
+                className="tf-input"
+                defaultValue={event.organizerName ?? ""}
+                placeholder="z. B. SCHLAGERfeeling"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Kontakt / Inhaber</span>
+              <input
+                name="organizerContact"
+                className="tf-input"
+                defaultValue={event.organizerContact ?? ""}
+                placeholder="z. B. Peter Loder"
+              />
+            </label>
+            <label className="grid gap-1 text-sm md:col-span-2">
+              <span className="font-medium">Straße</span>
+              <div className="grid grid-cols-[1fr_5rem] gap-2">
+                <input
+                  name="organizerStreet"
+                  className="tf-input"
+                  defaultValue={event.organizerStreet ?? ""}
+                />
+                <input
+                  name="organizerHouseNumber"
+                  className="tf-input"
+                  defaultValue={event.organizerHouseNumber ?? ""}
+                  placeholder="Nr."
+                />
+              </div>
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">PLZ</span>
+              <input
+                name="organizerPostalCode"
+                className="tf-input"
+                defaultValue={event.organizerPostalCode ?? ""}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Ort</span>
+              <input
+                name="organizerCity"
+                className="tf-input"
+                defaultValue={event.organizerCity ?? ""}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">E-Mail</span>
+              <input
+                name="organizerEmail"
+                type="email"
+                className="tf-input"
+                defaultValue={event.organizerEmail ?? ""}
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              <span className="font-medium">Telefon</span>
+              <input
+                name="organizerPhone"
+                className="tf-input"
+                defaultValue={event.organizerPhone ?? ""}
+              />
+            </label>
+            <label className="grid gap-1 text-sm md:col-span-2">
+              <span className="font-medium">Website</span>
+              <input
+                name="organizerWebsite"
+                className="tf-input"
+                defaultValue={event.organizerWebsite ?? ""}
+                placeholder="https://"
+              />
+            </label>
+          </div>
+        </fieldset>
 
         <label className="grid gap-1">
           <span className="font-medium">Ticket-Umsatzsteuer (%)</span>

@@ -6,6 +6,7 @@ import {
   checkinLockedMessage,
   isProductionCheckinOpen,
 } from "@/lib/commerce/checkin-gate";
+import { resolveTicketDoors } from "@/lib/commerce/ticket-doors";
 
 function ticketPayload(ticket: {
   ticketNumber: string;
@@ -61,6 +62,18 @@ export async function scanTicket(input: {
   const salesChannel = ticket.order?.channel ?? "online";
   const salesChannelLabel = channelLabel(salesChannel);
   const payload = () => ticketPayload(ticket);
+  const doors = resolveTicketDoors(ticket.event, ticket.category);
+  const gateEvent = {
+    doorsOpenAt: doors.doorsOpenAt,
+    saleClosedEarly: ticket.event.saleClosedEarly,
+  };
+  const doorsPayload = {
+    doorsOpenAt: doors.doorsOpenAt?.toISOString() ?? null,
+    doorsHeadline: doors.headline,
+    doorsNote: doors.doorsNote,
+    doorsIsCategoryOverride: doors.isCategoryOverride,
+    eventDoorsOpenAt: ticket.event.doorsOpenAt?.toISOString() ?? null,
+  };
 
   if (ticket.eventId !== input.eventId) {
     await prisma.checkinEvent.create({
@@ -110,7 +123,7 @@ export async function scanTicket(input: {
 
   // Infomodus / Testmodus: nur anzeigen, Status unverändert
   if (action === "info") {
-    const checkinOpen = isProductionCheckinOpen(ticket.event);
+    const checkinOpen = isProductionCheckinOpen(gateEvent);
     await prisma.checkinEvent.create({
       data: {
         eventId: ticket.eventId,
@@ -131,12 +144,13 @@ export async function scanTicket(input: {
       salesChannel,
       salesChannelLabel,
       stats: await getEventCheckinStats(ticket.eventId),
+      ...doorsPayload,
     };
   }
 
-  // Real check-in/out only after doors open or early sale end (server-side gate)
-  if (!isProductionCheckinOpen(ticket.event)) {
-    const lockedMsg = checkinLockedMessage(ticket.event);
+  // Real check-in/out only after effective doors open or early sale end
+  if (!isProductionCheckinOpen(gateEvent)) {
+    const lockedMsg = checkinLockedMessage(gateEvent);
     await prisma.checkinEvent.create({
       data: {
         eventId: ticket.eventId,
@@ -158,8 +172,8 @@ export async function scanTicket(input: {
       salesChannelLabel,
       stats: await getEventCheckinStats(ticket.eventId),
       checkinLocked: true as const,
-      doorsOpenAt: ticket.event.doorsOpenAt?.toISOString() ?? null,
       saleClosedEarly: Boolean(ticket.event.saleClosedEarly),
+      ...doorsPayload,
     };
   }
 
@@ -306,6 +320,7 @@ export async function scanTicket(input: {
     salesChannel,
     salesChannelLabel,
     stats,
+    ...doorsPayload,
   };
 }
 

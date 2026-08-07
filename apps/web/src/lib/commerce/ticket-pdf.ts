@@ -1,7 +1,9 @@
 import PDFDocument from "pdfkit";
 import { prisma } from "@/lib/db";
 import { formatDeDateTime } from "@/lib/datetime-de";
-import { buildSellerIdentity, formatSellerAddress } from "@/lib/legal/seller";
+import { formatSellerAddress } from "@/lib/legal/seller";
+import { buildEventOrganizerIdentity } from "@/lib/legal/event-organizer";
+import { resolveTicketDoors } from "@/lib/commerce/ticket-doors";
 import { qrDataUrl } from "@/lib/qr-server";
 
 const NAVY = "#0F2747";
@@ -9,19 +11,16 @@ const TEAL = "#14B8A6";
 const MUTED = "#64748B";
 const INK = "#0B1421";
 
-function formatWhen(date: Date | null | undefined) {
+function formatDate(date: Date | null | undefined) {
   if (!date) return null;
   return formatDeDateTime(date, {
     weekday: "long",
     day: "numeric",
     month: "long",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }
 
-/** Time only without "Uhr" — callers add "Uhr" in prose (e.g. "ab 18:00 Uhr"). */
 function formatTime(date: Date | null | undefined) {
   if (!date) return null;
   return date.toLocaleTimeString("de-DE", {
@@ -57,6 +56,7 @@ export async function renderTicketPdf(
     where: { id: ticketId },
     include: {
       event: { include: { location: true } },
+      category: true,
       holder: true,
       qrTokens: { where: { status: "active" }, take: 1 },
       organization: { include: { settings: true } },
@@ -65,13 +65,17 @@ export async function renderTicketPdf(
   });
   if (!ticket) throw new Error("TICKET_NOT_FOUND");
 
-  const seller = buildSellerIdentity(ticket.organization, ticket.organization.settings);
+  const organizer = buildEventOrganizerIdentity(
+    ticket.organization,
+    ticket.organization.settings,
+    ticket.event,
+  );
+  const doors = resolveTicketDoors(ticket.event, ticket.category);
   const token = ticket.qrTokens[0]?.token ?? "";
   const qrPx = compact ? 220 : 280;
   const qr = token ? await qrDataUrl(token, qrPx) : null;
-  const holderName = `${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim();
-  const startsLabel = formatWhen(ticket.event.eventStartsAt);
-  const doorsLabel = formatTime(ticket.event.doorsOpenAt);
+  const dateLabel = formatDate(ticket.event.eventStartsAt);
+  const startTime = formatTime(ticket.event.eventStartsAt);
   const place = locationLines(ticket.event.location);
 
   const doc = new PDFDocument({
@@ -92,10 +96,8 @@ export async function renderTicketPdf(
   const pad = compact ? 28 : 44;
   const contentW = pageW - pad * 2;
 
-  // Background
   doc.rect(0, 0, pageW, pageH).fill("#FFFFFF");
 
-  // Top brand bar
   const headerH = compact ? 52 : 64;
   doc.rect(0, 0, pageW, headerH).fill(NAVY);
   doc.rect(0, headerH - 4, pageW, 4).fill(TEAL);
@@ -112,7 +114,7 @@ export async function renderTicketPdf(
     .font("Helvetica")
     .fontSize(compact ? 8 : 9)
     .fillColor("#CBD5E1")
-    .text(seller.tradeName || seller.displayName, pad, compact ? 32 : 38, {
+    .text(organizer.tradeName || organizer.displayName, pad, compact ? 32 : 38, {
       width: contentW * 0.55,
     });
 
@@ -127,23 +129,40 @@ export async function renderTicketPdf(
 
   let y = headerH + (compact ? 18 : 28);
 
-  // Event title
   doc
     .fillColor(NAVY)
     .font("Helvetica-Bold")
     .fontSize(compact ? 18 : 24)
     .text(ticket.eventNameSnapshot, pad, y, { width: contentW });
-  y = doc.y + (compact ? 10 : 14);
+  y = doc.y + (compact ? 8 : 12);
 
-  // Meta block
+  // Prominent doors line
+  if (doors.headline) {
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(compact ? 14 : 18)
+      .fillColor(NAVY)
+      .text(doors.headline, pad, y, { width: contentW });
+    y = doc.y + 2;
+    if (doors.doorsNote) {
+      doc
+        .font("Helvetica")
+        .fontSize(compact ? 8 : 9)
+        .fillColor(MUTED)
+        .text(doors.doorsNote, pad, y, { width: contentW });
+      y = doc.y + (compact ? 8 : 10);
+    } else {
+      y += compact ? 8 : 10;
+    }
+  }
+
   const meta = [
-    startsLabel ? { label: "Termin", value: startsLabel } : null,
-    doorsLabel ? { label: "Einlass", value: `ab ${doorsLabel} Uhr` } : null,
+    dateLabel ? { label: "Datum", value: dateLabel } : null,
+    startTime ? { label: "Beginn", value: `${startTime} Uhr` } : null,
     { label: "Location", value: place.join(", ") },
     { label: "Kategorie", value: ticket.categorySnapshot },
-    holderName ? { label: "Inhaber", value: holderName } : null,
+    ticket.seatLabel ? { label: "Platz", value: ticket.seatLabel } : null,
     { label: "Ticketnr.", value: ticket.ticketNumber },
-    { label: "Bestellung", value: ticket.order.orderNumber },
   ].filter(Boolean) as { label: string; value: string }[];
 
   const labelW = compact ? 72 : 88;
@@ -163,7 +182,6 @@ export async function renderTicketPdf(
 
   y += compact ? 8 : 14;
 
-  // Divider
   doc
     .moveTo(pad, y)
     .lineTo(pad + contentW, y)
@@ -172,7 +190,6 @@ export async function renderTicketPdf(
     .stroke();
   y += compact ? 14 : 20;
 
-  // QR section
   doc
     .font("Helvetica-Bold")
     .fontSize(compact ? 9 : 10)
@@ -212,7 +229,6 @@ export async function renderTicketPdf(
       align: "center",
     });
 
-  // Footer
   const footerTop = pageH - (compact ? 64 : 78);
   doc
     .moveTo(pad, footerTop)
@@ -225,32 +241,27 @@ export async function renderTicketPdf(
     .font("Helvetica-Bold")
     .fontSize(compact ? 7 : 8)
     .fillColor(NAVY)
-    .text(`Veranstalter: ${seller.displayName}`, pad, footerTop + 8, { width: contentW });
+    .text(`Veranstalter: ${organizer.displayName}`, pad, footerTop + 8, { width: contentW });
   doc
     .font("Helvetica")
     .fontSize(compact ? 7 : 8)
     .fillColor(MUTED)
     .text(
-      [formatSellerAddress(seller), seller.supportEmail ?? seller.email ?? ""]
+      [formatSellerAddress(organizer), organizer.supportEmail ?? organizer.email ?? ""]
         .filter(Boolean)
         .join(" · "),
       pad,
       doc.y + 2,
       { width: contentW },
     );
-
-  // Seat info
-  if (ticket.seatLabel) {
-    y = Math.min(y + 6, footerTop - 40);
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(compact ? 9 : 10)
-      .fillColor(TEAL)
-      .text(ticket.seatLabel, pad, Math.min(doc.y + 4, footerTop - 36), {
-        width: contentW,
-        align: "center",
-      });
-  }
+  doc
+    .font("Helvetica")
+    .fontSize(compact ? 6 : 7)
+    .fillColor(MUTED)
+    .text("Ticketfeeling", pad, pageH - (compact ? 14 : 16), {
+      width: contentW,
+      align: "right",
+    });
 
   doc.end();
   const buffer = await done;
@@ -288,6 +299,7 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
     orderBy: { ticketNumber: "asc" },
     include: {
       event: { include: { location: true } },
+      category: true,
       holder: true,
       qrTokens: { where: { status: "active" }, take: 1 },
       organization: { include: { settings: true } },
@@ -307,11 +319,16 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
     const ticket = fullTickets[i]!;
     if (i > 0) doc.addPage({ size: "A5", margin: 0 });
 
-    const seller = buildSellerIdentity(ticket.organization, ticket.organization.settings);
+    const organizer = buildEventOrganizerIdentity(
+      ticket.organization,
+      ticket.organization.settings,
+      ticket.event,
+    );
+    const doors = resolveTicketDoors(ticket.event, ticket.category);
     const token = ticket.qrTokens[0]?.token ?? "";
     const qr = token ? await qrDataUrl(token, 220) : null;
-    const holderName = `${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim();
-    const startsLabel = formatWhen(ticket.event.eventStartsAt);
+    const dateLabel = formatDate(ticket.event.eventStartsAt);
+    const startTime = formatTime(ticket.event.eventStartsAt);
     const place = locationLines(ticket.event.location);
 
     const pageW = doc.page.width;
@@ -337,20 +354,37 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
         align: "right",
       });
 
-    let y = headerH + 18;
+    let y = headerH + 16;
     doc
       .fillColor(NAVY)
       .font("Helvetica-Bold")
-      .fontSize(16)
+      .fontSize(15)
       .text(ticket.eventNameSnapshot, pad, y, { width: contentW });
-    y = doc.y + 10;
+    y = doc.y + 8;
+
+    if (doors.headline) {
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(12)
+        .fillColor(NAVY)
+        .text(doors.headline, pad, y, { width: contentW });
+      y = doc.y + 2;
+      if (doors.doorsNote) {
+        doc.font("Helvetica").fontSize(7).fillColor(MUTED).text(doors.doorsNote, pad, y, {
+          width: contentW,
+        });
+        y = doc.y + 6;
+      } else {
+        y += 6;
+      }
+    }
 
     const meta = [
-      startsLabel ? { label: "Termin", value: startsLabel } : null,
+      dateLabel ? { label: "Datum", value: dateLabel } : null,
+      startTime ? { label: "Beginn", value: `${startTime} Uhr` } : null,
       { label: "Location", value: place.join(", ") },
       { label: "Kategorie", value: ticket.categorySnapshot },
       ticket.seatLabel ? { label: "Platz", value: ticket.seatLabel } : null,
-      holderName ? { label: "Inhaber", value: holderName } : null,
       { label: "Ticketnr.", value: ticket.ticketNumber },
     ].filter(Boolean) as { label: string; value: string }[];
 
@@ -364,7 +398,7 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
       y = Math.max(doc.y, y + 14);
     }
 
-    y += 10;
+    y += 8;
     doc
       .font("Helvetica-Bold")
       .fontSize(9)
@@ -374,21 +408,25 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
 
     if (qr) {
       const img = Buffer.from(qr.replace(/^data:image\/png;base64,/, ""), "base64");
-      const qrDraw = 140;
+      const qrDraw = 130;
       doc.image(img, (pageW - qrDraw) / 2, y, { width: qrDraw, height: qrDraw });
-      y += qrDraw + 8;
     }
 
     doc
       .font("Helvetica")
-      .fontSize(8)
+      .fontSize(7)
       .fillColor(MUTED)
       .text(
-        `Veranstalter: ${seller.displayName} · ${formatSellerAddress(seller)}`,
+        `Veranstalter: ${organizer.displayName} · ${formatSellerAddress(organizer)}`,
         pad,
-        pageH - 40,
+        pageH - 36,
         { width: contentW, align: "center" },
       );
+    doc
+      .font("Helvetica")
+      .fontSize(6)
+      .fillColor(MUTED)
+      .text("Ticketfeeling", pad, pageH - 18, { width: contentW, align: "right" });
   }
 
   doc.end();

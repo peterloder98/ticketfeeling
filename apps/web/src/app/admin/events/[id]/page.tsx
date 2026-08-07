@@ -190,6 +190,15 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     seatOptPreventNewSingletons: event.seatOptPreventNewSingletons,
     seatOptIntelligentRemnants: event.seatOptIntelligentRemnants,
     seatOptGapRelaxOccupancyPercent: event.seatOptGapRelaxOccupancyPercent,
+    organizerName: event.organizerName,
+    organizerContact: event.organizerContact,
+    organizerStreet: event.organizerStreet,
+    organizerHouseNumber: event.organizerHouseNumber,
+    organizerPostalCode: event.organizerPostalCode,
+    organizerCity: event.organizerCity,
+    organizerEmail: event.organizerEmail,
+    organizerPhone: event.organizerPhone,
+    organizerWebsite: event.organizerWebsite,
   };
 
   const seatingCategoriesRows: EventCategoryRow[] = event.ticketCategories.map((c) => ({
@@ -203,6 +212,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     companionFree: c.companionFree,
     color: c.color,
     freeSeating: c.freeSeating,
+    doorsOpenAt: c.doorsOpenAt?.toISOString() ?? null,
+    doorsNote: c.doorsNote,
     pools: c.pools.map((p) => ({
       channel: p.channel,
       soldQuantity: p.soldQuantity,

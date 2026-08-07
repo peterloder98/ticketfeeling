@@ -713,6 +713,15 @@ export async function updateEventAction(formData: FormData) {
       showRemainingAvailability,
       sepaMinDaysBeforeEvent,
       ...(startChanged && scheduleChangeConfirmed ? { scheduleChangedAt } : {}),
+      organizerName: String(formData.get("organizerName") ?? "").trim() || null,
+      organizerContact: String(formData.get("organizerContact") ?? "").trim() || null,
+      organizerStreet: String(formData.get("organizerStreet") ?? "").trim() || null,
+      organizerHouseNumber: String(formData.get("organizerHouseNumber") ?? "").trim() || null,
+      organizerPostalCode: String(formData.get("organizerPostalCode") ?? "").trim() || null,
+      organizerCity: String(formData.get("organizerCity") ?? "").trim() || null,
+      organizerEmail: String(formData.get("organizerEmail") ?? "").trim() || null,
+      organizerPhone: String(formData.get("organizerPhone") ?? "").trim() || null,
+      organizerWebsite: String(formData.get("organizerWebsite") ?? "").trim() || null,
     },
   });
 

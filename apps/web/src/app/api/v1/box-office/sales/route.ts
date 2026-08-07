@@ -30,6 +30,7 @@ const schema = z
     customerHouseNumber: z.string().max(20).optional(),
     customerPostalCode: optionalPostalCodeSchema.or(z.literal("")),
     customerCity: z.string().max(80).optional(),
+    preferredDelivery: z.enum(["print", "email", "both"]).optional(),
   })
   .superRefine((val, ctx) => {
     if (!val.items?.length && !(val.categoryId && val.quantity)) {
@@ -37,6 +38,16 @@ const schema = z
         code: z.ZodIssueCode.custom,
         message: "ITEMS_REQUIRED",
         path: ["items"],
+      });
+    }
+    if (
+      (val.preferredDelivery === "email" || val.preferredDelivery === "both") &&
+      !val.customerEmail?.trim()
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "EMAIL_REQUIRED",
+        path: ["customerEmail"],
       });
     }
   });
@@ -86,6 +97,7 @@ export async function POST(request: Request) {
       customerHouseNumber: body.customerHouseNumber,
       customerPostalCode: body.customerPostalCode,
       customerCity: body.customerCity,
+      preferredDelivery: body.preferredDelivery,
       organizationId: membership.organizationId,
       actorUserId: session.user.id,
     });

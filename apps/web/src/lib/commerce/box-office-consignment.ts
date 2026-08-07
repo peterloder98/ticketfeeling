@@ -3,14 +3,15 @@ import { writeAudit } from "@/lib/audit";
 import { createBoxOfficeSale } from "@/lib/commerce/box-office";
 import { voidBoxOfficeOrder } from "@/lib/commerce/box-office-void";
 import { patchBoxOfficeSellerGrants } from "@/lib/commerce/box-office-grants";
+import { emailBoxOfficeTickets } from "@/lib/commerce/box-office-delivery";
 
 /**
  * Vorabbuchung / Kontingent für eine Vorverkaufsstelle.
  *
- * MVP: issues real box-office tickets (inventory soldQuantity ++) so Online
- * cannot double-sell, partner can print PDFs, and unsold tickets are voided
- * at the end (inventory restored). On-site cash collection stays offline —
- * tickets are already issued as consignment, not as live Kasse sales.
+ * Issues real box-office tickets (inventory soldQuantity ++) so Online
+ * cannot double-sell. Tickets start as consignmentState=assigned (pre-printed,
+ * not finally sold). Partner marks sold without minting a new QR/ID.
+ * Unsold assigned tickets can be voided at the end (inventory restored).
  */
 export async function allocateBoxOfficeConsignment(input: {
   organizationId: string;
@@ -60,7 +61,6 @@ export async function allocateBoxOfficeConsignment(input: {
   });
   if (!category) throw new Error("CATEGORY_UNAVAILABLE");
 
-  // Ensure partner may sell / see this event in Tageskasse.
   await patchBoxOfficeSellerGrants({
     organizationId: input.organizationId,
     actorUserId: input.actorUserId,
@@ -124,7 +124,9 @@ export async function listBoxOfficeConsignments(organizationId: string) {
           categoryId: true,
         },
       },
-      tickets: { select: { id: true, status: true } },
+      tickets: {
+        select: { id: true, status: true, consignmentState: true, ticketNumber: true },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: 80,
@@ -133,6 +135,10 @@ export async function listBoxOfficeConsignments(organizationId: string) {
   return orders.map((order) => {
     const activeTickets = order.tickets.filter((t) => t.status === "active");
     const voidedTickets = order.tickets.filter((t) => t.status === "voided");
+    const assignedTickets = activeTickets.filter(
+      (t) => t.consignmentState === "assigned" || t.consignmentState == null,
+    );
+    const soldTickets = activeTickets.filter((t) => t.consignmentState === "sold");
     return {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -155,19 +161,94 @@ export async function listBoxOfficeConsignments(organizationId: string) {
       eventId: order.items[0]?.eventId ?? null,
       allocated: order.items.reduce((s, i) => s + i.quantity, 0),
       activeCount: activeTickets.length,
+      assignedCount: assignedTickets.length,
+      soldCount: soldTickets.length,
       voidedCount: voidedTickets.length,
       ticketIds: activeTickets.map((t) => t.id),
+      assignedTicketIds: assignedTickets.map((t) => t.id),
       status:
         order.voidedAt || order.status === "cancelled"
           ? ("cancelled" as const)
           : activeTickets.length === 0
             ? ("settled" as const)
-            : ("open" as const),
+            : assignedTickets.length === 0
+              ? ("sold_out" as const)
+              : ("open" as const),
     };
   });
 }
 
-/** Storno aller noch aktiven Tickets eines Kontingents (Restbestand zurück ins Online-Kontingent). */
+/**
+ * Mark pre-printed consignment tickets as finally sold — same QR/ticket ID,
+ * no new entitlement. Optional customer email sends existing ticket mail.
+ */
+export async function markConsignmentTicketsSold(input: {
+  organizationId: string;
+  actorUserId: string;
+  orderId: string;
+  ticketIds?: string[];
+  toEmail?: string;
+}) {
+  const order = await prisma.order.findFirst({
+    where: {
+      id: input.orderId,
+      organizationId: input.organizationId,
+      channel: "box_office",
+      paymentMethod: "consignment",
+      voidedAt: null,
+    },
+    include: {
+      tickets: {
+        where: { status: "active" },
+        select: { id: true, consignmentState: true },
+      },
+    },
+  });
+  if (!order) throw new Error("ORDER_NOT_FOUND");
+
+  const wanted = input.ticketIds?.length
+    ? new Set(input.ticketIds)
+    : null;
+  const toMark = order.tickets.filter((t) => {
+    if (wanted && !wanted.has(t.id)) return false;
+    return t.consignmentState !== "sold";
+  });
+  if (toMark.length === 0) throw new Error("NOTHING_TO_MARK");
+
+  const now = new Date();
+  await prisma.ticket.updateMany({
+    where: { id: { in: toMark.map((t) => t.id) } },
+    data: { consignmentState: "sold", consignmentSoldAt: now },
+  });
+
+  await writeAudit({
+    organizationId: input.organizationId,
+    actorUserId: input.actorUserId,
+    action: "box_office.consignment.marked_sold",
+    entityType: "order",
+    entityId: order.id,
+    after: { ticketIds: toMark.map((t) => t.id), count: toMark.length },
+  });
+
+  let emailedTo: string | null = null;
+  if (input.toEmail?.trim()) {
+    const mail = await emailBoxOfficeTickets({
+      orderId: order.id,
+      organizationId: input.organizationId,
+      actorUserId: input.actorUserId,
+      toEmail: input.toEmail.trim(),
+    });
+    emailedTo = mail.to;
+  }
+
+  return {
+    soldCount: toMark.length,
+    ticketIds: toMark.map((t) => t.id),
+    emailedTo,
+  };
+}
+
+/** Storno nur der noch nicht final verkauften (assigned) Tickets. */
 export async function cancelBoxOfficeConsignmentRemaining(input: {
   organizationId: string;
   actorUserId: string;
@@ -180,19 +261,27 @@ export async function cancelBoxOfficeConsignmentRemaining(input: {
       channel: "box_office",
       paymentMethod: "consignment",
     },
-    include: { tickets: { select: { id: true, status: true } } },
+    include: {
+      tickets: { select: { id: true, status: true, consignmentState: true } },
+    },
   });
   if (!order) throw new Error("ORDER_NOT_FOUND");
 
-  const activeIds = order.tickets.filter((t) => t.status === "active").map((t) => t.id);
-  if (activeIds.length === 0) throw new Error("NOTHING_TO_CANCEL");
+  const remainingIds = order.tickets
+    .filter(
+      (t) =>
+        t.status === "active" &&
+        (t.consignmentState === "assigned" || t.consignmentState == null),
+    )
+    .map((t) => t.id);
+  if (remainingIds.length === 0) throw new Error("NOTHING_TO_CANCEL");
 
   const result = await voidBoxOfficeOrder({
     orderId: order.id,
     organizationId: input.organizationId,
     actorUserId: input.actorUserId,
     reason: "Kontingent Vorverkaufsstelle: Restbestand storniert",
-    ticketIds: activeIds,
+    ticketIds: remainingIds,
   });
 
   await writeAudit({
