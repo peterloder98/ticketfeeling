@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getEmbedFrameAncestors, getPublicAppUrl } from "@/lib/embed/public-url";
+import { isRedisRateLimitConfigured } from "@/lib/security/rate-limit";
 import {
   isAppleWalletConfigured,
   isGoogleWalletConfigured,
@@ -77,6 +78,7 @@ export async function GET() {
       appHost,
       smtp: smtpOk ? "configured" : "missing",
       embedFrameAncestors,
+      rateLimit: isRedisRateLimitConfigured() ? "redis" : "memory",
       warnings: warnings.length ? warnings : undefined,
       wallet: {
         apple: isAppleWalletConfigured(),

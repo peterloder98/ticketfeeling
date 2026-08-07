@@ -150,6 +150,60 @@ export function PartnerInvitePanel({
     [categories, cEventId],
   );
 
+  const consignmentSummary = useMemo(() => {
+    let allocated = 0;
+    let remaining = 0;
+    let voided = 0;
+    let openRows = 0;
+    for (const row of consignments) {
+      allocated += row.allocated;
+      remaining += row.activeCount;
+      voided += row.voidedCount;
+      if (row.status === "open") openRows += 1;
+    }
+    return { allocated, remaining, voided, openRows, rows: consignments.length };
+  }, [consignments]);
+
+  function exportConsignmentsCsv() {
+    const header = [
+      "Vorgang",
+      "Datum",
+      "Partner",
+      "E-Mail",
+      "Event",
+      "Kategorie",
+      "Vorgebucht",
+      "Rest_aktiv",
+      "Storniert",
+      "Status",
+    ];
+    const lines = consignments.map((row) =>
+      [
+        row.orderNumber,
+        row.createdAt,
+        row.partner.name ?? "",
+        row.partner.email,
+        row.eventName,
+        row.categoryName,
+        String(row.allocated),
+        String(row.activeCount),
+        String(row.voidedCount),
+        row.status,
+      ]
+        .map((cell) => `"${String(cell).replace(/"/g, '""')}"`)
+        .join(","),
+    );
+    const blob = new Blob([[header.join(","), ...lines].join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `kontingente-vorverkauf-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -585,10 +639,30 @@ export function PartnerInvitePanel({
             gemeinsamen Online-/Tageskasse-Bestand abgezogen — kein Doppelverkauf.
           </p>
           <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">
-            Hinweis MVP: Einzelne vor-Ort-Verkäufe werden nicht einzeln im System erfasst (Bargeld
-            bleibt beim Partner). Offen: Sitzplatz-Saalplan-Kontingente, Partner-Selbststorno nach
-            Druck, Abrechnungspartner-Report.
+            Hinweis MVP: Einzelne vor-Ort-Verkäufe und Bargeld bleiben beim Partner (nicht in TF
+            erfasst). Offen = noch aktive Tickets beim Partner; Rest stornieren gibt Bestand zurück.
           </p>
+          {consignments.length > 0 ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-2.5 text-sm">
+              <p className="text-[var(--tf-navy)]">
+                <span className="font-medium">Übersicht:</span> vorgebucht{" "}
+                <strong>{consignmentSummary.allocated}</strong>
+                {" · "}
+                Rest aktiv <strong>{consignmentSummary.remaining}</strong>
+                {" · "}
+                storniert <strong>{consignmentSummary.voided}</strong>
+                {" · "}
+                offene Vorgänge {consignmentSummary.openRows}/{consignmentSummary.rows}
+              </p>
+              <button
+                type="button"
+                className="tf-btn tf-btn-secondary text-xs"
+                onClick={exportConsignmentsCsv}
+              >
+                CSV exportieren
+              </button>
+            </div>
+          ) : null}
         </div>
 
         <form onSubmit={allocateConsignment} className="grid gap-3 md:grid-cols-2">
@@ -680,7 +754,7 @@ export function PartnerInvitePanel({
               <tr>
                 <th className="px-3 py-2 font-medium">Vorgang</th>
                 <th className="px-3 py-2 font-medium">Partner / Event</th>
-                <th className="px-3 py-2 font-medium">Bestand</th>
+                <th className="px-3 py-2 font-medium">Vorgebucht / Rest</th>
                 <th className="px-3 py-2 font-medium">Aktionen</th>
               </tr>
             </thead>
@@ -703,15 +777,18 @@ export function PartnerInvitePanel({
                   </td>
                   <td className="px-3 py-2 text-xs">
                     <p>
-                      Aktiv: {row.activeCount} / {row.allocated}
+                      Vorgebucht: {row.allocated}
+                    </p>
+                    <p>
+                      Rest aktiv: {row.activeCount}
                     </p>
                     {row.voidedCount > 0 ? <p>Storniert: {row.voidedCount}</p> : null}
                     <p className="text-[var(--tf-text-secondary)]">
                       {row.status === "open"
-                        ? "Offen"
+                        ? "Offen (Partner hat noch Tickets)"
                         : row.status === "cancelled"
-                          ? "Abgeschlossen / storniert"
-                          : "Erledigt"}
+                          ? "Abgeschlossen / Rest storniert"
+                          : "Erledigt (kein Rest)"}
                     </p>
                   </td>
                   <td className="px-3 py-2">

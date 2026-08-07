@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { readConsent, type ConsentState } from "@/lib/consent";
+import { embedParentPostMessageTarget } from "@/lib/embed/post-message-target";
 
 type Props = {
   ga4MeasurementId?: string | null;
@@ -153,7 +154,7 @@ export function TrackingScripts({
             statistics: consent.statistics,
             marketing: consent.marketing,
           },
-          "*",
+          embedParentPostMessageTarget(),
         );
       } catch {
         /* ignore */

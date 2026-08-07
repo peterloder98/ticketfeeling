@@ -471,14 +471,25 @@ export default async function AdminStammdatenPage() {
           <code className="text-[var(--ink)]">docs/tse-plan.md</code> — zertifizierte Signatur folgt
           mit Provider-Credentials; Steuerberater-Freigabe vor produktivem Bar-Einsatz.
         </p>
+        {settings &&
+        (settings.tseMode === "planned" || settings.tseMode === "fiskaly") ? (
+          <p
+            className="mt-3 rounded-xl border border-[var(--tf-gold)]/40 bg-[rgba(214,166,66,0.12)] px-3 py-2 text-sm text-[var(--tf-navy)]"
+            role="status"
+          >
+            Aktueller Modus „{settings.tseMode}“: <strong>keine echte TSE-Signatur</strong> —
+            Vorgänge werden nur vorgemerkt (Stub). Fiskaly-API ist noch nicht angebunden. Nicht als
+            KassenSichV-konform ausweisen.
+          </p>
+        ) : null}
         {canWrite && settings ? (
           <form action={updateTse} className="mt-4 grid max-w-xl gap-3">
             <label className="grid gap-1">
               <span>TSE-Modus</span>
               <select name="tseMode" defaultValue={settings.tseMode} className="tf-input">
                 <option value="none">none — keine Signatur</option>
-                <option value="planned">planned — erfasst, noch nicht rechtsgültig</option>
-                <option value="fiskaly">fiskaly — Cloud-TSE (Ziel)</option>
+                <option value="planned">planned — erfasst, noch nicht rechtsgültig (Stub)</option>
+                <option value="fiskaly">fiskaly — Cloud-TSE Ziel (noch Stub, keine API)</option>
                 <option value="external">external — Signatur außerhalb</option>
               </select>
             </label>

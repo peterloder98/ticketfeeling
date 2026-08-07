@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: { code: guard.code } }, { status: 403 });
   }
   const ip = clientIpFromRequest(request);
-  const limited = takeRateLimit({
+  const limited = await takeRateLimit({
     key: `cart-add:${ip}`,
     limit: 40,
     windowMs: 60 * 1000,

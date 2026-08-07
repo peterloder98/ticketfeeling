@@ -36,7 +36,9 @@ Primary source of truth: Ticketfeeling-DB. Lexware Office = angebundenes Buchhal
 
 ## 5. Lexware Office Integration
 
-Interface:
+**Stand:** Stub only (`lexwareStubProvider`). No Lexoffice/Lexware HTTP API. Fulfillment queues a snapshot + audit entry; Stripe payout UI can mark a payout as “in Lexoffice zugeordnet” manually.
+
+Interface (target):
 
 ```text
 AccountingProvider
@@ -54,7 +56,7 @@ AccountingProvider
 
 Sync states: `not_required | queued | syncing | synced | failed | needs_review`
 
-Admin UI: **Buchhaltung → Lexware Office**
+Admin UI (manual): **Finanzen → Stripe → Lexoffice markieren** — not a live adapter.
 
 ## 6. Erstattungen
 

@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
+import { embedParentPostMessageTarget } from "@/lib/embed/post-message-target";
 import { EMBED_AUTO_MAX_HEIGHT } from "@/lib/embed/public-url";
 
 /**
@@ -24,7 +25,10 @@ export function EmbedResizeNotifier() {
       const height = Math.max(320, Math.min(contentHeight, EMBED_AUTO_MAX_HEIGHT));
 
       try {
-        window.parent.postMessage({ type: "tf:embed-height", height }, "*");
+        window.parent.postMessage(
+          { type: "tf:embed-height", height },
+          embedParentPostMessageTarget(),
+        );
       } catch {
         /* ignore */
       }

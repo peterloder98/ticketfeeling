@@ -4,7 +4,8 @@ export const COVER_DISPLAY_MAX_PX = 444;
 /** Tailwind-friendly class: max width and height, no upscale past COVER_DISPLAY_MAX_PX. */
 export const COVER_DISPLAY_MAX_CLASS = "max-h-[444px] max-w-[444px]";
 
-/** Known-dead remote covers that still sit in older seed/DB rows (Safari shows "?"). */
+/** Known-dead remote covers that still sit in older seed/DB rows (Safari shows "?").
+ * Not an allowlist — only remaps this one broken Unsplash URL to a local asset. */
 const DEAD_COVER_URLS = [
   "https://images.unsplash.com/photo-1459749411175-047513050fa9",
 ] as const;

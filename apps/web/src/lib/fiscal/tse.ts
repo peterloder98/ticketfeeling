@@ -68,8 +68,8 @@ export async function signBoxOfficeSale(input: FiscalSignInput): Promise<FiscalS
       raw: {
         note:
           mode === "fiskaly"
-            ? "Fiskaly-Modus aktiv, aber API-Credentials fehlen noch — Vorgang nur vorgemerkt."
-            : "TSE geplant: Bar-/Kartenterminal-Verkauf erfasst, Signatur folgt nach Anbindung zertifizierter TSE (z. B. Fiskaly).",
+            ? "Keine echte TSE-Signatur — Fiskaly-Modus aktiv, aber API-Credentials fehlen noch; Vorgang nur vorgemerkt."
+            : "Keine echte TSE-Signatur — TSE geplant: Bar-/Kartenterminal-Verkauf erfasst, Signatur folgt nach Anbindung zertifizierter TSE (z. B. Fiskaly).",
         amountCents: input.amountCents,
         paymentMethod: input.paymentMethod,
         compliance: false,

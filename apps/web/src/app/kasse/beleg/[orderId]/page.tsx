@@ -83,7 +83,13 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
     if (!fiscal) {
       return "Kein TSE-Eintrag — Vorgang ohne FiscalTransaction erfasst.";
     }
+    const stubNoSignature =
+      !fiscal.signatureValue &&
+      (fiscal.provider === "stub" || fiscal.provider === "fiskaly");
     const parts = [`TSE ${fiscal.provider}`, `Status ${fiscal.status}`];
+    if (stubNoSignature) {
+      parts.unshift("Keine echte TSE-Signatur (Stub)");
+    }
     if (fiscal.signatureCounter != null) {
       parts.push(`Zähler ${fiscal.signatureCounter}`);
     }

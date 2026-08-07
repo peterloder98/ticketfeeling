@@ -243,6 +243,11 @@ export default async function StripePayoutDetailPage({
 
       <section className="tf-card space-y-3 p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Lexoffice</h2>
+        <p className="text-sm text-[var(--tf-text-secondary)]">
+          Manuelle Zuordnung für die Buchhaltung —{" "}
+          <strong>kein Lexoffice-/Lexware-API-Aufruf</strong>. Der AccountingProvider ist ein Stub
+          (Snapshot + Audit). Siehe <code className="text-[var(--tf-navy)]">docs/go-live-checklist.md</code>.
+        </p>
         <form action={markLexofficeAction} className="flex flex-wrap gap-2">
           <input type="hidden" name="payoutId" value={payout.id} />
           <input

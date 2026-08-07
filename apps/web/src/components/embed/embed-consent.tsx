@@ -7,6 +7,7 @@ import {
   readConsent,
   saveConsent,
 } from "@/lib/consent";
+import { isTrustedEmbedParentOrigin } from "@/lib/embed/post-message-target";
 
 /**
  * Compact consent chip for iframe embeds (not a full-width bar).
@@ -22,6 +23,7 @@ export function EmbedConsent() {
       const data = event.data;
       if (!data || typeof data !== "object") return;
       if (data.type !== "tf:consent") return;
+      if (!isTrustedEmbedParentOrigin(event.origin)) return;
       saveConsent({
         statistics: Boolean(data.statistics),
         marketing: Boolean(data.marketing),

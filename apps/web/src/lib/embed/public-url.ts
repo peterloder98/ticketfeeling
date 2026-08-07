@@ -126,10 +126,17 @@ export function getTrackingLinkerDomains(): string[] {
   ];
 }
 
-function buildEmbedResizeScript(matchSrcFragment: string, minHeight: number, maxHeight: number) {
+function buildEmbedResizeScript(
+  matchSrcFragment: string,
+  minHeight: number,
+  maxHeight: number,
+  expectedOrigin: string,
+) {
   return `<script>
 (function(){
+  var expectedOrigin=${JSON.stringify(expectedOrigin)};
   function onMsg(e){
+    if(e.origin!==expectedOrigin)return;
     if(!e.data||e.data.type!=="tf:embed-height")return;
     var frames=document.querySelectorAll("iframe");
     for(var i=0;i<frames.length;i++){
@@ -169,8 +176,14 @@ function buildIframeSnippet(input: {
   allow="payment *"
 ></iframe>`;
   if (heightMode !== "auto") return iframe;
+  let expectedOrigin = LIVE_APP_URL;
+  try {
+    expectedOrigin = new URL(input.src).origin;
+  } catch {
+    /* keep LIVE_APP_URL */
+  }
   return `${iframe}
-${buildEmbedResizeScript(input.matchSrcFragment, minHeight, maxHeight)}`;
+${buildEmbedResizeScript(input.matchSrcFragment, minHeight, maxHeight, expectedOrigin)}`;
 }
 
 export function buildEventEmbedSnippet(input: {

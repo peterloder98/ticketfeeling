@@ -46,6 +46,7 @@ npm run dev
 
 * E-Mail: `admin@ticketfeeling.local`
 * Passwort: `TicketfeelingAdmin!2026`
+* **Nur lokal / Seed** — vor Produktivbetrieb Passwort ändern oder Seed-User entfernen (siehe Go-live-Checkliste).
 
 ### Ticket kaufen (Demo)
 
@@ -65,4 +66,5 @@ BASE_URL=http://localhost:3000 node scripts/e2e-smoke.mjs
 
 ## Dokumentation
 
-Konzept & Architektur unter [`docs/`](docs/).
+Konzept & Architektur unter [`docs/`](docs/).  
+Go-live: [`docs/go-live-checklist.md`](docs/go-live-checklist.md) (SMTP, Stripe live, secrets, embed allowlist, order-access TTL).
