@@ -107,7 +107,7 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
         data={data}
         showQr={showQr}
         compact
-        qrSize={180}
+        qrSize={120}
         transferredMessage={
           transferred
             ? `Ticket weitergeleitet${holder ? ` an ${holder}` : ""} — QR nur für Empfänger.`

@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   formatProminentPlaceLabel,
   isVipCategory,
+  parseSeatHighlight,
   resolvePlaceLabel,
+  TICKET_BODY_ASPECT,
 } from "@/lib/commerce/ticket-presentation";
 
 describe("isVipCategory", () => {
@@ -47,5 +49,35 @@ describe("formatProminentPlaceLabel", () => {
       label: "Stehplatz",
       hasAssignedSeat: false,
     });
+  });
+});
+
+describe("parseSeatHighlight", () => {
+  it("builds BLOCK/REIHE/PLATZ boxes", () => {
+    expect(
+      parseSeatHighlight("BLOCK A · REIHE 1 · PLATZ 9", true),
+    ).toEqual({
+      mode: "boxes",
+      text: "BLOCK A · REIHE 1 · PLATZ 9",
+      parts: [
+        { label: "BLOCK", value: "A" },
+        { label: "REIHE", value: "1" },
+        { label: "PLATZ", value: "9" },
+      ],
+    });
+  });
+
+  it("keeps free seating as text", () => {
+    expect(parseSeatHighlight("FREIE PLATZWAHL", false)).toEqual({
+      mode: "text",
+      parts: [],
+      text: "FREIE PLATZWAHL",
+    });
+  });
+});
+
+describe("TICKET_BODY_ASPECT", () => {
+  it("locks landscape ~2:1", () => {
+    expect(TICKET_BODY_ASPECT).toBe(2);
   });
 });

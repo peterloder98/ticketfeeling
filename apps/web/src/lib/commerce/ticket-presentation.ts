@@ -20,6 +20,15 @@ export const TF_PRINT_HINT =
   "Am Einlass auf dem Smartphone vorzeigen oder ausdrucken.";
 export const TF_QR_HINT = "Am Einlass vorzeigen.";
 
+/**
+ * Print@Home ticket BODY (not the A4 sheet): landscape ~2:1, e.g. 200×100 mm.
+ * Lock this ratio in HTML/CSS and PDF — never let A4 height stretch the ticket.
+ */
+export const TICKET_BODY_ASPECT = 2;
+/** Cover | info | QR column fractions (must sum ≤ 100). */
+export const TICKET_COL_COVER = 0.33;
+export const TICKET_COL_QR = 0.25;
+
 export type TicketPresentation = {
   ticketId: string;
   ticketNumber: string;
@@ -122,6 +131,32 @@ export function formatProminentPlaceLabel(placeLabel: string): {
     return { label: raw.toUpperCase(), hasAssignedSeat: true };
   }
   return { label: raw, hasAssignedSeat: false };
+}
+
+export type SeatHighlightPart = { label: string; value: string };
+
+/**
+ * Split „BLOCK A · REIHE 1 · PLATZ 9“ into highlight boxes; free/standing stay as text.
+ */
+export function parseSeatHighlight(
+  placeDisplayLabel: string,
+  hasAssignedSeat: boolean,
+): { mode: "boxes" | "text"; parts: SeatHighlightPart[]; text: string } {
+  const text = placeDisplayLabel.trim() || "FREIE PLATZWAHL";
+  if (!hasAssignedSeat) {
+    return { mode: "text", parts: [], text };
+  }
+  const parts = text
+    .split("·")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .map((seg) => {
+      const m = seg.match(/^([A-Za-zÄÖÜäöüß]+)\s+(.+)$/u);
+      if (m) return { label: m[1]!.toUpperCase(), value: m[2]! };
+      return { label: "", value: seg };
+    });
+  if (parts.length === 0) return { mode: "text", parts: [], text };
+  return { mode: "boxes", parts, text };
 }
 
 function locationTicketLine(lines: string[]): string {

@@ -108,15 +108,15 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
           Zurück zur Bestellung
         </Link>
 
-        <div className="mx-auto grid max-w-5xl gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(240px,320px)] lg:items-start">
+        <div className="mx-auto max-w-6xl space-y-8">
           <TicketFace
             data={data}
             showQr={showQr}
             transferredMessage={transferredMessage}
-            qrSize={240}
+            qrSize={150}
           />
 
-          <aside className="space-y-3 lg:sticky lg:top-28">
+          <aside className="mx-auto flex w-full max-w-md flex-col gap-3 lg:mx-0">
             {canEntry ? (
               <a
                 href={pdfHref}

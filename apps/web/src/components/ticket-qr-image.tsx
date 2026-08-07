@@ -8,12 +8,15 @@ export function TicketQrImage({
   size = 220,
   label = "QR-Code zum Einlass",
   showToken = false,
+  /** Image only — for landscape ticket stub (no chrome/label) */
+  bare = false,
 }: {
   token: string;
   size?: number;
   label?: string;
   /** Debug only — never show raw scan tokens in cashier UI */
   showToken?: boolean;
+  bare?: boolean;
 }) {
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,27 +56,33 @@ export function TicketQrImage({
     return <p className="text-sm text-[var(--danger)]">Kein Scan-Token vorhanden.</p>;
   }
 
+  const qrNode = dataUrl ? (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={dataUrl}
+      alt="Ticket QR-Code"
+      width={size}
+      height={size}
+      className={bare ? "block" : "mx-auto mt-3"}
+    />
+  ) : error ? (
+    <p className={`${bare ? "" : "mt-3 "}text-sm text-[var(--danger)]`}>
+      QR konnte nicht erzeugt werden.
+    </p>
+  ) : (
+    <div
+      className={`${bare ? "" : "mx-auto mt-3 "}animate-pulse rounded-lg bg-black/5`}
+      style={{ width: size, height: size }}
+      aria-label="QR wird erzeugt"
+    />
+  );
+
+  if (bare) return qrNode;
+
   return (
     <div className="rounded-2xl bg-white p-4 text-center text-black">
       <p className="text-xs uppercase tracking-wider text-black/60">{label}</p>
-      {dataUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={dataUrl}
-          alt="Ticket QR-Code"
-          width={size}
-          height={size}
-          className="mx-auto mt-3"
-        />
-      ) : error ? (
-        <p className="mt-3 text-sm text-[var(--danger)]">QR konnte nicht erzeugt werden.</p>
-      ) : (
-        <div
-          className="mx-auto mt-3 animate-pulse rounded-lg bg-black/5"
-          style={{ width: size, height: size }}
-          aria-label="QR wird erzeugt"
-        />
-      )}
+      {qrNode}
       {showToken ? (
         <p className="mt-3 break-all font-mono text-[10px] leading-relaxed text-black/55">
           {token}

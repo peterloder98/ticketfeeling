@@ -59,7 +59,7 @@ export async function enqueueTransactionalEmail(input: {
   /** Optional body overrides (fixed templates) */
   text?: string;
   html?: string;
-  /** @deprecated Ignored — Print@Home is always DIN A4 landscape ticket strip */
+  /** @deprecated Ignored — Print@Home is always a landscape ~2:1 ticket strip on A4 */
   compactPdf?: boolean;
   /** Embed brand logo as CID (default true for ticket mails) */
   embedLogo?: boolean;

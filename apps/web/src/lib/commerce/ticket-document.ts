@@ -1,6 +1,7 @@
 import { qrDataUrl } from "@/lib/qr-server";
 import {
   loadTicketPresentation,
+  parseSeatHighlight,
   TF_GOLD,
   TF_INK,
   TF_LINE,
@@ -11,10 +12,13 @@ import {
   TF_SOFT,
   TF_TAGLINE,
   TF_TEAL,
+  TICKET_BODY_ASPECT,
+  TICKET_COL_COVER,
+  TICKET_COL_QR,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
-/** Server-generated printable HTML ticket — landscape strip on A4, same rules as PDF. */
+/** Server-generated printable HTML ticket — landscape ~2:1 strip on A4. */
 export async function renderTicketHtml(ticketId: string) {
   const data = await loadTicketPresentation(ticketId);
   const qr = data.qrToken ? await qrDataUrl(data.qrToken, 320) : null;
@@ -30,13 +34,37 @@ export function buildTicketHtmlDocument(
   const admitLabel = data.isVip ? "VIP-TICKET" : "EINLASSTICKET";
   const doorsColor =
     data.isVip || data.doors.isCategoryOverride ? accent : TF_NAVY;
+  const seat = parseSeatHighlight(data.placeDisplayLabel, data.hasAssignedSeat);
+  const coverPct = Math.round(TICKET_COL_COVER * 100);
+  const qrPct = Math.round(TICKET_COL_QR * 100);
+  const infoPct = 100 - coverPct - qrPct;
 
   const metaRows = [
     data.startLabel ? row("Beginn", data.startLabel) : "",
     row("Location", data.locationTicket),
     row("Kategorie", data.categoryName, data.isVip ? TF_GOLD : TF_NAVY),
-    data.holderName ? row("Inhaber", data.holderName) : "",
-    data.priceLabel ? row("Preis", data.priceLabel) : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const seatHtml =
+    seat.mode === "boxes"
+      ? `<div class="seat-boxes">${seat.parts
+          .map(
+            (p) => `<div class="seat-box">${
+              p.label ? `<span class="seat-label">${escapeHtml(p.label)}</span>` : ""
+            }<span class="seat-value">${escapeHtml(p.value)}</span></div>`,
+          )
+          .join("")}</div>`
+      : `<p class="place">${escapeHtml(seat.text)}</p>`;
+
+  const footerBits = [
+    data.holderName
+      ? `<span>Inhaber <strong>${escapeHtml(data.holderName)}</strong></span>`
+      : "",
+    data.priceLabel
+      ? `<span>Preis <strong>${escapeHtml(data.priceLabel)}</strong></span>`
+      : "",
   ]
     .filter(Boolean)
     .join("");
@@ -66,12 +94,21 @@ export function buildTicketHtmlDocument(
       max-width: 210mm;
       margin: 0 auto;
     }
+    /* Ticket BODY locked to landscape ~2:1 — independent of A4 page height */
+    .ticket-scale {
+      width: 100%;
+      overflow-x: auto;
+    }
     .ticket {
       display: grid;
-      grid-template-columns: 30% minmax(0, 1fr) 27%;
-      width: 100%;
-      aspect-ratio: 1.72 / 1;
-      max-height: 112mm;
+      grid-template-columns: ${coverPct}% minmax(0, ${infoPct}%) ${qrPct}%;
+      grid-template-rows: 1fr;
+      width: min(100%, 200mm);
+      aspect-ratio: ${TICKET_BODY_ASPECT} / 1;
+      height: auto;
+      max-height: none;
+      min-width: 140mm;
+      margin: 0 auto;
       border: 1px solid ${TF_LINE};
       border-radius: 8px;
       overflow: hidden;
@@ -90,6 +127,7 @@ export function buildTicketHtmlDocument(
       position: relative;
       background: ${TF_NAVY};
       min-width: 0;
+      min-height: 0;
     }
     .zone-a img {
       width: 100%;
@@ -118,16 +156,37 @@ export function buildTicketHtmlDocument(
       opacity: .75;
     }
     .zone-b {
-      padding: 14px 16px 12px;
+      padding: 10px 14px 10px;
       display: flex;
       flex-direction: column;
+      gap: 4px;
       min-width: 0;
+      min-height: 0;
       background: #fff;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+    }
+    .brand-row img {
+      height: 22px;
+      width: auto;
+      max-width: 110px;
+      object-fit: contain;
+    }
+    .brand-row span {
+      font-size: 9px;
+      color: ${TF_MUTED};
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .event {
       margin: 0;
-      font-size: clamp(14px, 2.1vw, 18px);
-      line-height: 1.2;
+      font-size: 16px;
+      line-height: 1.15;
       font-weight: 700;
       color: ${TF_NAVY};
       display: -webkit-box;
@@ -136,8 +195,8 @@ export function buildTicketHtmlDocument(
       overflow: hidden;
     }
     .date {
-      margin: 6px 0 0;
-      font-size: 12px;
+      margin: 0;
+      font-size: 11px;
       font-weight: 500;
       color: ${TF_NAVY};
       white-space: nowrap;
@@ -145,8 +204,8 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
     }
     .doors {
-      margin: 8px 0 0;
-      font-size: 14px;
+      margin: 2px 0 0;
+      font-size: 13px;
       font-weight: 700;
       color: ${doorsColor};
       white-space: nowrap;
@@ -154,23 +213,23 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
     }
     .doors-note {
-      margin: 2px 0 0;
-      font-size: 10px;
+      margin: 0;
+      font-size: 9px;
       color: ${TF_MUTED};
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .meta {
-      margin-top: 10px;
-      font-size: 11px;
-      line-height: 1.35;
+      margin-top: 4px;
+      font-size: 10px;
+      line-height: 1.3;
     }
     .meta-row {
       display: grid;
-      grid-template-columns: 4.5rem minmax(0, 1fr);
-      gap: 6px;
-      margin: 3px 0;
+      grid-template-columns: 4.25rem minmax(0, 1fr);
+      gap: 4px;
+      margin: 1px 0;
     }
     .meta-label { color: ${TF_MUTED}; }
     .meta-value {
@@ -180,9 +239,36 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .seat-boxes {
+      display: flex;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .seat-box {
+      flex: 1;
+      min-width: 0;
+      text-align: center;
+      border: 1px solid ${TF_LINE};
+      background: ${TF_SOFT};
+      border-radius: 5px;
+      padding: 4px 2px;
+    }
+    .seat-label {
+      display: block;
+      font-size: 7px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      color: ${TF_MUTED};
+    }
+    .seat-value {
+      display: block;
+      font-size: 12px;
+      font-weight: 700;
+      color: ${TF_NAVY};
+    }
     .place {
-      margin: 10px 0 0;
-      font-size: ${data.hasAssignedSeat ? "15px" : "13px"};
+      margin: 4px 0 0;
+      font-size: 13px;
       font-weight: 700;
       letter-spacing: .02em;
       color: ${TF_NAVY};
@@ -190,59 +276,67 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .brand-foot {
+    .foot-meta {
       margin-top: auto;
-      padding-top: 8px;
+      padding-top: 4px;
       display: flex;
-      align-items: center;
+      flex-wrap: wrap;
       gap: 10px;
-      min-width: 0;
-    }
-    .brand-foot img {
-      height: 16px;
-      width: auto;
-      max-width: 96px;
-      object-fit: contain;
-    }
-    .brand-foot span {
-      font-size: 10px;
+      font-size: 9px;
       color: ${TF_MUTED};
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+    }
+    .foot-meta strong {
+      color: ${TF_NAVY};
+      font-weight: 600;
     }
     .zone-c {
       background: ${TF_SOFT};
       border-left: 1px dashed ${TF_LINE};
-      padding: 12px 10px;
+      padding: 8px 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
+      justify-content: center;
       text-align: center;
       min-width: 0;
+      min-height: 0;
+      position: relative;
     }
+    .zone-c::before,
+    .zone-c::after {
+      content: "";
+      position: absolute;
+      left: -6px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      border: 1px solid ${TF_LINE};
+    }
+    .zone-c::before { top: -6px; }
+    .zone-c::after { bottom: -6px; }
     .admit {
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
       letter-spacing: .14em;
       color: ${accent};
-      margin: 0 0 8px;
+      margin: 0 0 6px;
     }
     .qr-plate {
       background: #fff;
-      padding: 8px;
+      padding: 6px;
       border-radius: 4px;
       line-height: 0;
     }
     .qr-plate img {
-      width: min(132px, 22vw);
+      width: min(118px, 18vw);
       height: auto;
       aspect-ratio: 1;
       display: block;
     }
     .ticket-no {
-      margin-top: 8px;
-      font-size: 11px;
+      margin-top: 6px;
+      font-size: 10px;
       font-weight: 700;
       color: ${TF_NAVY};
       letter-spacing: .02em;
@@ -251,12 +345,12 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
     }
     .qr-hint {
-      margin: 4px 0 0;
-      font-size: 10px;
+      margin: 2px 0 0;
+      font-size: 9px;
       color: ${TF_MUTED};
     }
     .notes {
-      margin-top: 28px;
+      margin-top: 20px;
       max-width: 36rem;
     }
     .notes p {
@@ -265,57 +359,74 @@ export function buildTicketHtmlDocument(
       color: ${TF_MUTED};
       line-height: 1.45;
     }
+    /* Never stack columns — shrink whole landscape ticket on narrow viewports */
+    @media (max-width: 640px) {
+      .ticket {
+        width: 200mm;
+        transform-origin: top left;
+      }
+    }
     @media print {
       body { padding: 0; }
       .sheet { max-width: none; }
-      .ticket { max-height: none; height: 105mm; }
+      .ticket-scale { overflow: visible; }
+      .ticket {
+        width: 186mm;
+        aspect-ratio: ${TICKET_BODY_ASPECT} / 1;
+        height: auto;
+        min-width: 0;
+        margin: 0;
+      }
     }
   </style>
 </head>
 <body>
   <div class="sheet">
-    <article class="ticket">
-      <div class="zone-a">
-        ${
-          cover
-            ? `<img src="${escapeAttr(cover)}" alt="" />`
-            : `<div class="fallback"><strong>TICKETFEELING</strong><span>${escapeHtml(TF_TAGLINE)}</span></div>`
-        }
-      </div>
-      <div class="zone-b">
-        <h1 class="event">${escapeHtml(data.eventName)}</h1>
-        ${data.dateLabel ? `<p class="date">${escapeHtml(data.dateLabel)}</p>` : ""}
-        ${
-          data.doors.headline
-            ? `<p class="doors">${escapeHtml(data.doors.headline)}${
-                data.doors.timeLabel ? " Uhr" : ""
-              }</p>${
-                data.doors.doorsNote
-                  ? `<p class="doors-note">${escapeHtml(data.doors.doorsNote)}</p>`
-                  : ""
-              }`
-            : ""
-        }
-        <div class="meta">${metaRows}</div>
-        <p class="place">${escapeHtml(data.placeDisplayLabel)}</p>
-        <div class="brand-foot">
-          <img src="/brand/logo-email.png" alt="Ticketfeeling" />
-          <span>${escapeHtml(TF_TAGLINE)}</span>
-        </div>
-      </div>
-      <div class="zone-c">
-        <p class="admit">${escapeHtml(admitLabel)}</p>
-        <div class="qr-plate">
+    <div class="ticket-scale">
+      <article class="ticket">
+        <div class="zone-a">
           ${
-            qrDataUrlOrNull
-              ? `<img src="${qrDataUrlOrNull}" alt="QR-Code" />`
-              : `<p class="qr-hint">Kein gültiger QR-Code</p>`
+            cover
+              ? `<img src="${escapeAttr(cover)}" alt="" />`
+              : `<div class="fallback"><strong>TICKETFEELING</strong><span>${escapeHtml(TF_TAGLINE)}</span></div>`
           }
         </div>
-        <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
-        <p class="qr-hint">${escapeHtml(TF_QR_HINT)}</p>
-      </div>
-    </article>
+        <div class="zone-b">
+          <div class="brand-row">
+            <img src="/brand/logo-email.png" alt="Ticketfeeling" />
+            <span>${escapeHtml(TF_TAGLINE)}</span>
+          </div>
+          <h1 class="event">${escapeHtml(data.eventName)}</h1>
+          ${data.dateLabel ? `<p class="date">${escapeHtml(data.dateLabel)}</p>` : ""}
+          ${
+            data.doors.headline
+              ? `<p class="doors">${escapeHtml(data.doors.headline)}${
+                  data.doors.timeLabel ? " Uhr" : ""
+                }</p>${
+                  data.doors.doorsNote
+                    ? `<p class="doors-note">${escapeHtml(data.doors.doorsNote)}</p>`
+                    : ""
+                }`
+              : ""
+          }
+          <div class="meta">${metaRows}</div>
+          ${seatHtml}
+          ${footerBits ? `<div class="foot-meta">${footerBits}</div>` : ""}
+        </div>
+        <div class="zone-c">
+          <p class="admit">${escapeHtml(admitLabel)}</p>
+          <div class="qr-plate">
+            ${
+              qrDataUrlOrNull
+                ? `<img src="${qrDataUrlOrNull}" alt="QR-Code" />`
+                : `<p class="qr-hint">Kein gültiger QR-Code</p>`
+            }
+          </div>
+          <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
+          <p class="qr-hint">${escapeHtml(TF_QR_HINT)}</p>
+        </div>
+      </article>
+    </div>
     <div class="notes">
       <p>${escapeHtml(TF_PRINT_HINT)}</p>
       ${

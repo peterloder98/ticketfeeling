@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { qrDataUrl } from "@/lib/qr-server";
 import {
   loadTicketPresentation,
+  parseSeatHighlight,
   TF_GOLD,
   TF_INK,
   TF_LINE,
@@ -16,13 +17,14 @@ import {
   TF_SOFT,
   TF_TAGLINE,
   TF_TEAL,
+  TICKET_BODY_ASPECT,
+  TICKET_COL_COVER,
+  TICKET_COL_QR,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
 /** ~12 mm printer-safe margin on DIN A4 */
 const PAGE_MARGIN = 34;
-/** Landscape ticket strip aspect (~1.7:1, near A5 landscape) */
-const TICKET_ASPECT = 1.72;
 
 type DrawOptions = {
   pageIndexLabel?: string | null;
@@ -114,36 +116,40 @@ async function drawTicketPage(
   const accent = data.isVip ? TF_GOLD : TF_TEAL;
   const admitLabel =
     options?.pageIndexLabel ?? (data.isVip ? "VIP-TICKET" : "EINLASSTICKET");
+  const seat = parseSeatHighlight(data.placeDisplayLabel, data.hasAssignedSeat);
 
   doc.rect(0, 0, pageW, pageH).fill("#FFFFFF");
 
+  // Landscape ticket strip ~2:1 — never stretch to A4 height
   const ticketW = pageW - margin * 2;
-  const ticketH = Math.min(Math.round(ticketW / TICKET_ASPECT), 318);
+  const ticketH = ticketW / TICKET_BODY_ASPECT;
   const ticketX = margin;
-  const ticketY = margin;
+  // Center strip on page (slight bias up for notes below)
+  const notesReserve = 72;
+  const ticketY = Math.max(
+    margin,
+    (pageH - ticketH - notesReserve) / 2,
+  );
 
-  // Ticket outer frame
+  const zoneA = Math.round(ticketW * TICKET_COL_COVER);
+  const zoneC = Math.round(ticketW * TICKET_COL_QR);
+  const zoneB = ticketW - zoneA - zoneC;
+
   doc.save();
   doc.roundedRect(ticketX, ticketY, ticketW, ticketH, 8).clip();
 
-  const zoneA = Math.round(ticketW * 0.3);
-  const zoneC = Math.round(ticketW * 0.27);
-  const zoneB = ticketW - zoneA - zoneC;
-
-  // ── Zone A: emotional cover ──────────────────────────────────────
+  // ── Zone A: cover ────────────────────────────────────────────────
   const ax = ticketX;
   doc.rect(ax, ticketY, zoneA, ticketH).fill(TF_NAVY);
   if (cover) {
     await drawImageCover(doc, cover, ax, ticketY, zoneA, ticketH);
-    // Soft right-edge vignette toward the info zone
     doc.save();
     doc.rect(ax, ticketY, zoneA, ticketH).clip();
-    const grad = doc.linearGradient(ax + zoneA * 0.5, ticketY, ax + zoneA, ticketY);
+    const grad = doc.linearGradient(ax + zoneA * 0.55, ticketY, ax + zoneA, ticketY);
     grad.stop(0, TF_NAVY, 0).stop(1, TF_NAVY, 0.28);
     doc.rect(ax, ticketY, zoneA, ticketH).fill(grad);
     doc.restore();
   } else {
-    // Dark logo is unreadable on navy — wordmark fallback only
     doc
       .fillColor("#FFFFFF")
       .font("Helvetica-Bold")
@@ -169,22 +175,55 @@ async function drawTicketPage(
   const bx = ticketX + zoneA;
   doc.rect(bx, ticketY, zoneB, ticketH).fill("#FFFFFF");
 
-  const bPadX = 16;
-  const bPadY = 14;
+  const bPadX = 14;
+  const bPadY = 12;
   const bInnerW = zoneB - bPadX * 2;
   let by = ticketY + bPadY;
+
+  // Brand + claim at top
+  if (logo) {
+    try {
+      doc.image(logo, bx + bPadX, by, { height: 16, fit: [88, 16] });
+      doc
+        .font("Helvetica")
+        .fontSize(7)
+        .fillColor(TF_MUTED)
+        .text(TF_TAGLINE, bx + bPadX + 94, by + 4, {
+          width: bInnerW - 94,
+          height: 10,
+          ellipsis: true,
+        });
+    } catch {
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .fillColor(TF_NAVY)
+        .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + bPadX, by, {
+          width: bInnerW,
+        });
+    }
+  } else {
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .fillColor(TF_NAVY)
+      .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + bPadX, by, {
+        width: bInnerW,
+      });
+  }
+  by += 22;
 
   doc
     .fillColor(TF_NAVY)
     .font("Helvetica-Bold")
-    .fontSize(16)
+    .fontSize(15)
     .text(data.eventName, bx + bPadX, by, {
       width: bInnerW,
-      height: 40,
+      height: 34,
       ellipsis: true,
       lineGap: 1,
     });
-  by = Math.min(doc.y + 4, ticketY + bPadY + 44);
+  by = Math.min(doc.y + 3, ticketY + bPadY + 58);
 
   if (data.dateLabel) {
     doc
@@ -193,10 +232,10 @@ async function drawTicketPage(
       .fillColor(TF_NAVY)
       .text(data.dateLabel, bx + bPadX, by, {
         width: bInnerW,
-        height: 14,
+        height: 12,
         ellipsis: true,
       });
-    by = doc.y + 6;
+    by = doc.y + 4;
   }
 
   if (data.doors.headline) {
@@ -207,23 +246,23 @@ async function drawTicketPage(
       .fillColor(data.isVip || data.doors.isCategoryOverride ? accent : TF_NAVY)
       .text(doorsText, bx + bPadX, by, {
         width: bInnerW,
-        height: 16,
+        height: 14,
         ellipsis: true,
       });
     by = doc.y + 2;
     if (data.doors.doorsNote) {
       doc
         .font("Helvetica")
-        .fontSize(7.5)
+        .fontSize(7)
         .fillColor(TF_MUTED)
         .text(data.doors.doorsNote, bx + bPadX, by, {
           width: bInnerW,
-          height: 12,
+          height: 10,
           ellipsis: true,
         });
-      by = doc.y + 6;
+      by = doc.y + 4;
     } else {
-      by += 6;
+      by += 4;
     }
   }
 
@@ -237,38 +276,76 @@ async function drawTicketPage(
     },
   ].filter(Boolean) as { label: string; value: string; accent?: boolean }[];
 
-  const labelCol = 58;
+  const labelCol = 52;
   for (const row of meta) {
-    if (by > ticketY + ticketH - 78) break;
+    if (by > ticketY + ticketH - 70) break;
     doc
       .font("Helvetica")
-      .fontSize(7.5)
+      .fontSize(7)
       .fillColor(TF_MUTED)
       .text(row.label, bx + bPadX, by, { width: labelCol });
     doc
       .font("Helvetica-Bold")
-      .fontSize(8.5)
+      .fontSize(8)
       .fillColor(row.accent ? TF_GOLD : TF_INK)
       .text(row.value, bx + bPadX + labelCol, by, {
         width: bInnerW - labelCol,
-        height: 12,
+        height: 11,
         ellipsis: true,
       });
-    by += 13;
+    by += 12;
   }
 
-  // Prominent seat line
-  by += 4;
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(data.hasAssignedSeat ? 11 : 10)
-    .fillColor(TF_NAVY)
-    .text(data.placeDisplayLabel, bx + bPadX, by, {
-      width: bInnerW,
-      height: 16,
-      ellipsis: true,
-    });
-  by = doc.y + 6;
+  // Seat highlight boxes / text
+  by += 3;
+  if (seat.mode === "boxes" && seat.parts.length > 0) {
+    const gap = 5;
+    const n = seat.parts.length;
+    const boxW = (bInnerW - gap * (n - 1)) / n;
+    const boxH = 28;
+    for (let i = 0; i < n; i += 1) {
+      const part = seat.parts[i]!;
+      const ox = bx + bPadX + i * (boxW + gap);
+      doc.roundedRect(ox, by, boxW, boxH, 4).fill(TF_SOFT);
+      doc
+        .roundedRect(ox, by, boxW, boxH, 4)
+        .strokeColor(TF_LINE)
+        .lineWidth(0.7)
+        .stroke();
+      if (part.label) {
+        doc
+          .font("Helvetica")
+          .fontSize(6)
+          .fillColor(TF_MUTED)
+          .text(part.label, ox + 2, by + 4, {
+            width: boxW - 4,
+            align: "center",
+          });
+      }
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(11)
+        .fillColor(TF_NAVY)
+        .text(part.value, ox + 2, by + (part.label ? 13 : 8), {
+          width: boxW - 4,
+          align: "center",
+          height: 14,
+          ellipsis: true,
+        });
+    }
+    by += boxH + 6;
+  } else {
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(11)
+      .fillColor(TF_NAVY)
+      .text(seat.text, bx + bPadX, by, {
+        width: bInnerW,
+        height: 14,
+        ellipsis: true,
+      });
+    by = doc.y + 6;
+  }
 
   const footerMeta: { label: string; value: string }[] = [
     data.holderName ? { label: "Inhaber", value: data.holderName } : null,
@@ -276,88 +353,50 @@ async function drawTicketPage(
   ].filter(Boolean) as { label: string; value: string }[];
 
   for (const row of footerMeta) {
-    if (by > ticketY + ticketH - 36) break;
+    if (by > ticketY + ticketH - 18) break;
     doc
       .font("Helvetica")
-      .fontSize(7.5)
+      .fontSize(7)
       .fillColor(TF_MUTED)
-      .text(row.label, bx + bPadX, by, { width: labelCol });
+      .text(`${row.label}  `, bx + bPadX, by, { continued: true });
     doc
       .font("Helvetica-Bold")
-      .fontSize(8.5)
+      .fontSize(7.5)
       .fillColor(TF_INK)
-      .text(row.value, bx + bPadX + labelCol, by, {
-        width: bInnerW - labelCol,
-        height: 12,
-        ellipsis: true,
-      });
-    by += 12;
+      .text(row.value, { continued: false });
+    by = doc.y + 2;
   }
 
-  // Discrete TF mark at bottom of info zone
-  const brandY = ticketY + ticketH - 22;
-  if (logo) {
-    try {
-      doc.image(logo, bx + bPadX, brandY - 2, { height: 14, fit: [72, 14] });
-      doc
-        .font("Helvetica")
-        .fontSize(6.5)
-        .fillColor(TF_MUTED)
-        .text(TF_TAGLINE, bx + bPadX + 78, brandY + 2, {
-          width: bInnerW - 78,
-          height: 10,
-          ellipsis: true,
-        });
-    } catch {
-      doc
-        .font("Helvetica")
-        .fontSize(6.5)
-        .fillColor(TF_MUTED)
-        .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + bPadX, brandY + 2, {
-          width: bInnerW,
-        });
-    }
-  } else {
-    doc
-      .font("Helvetica")
-      .fontSize(6.5)
-      .fillColor(TF_MUTED)
-      .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + bPadX, brandY + 2, {
-        width: bInnerW,
-      });
-  }
-
-  // ── Zone C: QR panel ─────────────────────────────────────────────
+  // ── Zone C: QR stub ──────────────────────────────────────────────
   const cx = ticketX + zoneA + zoneB;
   doc.rect(cx, ticketY, zoneC, ticketH).fill(TF_SOFT);
 
-  // Perforation hint between B and C
   doc
-    .moveTo(cx, ticketY + 10)
-    .lineTo(cx, ticketY + ticketH - 10)
+    .moveTo(cx, ticketY + 12)
+    .lineTo(cx, ticketY + ticketH - 12)
     .strokeColor(TF_LINE)
     .lineWidth(0.8)
     .dash(3, { space: 3 })
     .stroke()
     .undash();
 
-  const cPad = 12;
+  const cPad = 10;
   const cInnerW = zoneC - cPad * 2;
-  let cy = ticketY + 12;
+  let cy = ticketY + 10;
 
   doc
     .font("Helvetica-Bold")
-    .fontSize(8)
+    .fontSize(7.5)
     .fillColor(accent)
     .text(admitLabel, cx + cPad, cy, {
       width: cInnerW,
       align: "center",
-      characterSpacing: 1.2,
+      characterSpacing: 1.1,
     });
-  cy = doc.y + 8;
+  cy = doc.y + 6;
 
-  const qrMax = Math.min(cInnerW - 8, ticketH - 88, 132);
-  const quiet = 8;
+  const qrMax = Math.min(cInnerW - 4, ticketH - 78, 118);
+  const quiet = 6;
   const qrPlate = qrMax + quiet * 2;
   const qrPlateX = cx + (zoneC - qrPlate) / 2;
 
@@ -390,23 +429,23 @@ async function drawTicketPage(
         align: "center",
       });
   }
-  cy += qrPlate + 8;
+  cy += qrPlate + 6;
 
   doc
     .font("Helvetica-Bold")
-    .fontSize(8)
+    .fontSize(7.5)
     .fillColor(TF_NAVY)
     .text(data.ticketNumber, cx + cPad, cy, {
       width: cInnerW,
       align: "center",
-      height: 12,
+      height: 11,
       ellipsis: true,
     });
-  cy = doc.y + 4;
+  cy = doc.y + 3;
 
   doc
     .font("Helvetica")
-    .fontSize(7)
+    .fontSize(6.5)
     .fillColor(TF_MUTED)
     .text(TF_QR_HINT, cx + cPad, cy, {
       width: cInnerW,
@@ -415,7 +454,12 @@ async function drawTicketPage(
 
   doc.restore(); // end clip
 
-  // Accent top edge + outer stroke (after clip restore so stroke is crisp)
+  // Ticket notches on perforation (after clip — punch into white page)
+  const notchR = 6;
+  doc.circle(cx, ticketY, notchR).fill("#FFFFFF");
+  doc.circle(cx, ticketY + ticketH, notchR).fill("#FFFFFF");
+
+  // Outer stroke + accent edge
   doc
     .roundedRect(ticketX, ticketY, ticketW, ticketH, 8)
     .strokeColor(TF_LINE)
@@ -423,8 +467,8 @@ async function drawTicketPage(
     .stroke();
   doc.rect(ticketX, ticketY, ticketW, 3).fill(accent);
 
-  // ── Below ticket: sparse notes + white space ─────────────────────
-  let notesY = ticketY + ticketH + 28;
+  // Notes below strip (organizer name only — never street address)
+  let notesY = ticketY + ticketH + 22;
   doc
     .font("Helvetica")
     .fontSize(9)
@@ -433,7 +477,7 @@ async function drawTicketPage(
       width: ticketW,
       align: "left",
     });
-  notesY = doc.y + 10;
+  notesY = doc.y + 8;
 
   if (data.organizerDisplayName) {
     doc
