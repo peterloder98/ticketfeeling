@@ -33,6 +33,11 @@ type Options = {
  * - Space / Alt / middle-mouse → pan even over interactive seats/blocks
  * - With `panOverInteractive`: drag anywhere on the plan; short taps still select
  * - Wheel / trackpad pans the canvas (no native scrollbar fight)
+ *
+ * Important: do NOT `setPointerCapture` on pointerdown. Capturing on the scroll
+ * container retargets the subsequent click to the canvas, so seat `onClick`
+ * never fires (public Saalplan buy flow with panOverInteractive). Capture only
+ * after the movement threshold so taps stay on the seat hit target.
  */
 export function useCanvasPan(
   canvasRef: RefObject<HTMLDivElement | null>,
@@ -115,6 +120,7 @@ export function useCanvasPan(
 
       if (e.button === 1 || spaceDownRef.current) e.preventDefault();
 
+      // Defer setPointerCapture until we cross PAN_THRESHOLD_PX (see file doc).
       sessionRef.current = {
         pointerId: e.pointerId,
         startX: e.clientX,
@@ -123,11 +129,6 @@ export function useCanvasPan(
         scrollTop: el.scrollTop,
         moved: false,
       };
-      try {
-        el.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
     },
     [canvasRef, panOverInteractive],
   );
@@ -143,6 +144,11 @@ export function useCanvasPan(
         if (Math.hypot(dx, dy) < PAN_THRESHOLD_PX) return;
         session.moved = true;
         setPanning(true);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
       }
       el.scrollLeft = session.scrollLeft - dx;
       el.scrollTop = session.scrollTop - dy;
