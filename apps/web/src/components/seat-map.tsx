@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Minus, Plus, RotateCcw } from "lucide-react";
-import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
+import type { PublicSeat, PublicStandingArea, SeatMapPayload } from "@/lib/seating/types";
 import { categoryFillRgba, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 import { formatEuroFromCents } from "@/lib/money";
@@ -35,12 +36,9 @@ type Props = {
    * Other categories stay fully visible (not faded).
    */
   multiCategory?: boolean;
-  /**
-   * When multiCategory: show this as the per-category ticket max in the status
-   * line instead of implying a single global X/Y cap (which was summing all categories).
-   */
+  /** @deprecated Kept for callers; selection caps are enforced in the booking panel. */
   maxPerCategory?: number | null;
-  /** Override free-seat count shown in the status line (defaults to map.availableCount). */
+  /** @deprecated Kept for callers; free-seat count no longer shown on the map chrome. */
   availableCount?: number;
   /** Hint under the map, e.g. companion info */
   hint?: string | null;
@@ -62,24 +60,23 @@ export function SeatMap({
   map,
   selectedIds,
   onToggle,
-  maxSelect,
   activeCategoryId,
   multiCategory = false,
-  maxPerCategory = null,
-  availableCount: availableCountProp,
   hint,
   initialZoom = DEFAULT_BUY_ZOOM,
   categoryPrices,
   feeSurchargeNote,
 }: Props) {
-  const freeCount = availableCountProp ?? map.availableCount;
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [zoom, setZoom] = useState(initialZoom);
-  const [hoveredStandingId, setHoveredStandingId] = useState<string | null>(null);
   const [tooltip, setTooltip] = useState<HoverTooltip | null>(null);
+  const [tooltipMounted, setTooltipMounted] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
   const { panning, panHandlers } = useCanvasPan(canvasRef, { panOverInteractive: true });
+
+  useEffect(() => {
+    setTooltipMounted(true);
+  }, []);
 
   const colorByCategory = useMemo(() => {
     const m = new Map<string, string>();
@@ -185,18 +182,12 @@ export function SeatMap({
     return "#E2E8F0";
   }
 
-  function buildSeatTooltip(seat: PublicSeat, clientX: number, clientY: number) {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const rect = wrap.getBoundingClientRect();
-    const lines: HoverTooltip["lines"] = [
-      {
-        kind: "title",
-        text: `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`,
-      },
-    ];
-
-    const price = seat.categoryId ? priceByCategory.get(seat.categoryId) : undefined;
+  function pushPriceLines(
+    lines: HoverTooltip["lines"],
+    categoryId: string | null | undefined,
+  ) {
+    if (!categoryId) return;
+    const price = priceByCategory.get(categoryId);
     if (price) {
       const list = price.listPriceGrossCents ?? price.priceGrossCents;
       const unit = price.priceGrossCents;
@@ -215,10 +206,33 @@ export function SeatMap({
       if (feeSurchargeNote) {
         lines.push({ kind: "fee", text: feeSurchargeNote });
       }
-    } else if (seat.categoryId) {
-      const legend = map.categories.find((c) => c.id === seat.categoryId);
-      if (legend) lines.push({ kind: "meta", text: legend.name });
+      return;
     }
+    const legend = map.categories.find((c) => c.id === categoryId);
+    if (legend) lines.push({ kind: "meta", text: legend.name });
+  }
+
+  function setFixedTooltip(
+    clientX: number,
+    clientY: number,
+    lines: HoverTooltip["lines"],
+  ) {
+    setTooltip({
+      x: clientX + 14,
+      y: clientY + 14,
+      lines,
+    });
+  }
+
+  function buildSeatTooltip(seat: PublicSeat, clientX: number, clientY: number) {
+    const lines: HoverTooltip["lines"] = [
+      {
+        kind: "title",
+        text: `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`,
+      },
+    ];
+
+    pushPriceLines(lines, seat.categoryId);
 
     if (seat.status === "taken") lines.push({ kind: "meta", text: "Bereits verkauft" });
     else if (seat.status === "held") lines.push({ kind: "meta", text: "Zurzeit nicht verfügbar" });
@@ -228,65 +242,129 @@ export function SeatMap({
       lines.push({ kind: "meta", text: "Bereits im Warenkorb" });
     }
 
-    setTooltip({
-      x: clientX - rect.left + 12,
-      y: clientY - rect.top + 12,
-      lines,
-    });
+    setFixedTooltip(clientX, clientY, lines);
   }
 
+  function buildStandingTooltip(
+    area: PublicStandingArea,
+    clientX: number,
+    clientY: number,
+  ) {
+    const capacity = area.capacity ?? area.estimatedCapacity;
+    const available =
+      typeof area.availableCount === "number" ? area.availableCount : null;
+    const lines: HoverTooltip["lines"] = [{ kind: "title", text: "Stehplatz" }];
+    if (available != null && capacity > 0) {
+      lines.push({
+        kind: "meta",
+        text: `Gesamtkapazität ${capacity} · ${available} verfügbar`,
+      });
+    } else if (capacity > 0) {
+      lines.push({ kind: "meta", text: `Gesamtkapazität ${capacity}` });
+    }
+    pushPriceLines(lines, area.categoryId);
+    setFixedTooltip(clientX, clientY, lines);
+  }
+
+  const tooltipNode =
+    tooltipMounted && tooltip
+      ? createPortal(
+          <div
+            className="pointer-events-none fixed z-[80] max-w-[240px] rounded-lg border border-[var(--tf-line)] bg-white px-2.5 py-2 shadow-[0_8px_24px_rgba(15,39,71,0.14)]"
+            style={{
+              left: Math.min(tooltip.x, window.innerWidth - 248),
+              top: Math.min(tooltip.y, window.innerHeight - 12),
+            }}
+            role="tooltip"
+          >
+            {tooltip.lines.map((line, i) => {
+              if (line.kind === "strike") {
+                return (
+                  <p
+                    key={`s-${i}`}
+                    className="text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through"
+                  >
+                    {line.text}
+                  </p>
+                );
+              }
+              if (line.kind === "price") {
+                return (
+                  <p
+                    key={`p-${i}`}
+                    className="text-xs font-semibold tabular-nums text-[var(--tf-navy)]"
+                  >
+                    {line.text}
+                  </p>
+                );
+              }
+              if (line.kind === "fee") {
+                return (
+                  <p
+                    key={`f-${i}`}
+                    className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]"
+                  >
+                    {line.text}
+                  </p>
+                );
+              }
+              if (line.kind === "meta") {
+                return (
+                  <p
+                    key={`m-${i}`}
+                    className="mt-0.5 text-[11px] text-[var(--tf-text-secondary)]"
+                  >
+                    {line.text}
+                  </p>
+                );
+              }
+              return (
+                <p key={`t-${i}`} className="text-[11px] font-medium text-[var(--tf-navy)]">
+                  {line.text}
+                </p>
+              );
+            })}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
-    <div ref={wrapRef} className="relative space-y-2">
-      <div className="flex flex-wrap items-center gap-2.5 text-xs text-[var(--tf-text-secondary)]">
-        <Legend color="#14B8A6" label="Ausgewählt" />
-        <Legend color="#99F6E4" border="#0F766E" label="Bereits im Warenkorb" />
-        <Legend color="#E2E8F0" border="#0F2747" label="Frei" />
-        <Legend color="#94A3B8" border="#64748B" label="Nicht verfügbar" />
-        <Legend color="#94A3B8" hatch label="Bereits verkauft" />
-        <Legend color="#CBD5E1" border="#64748B" dashed label="Gesperrt" />
-        <div className="ml-auto flex items-center gap-2">
-          <span className="tabular-nums">
-            {multiCategory
-              ? maxPerCategory != null && maxPerCategory > 0
-                ? `${selectedIds.length} gewählt · max. ${maxPerCategory} pro Kategorie · ${freeCount} frei`
-                : `${selectedIds.length} gewählt · ${freeCount} frei`
-              : `${selectedIds.length}/${maxSelect} · ${freeCount} frei`}
-          </span>
-          <div className="inline-flex items-center rounded-lg border border-[var(--tf-line)] bg-white">
-            <button
-              type="button"
-              className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
-              disabled={zoom <= MIN_ZOOM}
-              onClick={() =>
-                setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - 0.25) * 100) / 100))
-              }
-              aria-label="Verkleinern"
-            >
-              <Minus className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-8 w-8 items-center justify-center border-x border-[var(--tf-line)]"
-              onClick={() => setZoom(initialZoom)}
-              aria-label="Zoom zurücksetzen"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
-              disabled={zoom >= MAX_ZOOM}
-              onClick={() =>
-                setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + 0.25) * 100) / 100))
-              }
-              aria-label="Vergrößern"
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </div>
+    <div className="relative">
+      <div className="pointer-events-none absolute right-2 top-2 z-10">
+        <div className="pointer-events-auto inline-flex items-center rounded-lg border border-[var(--tf-line)] bg-white/95 shadow-sm backdrop-blur-sm">
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
+            disabled={zoom <= MIN_ZOOM}
+            onClick={() =>
+              setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - 0.25) * 100) / 100))
+            }
+            aria-label="Verkleinern"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center border-x border-[var(--tf-line)]"
+            onClick={() => setZoom(initialZoom)}
+            aria-label="Zoom zurücksetzen"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
+            disabled={zoom >= MAX_ZOOM}
+            onClick={() =>
+              setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + 0.25) * 100) / 100))
+            }
+            aria-label="Vergrößern"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
-
       <div
         ref={canvasRef}
         className={`max-h-[min(86vh,920px)] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-[#eef2f7] shadow-inner ${
@@ -295,7 +373,6 @@ export function SeatMap({
         {...panHandlers}
         onMouseLeave={() => {
           setTooltip(null);
-          setHoveredStandingId(null);
         }}
       >
         <svg
@@ -376,25 +453,20 @@ export function SeatMap({
             const fill = assignedColor
               ? categoryFillRgba(assignedColor)
               : "rgba(15,39,71,0.06)";
-            const capacity =
-              typeof area.availableCount === "number" && assignedColor
-                ? area.availableCount
-                : (area.capacity ?? area.estimatedCapacity);
-            const showHover = hoveredStandingId === area.objectId;
-            const hoverLabel =
-              capacity > 0
-                ? `Stehplätze · Kapazität ${capacity}`
-                : "Stehplätze";
+            const labelSize = Math.max(11, Math.min(16, Math.min(w, h) * 0.18));
             return (
               <g
                 key={area.objectId}
                 transform={`rotate(${area.rotationDeg} ${toX(area.xCm)} ${toY(area.yCm)})`}
-                onMouseEnter={() => setHoveredStandingId(area.objectId)}
-                onMouseLeave={() =>
-                  setHoveredStandingId((id) => (id === area.objectId ? null : id))
-                }
+                onMouseEnter={(e) => {
+                  buildStandingTooltip(area, e.clientX, e.clientY);
+                }}
+                onMouseMove={(e) => {
+                  buildStandingTooltip(area, e.clientX, e.clientY);
+                }}
+                onMouseLeave={() => setTooltip(null)}
+                style={{ cursor: "default" }}
               >
-                <title>{hoverLabel}</title>
                 <rect
                   x={left}
                   y={top}
@@ -406,21 +478,20 @@ export function SeatMap({
                   strokeDasharray={assignedColor ? undefined : "6 4"}
                   rx={5}
                 />
-                {showHover ? (
-                  <text
-                    x={toX(area.xCm)}
-                    y={top - 8}
-                    textAnchor="middle"
-                    style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      fill: "#0F2747",
-                      pointerEvents: "none",
-                    }}
-                  >
-                    {hoverLabel}
-                  </text>
-                ) : null}
+                <text
+                  x={toX(area.xCm)}
+                  y={toY(area.yCm) + labelSize * 0.35}
+                  textAnchor="middle"
+                  style={{
+                    fontSize: labelSize,
+                    fontWeight: 800,
+                    fill: "#0F2747",
+                    pointerEvents: "none",
+                    letterSpacing: "0.02em",
+                  }}
+                >
+                  Stehplatz
+                </text>
               </g>
             );
           })}
@@ -633,60 +704,11 @@ export function SeatMap({
         </svg>
       </div>
 
-      {tooltip ? (
-        <div
-          className="pointer-events-none absolute z-20 max-w-[240px] rounded-lg border border-[var(--tf-line)] bg-white px-2.5 py-2 shadow-[0_8px_24px_rgba(15,39,71,0.14)]"
-          style={{
-            left: Math.min(tooltip.x, (wrapRef.current?.clientWidth ?? 320) - 220),
-            top: tooltip.y,
-          }}
-          role="tooltip"
-        >
-          {tooltip.lines.map((line, i) => {
-            if (line.kind === "strike") {
-              return (
-                <p
-                  key={`s-${i}`}
-                  className="text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through"
-                >
-                  {line.text}
-                </p>
-              );
-            }
-            if (line.kind === "price") {
-              return (
-                <p
-                  key={`p-${i}`}
-                  className="text-xs font-semibold tabular-nums text-[var(--tf-navy)]"
-                >
-                  {line.text}
-                </p>
-              );
-            }
-            if (line.kind === "fee") {
-              return (
-                <p key={`f-${i}`} className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]">
-                  {line.text}
-                </p>
-              );
-            }
-            if (line.kind === "meta") {
-              return (
-                <p key={`m-${i}`} className="mt-0.5 text-[11px] text-[var(--tf-text-secondary)]">
-                  {line.text}
-                </p>
-              );
-            }
-            return (
-              <p key={`t-${i}`} className="text-[11px] font-medium text-[var(--tf-navy)]">
-                {line.text}
-              </p>
-            );
-          })}
-        </div>
-      ) : null}
+      {tooltipNode}
 
-      {hint ? <p className="text-sm text-[var(--tf-text-secondary)]">{hint}</p> : null}
+      {hint ? (
+        <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">{hint}</p>
+      ) : null}
     </div>
   );
 }
@@ -705,33 +727,4 @@ function fadeHex(hex: string, alpha: number) {
   const g = parseInt(full.slice(2, 4), 16);
   const b = parseInt(full.slice(4, 6), 16);
   return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function Legend({
-  color,
-  label,
-  border,
-  dashed,
-  hatch,
-}: {
-  color: string;
-  label: string;
-  border?: string;
-  dashed?: boolean;
-  hatch?: boolean;
-}) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span
-        className="relative inline-block h-3 w-3 overflow-hidden rounded-full"
-        style={{
-          background: hatch
-            ? `repeating-linear-gradient(-45deg, #CBD5E1, #CBD5E1 1px, ${color} 1px, ${color} 3px)`
-            : color,
-          border: `1px ${dashed || hatch ? "dashed" : "solid"} ${border ?? (hatch ? "#64748B" : color)}`,
-        }}
-      />
-      {label}
-    </span>
-  );
 }

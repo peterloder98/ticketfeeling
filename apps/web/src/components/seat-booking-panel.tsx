@@ -209,7 +209,7 @@ export function SeatBookingPanel({
 
   const mapCategoryPrices = useMemo(
     () =>
-      seatCategories.map((c) => ({
+      [...seatCategories, ...standingCategories].map((c) => ({
         id: c.id,
         name: c.name,
         priceGrossCents: unitPriceFor(c),
@@ -221,7 +221,7 @@ export function SeatBookingPanel({
       })),
     // unit/list helpers close over accessibilitySelected
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
-    [seatCategories, accessibilitySelected, accessibilityOffer],
+    [seatCategories, standingCategories, accessibilitySelected, accessibilityOffer],
   );
 
   const loadMap = useCallback(async () => {
@@ -578,7 +578,9 @@ export function SeatBookingPanel({
                 type="button"
                 onClick={() => {
                   setMode("best_available");
-                  setSelectedByCategory({});
+                  requestAnimationFrame(() => {
+                    requestAnimationFrame(() => scrollToId(cartScrollId));
+                  });
                 }}
                 className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
                   mode === "best_available"
@@ -944,8 +946,9 @@ export function SeatBookingPanel({
   const stickyPortal =
     saalplanSticky && mapHostEl
       ? createPortal(
-          <div className="scroll-mt-24 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start lg:gap-5">
-            <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-3 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-4">
+          // Same 3-col grid as the event page tickets sidebar (lg:grid-cols-3, gap-8).
+          <div className="scroll-mt-24 grid gap-8 lg:grid-cols-3 lg:items-start">
+            <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-3 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-4 lg:col-span-2">
               <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
                 <h2
                   id="saalplan-heading"
@@ -959,10 +962,10 @@ export function SeatBookingPanel({
               </div>
               <div className="mt-3">{mapCanvas}</div>
             </div>
-            <aside id="tickets" className="mt-4 h-fit scroll-mt-24 lg:mt-0 lg:sticky lg:top-[88px]">
-              <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-4 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-5">
-                <h2 className="tf-display text-xl">Tickets</h2>
-                <div className="mt-3 space-y-4">{ticketBody}</div>
+            <aside id="tickets" className="mt-0 h-fit scroll-mt-24 lg:sticky lg:top-[88px]">
+              <div className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-6">
+                <h2 className="tf-display text-2xl">Tickets</h2>
+                <div className="mt-4 space-y-4">{ticketBody}</div>
               </div>
             </aside>
           </div>,
@@ -987,8 +990,9 @@ export function SeatBookingPanel({
               className="tf-btn tf-btn-secondary w-full !min-h-10 text-sm"
               onClick={() => {
                 setMode("best_available");
-                setSelectedByCategory({});
-                requestAnimationFrame(() => scrollToId(cartScrollId));
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => scrollToId(cartScrollId));
+                });
               }}
             >
               Zur Bestplatzbuchung
