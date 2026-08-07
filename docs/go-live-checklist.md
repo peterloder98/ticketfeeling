@@ -33,16 +33,24 @@ Configure an organization email account (or org SMTP settings). Production `/api
 
 | Item | Notes |
 |---|---|
-| `EMBED_FRAME_ANCESTORS` | Space/comma-separated parent origins (e.g. `https://schlagerfeeling.de https://www.schlagerfeeling.de`). Unset/`*` allows any parent; **production health warns**. |
+| `EMBED_FRAME_ANCESTORS` | Space/comma-separated parent origins. **Local:** unset/`*` is fine. **Production:** allowlist e.g. `https://ticketfeeling.de https://www.ticketfeeling.de https://ticketfeeling-web.vercel.app` — **append each organizer site** that embeds tickets. Health warns if still `*`/`unset`. |
 | `NEXT_PUBLIC_APP_URL` | Canonical public URL for snippets, mails, redirects. |
 
-## 5. Rate limits (optional)
+## 5. Rate limits (Upstash / Vercel KV)
+
+Shared limits across Vercel instances. Code already prefers REST when env is present (`apps/web/src/lib/security/rate-limit.ts`); without it → in-memory (OK for low traffic, not multi-instance).
+
+**How to enable (no fake keys):**
+
+1. Vercel Dashboard → project **ticketfeeling-web** → **Storage** → Create **Upstash Redis** or **KV** → link to the project (injects `UPSTASH_REDIS_REST_URL` + `TOKEN`, or `KV_REST_API_*`).
+2. Or create a database at [upstash.com](https://upstash.com) → copy REST URL + token into Vercel env.
+3. Redeploy. Confirm `GET /api/health` → `"rateLimit": "redis"`.
 
 | Item | Notes |
 |---|---|
-| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Shared rate limits across Vercel instances. |
-| or `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Vercel KV (same REST client). |
-| `REDIS_URL` | Documented for local Redis; serverless uses REST above. Without Redis → in-memory limits (still OK, not multi-instance). |
+| `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Preferred |
+| or `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Vercel KV (same client) |
+| `REDIS_URL` | Local TCP Redis only; **not** read by serverless rate-limit |
 
 ## 6. Order-access TTL vs schedule-change
 
@@ -55,13 +63,18 @@ Schedule-change notifications intentionally use the longer TTL so buyers can ope
 
 ## 7. Compliance stubs (not live integrations)
 
-* **TSE / Fiskaly:** Modes `planned` / `fiskaly` record stubs — **keine echte TSE-Signatur**. Do not claim KassenSichV compliance until Fiskaly (or external TSE) is wired and tax advisor signed off. See `tse-plan.md`.
-* **Lexware / Lexoffice:** Accounting provider is a **stub** (audit + snapshot only). Admin “Lexoffice markieren” on Stripe payouts is manual bookkeeping — not the Lexoffice API.
+* **TSE / Fiskaly:** Modes `planned` / `fiskaly` record stubs — **keine echte TSE-Signatur**, `compliance` never true until certified signing works. Env placeholders: `FISKALY_API_KEY`, `FISKALY_API_SECRET`, `FISKALY_TSS_ID`, `FISKALY_CLIENT_ID`. See `tse-plan.md`.
+* **Lexware / Lexoffice:** Stub by default (`getAccountingProvider()`). Set `LEXWARE_ENABLED=1` + `LEXWARE_API_KEY` only when the HTTP client is ready — scaffold refuses fake success. Admin “Lexoffice markieren” on Stripe payouts remains manual.
 
 ## 8. Smoke after deploy
 
-1. `GET /api/health` → `ok`, `db: up`, review `warnings` (SMTP, embed allowlist).
-2. Test checkout with live Stripe (small amount) → tickets + mail.
-3. Cron: expire-holds / payouts with `Authorization: Bearer $CRON_SECRET`.
-4. Embed on allowlisted parent (if restricted).
-5. Scanner check-in on a real ticket QR.
+1. `GET /api/health` → `ok`, `db: up`, review `warnings` (SMTP, embed allowlist, rateLimit memory).
+2. Playwright public smoke (no Stripe keys):  
+   `BASE_URL=https://ticketfeeling-web.vercel.app npm run test:e2e`  
+   (or local: start app, then `npm run test:e2e` from repo root / `apps/web`)
+3. Deeper local commerce smoke (needs seed + `PAYMENT_PROVIDER=dev`):  
+   `cd apps/web && BASE_URL=http://localhost:3000 npm run test:e2e:smoke-full`
+4. Test checkout with live Stripe (small amount) → tickets + mail.
+5. Cron: expire-holds / payouts with `Authorization: Bearer $CRON_SECRET` (Vercel Pro for cron reliability).
+6. Embed on allowlisted parent (if restricted).
+7. Scanner check-in on a real ticket QR.

@@ -36,25 +36,29 @@ Primary source of truth: Ticketfeeling-DB. Lexware Office = angebundenes Buchhal
 
 ## 5. Lexware Office Integration
 
-**Stand:** Stub only (`lexwareStubProvider`). No Lexoffice/Lexware HTTP API. Fulfillment queues a snapshot + audit entry; Stripe payout UI can mark a payout as “in Lexoffice zugeordnet” manually.
+**Stand:** Stub by default via `getAccountingProvider()` (`lexwareStubProvider`).  
+HTTP scaffold: `lexwareHttpProvider` — activated only with `LEXWARE_ENABLED=1` + `LEXWARE_API_KEY`; **refuses fake success** (throws) until the Lexoffice client is implemented.
 
-Interface (target):
+Env (see `.env.example`): `LEXWARE_ENABLED`, `LEXWARE_API_KEY`, `LEXWARE_ORGANIZATION_ID`, `LEXWARE_API_URL`.
+
+Fulfillment queues a snapshot + audit via the stub; Stripe payout UI can mark a payout as “in Lexoffice zugeordnet” manually.
+
+Interface:
 
 ```text
-AccountingProvider
+AccountingProvider  (apps/web/src/lib/accounting/types.ts)
 - connect()
 - disconnect()
-- syncCustomer()
-- createDocument()
 - createInvoice()
 - createCorrection()
-- uploadVoucher()
 - markPaid()
 - getSyncStatus()
 - retrySync()
 ```
 
 Sync states: `not_required | queued | syncing | synced | failed | needs_review`
+
+**How to connect later:** implement Lexoffice REST in `lexware-http.ts`, set `LEXWARE_ENABLED=1` + API key on Vercel, redeploy. Until then keep `LEXWARE_ENABLED` unset/0.
 
 Admin UI (manual): **Finanzen → Stripe → Lexoffice markieren** — not a live adapter.
 

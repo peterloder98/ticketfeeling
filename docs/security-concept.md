@@ -13,7 +13,7 @@
 
 ## 2. Authentifizierung
 
-* Auth.js: Passwort (Argon2id/bcrypt), Magic Link, E-Mail-Verifizierung, Reset
+* Auth.js: Passwort (**Argon2id** für neue Hashes; Verify akzeptiert weiterhin legacy **bcrypt** — kein Zwangs-Reset). Transparentes Rehash bei Login.
 * Sichere Session-Cookies (`HttpOnly`, `Secure`, `SameSite`)
 * Rate Limits / Lockout gegen Brute Force
 * 2FA für Admins vorbereitet (TOTP), Enforcement später schaltbar
@@ -38,9 +38,10 @@
 
 ## 4b. Rate Limits
 
-* In-process Map (`takeRateLimit`) auf Promo, Cart, Checkout, Login
-* **Multi-Instance-Lücke:** Limits gelten pro Isolat (Vercel), nicht cluster-weit — Upstash/Redis geplant, Deploy nicht blockieren
-* Klarere Presets in `apps/web/src/lib/security/rate-limit.ts`
+* `takeRateLimit` auf Promo, Cart, Checkout, Login
+* **Backend:** Upstash Redis REST / Vercel KV (`UPSTASH_REDIS_REST_*` oder `KV_REST_API_*`) wenn gesetzt; sonst In-Memory Map pro Isolat
+* Production health warnt bei `rateLimit: "memory"` — Upstash/KV in Vercel Storage verknüpfen (siehe go-live-checklist §5)
+* Presets in `apps/web/src/lib/security/rate-limit.ts`
 
 ## 5. Tickets & QR
 

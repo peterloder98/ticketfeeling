@@ -15,7 +15,9 @@
     "db:studio": "prisma studio",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke-full": "node scripts/e2e-smoke.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.9.1",
@@ -23,6 +25,7 @@
     "@stripe/react-stripe-js": "^3.10.0",
     "@stripe/stripe-js": "^7.9.0",
     "@tailwindcss/postcss": "^4",
+    "argon2": "^0.41.1",
     "bcryptjs": "^3.0.2",
     "google-auth-library": "^11.0.0",
     "html5-qrcode": "^2.3.8",
@@ -43,6 +46,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.62.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",

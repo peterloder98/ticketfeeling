@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from "crypto";
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { enqueueTransactionalEmail } from "@/lib/email/outbox";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { ensureVorverkaufRole } from "@/lib/commerce/box-office-access";
+import { hashPassword } from "@/lib/security/password";
 
 function hashInviteToken(token: string) {
   return createHash("sha256").update(token).digest("hex");
@@ -129,7 +129,7 @@ export async function acceptBoxOfficeInvite(input: {
     throw new Error("INVITE_EXPIRED");
   }
 
-  const passwordHash = await bcrypt.hash(input.password, 12);
+  const passwordHash = await hashPassword(input.password);
   const name = `${invite.firstName} ${invite.lastName}`.trim();
 
   await ensureVorverkaufRole(invite.organizationId);

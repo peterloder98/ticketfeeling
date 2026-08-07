@@ -198,6 +198,7 @@ export async function createBoxOfficeTapSale(input: {
             seatingBookingMode: event.seatingBookingMode,
             seatingMode,
             holdExpiresAt: reservedUntil,
+            seatOpt: event,
             items: resolved.map(({ item, category }) => ({
               categoryId: category.id,
               quantity: item.quantity,
@@ -411,12 +412,16 @@ export async function createBoxOfficeTapSale(input: {
   });
 
   const handoffToken = signBoxOfficeTapHandoff(result.order.id);
+  if (!handoffToken) {
+    throw new Error("TAP_HANDOFF_SECRET_MISSING");
+  }
   const apiBase = getPublicAppUrl();
+  // Do not put clientSecret in the deep-link URL (logs, history, Referer).
+  // iOS fetches it via POST /api/v1/box-office/terminal/payment-intent with handoff.
   const deepLinkParams = new URLSearchParams({
     orderId: result.order.id,
     paymentIntentId: intent.paymentIntentId,
-    clientSecret: intent.clientSecret,
-    ...(handoffToken ? { handoff: handoffToken } : {}),
+    handoff: handoffToken,
     apiBase,
   });
   const deepLink = `ticketfeeling-kasse://pay?${deepLinkParams.toString()}`;

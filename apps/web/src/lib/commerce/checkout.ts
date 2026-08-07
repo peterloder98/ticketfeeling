@@ -1,5 +1,5 @@
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
+import { hashPassword } from "@/lib/security/password";
 import { getOpenCart } from "@/lib/commerce/cart";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { priceCart } from "@/lib/commerce/pricing";
@@ -165,8 +165,7 @@ export async function createOrderFromCart(input: {
       data: {
         email: emailNormalized,
         name: `${input.customer.firstName} ${input.customer.lastName}`,
-        // Cost 10 ≈ fast enough for checkout; 12 added noticeable latency on serverless.
-        passwordHash: await bcrypt.hash(password, 10),
+        passwordHash: await hashPassword(password),
         emailVerified: null,
         status: "active",
       },

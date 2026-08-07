@@ -1,10 +1,10 @@
-import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import {
   ensureStaffManageableRoles,
   type StaffManageableRoleKey,
 } from "@/lib/admin/staff-access";
+import { hashPassword } from "@/lib/security/password";
 
 export async function listStaffMemberships(organizationId: string) {
   return prisma.membership.findMany({
@@ -65,7 +65,7 @@ export async function createStaffUser(input: {
     if (membership) throw new Error("USER_ALREADY_MEMBER");
   }
 
-  const passwordHash = await bcrypt.hash(input.password, 12);
+  const passwordHash = await hashPassword(input.password);
   const name = `${input.firstName.trim()} ${input.lastName.trim()}`.trim();
 
   const user = await prisma.$transaction(async (tx) => {
@@ -233,7 +233,7 @@ export async function resetStaffPassword(input: {
   });
   if (!membership) throw new Error("MEMBERSHIP_NOT_FOUND");
 
-  const passwordHash = await bcrypt.hash(input.password, 12);
+  const passwordHash = await hashPassword(input.password);
   await prisma.user.update({
     where: { id: input.userId },
     data: { passwordHash, status: "active" },

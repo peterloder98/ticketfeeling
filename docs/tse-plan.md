@@ -31,13 +31,16 @@ Steuerberater-Freigabe bleibt Voraussetzung vor produktivem Bar-Einsatz.
 
 ## 4. Fiskaly-Anbindung (nächster Technik-Schritt)
 
-Benötigte Secrets (in Stammdaten verschlüsselt, nicht Chat):
+Modul-Interface: `TseSigner` / `resolveTseSigner()` in `apps/web/src/lib/fiscal/tse.ts`.  
+`fiskalyTseSigner` bleibt Scaffold — **keine erfundenen Signaturen**, `status` bleibt `recorded`, `raw.compliance` bleibt `false`, bis der zertifizierte HTTP-Client live ist.
 
-* API Key / Secret
-* TSS-ID
-* Client-ID (Kasse)
+Env-Platzhalter (siehe `.env.example`):
 
-Ablauf pro Barverkauf:
+* `FISKALY_API_KEY` / `FISKALY_API_SECRET`
+* `FISKALY_TSS_ID` / `FISKALY_CLIENT_ID` (oder org-seitig in Stammdaten / `tseConfigEnc`)
+* optional `FISKALY_API_URL`
+
+Ablauf pro Barverkauf (Ziel):
 
 1. Order + Payment anlegen  
 2. `signBoxOfficeSale` → Fiskaly Transaction  

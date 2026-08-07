@@ -12,7 +12,7 @@ import {
 } from "@/lib/email/order-staff-mail";
 import { withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
-import { lexwareStubProvider } from "@/lib/accounting/lexware-stub";
+import { getAccountingProvider } from "@/lib/accounting/provider";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
@@ -922,15 +922,33 @@ export async function fulfillPaidOrder(orderId: string) {
       }
 
       if (result.invoice?.id) {
-        const sync = await lexwareStubProvider.createInvoice({ invoiceId: result.invoice.id });
-        await prisma.order.update({
-          where: { id: orderId },
-          data: {
-            lexofficeVoucherId: sync.externalId,
-            lexofficeSyncStatus: "queued",
-            lexofficeSyncedAt: null,
-          },
-        });
+        try {
+          const sync = await getAccountingProvider().createInvoice({
+            invoiceId: result.invoice.id,
+          });
+          await prisma.order.update({
+            where: { id: orderId },
+            data: {
+              lexofficeVoucherId: sync.externalId,
+              lexofficeSyncStatus: "queued",
+              lexofficeSyncedAt: null,
+            },
+          });
+        } catch (error) {
+          // Real Lexware throws until implemented; keep fulfillment successful.
+          console.error(
+            "[fulfillment] accounting sync skipped",
+            result.invoice.id,
+            error,
+          );
+          await prisma.order.update({
+            where: { id: orderId },
+            data: {
+              lexofficeSyncStatus: "queued",
+              lexofficeSyncedAt: null,
+            },
+          });
+        }
       }
     }
 

@@ -25,6 +25,24 @@ jobs:
       - run: npm run typecheck -w web
       - run: npm run lint -w web
 
+  # Public HTTP smoke against production — no auth, no Stripe keys, no local DB.
+  e2e-smoke:
+    runs-on: ubuntu-latest
+    needs: quality
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm install
+      - run: npx playwright install --with-deps chromium
+        working-directory: apps/web
+      - run: npm run test:e2e -w web
+        env:
+          BASE_URL: https://ticketfeeling-web.vercel.app
+          CI: "true"
+
   # Uses AWS Public ECR mirror of official Postgres (avoids flaky Docker Hub pulls).
   migrate:
     runs-on: ubuntu-latest

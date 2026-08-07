@@ -37,11 +37,12 @@ enum DeepLinkParser {
       throw ParseError.missingParam("apiBase")
     }
 
+    // clientSecret must not appear in the deep link — fetched after handoff.
     return TapHandoff(
       orderId: try require("orderId"),
       paymentIntentId: try require("paymentIntentId"),
-      clientSecret: try require("clientSecret"),
-      handoffToken: items["handoff"],
+      clientSecret: items["clientSecret"], // legacy links only; prefer fetch
+      handoffToken: try require("handoff"),
       apiBase: apiBase
     )
   }

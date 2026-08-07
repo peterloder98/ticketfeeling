@@ -1,10 +1,14 @@
 import type { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { takeRateLimit } from "@/lib/security/rate-limit";
+import {
+  hashPassword,
+  passwordNeedsRehash,
+  verifyPassword,
+} from "@/lib/security/password";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -43,8 +47,24 @@ export const authOptions: NextAuthOptions = {
         const user = await prisma.user.findUnique({ where: { email } });
         if (!user?.passwordHash || user.status !== "active") return null;
 
-        const valid = await bcrypt.compare(parsed.data.password, user.passwordHash);
+        const valid = await verifyPassword(
+          parsed.data.password,
+          user.passwordHash,
+        );
         if (!valid) return null;
+
+        // Transparent upgrade: legacy bcrypt → Argon2id on successful login.
+        if (passwordNeedsRehash(user.passwordHash)) {
+          try {
+            const nextHash = await hashPassword(parsed.data.password);
+            await prisma.user.update({
+              where: { id: user.id },
+              data: { passwordHash: nextHash },
+            });
+          } catch {
+            // Login still succeeds if rehash fails.
+          }
+        }
 
         return {
           id: user.id,

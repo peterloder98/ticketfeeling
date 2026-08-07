@@ -67,6 +67,13 @@ export async function GET() {
       warnings.push(msg);
       console.warn("[health]", msg);
     }
+    const rateLimitBackend = isRedisRateLimitConfigured() ? "redis" : "memory";
+    if (isProductionRuntime() && rateLimitBackend === "memory") {
+      const msg =
+        "Rate limits use in-memory Map — link Upstash Redis / Vercel KV for multi-instance limits";
+      warnings.push(msg);
+      console.warn("[health]", msg);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -78,7 +85,7 @@ export async function GET() {
       appHost,
       smtp: smtpOk ? "configured" : "missing",
       embedFrameAncestors,
-      rateLimit: isRedisRateLimitConfigured() ? "redis" : "memory",
+      rateLimit: rateLimitBackend,
       warnings: warnings.length ? warnings : undefined,
       wallet: {
         apple: isAppleWalletConfigured(),

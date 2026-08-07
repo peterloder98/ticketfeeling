@@ -94,7 +94,11 @@ export async function POST(request: Request) {
       }
     }
     const message = error instanceof Error ? error.message : "ERROR";
-    const status = message === "STRIPE_TERMINAL_NOT_CONFIGURED" ? 503 : 400;
+    const status =
+      message === "STRIPE_TERMINAL_NOT_CONFIGURED" ||
+      message === "TAP_HANDOFF_SECRET_MISSING"
+        ? 503
+        : 400;
     return NextResponse.json({ error: { code: message } }, { status });
   }
 }

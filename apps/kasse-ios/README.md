@@ -11,8 +11,9 @@ Web Tageskasse                    iOS Kasse app                 Stripe
      |                                  |                         |
      |-- POST /box-office/sales/tap --->|                         |
      |   (order held + PI card_present) |                         |
-     |<-- deepLink + clientSecret ------|                         |
+     |<-- deepLink + handoff (no secret)|                         |
      |-- open ticketfeeling-kasse:// -->|                         |
+     |                                  |-- payment-intent ------->| (fetch clientSecret)
      |                                  |-- ConnectionToken ----->|
      |                                  |-- collect + confirm --->|
      |                                  |                         |
@@ -29,9 +30,10 @@ Query params:
 |---|---|
 | `orderId` | Ticketfeeling order UUID |
 | `paymentIntentId` | Stripe `pi_…` |
-| `clientSecret` | PI client secret |
-| `handoff` | Short-lived token for ConnectionToken API |
+| `handoff` | Short-lived token (required) — fetch `clientSecret` + ConnectionToken |
 | `apiBase` | API origin (e.g. `https://ticketfeeling-web.vercel.app`) |
+
+`clientSecret` is **not** placed in the URL (avoid logs / history / Referer). The app loads it via `POST …/terminal/payment-intent`.
 
 ## Prerequisites (Peter)
 
@@ -85,9 +87,11 @@ Add to the app’s entitlements file (exact key may match your Apple approval le
 
 ## API used by the app
 
+- `POST {apiBase}/api/v1/box-office/terminal/payment-intent`  
+  Body: `{ "handoff": "<token>" }` → `{ "orderId", "paymentIntentId", "clientSecret", "locationId" }`
 - `POST {apiBase}/api/v1/box-office/terminal/connection-token`  
   Body: `{ "handoff": "<token>" }` → `{ "secret", "locationId" }`
-- Payment collection uses Stripe Terminal SDK with the `clientSecret` from the deep link
+- Payment collection uses Stripe Terminal SDK with the `clientSecret` from payment-intent
 - Fulfillment is **server-side** (webhook). App only needs to show success; web polls.
 
 ## Limitation (web alone)

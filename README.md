@@ -57,11 +57,24 @@ npm run dev
 5. Tickets + Rechnung unter Bestellung / Konto
 6. Token im **Scanner** (`/scanner`) einfügen → Grün, zweiter Scan → Rot
 
-### Smoke-Test
+### Smoke-Test (E2E)
+
+Public Playwright smoke (homepage, `/events`, one event page, `/api/health`) — no auth, no Stripe keys:
+
+```bash
+# Against a running app (local or production):
+BASE_URL=http://localhost:3000 npm run test:e2e
+# or
+BASE_URL=https://ticketfeeling-web.vercel.app npm run test:e2e
+```
+
+First time locally: `npx playwright install chromium` (from `apps/web`).
+
+Deeper commerce smoke (needs seeded DB + `PAYMENT_PROVIDER=dev`):
 
 ```bash
 cd apps/web
-BASE_URL=http://localhost:3000 node scripts/e2e-smoke.mjs
+BASE_URL=http://localhost:3000 npm run test:e2e:smoke-full
 ```
 
 ## Dokumentation
