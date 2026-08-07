@@ -1,4 +1,8 @@
-import { EMBED_FRAME_MAX_HEIGHT, EMBED_FRAME_WIDTH } from "@/lib/embed/public-url";
+/** Default iframe width for Standard preset (px). Inner layout fills the iframe. */
+export const EMBED_FRAME_WIDTH = 420;
+
+/** Max iframe height so header stays pinned and body scrolls inside the frame. */
+export const EMBED_FRAME_MAX_HEIGHT = 780;
 
 /** Width presets for organizer iframe snippets (px or full). */
 export type EmbedWidthPreset = "standard" | "wider" | "full";

@@ -12,12 +12,6 @@ function stripTrailingSlash(url: string) {
   return url.replace(/\/$/, "");
 }
 
-/** Default iframe width for Standard preset (px). Inner layout fills the iframe. */
-export const EMBED_FRAME_WIDTH = 420;
-
-/** Max iframe height so header stays pinned and body scrolls inside the frame. */
-export const EMBED_FRAME_MAX_HEIGHT = 780;
-
 export type { EmbedHeightMode, EmbedWidthPreset } from "@/lib/embed/frame-size";
 export {
   DEFAULT_EMBED_HEIGHT,
@@ -25,6 +19,8 @@ export {
   EMBED_AUTO_MAX_HEIGHT,
   EMBED_FIXED_HEIGHT_EVENT,
   EMBED_FIXED_HEIGHT_SHOP,
+  EMBED_FRAME_MAX_HEIGHT,
+  EMBED_FRAME_WIDTH,
   EMBED_HEIGHT_MODES,
   EMBED_WIDTH_PRESETS,
   embedPreviewWidthClass,
