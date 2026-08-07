@@ -1,6 +1,9 @@
 /**
  * Seat-block geometry: rows → segments with aisle boundaries.
  * Adjacency for Bestplatz / gap rules uses segments — never raw seatNumber±1 across aisles.
+ *
+ * Prefer `blockAisles` for gang/interruption that spans the whole block.
+ * Per-row `rowDefs[].aisles` still load (legacy); resolve merges both (block wins on conflict).
  */
 
 export type PlanSeatType = "standard" | "wheelchair" | "companion";
@@ -29,7 +32,15 @@ export type SeatBlockRowDef = {
 export type SeatBlockStructureInput = {
   rows?: number | null;
   seatsPerRow?: number | null;
+  /** Block-wide aisles — applied to every row where afterSeatNumber < seatCount. */
+  blockAisles?: RowAisle[] | null;
   rowDefs?: SeatBlockRowDef[] | null;
+};
+
+/** Result of mutators that may rewrite both block- and row-level aisle data. */
+export type SeatBlockAisleMutation = {
+  blockAisles: RowAisle[];
+  rowDefs: SeatBlockRowDef[];
 };
 
 export type ResolvedSegment = {
@@ -78,6 +89,149 @@ export function parseRowAisle(raw: unknown): RowAisle | null {
   if (!Number.isFinite(afterSeatNumber) || afterSeatNumber < 1) return null;
   if (!Number.isFinite(widthCm) || widthCm < 1) return null;
   return { afterSeatNumber, widthCm: Math.max(10, widthCm) };
+}
+
+export function parseBlockAisles(raw: unknown): RowAisle[] {
+  if (!Array.isArray(raw)) return [];
+  const byAfter = new Map<number, RowAisle>();
+  for (const item of raw) {
+    const aisle = parseRowAisle(item);
+    if (!aisle) continue;
+    byAfter.set(aisle.afterSeatNumber, aisle);
+  }
+  return [...byAfter.values()].sort((a, b) => a.afterSeatNumber - b.afterSeatNumber);
+}
+
+/** Merge block-wide + per-row aisles; block entry wins on same afterSeatNumber. */
+export function mergeAislesForRow(
+  blockAisles: RowAisle[] | null | undefined,
+  rowAisles: RowAisle[] | null | undefined,
+  seatCount: number,
+): RowAisle[] {
+  const byAfter = new Map<number, RowAisle>();
+  for (const a of rowAisles ?? []) {
+    if (a.afterSeatNumber >= 1 && a.afterSeatNumber < seatCount) {
+      byAfter.set(a.afterSeatNumber, {
+        afterSeatNumber: a.afterSeatNumber,
+        widthCm: Math.max(10, Math.round(a.widthCm)),
+      });
+    }
+  }
+  for (const a of blockAisles ?? []) {
+    if (a.afterSeatNumber >= 1 && a.afterSeatNumber < seatCount) {
+      byAfter.set(a.afterSeatNumber, {
+        afterSeatNumber: a.afterSeatNumber,
+        widthCm: Math.max(10, Math.round(a.widthCm)),
+      });
+    }
+  }
+  return [...byAfter.values()].sort((a, b) => a.afterSeatNumber - b.afterSeatNumber);
+}
+
+function normalizeAisleList(aisles: RowAisle[]): RowAisle[] {
+  const byAfter = new Map<number, RowAisle>();
+  for (const a of aisles) {
+    if (a.afterSeatNumber < 1) continue;
+    byAfter.set(a.afterSeatNumber, {
+      afterSeatNumber: a.afterSeatNumber,
+      widthCm: Math.max(10, Math.round(a.widthCm)),
+    });
+  }
+  return [...byAfter.values()].sort((a, b) => a.afterSeatNumber - b.afterSeatNumber);
+}
+
+function stripAisleFromRowDefs(
+  rowDefs: SeatBlockRowDef[],
+  afterSeatNumber: number,
+): SeatBlockRowDef[] {
+  return rowDefs.map((def) => {
+    if (!def.aisles?.length) return def;
+    const aisles = def.aisles.filter((a) => a.afterSeatNumber !== afterSeatNumber);
+    if (aisles.length === def.aisles.length) return def;
+    const next = { ...def };
+    if (aisles.length) next.aisles = aisles;
+    else delete next.aisles;
+    return next;
+  });
+}
+
+/**
+ * Promote per-row aisles that match across all eligible rows into `blockAisles`.
+ * Leaves unmatched / row-only aisles on rowDefs. Idempotent.
+ */
+export function promoteMatchingRowAislesToBlock(
+  block: SeatBlockStructureInput & { rowDefs?: SeatBlockRowDef[]; blockAisles?: RowAisle[] },
+): SeatBlockAisleMutation {
+  const rowCount = clampPositiveInt(block.rows, 0);
+  const defaultSeats = clampPositiveInt(block.seatsPerRow, 1);
+  let rowDefs = ensureAllRowDefs(block);
+  const blockAisles = normalizeAisleList([...(block.blockAisles ?? [])]);
+
+  if (rowCount < 1) {
+    return { blockAisles, rowDefs };
+  }
+
+  type Cand = { widthCm: number; rows: number };
+  const candidates = new Map<number, Cand>();
+
+  for (let r = 1; r <= rowCount; r += 1) {
+    const def = rowDefs.find((d) => d.rowIndex === r);
+    const seatCount = clampPositiveInt(def?.seatCount ?? defaultSeats, defaultSeats);
+    for (const a of def?.aisles ?? []) {
+      if (a.afterSeatNumber < 1 || a.afterSeatNumber >= seatCount) continue;
+      // Already represented at block level — will be stripped below.
+      if (blockAisles.some((b) => b.afterSeatNumber === a.afterSeatNumber)) continue;
+      const prev = candidates.get(a.afterSeatNumber);
+      if (!prev) {
+        candidates.set(a.afterSeatNumber, { widthCm: a.widthCm, rows: 1 });
+      } else if (prev.widthCm === a.widthCm) {
+        prev.rows += 1;
+      } else {
+        // Conflicting widths across rows — do not promote this afterSeat.
+        candidates.set(a.afterSeatNumber, { widthCm: -1, rows: -1 });
+      }
+    }
+  }
+
+  const promoted: RowAisle[] = [...blockAisles];
+  for (const [afterSeatNumber, cand] of candidates) {
+    if (cand.rows < 1 || cand.widthCm < 1) continue;
+    // Eligible rows: those long enough for this aisle position.
+    let eligible = 0;
+    for (let r = 1; r <= rowCount; r += 1) {
+      const def = rowDefs.find((d) => d.rowIndex === r);
+      const seatCount = clampPositiveInt(def?.seatCount ?? defaultSeats, defaultSeats);
+      if (afterSeatNumber < seatCount) eligible += 1;
+    }
+    if (eligible > 0 && cand.rows === eligible) {
+      promoted.push({ afterSeatNumber, widthCm: Math.max(10, Math.round(cand.widthCm)) });
+    }
+  }
+
+  const nextBlock = normalizeAisleList(promoted);
+  for (const a of nextBlock) {
+    rowDefs = stripAisleFromRowDefs(rowDefs, a.afterSeatNumber);
+  }
+  return { blockAisles: nextBlock, rowDefs };
+}
+
+function ensureAllRowDefs(
+  block: SeatBlockStructureInput & { rowDefs?: SeatBlockRowDef[] },
+): SeatBlockRowDef[] {
+  const rowCount = clampPositiveInt(block.rows, 1);
+  const defaultSeats = clampPositiveInt(block.seatsPerRow, 1);
+  const existing = new Map(
+    (block.rowDefs ?? [])
+      .map((d) => parseSeatBlockRowDef(d) ?? d)
+      .filter((d): d is SeatBlockRowDef => Boolean(d?.rowIndex))
+      .map((d) => [d.rowIndex, d]),
+  );
+  for (let r = 1; r <= rowCount; r += 1) {
+    if (!existing.has(r)) {
+      existing.set(r, { rowIndex: r, seatCount: defaultSeats });
+    }
+  }
+  return [...existing.values()].sort((a, b) => a.rowIndex - b.rowIndex);
 }
 
 export function parseSeatBlockRowDef(raw: unknown): SeatBlockRowDef | null {
@@ -173,6 +327,7 @@ export function resolveSeatBlockRows(block: SeatBlockStructureInput): ResolvedRo
   const rowCount = clampPositiveInt(block.rows, 0);
   if (rowCount < 1) return [];
   const defaultSeats = clampPositiveInt(block.seatsPerRow, 1);
+  const blockAisles = parseBlockAisles(block.blockAisles);
   const defsByRow = new Map<number, SeatBlockRowDef>();
   for (const raw of block.rowDefs ?? []) {
     const def = raw && typeof raw === "object" ? raw : null;
@@ -188,9 +343,7 @@ export function resolveSeatBlockRows(block: SeatBlockStructureInput): ResolvedRo
   for (let r = 1; r <= rowCount; r += 1) {
     const def = defsByRow.get(r);
     const seatCount = clampPositiveInt(def?.seatCount ?? defaultSeats, defaultSeats);
-    const aisles = [...(def?.aisles ?? [])].sort(
-      (a, b) => a.afterSeatNumber - b.afterSeatNumber,
-    );
+    const aisles = mergeAislesForRow(blockAisles, def?.aisles, seatCount);
     const removedSeatNumbers = [...(def?.removedSeatNumbers ?? [])].sort((a, b) => a - b);
     const segments = buildSegmentsForRow({
       rowIndex: r,
@@ -279,24 +432,52 @@ export function upsertRowDef(
   rowIndex: number,
   patch: Partial<Omit<SeatBlockRowDef, "rowIndex">>,
 ): SeatBlockRowDef[] {
-  const rowCount = clampPositiveInt(block.rows, 1);
+  const existing = new Map(ensureAllRowDefs(block).map((d) => [d.rowIndex, d]));
   const defaultSeats = clampPositiveInt(block.seatsPerRow, 1);
-  const existing = new Map(
-    (block.rowDefs ?? [])
-      .map((d) => parseSeatBlockRowDef(d) ?? d)
-      .filter((d): d is SeatBlockRowDef => Boolean(d?.rowIndex))
-      .map((d) => [d.rowIndex, d]),
-  );
-  for (let r = 1; r <= rowCount; r += 1) {
-    if (!existing.has(r)) {
-      existing.set(r, { rowIndex: r, seatCount: defaultSeats });
-    }
-  }
   const prev = existing.get(rowIndex) ?? { rowIndex, seatCount: defaultSeats };
   existing.set(rowIndex, { ...prev, ...patch, rowIndex });
   return [...existing.values()].sort((a, b) => a.rowIndex - b.rowIndex);
 }
 
+/**
+ * Add / upsert a block-wide aisle (gang) after seat N for every row in the block.
+ * Matching per-row aisles at the same afterSeatNumber are stripped (unified).
+ */
+export function addAisleToBlock(
+  block: SeatBlockStructureInput & { rowDefs?: SeatBlockRowDef[]; blockAisles?: RowAisle[] },
+  aisle: RowAisle,
+): SeatBlockAisleMutation {
+  const maxSeat = maxSeatNumberInBlock(block);
+  if (aisle.afterSeatNumber < 1 || aisle.afterSeatNumber >= maxSeat) {
+    return {
+      blockAisles: parseBlockAisles(block.blockAisles),
+      rowDefs: ensureAllRowDefs(block),
+    };
+  }
+  const widthCm = Math.max(10, Math.round(aisle.widthCm));
+  const blockAisles = normalizeAisleList([
+    ...(block.blockAisles ?? []).filter((a) => a.afterSeatNumber !== aisle.afterSeatNumber),
+    { afterSeatNumber: aisle.afterSeatNumber, widthCm },
+  ]);
+  let rowDefs = ensureAllRowDefs(block);
+  rowDefs = stripAisleFromRowDefs(rowDefs, aisle.afterSeatNumber);
+  return { blockAisles, rowDefs };
+}
+
+/** Remove a block-wide aisle and matching per-row copies at the same afterSeatNumber. */
+export function removeAisleFromBlock(
+  block: SeatBlockStructureInput & { rowDefs?: SeatBlockRowDef[]; blockAisles?: RowAisle[] },
+  afterSeatNumber: number,
+): SeatBlockAisleMutation {
+  const blockAisles = normalizeAisleList(
+    (block.blockAisles ?? []).filter((a) => a.afterSeatNumber !== afterSeatNumber),
+  );
+  let rowDefs = ensureAllRowDefs(block);
+  rowDefs = stripAisleFromRowDefs(rowDefs, afterSeatNumber);
+  return { blockAisles, rowDefs };
+}
+
+/** @deprecated Prefer addAisleToBlock — kept for legacy single-row edits / tests. */
 export function addAisleToRow(
   block: SeatBlockStructureInput & { rowDefs?: SeatBlockRowDef[] },
   rowIndex: number,
@@ -309,15 +490,20 @@ export function addAisleToRow(
     return block.rowDefs ?? [];
   }
   const prev = (block.rowDefs ?? []).find((d) => d.rowIndex === rowIndex);
-  const aisles = [...(prev?.aisles ?? row?.aisles ?? [])].filter(
-    (a) => a.afterSeatNumber !== aisle.afterSeatNumber,
-  );
-  aisles.push({
-    afterSeatNumber: aisle.afterSeatNumber,
-    widthCm: Math.max(10, Math.round(aisle.widthCm)),
-  });
+  // Effective aisles already include blockAisles; store only row-local extras + this aisle.
+  const blockAfter = new Set((block.blockAisles ?? []).map((a) => a.afterSeatNumber));
+  const aisles = [...(prev?.aisles ?? [])]
+    .filter((a) => a.afterSeatNumber !== aisle.afterSeatNumber)
+    .filter((a) => !blockAfter.has(a.afterSeatNumber));
+  // If this position is already a block aisle, don't duplicate on the row.
+  if (!blockAfter.has(aisle.afterSeatNumber)) {
+    aisles.push({
+      afterSeatNumber: aisle.afterSeatNumber,
+      widthCm: Math.max(10, Math.round(aisle.widthCm)),
+    });
+  }
   aisles.sort((a, b) => a.afterSeatNumber - b.afterSeatNumber);
-  return upsertRowDef(block, rowIndex, { seatCount, aisles });
+  return upsertRowDef(block, rowIndex, { seatCount, aisles: aisles.length ? aisles : undefined });
 }
 
 export function toggleRemovedSeat(

@@ -904,9 +904,9 @@ export function SaalplanEditor({
             <Plus className="mr-1 inline h-4 w-4" /> FOH / Technik einfügen
           </button>
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Sitzblöcke: nummeriert oder freie Platzwahl. Unterbrechungen/Gänge in der Auswahl.
-            Stehbereiche und FOH sind nicht verkaufbar als Einzelsitze. Zuordnung und Preise am
-            Event.
+            Sitzblöcke: nummeriert oder freie Platzwahl. Gänge (Unterbrechungen) gelten für den
+            gesamten Block — in der Auswahl unter „Gang in Block einfügen“. Stehbereiche und FOH
+            sind nicht verkaufbar als Einzelsitze. Zuordnung und Preise am Event.
           </p>
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>

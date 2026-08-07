@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  addAisleToBlock,
   addAisleToRow,
   buildSegmentsForRow,
   countGeometricSeats,
+  promoteMatchingRowAislesToBlock,
   resolveSeatBlockRows,
   toggleRemovedSeat,
 } from "@/lib/saalplan/seat-structure";
@@ -98,7 +100,73 @@ describe("seat-structure aisles & removed", () => {
     expect(resolved[1]!.segments).toHaveLength(1); // row 2 untouched single segment
   });
 
-  it("parseVenuePlanObjects keeps rowDefs and foh", () => {
+  it("addAisleToBlock splits every row at the same after-seat", () => {
+    const block = { rows: 3, seatsPerRow: 25 };
+    const { blockAisles, rowDefs } = addAisleToBlock(block, {
+      afterSeatNumber: 12,
+      widthCm: 150,
+    });
+    const resolved = resolveSeatBlockRows({ ...block, blockAisles, rowDefs });
+    expect(blockAisles).toEqual([{ afterSeatNumber: 12, widthCm: 150 }]);
+    for (const row of resolved) {
+      expect(row.segments).toHaveLength(2);
+      expect(row.segments[0]!.seatNumbers.at(-1)).toBe(12);
+      expect(row.segments[1]!.seatNumbers[0]).toBe(13);
+      // Seats across the gang are not in the same segment (not neighbors).
+      const s12 = row.seats.find((s) => s.seatNumber === 12);
+      const s13 = row.seats.find((s) => s.seatNumber === 13);
+      expect(s12!.segmentIndex).not.toBe(s13!.segmentIndex);
+    }
+  });
+
+  it("multiple block aisles are supported", () => {
+    let block: {
+      rows: number;
+      seatsPerRow: number;
+      blockAisles?: { afterSeatNumber: number; widthCm: number }[];
+      rowDefs?: ReturnType<typeof addAisleToBlock>["rowDefs"];
+    } = { rows: 2, seatsPerRow: 20 };
+    const first = addAisleToBlock(block, { afterSeatNumber: 5, widthCm: 100 });
+    block = { ...block, ...first };
+    const second = addAisleToBlock(block, { afterSeatNumber: 12, widthCm: 150 });
+    const resolved = resolveSeatBlockRows({ ...block, ...second });
+    expect(second.blockAisles).toHaveLength(2);
+    expect(resolved[0]!.segments).toHaveLength(3);
+    expect(resolved[1]!.segments).toHaveLength(3);
+  });
+
+  it("block aisle + legacy single-row aisle coexist", () => {
+    const block = {
+      rows: 2,
+      seatsPerRow: 10,
+      blockAisles: [{ afterSeatNumber: 4, widthCm: 120 }],
+      rowDefs: [{ rowIndex: 1, aisles: [{ afterSeatNumber: 7, widthCm: 80 }] }],
+    };
+    const resolved = resolveSeatBlockRows(block);
+    expect(resolved[0]!.aisles.map((a) => a.afterSeatNumber)).toEqual([4, 7]);
+    expect(resolved[1]!.aisles.map((a) => a.afterSeatNumber)).toEqual([4]);
+    expect(resolved[0]!.segments).toHaveLength(3);
+    expect(resolved[1]!.segments).toHaveLength(2);
+  });
+
+  it("promoteMatchingRowAislesToBlock unifies identical per-row aisles", () => {
+    const block = {
+      rows: 3,
+      seatsPerRow: 15,
+      rowDefs: [
+        { rowIndex: 1, aisles: [{ afterSeatNumber: 8, widthCm: 150 }] },
+        { rowIndex: 2, aisles: [{ afterSeatNumber: 8, widthCm: 150 }] },
+        { rowIndex: 3, aisles: [{ afterSeatNumber: 8, widthCm: 150 }] },
+      ],
+    };
+    const { blockAisles, rowDefs } = promoteMatchingRowAislesToBlock(block);
+    expect(blockAisles).toEqual([{ afterSeatNumber: 8, widthCm: 150 }]);
+    expect(rowDefs.every((d) => !d.aisles?.length)).toBe(true);
+    const resolved = resolveSeatBlockRows({ ...block, blockAisles, rowDefs });
+    expect(resolved.every((r) => r.segments.length === 2)).toBe(true);
+  });
+
+  it("parseVenuePlanObjects promotes matching row aisles and keeps blockAisles", () => {
     const objects = parseVenuePlanObjects([
       {
         id: "b1",
@@ -108,9 +176,12 @@ describe("seat-structure aisles & removed", () => {
         widthCm: 500,
         heightCm: 200,
         rotationDeg: 0,
-        rows: 1,
+        rows: 2,
         seatsPerRow: 10,
-        rowDefs: [{ rowIndex: 1, aisles: [{ afterSeatNumber: 4, widthCm: 120 }] }],
+        rowDefs: [
+          { rowIndex: 1, aisles: [{ afterSeatNumber: 4, widthCm: 120 }] },
+          { rowIndex: 2, aisles: [{ afterSeatNumber: 4, widthCm: 120 }] },
+        ],
       },
       {
         id: "f1",
@@ -123,9 +194,29 @@ describe("seat-structure aisles & removed", () => {
         label: "FOH",
       },
     ]);
-    expect(objects[0]!.rowDefs?.[0]?.aisles?.[0]?.afterSeatNumber).toBe(4);
+    expect(objects[0]!.blockAisles?.[0]?.afterSeatNumber).toBe(4);
+    expect(objects[0]!.rowDefs?.some((d) => d.aisles?.length)).toBeFalsy();
     expect(objects[1]!.type).toBe("foh");
-    expect(seatCountOfObject(objects[0]!)).toBe(10);
+    expect(seatCountOfObject(objects[0]!)).toBe(20);
+  });
+
+  it("parseVenuePlanObjects keeps legacy single-row aisle without promoting", () => {
+    const objects = parseVenuePlanObjects([
+      {
+        id: "b1",
+        type: "seat_block",
+        xCm: 100,
+        yCm: 100,
+        widthCm: 500,
+        heightCm: 200,
+        rotationDeg: 0,
+        rows: 2,
+        seatsPerRow: 10,
+        rowDefs: [{ rowIndex: 1, aisles: [{ afterSeatNumber: 4, widthCm: 120 }] }],
+      },
+    ]);
+    expect(objects[0]!.blockAisles).toBeUndefined();
+    expect(objects[0]!.rowDefs?.[0]?.aisles?.[0]?.afterSeatNumber).toBe(4);
   });
 });
 
@@ -198,6 +289,30 @@ describe("Bestplatz remnant & gap rules", () => {
     expect(picked).toHaveLength(3);
     const segs = new Set(picked.map((s) => s.segmentIndex ?? 0));
     expect(segs.size).toBe(1);
+  });
+
+  it("block-wide aisle breaks adjacency in every row for Bestplatz runs", () => {
+    const { blockAisles } = addAisleToBlock(
+      { rows: 2, seatsPerRow: 6 },
+      { afterSeatNumber: 3, widthCm: 100 },
+    );
+    const layouts = resolveSeatBlockRows({ rows: 2, seatsPerRow: 6, blockAisles });
+    const seats = layouts.flatMap((row) =>
+      row.seats.map((s) =>
+        seat(`${row.rowIndex}-${s.seatNumber}`, "A", row.rowIndex, s.seatNumber, {
+          segmentIndex: s.segmentIndex,
+          positionInSegment: s.positionInSegment,
+        }),
+      ),
+    );
+    const picked = pickBestAvailableSeats(seats, 3);
+    expect(picked).toHaveLength(3);
+    expect(new Set(picked.map((s) => s.rowIndex)).size).toBe(1);
+    expect(new Set(picked.map((s) => s.segmentIndex ?? 0)).size).toBe(1);
+    // Both rows have the same segment split.
+    expect(layouts[0]!.segments.map((s) => s.seatNumbers)).toEqual(
+      layouts[1]!.segments.map((s) => s.seatNumbers),
+    );
   });
 
   it("locked seats are barriers; occupancy ignores locked", () => {

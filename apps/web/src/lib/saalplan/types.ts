@@ -2,7 +2,10 @@ import {
   countGeometricSeats,
   maxAisleWidthSumCm,
   maxSeatNumberInBlock,
+  parseBlockAisles,
   parseSeatBlockRowDef,
+  promoteMatchingRowAislesToBlock,
+  type RowAisle,
   type SeatBlockRowDef,
 } from "@/lib/saalplan/seat-structure";
 
@@ -43,8 +46,14 @@ export type VenuePlanObject = {
    */
   numberedSeats?: boolean;
   /**
+   * seat_block: block-wide aisles (Gänge) applied to every eligible row.
+   * Prefer this over per-row `rowDefs[].aisles` for new edits.
+   */
+  blockAisles?: RowAisle[];
+  /**
    * seat_block: per-row segments, aisles, removed seats, seat types.
    * Missing → legacy single segment 1..seatsPerRow per row.
+   * Per-row aisles still load; matching ones are promoted into blockAisles on parse.
    */
   rowDefs?: SeatBlockRowDef[];
   /**
@@ -199,12 +208,33 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
       obj.rows = Math.max(1, Math.round(Number(o.rows) || 1));
       obj.seatsPerRow = Math.max(1, Math.round(Number(o.seatsPerRow) || 1));
       obj.numberedSeats = o.numberedSeats === false ? false : true;
+      const parsedBlockAisles = parseBlockAisles(o.blockAisles);
+      let rowDefs: SeatBlockRowDef[] | undefined;
       if (Array.isArray(o.rowDefs)) {
-        const rowDefs = o.rowDefs
+        const parsed = o.rowDefs
           .map(parseSeatBlockRowDef)
           .filter((d): d is SeatBlockRowDef => Boolean(d));
-        if (rowDefs.length) obj.rowDefs = rowDefs;
+        if (parsed.length) rowDefs = parsed;
       }
+      // Promote matching per-row aisles → blockAisles; keep unmatched row-only aisles.
+      const promoted = promoteMatchingRowAislesToBlock({
+        rows: obj.rows,
+        seatsPerRow: obj.seatsPerRow,
+        blockAisles: parsedBlockAisles,
+        rowDefs,
+      });
+      if (promoted.blockAisles.length) obj.blockAisles = promoted.blockAisles;
+      const meaningfulRowDefs = promoted.rowDefs.filter((d) =>
+        Boolean(
+          d.aisles?.length ||
+            d.removedSeatNumbers?.length ||
+            (d.seatTypes && Object.keys(d.seatTypes).length) ||
+            (d.companionOf && Object.keys(d.companionOf).length) ||
+            d.rowLabel ||
+            (d.seatCount != null && d.seatCount !== obj.seatsPerRow),
+        ),
+      );
+      if (meaningfulRowDefs.length) obj.rowDefs = meaningfulRowDefs;
       if (typeof o.categoryKey === "string" && o.categoryKey.trim()) {
         obj.categoryKey = o.categoryKey.trim();
       } else if (o.categoryKey === null) {
