@@ -720,6 +720,13 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
     }
 
     await markInbox(event.id, event, "processed");
+    // Drain a few queued post-fulfill jobs in-request (Hobby has no sub-daily crons).
+    try {
+      const { processPendingJobs } = await import("@/lib/jobs/queue");
+      await processPendingJobs({ limit: 5 });
+    } catch (jobError) {
+      console.error("[stripe] post-webhook job drain failed", jobError);
+    }
     return { ok: true as const, duplicate: false, claimed };
   } catch (error) {
     const message = error instanceof Error ? error.message : "webhook_failed";

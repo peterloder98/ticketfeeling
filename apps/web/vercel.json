@@ -22,7 +22,7 @@
     },
     {
       "path": "/api/v1/cron/commerce-reconcile",
-      "schedule": "*/10 * * * *"
+      "schedule": "20 7 * * *"
     }
   ]
 }
