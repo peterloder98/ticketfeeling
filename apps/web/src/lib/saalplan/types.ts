@@ -1,13 +1,24 @@
+import {
+  countGeometricSeats,
+  maxAisleWidthSumCm,
+  maxSeatNumberInBlock,
+  parseSeatBlockRowDef,
+  type SeatBlockRowDef,
+} from "@/lib/saalplan/seat-structure";
+
 export type VenuePlanObjectType =
   | "stage"
   | "seat_block"
   | "standing_area"
+  | "foh"
   | "rect"
   | "ellipse"
   | "text";
 
 /** Rough orientation only — not a legal capacity certificate. */
 export type StandingMode = "standing" | "standing_tables";
+
+export type { SeatBlockRowDef, PlanSeatType, RowAisle } from "@/lib/saalplan/seat-structure";
 
 export type VenuePlanObject = {
   id: string;
@@ -31,6 +42,11 @@ export type VenuePlanObject = {
    * Default true for backwards compatibility.
    */
   numberedSeats?: boolean;
+  /**
+   * seat_block: per-row segments, aisles, removed seats, seat types.
+   * Missing → legacy single segment 1..seatsPerRow per row.
+   */
+  rowDefs?: SeatBlockRowDef[];
   /**
    * seat_block: legacy named category slot keys (VenuePlan.categorySlots).
    * Geometry editor no longer paints these — pricing is assigned on the event.
@@ -103,19 +119,35 @@ export function isNumberedSeatBlock(o: VenuePlanObject) {
   return o.type === "seat_block" && o.numberedSeats !== false;
 }
 
+export function isFohObject(o: VenuePlanObject) {
+  return o.type === "foh";
+}
+
 export function seatCountOfObject(o: VenuePlanObject): number {
   if (!isNumberedSeatBlock(o)) return 0;
-  const rows = Math.max(0, Math.round(o.rows ?? 0));
-  const cols = Math.max(0, Math.round(o.seatsPerRow ?? 0));
-  return rows * cols;
+  return countGeometricSeats(o);
 }
 
 /** Visual seat dots even for free-choice blocks (not counted as reserved capacity). */
 export function visualSeatCountOfObject(o: VenuePlanObject): number {
   if (o.type !== "seat_block") return 0;
-  const rows = Math.max(0, Math.round(o.rows ?? 0));
-  const cols = Math.max(0, Math.round(o.seatsPerRow ?? 0));
-  return rows * cols;
+  if (o.numberedSeats === false) {
+    const rows = Math.max(0, Math.round(o.rows ?? 0));
+    const cols = Math.max(0, Math.round(o.seatsPerRow ?? 0));
+    return rows * cols;
+  }
+  return countGeometricSeats(o);
+}
+
+/** Max seat number (for uniform fallback grid); aisles may make physical width larger. */
+export function seatBlockGridCols(o: VenuePlanObject): number {
+  if (o.type !== "seat_block") return 0;
+  return maxSeatNumberInBlock(o);
+}
+
+export function seatBlockAisleExtraCm(o: VenuePlanObject): number {
+  if (o.type !== "seat_block") return 0;
+  return maxAisleWidthSumCm(o);
 }
 
 export function planSeatCapacity(objects: VenuePlanObject[]): number {
@@ -142,6 +174,7 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
       type !== "stage" &&
       type !== "seat_block" &&
       type !== "standing_area" &&
+      type !== "foh" &&
       type !== "rect" &&
       type !== "ellipse" &&
       type !== "text"
@@ -166,6 +199,12 @@ export function parseVenuePlanObjects(raw: unknown): VenuePlanObject[] {
       obj.rows = Math.max(1, Math.round(Number(o.rows) || 1));
       obj.seatsPerRow = Math.max(1, Math.round(Number(o.seatsPerRow) || 1));
       obj.numberedSeats = o.numberedSeats === false ? false : true;
+      if (Array.isArray(o.rowDefs)) {
+        const rowDefs = o.rowDefs
+          .map(parseSeatBlockRowDef)
+          .filter((d): d is SeatBlockRowDef => Boolean(d));
+        if (rowDefs.length) obj.rowDefs = rowDefs;
+      }
       if (typeof o.categoryKey === "string" && o.categoryKey.trim()) {
         obj.categoryKey = o.categoryKey.trim();
       } else if (o.categoryKey === null) {
@@ -241,6 +280,8 @@ export function objectTypeLabel(type: VenuePlanObjectType): string {
       return "Sitzblock";
     case "standing_area":
       return "Stehbereich";
+    case "foh":
+      return "FOH / Technik";
     case "rect":
       return "Rechteck";
     case "ellipse":

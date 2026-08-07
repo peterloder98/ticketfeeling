@@ -717,6 +717,14 @@ model Event {
   scheduleChangedAt DateTime? @map("schedule_changed_at")
   /// Block/row defaults for seat category + lock (applied on rematerialize)
   seatingLayoutConfig Json @default("{}") @map("seating_layout_config")
+  /// Sitzplatzoptimierung: contiguous Bestplatz preference
+  seatOptPreferContiguous Boolean @default(true) @map("seat_opt_prefer_contiguous")
+  /// Sitzplatzoptimierung: block creating new singleton gaps
+  seatOptPreventNewSingletons Boolean @default(true) @map("seat_opt_prevent_new_singletons")
+  /// Sitzplatzoptimierung: remnant-aware scoring
+  seatOptIntelligentRemnants Boolean @default(true) @map("seat_opt_intelligent_remnants")
+  /// Relax hard gap rule at/above this occupancy % (sellable seats only)
+  seatOptGapRelaxOccupancyPercent Int @default(90) @map("seat_opt_gap_relax_occupancy_percent")
   /// Optional self-serve accessibility / reduced fare (trust basis)
   accessibilityDiscountEnabled Boolean @default(false) @map("accessibility_discount_enabled")
   accessibilityDiscountLabel   String  @default("Rollstuhl / Ermäßigt") @map("accessibility_discount_label")
@@ -809,6 +817,14 @@ model EventSeat {
   categoryId     String?   @map("category_id") @db.Uuid
   /// When true, seat is withheld from sale until unlocked (gradual release)
   locked         Boolean   @default(false)
+  /// Segment within row (aisles/removed split rows). Adjacency is within segment only.
+  segmentIndex   Int       @default(0) @map("segment_index")
+  /// 0-based order within segment — neighbors differ by 1
+  positionInSegment Int    @default(0) @map("position_in_segment")
+  /// standard | wheelchair | companion
+  seatType       String    @default("standard") @map("seat_type")
+  /// Soft link to wheelchair seatKey for companion seats (plan-prepared)
+  companionOfSeatKey String? @map("companion_of_seat_key")
   holdExpiresAt  DateTime? @map("hold_expires_at")
   cartItemId     String?   @map("cart_item_id") @db.Uuid
   ticketId       String?   @unique @map("ticket_id") @db.Uuid

@@ -186,6 +186,10 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     sepaMinDaysBeforeEvent: event.sepaMinDaysBeforeEvent,
     coverImageUrl: event.coverImageUrl,
     scheduleChangedAt: event.scheduleChangedAt,
+    seatOptPreferContiguous: event.seatOptPreferContiguous,
+    seatOptPreventNewSingletons: event.seatOptPreventNewSingletons,
+    seatOptIntelligentRemnants: event.seatOptIntelligentRemnants,
+    seatOptGapRelaxOccupancyPercent: event.seatOptGapRelaxOccupancyPercent,
   };
 
   const seatingCategoriesRows: EventCategoryRow[] = event.ticketCategories.map((c) => ({

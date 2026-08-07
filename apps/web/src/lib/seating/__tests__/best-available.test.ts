@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  assignCompanionSeats,
   pickBestAvailablePairs,
   pickBestAvailableSeats,
+  assignCompanionSeats,
 } from "@/lib/seating/best-available";
 
 function seat(
@@ -22,6 +22,8 @@ function seat(
     rowLabel: String(row),
     seatNumber: String(index),
     status,
+    segmentIndex: 0,
+    positionInSegment: index - 1,
   };
 }
 
@@ -69,6 +71,25 @@ describe("assignCompanionSeats", () => {
   it("fails when no neighbor is free", () => {
     const wc = [seat("w", "A", 3, 5)];
     const pool = [seat("w", "A", 3, 5), seat("x", "A", 3, 8)];
+    expect(assignCompanionSeats(wc, pool)).toBeNull();
+  });
+
+  it("does not assign companion across segment aisle", () => {
+    const wc = [
+      {
+        ...seat("w", "A", 1, 3),
+        segmentIndex: 0,
+        positionInSegment: 2,
+      },
+    ];
+    const pool = [
+      wc[0]!,
+      {
+        ...seat("c", "A", 1, 4),
+        segmentIndex: 1,
+        positionInSegment: 0,
+      },
+    ];
     expect(assignCompanionSeats(wc, pool)).toBeNull();
   });
 });

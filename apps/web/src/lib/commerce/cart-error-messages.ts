@@ -18,6 +18,8 @@ export function cartErrorMessage(
       return "Leider nicht mehr so viele Tickets frei.";
     case "SEATS_UNAVAILABLE":
       return "Diese Plätze sind gerade nicht mehr frei — bitte neu wählen.";
+    case "CREATES_SINGLETON_GAP":
+      return "Deine Auswahl würde einen einzelnen freien Platz hinterlassen. Bitte wähle nach Möglichkeit direkt angrenzende Plätze.";
     case "COMPANION_SEAT_UNAVAILABLE":
       return "Neben dem gewählten Rollstuhlplatz ist kein Begleitplatz frei. Bitte anderen Platz wählen.";
     case "SEATS_REQUIRED":

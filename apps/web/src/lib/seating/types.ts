@@ -11,6 +11,9 @@ export type PublicSeat = {
   seatNumber: string;
   categoryId: string | null;
   locked: boolean;
+  segmentIndex?: number;
+  positionInSegment?: number;
+  seatType?: "standard" | "wheelchair" | "companion";
   /**
    * available — pickable
    * held_by_you — in this cart (mint)
@@ -19,6 +22,20 @@ export type PublicSeat = {
    * locked — withheld from sale
    */
   status: "available" | "taken" | "held" | "held_by_you" | "locked";
+};
+
+export type PublicRowAisle = {
+  afterSeatNumber: number;
+  widthCm: number;
+};
+
+export type PublicRowLayout = {
+  rowIndex: number;
+  rowLabel: string;
+  seatCount: number;
+  aisles: PublicRowAisle[];
+  removedSeatNumbers: number[];
+  segments: { segmentIndex: number; seatNumbers: number[] }[];
 };
 
 export type PublicSeatBlock = {
@@ -34,6 +51,18 @@ export type PublicSeatBlock = {
   /** false = free-choice zone (no reservable seats) */
   numberedSeats: boolean;
   seats: PublicSeat[];
+  /** Segment / aisle layout for correct adjacency rendering */
+  rowLayouts?: PublicRowLayout[];
+};
+
+export type PublicFohArea = {
+  objectId: string;
+  label: string;
+  xCm: number;
+  yCm: number;
+  widthCm: number;
+  heightCm: number;
+  rotationDeg: number;
 };
 
 export type SeatMapCategoryLegend = {
@@ -84,6 +113,8 @@ export type SeatMapPayload = {
    * not rendered as pickable seat dots on the saalplan.
    */
   standingSeats: PublicSeat[];
+  /** Non-sellable FOH / Technik zones */
+  fohAreas?: PublicFohArea[];
   categories: SeatMapCategoryLegend[];
   availableCount: number;
 };

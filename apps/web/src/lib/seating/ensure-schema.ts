@@ -11,11 +11,20 @@ import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
  */
 const SEATING_SCHEMA_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seating_layout_config" JSONB NOT NULL DEFAULT '{}'`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_prefer_contiguous" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_prevent_new_singletons" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_intelligent_remnants" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_gap_relax_occupancy_percent" INTEGER NOT NULL DEFAULT 90`,
   `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "category_id" UUID`,
   `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "locked" BOOLEAN NOT NULL DEFAULT false`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "segment_index" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "position_in_segment" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "seat_type" TEXT NOT NULL DEFAULT 'standard'`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "companion_of_seat_key" TEXT`,
   `ALTER TABLE "venue_plans" ADD COLUMN IF NOT EXISTS "category_slots" JSONB NOT NULL DEFAULT '[]'`,
   `CREATE INDEX IF NOT EXISTS "event_seats_event_id_category_id_status_idx" ON "event_seats"("event_id", "category_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "event_seats_event_id_locked_status_idx" ON "event_seats"("event_id", "locked", "status")`,
+  `CREATE INDEX IF NOT EXISTS "event_seats_event_id_segment_idx" ON "event_seats"("event_id", "block_object_id", "row_index", "segment_index")`,
 ];
 
 const SEATING_FK_SQL = `
@@ -47,8 +56,10 @@ async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
            WHERE table_schema = 'public'
              AND (
                (table_name = 'event_seats' AND column_name = 'category_id')
+               OR (table_name = 'event_seats' AND column_name = 'segment_index')
                OR (table_name = 'venue_plans' AND column_name = 'category_slots')
                OR (table_name = 'events' AND column_name = 'seating_layout_config')
+               OR (table_name = 'events' AND column_name = 'seat_opt_prefer_contiguous')
              )`,
         )
       ).map((r) => `${r.table_name}.${r.column_name}`),
@@ -56,7 +67,9 @@ async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
     return (
       present.has("event_seats.category_id") &&
       present.has("venue_plans.category_slots") &&
-      present.has("events.seating_layout_config")
+      present.has("events.seating_layout_config") &&
+      present.has("event_seats.segment_index") &&
+      present.has("events.seat_opt_prefer_contiguous")
     );
   } catch {
     return false;

@@ -111,6 +111,10 @@ export function EventEditForm({
     sepaMinDaysBeforeEvent: number | null;
     coverImageUrl: string | null;
     scheduleChangedAt?: Date | null;
+    seatOptPreferContiguous?: boolean;
+    seatOptPreventNewSingletons?: boolean;
+    seatOptIntelligentRemnants?: boolean;
+    seatOptGapRelaxOccupancyPercent?: number;
   };
   locations: LocationOpt[];
   planOptions: PlanOpt[];
@@ -375,6 +379,12 @@ export function EventEditForm({
           initialVenuePlanId={event.venuePlanId ?? ""}
           initialSeatingBookingMode={event.seatingBookingMode}
           eventId={event.id}
+          initialSeatOpt={{
+            preferContiguous: event.seatOptPreferContiguous ?? true,
+            preventNewSingletonGaps: event.seatOptPreventNewSingletons ?? true,
+            intelligentRemnantOptimization: event.seatOptIntelligentRemnants ?? true,
+            gapRuleRelaxOccupancyPercent: event.seatOptGapRelaxOccupancyPercent ?? 90,
+          }}
         />
         {venuePlan ? (
           <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">

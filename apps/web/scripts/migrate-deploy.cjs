@@ -267,6 +267,16 @@ const FALLBACK_STATEMENTS = [
   `CREATE UNIQUE INDEX IF NOT EXISTS "staff_invites_token_hash_key" ON "staff_invites"("token_hash")`,
   `CREATE INDEX IF NOT EXISTS "staff_invites_organization_id_status_idx" ON "staff_invites"("organization_id", "status")`,
   `CREATE INDEX IF NOT EXISTS "staff_invites_email_normalized_idx" ON "staff_invites"("email_normalized")`,
+  // Seat optimization + segment adjacency (migration 20260807190000)
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_prefer_contiguous" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_prevent_new_singletons" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_intelligent_remnants" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "seat_opt_gap_relax_occupancy_percent" INTEGER NOT NULL DEFAULT 90`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "segment_index" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "position_in_segment" INTEGER NOT NULL DEFAULT 0`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "seat_type" TEXT NOT NULL DEFAULT 'standard'`,
+  `ALTER TABLE "event_seats" ADD COLUMN IF NOT EXISTS "companion_of_seat_key" TEXT`,
+  `CREATE INDEX IF NOT EXISTS "event_seats_event_id_segment_idx" ON "event_seats"("event_id", "block_object_id", "row_index", "segment_index")`,
 ];
 
 function withTimeout(promise, ms, label) {

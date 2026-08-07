@@ -228,6 +228,7 @@ export async function createBoxOfficeSale(input: {
             seatingBookingMode: event.seatingBookingMode,
             seatingMode,
             holdExpiresAt: seatHoldExpiresAt,
+            seatOpt: event,
             items: resolved.map(({ item, category }) => ({
               categoryId: category.id,
               quantity: item.quantity,
