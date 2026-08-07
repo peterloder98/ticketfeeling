@@ -286,6 +286,15 @@ function withTimeout(promise, ms, label) {
   });
 }
 
+function isLocalDatabaseUrl(url) {
+  try {
+    const host = new URL(url).hostname;
+    return host === "localhost" || host === "127.0.0.1" || host === "::1";
+  } catch {
+    return /@localhost(?::\d+)?\//i.test(url) || /@127\.0\.0\.1(?::\d+)?\//i.test(url);
+  }
+}
+
 async function applyFallbackSchema() {
   const url =
     process.env.DIRECT_URL ||
@@ -295,6 +304,14 @@ async function applyFallbackSchema() {
 
   if (!url) {
     console.warn("[migrate-deploy] no DATABASE_URL — skipping schema patch");
+    return;
+  }
+
+  // CLI deploys can accidentally ship a local .env; Vercel project env must be real Postgres.
+  if (process.env.VERCEL && isLocalDatabaseUrl(url)) {
+    console.warn(
+      "[migrate-deploy] DATABASE_URL points at localhost on Vercel — skipping schema patch. Set Production DATABASE_URL on the ticketfeeling-web project (not a duplicate/local URL).",
+    );
     return;
   }
 

@@ -8,6 +8,7 @@ import { Calendar, MapPin } from "lucide-react";
 import { buildPublicListingCards } from "@/lib/commerce/public-listings";
 import { listingCardsToEventCardData } from "@/lib/commerce/listing-card-data";
 import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
+import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 /** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
 export const dynamic = "force-dynamic";
@@ -100,7 +101,12 @@ export default async function EmbedShopPage() {
                         </p>
                       ) : null}
                       {card.priceNote ? (
-                        <p className="text-[11px] text-[var(--tf-text-secondary)]">{card.priceNote}</p>
+                        <FeeSurchargeNote
+                          as="p"
+                          note={card.priceNote}
+                          feePercentageBasisPoints={feeConfig.percentageBasisPoints}
+                          textClassName="text-[11px] text-[var(--tf-text-secondary)]"
+                        />
                       ) : null}
                       {card.showRemainingAvailability && remaining >= 0 ? (
                         <p className="text-[11px] text-[var(--tf-text-secondary)]">

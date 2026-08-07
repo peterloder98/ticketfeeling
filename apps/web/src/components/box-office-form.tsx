@@ -21,6 +21,7 @@ import {
 } from "@/lib/seating/availability";
 import { applyDiscountOff } from "@/lib/commerce/event-pricing";
 import { CampaignPriceDisplay } from "@/components/campaign-price-display";
+import { FeeInfoIconButton, FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 type Category = {
   id: string;
@@ -687,9 +688,16 @@ export function BoxOfficeForm({
                       />
                       <p className="text-xs text-[var(--tf-text-secondary)]">
                         {soldOut ? "Ausverkauft" : `Verfügbar: ${available}`}
-                        {feeConfig.enabled
-                          ? ` · zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`
-                          : ""}
+                        {feeConfig.enabled ? (
+                          <>
+                            {" · "}
+                            <FeeSurchargeNote
+                              note={`zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`}
+                              feePercentageBasisPoints={feeConfig.percentageBasisPoints}
+                              textClassName="text-xs text-[var(--tf-text-secondary)]"
+                            />
+                          </>
+                        ) : null}
                         {seatingChoice === "seat_map" &&
                         category.needsSeats &&
                         category.categoryKind !== "standing" &&
@@ -805,9 +813,15 @@ export function BoxOfficeForm({
             </div>
             {feeGrossCents > 0 ? (
               <div className="mt-1 flex justify-between text-sm text-[var(--tf-text-secondary)]">
-                <span>
-                  {feeConfig.displayName} (
-                  {formatFeePercentageLabel(feeConfig.percentageBasisPoints)})
+                <span className="inline-flex items-center gap-1">
+                  <span>
+                    {feeConfig.displayName} (
+                    {formatFeePercentageLabel(feeConfig.percentageBasisPoints)})
+                  </span>
+                  <FeeInfoIconButton
+                    feePercentageBasisPoints={feeConfig.percentageBasisPoints}
+                    className="-m-0.5 p-0.5"
+                  />
                 </span>
                 <span className="tabular-nums">{formatEuroFromCents(feeGrossCents)}</span>
               </div>
@@ -1002,7 +1016,13 @@ export function BoxOfficeForm({
             ) : null}
             {feeGrossCents > 0 ? (
               <div className="mt-1 flex justify-between gap-3 border-t border-[var(--tf-line)] pt-2 text-[var(--tf-text-secondary)]">
-                <span>{feeConfig.displayName}</span>
+                <span className="inline-flex items-center gap-1">
+                  <span>{feeConfig.displayName}</span>
+                  <FeeInfoIconButton
+                    feePercentageBasisPoints={feeConfig.percentageBasisPoints}
+                    className="-m-0.5 p-0.5"
+                  />
+                </span>
                 <span className="tabular-nums">{formatEuroFromCents(feeGrossCents)}</span>
               </div>
             ) : null}

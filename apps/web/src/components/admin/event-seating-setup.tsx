@@ -12,13 +12,6 @@ import {
 } from "@/components/admin/event-seating-assignment-panel";
 import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity";
 
-type Template = {
-  id: string;
-  name: string;
-  priceGrossCents: number;
-  capacity: number;
-};
-
 function toAssignmentCategories(rows: EventCategoryRow[]): AssignmentCategory[] {
   return rows.map((c) => ({
     id: c.id,
@@ -61,14 +54,12 @@ function toEventCategoryRow(created: CreatedEventCategory): EventCategoryRow {
 export function EventSeatingSetup({
   eventId,
   initialCategories,
-  templates,
   canWrite,
   categoriesCreateLocked = false,
   seatingEnabled = false,
 }: {
   eventId: string;
   initialCategories: EventCategoryRow[];
-  templates: Template[];
   canWrite: boolean;
   /** After first sold/held ticket — no new categories. */
   categoriesCreateLocked?: boolean;
@@ -162,7 +153,6 @@ export function EventSeatingSetup({
         categories={categories}
         onCategoriesChange={setCategories}
         onCategorySaved={onCategorySaved}
-        templates={templates}
         canWrite={canWrite}
         categoriesCreateLocked={categoriesCreateLocked}
         seatingEnabled={seatingEnabled}

@@ -94,13 +94,6 @@ function CategoryColorField({
   );
 }
 
-type Template = {
-  id: string;
-  name: string;
-  priceGrossCents: number;
-  capacity: number;
-};
-
 function CategoryKindFields({
   defaultKind = "standard",
   defaultCompanionFree = false,
@@ -261,7 +254,6 @@ export function EventCategoriesPanel({
   categories: initialCategories,
   onCategoriesChange,
   onCategorySaved,
-  templates,
   canWrite,
   categoriesCreateLocked = false,
   seatingEnabled = false,
@@ -272,7 +264,6 @@ export function EventCategoriesPanel({
   onCategoriesChange?: Dispatch<SetStateAction<Category[]>>;
   /** After successful save — e.g. reload standing EventSeat units. */
   onCategorySaved?: (category: Category) => void;
-  templates: Template[];
   canWrite: boolean;
   /** True after first sold/held ticket — no new categories allowed */
   categoriesCreateLocked?: boolean;
@@ -374,44 +365,6 @@ export function EventCategoriesPanel({
       }
       setCategories((prev) => prev.filter((c) => c.id !== categoryId));
       setMessage("Kategorie gelöscht.");
-      router.refresh();
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function applyTemplate(templateId: string) {
-    if (categoriesCreateLocked) {
-      setError("Nach erstem Ticketverkauf dürfen keine neuen Kategorien angelegt werden.");
-      return;
-    }
-    setSavingId("template");
-    setError(null);
-    try {
-      const tpl = templates.find((t) => t.id === templateId);
-      if (!tpl) return;
-      const response = await fetch("/api/v1/admin/events/categories", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          eventId,
-          name: tpl.name,
-          priceEuro: tpl.priceGrossCents / 100,
-          capacity: tpl.capacity,
-          maxPerOrder: 10,
-        }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        setError(
-          data?.error?.code === "CATEGORIES_LOCKED"
-            ? "Nach erstem Ticketverkauf keine neuen Kategorien."
-            : (data?.error?.code ?? "Vorlage fehlgeschlagen"),
-        );
-        return;
-      }
-      setCategories((prev) => [...prev, data.category as Category]);
-      setMessage(`Vorlage „${tpl.name}“ übernommen.`);
       router.refresh();
     } finally {
       setSavingId(null);
@@ -579,60 +532,34 @@ export function EventCategoriesPanel({
       </div>
 
       {canWrite && !categoriesCreateLocked ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <form
-            key={newFormKey}
-            className="tf-card grid gap-3 text-sm"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void saveCategory(e.currentTarget);
-            }}
-          >
-            <h3 className="font-semibold text-[var(--tf-navy)]">Kategorie hinzufügen</h3>
-            <label className="grid gap-1">
-              <span>Name</span>
-              <input
-                name="name"
-                className="tf-input"
-                required
-                placeholder="z. B. Kategorie 1, VIP, Stehplatz…"
-              />
-            </label>
-            <CategoryColorField key={`color-${newFormKey}`} compact />
-            <NewCategoryCapacityFields key={`cap-${newFormKey}`} seatingEnabled={seatingEnabled} />
-            <label className="grid gap-1">
-              <span>Max. / Bestellung</span>
-              <input name="maxPerOrder" type="number" className="tf-input" defaultValue="10" required />
-            </label>
-            <button type="submit" className="tf-btn tf-btn-primary w-fit" disabled={savingId === "new"}>
-              {savingId === "new" ? "…" : "Anlegen"}
-            </button>
-          </form>
-
-          {templates.length > 0 ? (
-            <div className="tf-card grid gap-3 text-sm">
-              <h3 className="font-semibold text-[var(--tf-navy)]">Aus Vorlage übernehmen</h3>
-              <select
-                className="tf-input"
-                defaultValue=""
-                onChange={(e) => {
-                  const id = e.target.value;
-                  if (id) void applyTemplate(id);
-                  e.target.value = "";
-                }}
-              >
-                <option value="" disabled>
-                  — wählen —
-                </option>
-                {templates.map((tpl) => (
-                  <option key={tpl.id} value={tpl.id}>
-                    {tpl.name} · {formatEuroFromCents(tpl.priceGrossCents)} · {tpl.capacity} Plätze
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-        </div>
+        <form
+          key={newFormKey}
+          className="tf-card grid max-w-xl gap-3 text-sm"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void saveCategory(e.currentTarget);
+          }}
+        >
+          <h3 className="font-semibold text-[var(--tf-navy)]">Kategorie hinzufügen</h3>
+          <label className="grid gap-1">
+            <span>Name</span>
+            <input
+              name="name"
+              className="tf-input"
+              required
+              placeholder="z. B. Kategorie 1, VIP, Stehplatz…"
+            />
+          </label>
+          <CategoryColorField key={`color-${newFormKey}`} compact />
+          <NewCategoryCapacityFields key={`cap-${newFormKey}`} seatingEnabled={seatingEnabled} />
+          <label className="grid gap-1">
+            <span>Max. / Bestellung</span>
+            <input name="maxPerOrder" type="number" className="tf-input" defaultValue="10" required />
+          </label>
+          <button type="submit" className="tf-btn tf-btn-primary w-fit" disabled={savingId === "new"}>
+            {savingId === "new" ? "…" : "Anlegen"}
+          </button>
+        </form>
       ) : null}
 
       {canWrite && categoriesCreateLocked ? (

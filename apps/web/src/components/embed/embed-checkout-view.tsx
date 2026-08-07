@@ -7,7 +7,7 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
-import { FeeInfoDialog } from "@/components/fee-info-dialog";
+import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
 import { useCart } from "@/components/cart-context";
 import type { CheckoutPaymentOption } from "@/lib/commerce/payment-fees";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
@@ -171,7 +171,16 @@ export function EmbedCheckoutView() {
           {(data.summary?.feeGrossCents ?? 0) > 0 ? (
             <div className="space-y-1.5">
               <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
-                <span>{data.summary?.feeLabel ?? "Verwaltungsgebühr"}</span>
+                <span className="inline-flex items-center gap-1">
+                  <span>{data.summary?.feeLabel ?? "Verwaltungsgebühr"}</span>
+                  <FeeInfoIconButton
+                    feePercentageBasisPoints={
+                      data.summary?.administrationFeePercentageBasisPoints ??
+                      DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
+                    }
+                    className="-m-0.5 p-0.5"
+                  />
+                </span>
                 <span className="tabular-nums">
                   {formatEuroFromCents(data.summary!.feeGrossCents!)}
                 </span>

@@ -19,7 +19,7 @@ import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
-import { FeeInfoDialog } from "@/components/fee-info-dialog";
+import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
 import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 
@@ -220,10 +220,16 @@ export default async function CheckoutPage() {
               {summary.feeGrossCents > 0 ? (
                 <div className="space-y-1">
                   <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                    <span>
-                      {summary.feeLabel.includes("%")
-                        ? summary.feeLabel
-                        : `${summary.feeLabel}${feePercentLabel ? ` ${feePercentLabel} %` : ""}`}
+                    <span className="inline-flex items-center gap-1">
+                      <span>
+                        {summary.feeLabel.includes("%")
+                          ? summary.feeLabel
+                          : `${summary.feeLabel}${feePercentLabel ? ` ${feePercentLabel} %` : ""}`}
+                      </span>
+                      <FeeInfoIconButton
+                        feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
+                        className="-m-0.5 p-0.5"
+                      />
                     </span>
                     <span className="tabular-nums">
                       {formatEuroFromCents(summary.feeGrossCents)}

@@ -8,7 +8,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { CartRemoveButton } from "@/components/cart-remove-button";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
-import { FeeInfoDialog } from "@/components/fee-info-dialog";
+import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Warenkorb" };
@@ -104,8 +104,14 @@ export default async function CartPage() {
             <p>Tickets: {formatEuroFromCents(summary.ticketsGrossCents)}</p>
             {summary.feeGrossCents > 0 ? (
               <div className="space-y-1">
-                <p className="text-[var(--muted)]">
-                  {summary.feeLabel}: {formatEuroFromCents(summary.feeGrossCents)}
+                <p className="text-[var(--muted)] inline-flex items-center gap-1">
+                  <span>
+                    {summary.feeLabel}: {formatEuroFromCents(summary.feeGrossCents)}
+                  </span>
+                  <FeeInfoIconButton
+                    feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
+                    className="-m-0.5 p-0.5"
+                  />
                 </p>
                 <FeeInfoDialog
                   feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}

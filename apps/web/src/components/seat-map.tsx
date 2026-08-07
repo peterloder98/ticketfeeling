@@ -144,6 +144,9 @@ export function SeatMap({
       }
     };
     requestAnimationFrame(frame);
+    // Re-center after layout (embed / flex) settles.
+    const t = window.setTimeout(frame, 50);
+    return () => window.clearTimeout(t);
     // toY/toS are stable for this render's scale; zoom + plan size drive reframing.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: reframe on zoom/plan geometry
   }, [zoom, map.widthCm, map.depthCm, map.stage?.xCm, map.stage?.yCm, map.stage?.heightCm, scale, offsetY]);
@@ -446,15 +449,16 @@ export function SeatMap({
           setTooltip(null);
         }}
       >
-        <svg
-          width={svgWidth}
-          height={svgHeight}
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="block h-auto max-w-full"
-          role="img"
-          aria-label={`Saalplan ${map.planName}`}
-          style={{ touchAction: "none" }}
-        >
+        <div className="flex min-w-full justify-center">
+          <svg
+            width={svgWidth}
+            height={svgHeight}
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            className="mx-auto block h-auto max-w-full shrink-0"
+            role="img"
+            aria-label={`Saalplan ${map.planName}`}
+            style={{ touchAction: "none" }}
+          >
           <defs>
             <pattern
               id="tf-sold-hatch"
@@ -769,6 +773,7 @@ export function SeatMap({
             );
           })}
         </svg>
+        </div>
       </div>
 
       {tooltipNode}

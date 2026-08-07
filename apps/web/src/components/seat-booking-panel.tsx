@@ -27,6 +27,7 @@ import {
 } from "@/lib/seating/availability";
 import { applyDiscountOff } from "@/lib/commerce/event-pricing";
 import { CampaignPriceDisplay } from "@/components/campaign-price-display";
+import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 type Category = {
   id: string;
@@ -77,6 +78,17 @@ function scrollToId(id: string) {
     return;
   }
   el.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+/** Wait for layout after mode switch, then scroll (embed scroll container aware). */
+function scrollToIdAfterLayout(id: string) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      scrollToId(id);
+      // Second pass after map unmount / reflow settles (esp. iframe embed).
+      window.setTimeout(() => scrollToId(id), 80);
+    });
+  });
 }
 
 function isEmbedFrame(): boolean {
@@ -153,6 +165,7 @@ export function SeatBookingPanel({
   const [mapHostEl, setMapHostEl] = useState<HTMLElement | null>(null);
   const mapLoadSeq = useRef(0);
   const embedMapScrollDone = useRef(false);
+  const prevModeRef = useRef(mode);
   const [accessibilitySelected, setAccessibilitySelected] = useState(false);
   const [cardQty, setCardQty] = useState<Record<string, number>>(() => {
     const defaultQty = seatedCategories.length > 0 ? 0 : 1;
@@ -304,6 +317,15 @@ export function SeatBookingPanel({
       requestAnimationFrame(() => scrollToSaalplanOpen(mapHostId));
     });
   }, [showMap, map, mapHostId]);
+
+  // Saalplan → Bestplatz: scroll to Tickets heading (embed scroll container aware).
+  useEffect(() => {
+    const prev = prevModeRef.current;
+    prevModeRef.current = mode;
+    if (prev === "seat_map" && mode === "best_available") {
+      scrollToIdAfterLayout(cartScrollId);
+    }
+  }, [mode, cartScrollId]);
 
   function openSeatMap() {
     setMode("seat_map");
@@ -618,9 +640,6 @@ export function SeatBookingPanel({
                 type="button"
                 onClick={() => {
                   setMode("best_available");
-                  requestAnimationFrame(() => {
-                    requestAnimationFrame(() => scrollToId(cartScrollId));
-                  });
                 }}
                 className={`flex items-start gap-3 rounded-2xl border px-3 py-3 text-left text-sm transition ${
                   mode === "best_available"
@@ -724,7 +743,10 @@ export function SeatBookingPanel({
                   );
                 })}
                 {feeSurchargeNote ? (
-                  <span className="text-xs text-[var(--tf-text-secondary)]">{feeSurchargeNote}</span>
+                  <FeeSurchargeNote
+                    note={feeSurchargeNote}
+                    textClassName="text-xs text-[var(--tf-text-secondary)]"
+                  />
                 ) : null}
               </div>
 
@@ -767,7 +789,11 @@ export function SeatBookingPanel({
           ) : (
             <div className="space-y-2">
               {feeSurchargeNote ? (
-                <p className="text-xs text-[var(--tf-text-secondary)]">{feeSurchargeNote}</p>
+                <FeeSurchargeNote
+                  as="p"
+                  note={feeSurchargeNote}
+                  textClassName="text-xs text-[var(--tf-text-secondary)]"
+                />
               ) : null}
               {selectionLines.length > 0 ? (
                 <ul className="space-y-2 rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.06)] px-3 py-2 text-sm text-[var(--tf-navy)]">
@@ -1030,9 +1056,6 @@ export function SeatBookingPanel({
               className="tf-btn tf-btn-secondary w-full !min-h-10 text-sm"
               onClick={() => {
                 setMode("best_available");
-                requestAnimationFrame(() => {
-                  requestAnimationFrame(() => scrollToId(cartScrollId));
-                });
               }}
             >
               Zur Bestplatzbuchung

@@ -1,12 +1,166 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type MouseEvent, type ReactNode } from "react";
 import { Info, X } from "lucide-react";
 import {
+  DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS,
   PLATFORM_FEE_INFO_BULLETS,
   buildDefaultPlatformFeeCustomerDescription,
   buildPlatformFeeInfoClosing,
 } from "@/lib/commerce/platform-fee";
+
+function resolveFeeBps(feePercentageBasisPoints?: number, note?: string | null): number {
+  if (typeof feePercentageBasisPoints === "number" && feePercentageBasisPoints > 0) {
+    return feePercentageBasisPoints;
+  }
+  if (note) {
+    const m = note.match(/(\d+(?:[.,]\d+)?)\s*%/);
+    if (m) {
+      const pct = Number(m[1].replace(",", "."));
+      if (Number.isFinite(pct) && pct > 0) return Math.round(pct * 100);
+    }
+  }
+  return DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS;
+}
+
+function FeeInfoModal({
+  open,
+  onClose,
+  feePercentageBasisPoints,
+}: {
+  open: boolean;
+  onClose: () => void;
+  feePercentageBasisPoints: number;
+}) {
+  const titleId = useId();
+  const closing = buildPlatformFeeInfoClosing(feePercentageBasisPoints);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,39,71,0.45)] p-4"
+      role="presentation"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)] md:p-6"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          className="absolute right-3 top-3 rounded-lg p-1.5 text-[var(--tf-text-secondary)] hover:bg-[rgba(15,39,71,0.06)] hover:text-[var(--tf-navy)]"
+          aria-label="Schließen"
+          onClick={onClose}
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <h3 id={titleId} className="pr-10 text-lg font-semibold text-[var(--tf-navy)]">
+          Was beinhaltet die Verwaltungsgebühr?
+        </h3>
+        <p className="mt-2 text-sm leading-relaxed text-[var(--tf-text-secondary)]">
+          Die Verwaltungsgebühr deckt den sicheren Betrieb Ihres Ticketkaufs ab:
+        </p>
+        <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-[var(--tf-navy)]">
+          {PLATFORM_FEE_INFO_BULLETS.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+        <p className="mt-5 text-sm leading-relaxed text-[var(--tf-text-secondary)]">{closing}</p>
+        <button type="button" className="tf-btn tf-btn-primary mt-5 w-full" onClick={onClose}>
+          Verstanden
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Compact teal info icon that opens the Verwaltungsgebühr explanation dialog. */
+export function FeeInfoIconButton({
+  feePercentageBasisPoints,
+  note,
+  className = "",
+  iconClassName = "h-3.5 w-3.5",
+}: {
+  feePercentageBasisPoints?: number;
+  /** Used to infer % when basis points are not passed. */
+  note?: string | null;
+  className?: string;
+  iconClassName?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const bps = resolveFeeBps(feePercentageBasisPoints, note);
+
+  function openDialog(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpen(true);
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={openDialog}
+        className={`inline-flex shrink-0 items-center justify-center rounded-full text-[var(--tf-teal)] transition hover:bg-[rgba(20,184,166,0.12)] hover:text-[var(--tf-teal-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)] ${className}`}
+        aria-label="Was ist die Verwaltungsgebühr?"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+      >
+        <Info className={iconClassName} aria-hidden />
+      </button>
+      <FeeInfoModal open={open} onClose={() => setOpen(false)} feePercentageBasisPoints={bps} />
+    </>
+  );
+}
+
+/**
+ * Inline „zzgl. … Verwaltungsgebühr“ line with a clickable info icon.
+ * Use beside ticket prices, listing cards, and booking panels.
+ */
+export function FeeSurchargeNote({
+  note,
+  feePercentageBasisPoints,
+  className = "",
+  textClassName = "text-[11px] text-[var(--tf-text-secondary)]",
+  as: Tag = "span",
+}: {
+  note: string;
+  feePercentageBasisPoints?: number;
+  className?: string;
+  textClassName?: string;
+  as?: "span" | "p";
+}) {
+  if (!note.trim()) return null;
+  return (
+    <Tag className={`inline-flex items-center gap-1 ${className}`}>
+      <span className={textClassName}>{note}</span>
+      <FeeInfoIconButton
+        note={note}
+        feePercentageBasisPoints={feePercentageBasisPoints}
+        className="-m-0.5 p-0.5"
+      />
+    </Tag>
+  );
+}
 
 /**
  * Visible Verwaltungsgebühr explanation for buyers (cart / checkout / embed).
@@ -20,28 +174,12 @@ export function FeeInfoDialog({
   /** Optional customer-facing prose; falls back to the default explanation. */
   description?: string | null;
 }) {
-  const titleId = useId();
   const [open, setOpen] = useState(false);
   const bps = Math.max(0, feePercentageBasisPoints);
-  const closing = buildPlatformFeeInfoClosing(bps);
   const prose =
     typeof description === "string" && description.trim()
       ? description.trim()
-      : buildDefaultPlatformFeeCustomerDescription(bps || 400);
-
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [open]);
+      : buildDefaultPlatformFeeCustomerDescription(bps || DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS);
 
   return (
     <div className="rounded-xl border border-[rgba(20,184,166,0.28)] bg-[rgba(20,184,166,0.06)] px-3 py-2.5">
@@ -57,50 +195,29 @@ export function FeeInfoDialog({
         Was ist die Verwaltungsgebühr?
       </button>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,39,71,0.45)] p-4"
-          role="presentation"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)] md:p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              className="absolute right-3 top-3 rounded-lg p-1.5 text-[var(--tf-text-secondary)] hover:bg-[rgba(15,39,71,0.06)] hover:text-[var(--tf-navy)]"
-              aria-label="Schließen"
-              onClick={() => setOpen(false)}
-            >
-              <X className="h-5 w-5" />
-            </button>
-
-            <h3 id={titleId} className="pr-10 text-lg font-semibold text-[var(--tf-navy)]">
-              Was beinhaltet die Verwaltungsgebühr?
-            </h3>
-            <p className="mt-2 text-sm leading-relaxed text-[var(--tf-text-secondary)]">
-              Die Verwaltungsgebühr deckt den sicheren Betrieb Ihres Ticketkaufs ab:
-            </p>
-            <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-relaxed text-[var(--tf-navy)]">
-              {PLATFORM_FEE_INFO_BULLETS.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-            <p className="mt-5 text-sm leading-relaxed text-[var(--tf-text-secondary)]">{closing}</p>
-            <button
-              type="button"
-              className="tf-btn tf-btn-primary mt-5 w-full"
-              onClick={() => setOpen(false)}
-            >
-              Verstanden
-            </button>
-          </div>
-        </div>
-      ) : null}
+      <FeeInfoModal open={open} onClose={() => setOpen(false)} feePercentageBasisPoints={bps} />
     </div>
+  );
+}
+
+/** Optional helper when composing mixed fee + status lines. */
+export function FeeInfoIconBeside({
+  children,
+  feePercentageBasisPoints,
+  note,
+}: {
+  children: ReactNode;
+  feePercentageBasisPoints?: number;
+  note?: string | null;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      {children}
+      <FeeInfoIconButton
+        feePercentageBasisPoints={feePercentageBasisPoints}
+        note={note}
+        className="-m-0.5 p-0.5"
+      />
+    </span>
   );
 }

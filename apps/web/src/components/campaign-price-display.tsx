@@ -6,6 +6,7 @@ import {
   discountBadgeLabel,
   formatCampaignCountdown,
 } from "@/lib/commerce/campaign-price-ui";
+import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 export { discountBadgeLabel, formatCampaignCountdown };
 
@@ -17,6 +18,7 @@ type Props = {
   /** Campaign end (ISO) — countdown when ≤7 days left */
   validUntil?: string | null;
   feeNote?: string | null;
+  feePercentageBasisPoints?: number;
   size?: "sm" | "md" | "lg";
   className?: string;
   /** Inline row only (no promo under price) — e.g. seat selection summary */
@@ -35,6 +37,7 @@ export function CampaignPriceDisplay({
   promoLabel = null,
   validUntil = null,
   feeNote = null,
+  feePercentageBasisPoints,
   size = "md",
   className = "",
   inline = false,
@@ -85,8 +88,12 @@ export function CampaignPriceDisplay({
         >
           {formatEuroFromCents(unitCents)}
         </span>
-        {feeBesidePrice ? (
-          <span className="text-[11px] font-normal text-[var(--tf-text-secondary)]">{feeNote}</span>
+        {feeBesidePrice && feeNote ? (
+          <FeeSurchargeNote
+            note={feeNote}
+            feePercentageBasisPoints={feePercentageBasisPoints}
+            textClassName="text-[11px] font-normal text-[var(--tf-text-secondary)]"
+          />
         ) : null}
       </div>
       {!inline && promoLabel ? (
@@ -101,7 +108,13 @@ export function CampaignPriceDisplay({
         </p>
       ) : null}
       {!inline && feeNote && size === "sm" ? (
-        <p className="text-[10px] text-[var(--tf-text-secondary)]">{feeNote}</p>
+        <FeeSurchargeNote
+          as="p"
+          note={feeNote}
+          feePercentageBasisPoints={feePercentageBasisPoints}
+          className="mt-0.5"
+          textClassName="text-[10px] text-[var(--tf-text-secondary)]"
+        />
       ) : null}
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 export function MobilePurchaseBar({
   fromPriceLabel,
@@ -32,7 +33,11 @@ export function MobilePurchaseBar({
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--tf-navy)]">{fromPriceLabel}</p>
           {priceNote ? (
-            <p className="text-[11px] text-[var(--tf-text-secondary)]">{priceNote}</p>
+            <FeeSurchargeNote
+              as="p"
+              note={priceNote}
+              textClassName="text-[11px] text-[var(--tf-text-secondary)]"
+            />
           ) : null}
         </div>
         <a href={`#${targetId}`} className="tf-btn tf-btn-primary !min-h-11 !px-4 text-sm">

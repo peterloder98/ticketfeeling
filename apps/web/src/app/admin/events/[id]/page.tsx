@@ -201,11 +201,10 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   let report;
   let locations;
   let venuePlans;
-  let templates;
   let tours;
   let orgArtists;
   try {
-    [report, locations, venuePlans, templates, tours, orgArtists] = await Promise.all([
+    [report, locations, venuePlans, tours, orgArtists] = await Promise.all([
       getEventSalesReport(event.id),
       prisma.location.findMany({
         where: { organizationId: membership.organizationId },
@@ -224,13 +223,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         },
         orderBy: { name: "asc" },
       }),
-      typeof prisma.ticketCategoryTemplate?.findMany === "function"
-        ? prisma.ticketCategoryTemplate.findMany({
-            where: { organizationId: membership.organizationId },
-            orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-            select: { id: true, name: true, priceGrossCents: true, capacity: true },
-          })
-        : Promise.resolve([]),
       prisma.tour.findMany({
         where: { organizationId: membership.organizationId },
         select: { id: true, name: true },
@@ -572,7 +564,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       <EventSeatingSetup
         eventId={event.id}
         initialCategories={seatingCategoriesRows}
-        templates={templates}
         canWrite={canWrite}
         categoriesCreateLocked={categoriesCreateLocked}
         seatingEnabled={seatingEnabled}

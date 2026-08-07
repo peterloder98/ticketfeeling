@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 export type EventCardArtist = {
   name: string;
@@ -176,9 +177,12 @@ export function EventCard({ event }: { event: EventCardData }) {
               </span>
             ) : null}
             {event.priceNote ? (
-              <span className="mt-0.5 block text-[11px] text-[var(--tf-text-secondary)]">
-                {event.priceNote}
-              </span>
+              <FeeSurchargeNote
+                as="p"
+                note={event.priceNote}
+                className="mt-0.5"
+                textClassName="text-[11px] text-[var(--tf-text-secondary)]"
+              />
             ) : null}
           </div>
           <span className="tf-btn tf-btn-primary !min-h-9 !px-3 text-xs">{cta}</span>
