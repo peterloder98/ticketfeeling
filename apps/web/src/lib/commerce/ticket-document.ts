@@ -1,104 +1,264 @@
-import { prisma } from "@/lib/db";
-import { formatDeDateTime } from "@/lib/datetime-de";
-import { formatSellerAddress } from "@/lib/legal/seller";
-import { buildEventOrganizerIdentity } from "@/lib/legal/event-organizer";
-import { resolveTicketDoors } from "@/lib/commerce/ticket-doors";
 import { qrDataUrl } from "@/lib/qr-server";
+import {
+  loadTicketPresentation,
+  TF_GOLD,
+  TF_INK,
+  TF_LINE,
+  TF_MUTED,
+  TF_NAVY,
+  TF_SOFT,
+  TF_TAGLINE,
+  TF_TEAL,
+  type TicketPresentation,
+} from "@/lib/commerce/ticket-presentation";
 
-/** Server-generated printable HTML ticket (PDF engine can wrap this later). */
+/** Server-generated printable HTML ticket — same hierarchy as PDF / TicketFace. */
 export async function renderTicketHtml(ticketId: string) {
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: ticketId },
-    include: {
-      event: { include: { location: true } },
-      category: true,
-      holder: true,
-      qrTokens: { where: { status: "active" }, take: 1 },
-      organization: { include: { settings: true } },
-      order: true,
-    },
-  });
-  if (!ticket) throw new Error("TICKET_NOT_FOUND");
+  const data = await loadTicketPresentation(ticketId);
+  const qr = data.qrToken ? await qrDataUrl(data.qrToken, 280) : null;
+  return buildTicketHtmlDocument(data, qr);
+}
 
-  const organizer = buildEventOrganizerIdentity(
-    ticket.organization,
-    ticket.organization.settings,
-    ticket.event,
-  );
-  const doors = resolveTicketDoors(ticket.event, ticket.category);
-  const token = ticket.qrTokens[0]?.token ?? "";
-  const qr = token ? await qrDataUrl(token, 280) : null;
-  const startLabel = ticket.event.eventStartsAt
-    ? formatDeDateTime(ticket.event.eventStartsAt)
-    : "—";
+export function buildTicketHtmlDocument(
+  data: TicketPresentation,
+  qrDataUrlOrNull: string | null,
+): string {
+  const accent = data.isVip ? TF_GOLD : TF_TEAL;
+  const cover = data.coverAbsoluteUrl ?? data.coverUrl;
+
+  const metaRows = [
+    data.startLabel ? row("Beginn", data.startLabel) : "",
+    row("Location", data.locationShort),
+    row("Kategorie", data.categoryName, data.isVip ? accent : TF_NAVY),
+    row("Platz", data.placeLabel),
+    data.priceLabel ? row("Preis", data.priceLabel) : "",
+    data.holderName ? row("Inhaber", data.holderName) : "",
+  ]
+    .filter(Boolean)
+    .join("");
 
   return `<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <title>${escapeHtml(ticket.ticketNumber)}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeHtml(data.ticketNumber)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
-    body { font-family: Inter, system-ui, sans-serif; color: #0B1421; margin: 0; padding: 24px; background: #fff; }
-    .card { border: 1px solid #E5E7EB; border-radius: 12px; padding: 24px; max-width: 480px; }
-    .brand { letter-spacing: .18em; text-transform: uppercase; font-size: 11px; color: #0F2747; font-weight: 700; }
-    h1 { margin: 10px 0 8px; font-size: 24px; color: #0F2747; }
-    .doors { font-size: 20px; font-weight: 700; color: #0F2747; margin: 8px 0 2px; }
-    .doors-note { font-size: 12px; color: #64748B; margin-bottom: 12px; }
-    .meta { font-size: 14px; line-height: 1.55; }
-    .meta div { margin: 2px 0; }
-    .qr { margin-top: 20px; padding: 12px; background: #F8FAFC; border-radius: 12px; text-align: center; }
-    .qr img { width: 220px; height: 220px; }
-    .token { margin-top: 8px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 10px; color: #64748B; }
-    .seller { margin-top: 20px; font-size: 12px; color: #334155; }
-    .tf { margin-top: 8px; font-size: 10px; color: #94A3B8; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px 16px;
+      background: ${TF_SOFT};
+      color: ${TF_INK};
+      font-family: Inter, system-ui, sans-serif;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    .ticket {
+      max-width: 480px;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid ${TF_LINE};
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 12px 40px rgba(15, 39, 71, 0.08);
+    }
+    .top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: ${TF_NAVY};
+      color: #fff;
+      padding: 16px 22px;
+    }
+    .brand {
+      letter-spacing: .18em;
+      text-transform: uppercase;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: ${accent};
+    }
+    .accent { height: 4px; background: ${accent}; }
+    .body { padding: 24px 22px 28px; }
+    .cover {
+      width: 100%;
+      max-width: 444px;
+      aspect-ratio: 1 / 1;
+      margin: 0 auto 20px;
+      overflow: hidden;
+      background: ${TF_NAVY};
+    }
+    .cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .event {
+      text-align: center;
+      font-size: 26px;
+      line-height: 1.2;
+      font-weight: 700;
+      color: ${TF_NAVY};
+      margin: 0 0 8px;
+    }
+    .date {
+      text-align: center;
+      font-size: 16px;
+      font-weight: 500;
+      color: ${TF_NAVY};
+      margin: 0 0 16px;
+    }
+    .doors {
+      text-align: center;
+      font-size: 22px;
+      font-weight: 700;
+      color: ${data.isVip ? TF_GOLD : TF_NAVY};
+      margin: 0 0 4px;
+      letter-spacing: .02em;
+    }
+    .doors-note {
+      text-align: center;
+      font-size: 13px;
+      color: ${TF_MUTED};
+      margin: 0 0 18px;
+    }
+    .meta {
+      max-width: 360px;
+      margin: 0 auto 22px;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    .meta-row {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 8px;
+      margin: 6px 0;
+    }
+    .meta-label { color: ${TF_MUTED}; }
+    .meta-value { font-weight: 600; color: ${TF_NAVY}; }
+    .qr-box {
+      border: 1px solid ${TF_LINE};
+      background: ${TF_SOFT};
+      border-radius: 16px;
+      padding: 20px 16px;
+      text-align: center;
+    }
+    .qr-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: ${accent};
+      margin: 0 0 12px;
+    }
+    .qr-box img {
+      width: 240px;
+      height: 240px;
+      background: #fff;
+      padding: 10px;
+      border-radius: 12px;
+    }
+    .ticket-no {
+      margin-top: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      color: ${TF_NAVY};
+      letter-spacing: .04em;
+    }
+    .hint {
+      margin: 6px 0 0;
+      font-size: 12px;
+      color: ${TF_MUTED};
+    }
+    .foot {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid ${TF_LINE};
+      text-align: center;
+    }
+    .org {
+      font-size: 12px;
+      color: ${TF_MUTED};
+      margin: 0 0 8px;
+      line-height: 1.45;
+    }
+    .org strong { color: ${TF_NAVY}; font-weight: 600; }
+    .tf {
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .04em;
+      color: ${TF_MUTED};
+      margin: 0;
+    }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .ticket { box-shadow: none; border: none; border-radius: 0; max-width: none; }
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="brand">Ticketfeeling</div>
-    <h1>${escapeHtml(ticket.eventNameSnapshot)}</h1>
-    ${
-      doors.headline
-        ? `<div class="doors">${escapeHtml(doors.headline)}</div>${
-            doors.doorsNote
-              ? `<div class="doors-note">${escapeHtml(doors.doorsNote)}</div>`
-              : ""
-          }`
-        : ""
-    }
-    <div class="meta">
-      <div><strong>Beginn:</strong> ${escapeHtml(startLabel)}</div>
-      <div><strong>Location:</strong> ${escapeHtml(
-        ticket.event.location
-          ? `${ticket.event.location.name}, ${ticket.event.location.city ?? ""}`
-          : "—",
-      )}</div>
-      <div><strong>Kategorie:</strong> ${escapeHtml(ticket.categorySnapshot)}</div>
+  <div class="ticket">
+    <div class="top">
+      <div class="brand">Ticketfeeling</div>
+      <div class="badge">${data.isVip ? "VIP-Ticket" : "Einlassticket"}</div>
+    </div>
+    <div class="accent"></div>
+    <div class="body">
       ${
-        ticket.seatLabel
-          ? `<div><strong>Platz:</strong> ${escapeHtml(ticket.seatLabel)}</div>`
+        cover
+          ? `<div class="cover"><img src="${escapeAttr(cover)}" alt="" /></div>`
           : ""
       }
-      <div><strong>Ticketnr.:</strong> ${escapeHtml(ticket.ticketNumber)}</div>
-      <div><strong>Inhaber:</strong> ${escapeHtml(
-        `${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim(),
-      )}</div>
-      <div><strong>Bestellung:</strong> ${escapeHtml(ticket.order.orderNumber)}</div>
+      <h1 class="event">${escapeHtml(data.eventName)}</h1>
+      ${data.dateLabel ? `<p class="date">${escapeHtml(data.dateLabel)}</p>` : ""}
+      ${
+        data.doors.headline
+          ? `<p class="doors">${escapeHtml(data.doors.headline)}${
+              data.doors.timeLabel ? " Uhr" : ""
+            }</p>${
+              data.doors.doorsNote
+                ? `<p class="doors-note">${escapeHtml(data.doors.doorsNote)}</p>`
+                : `<div style="height:14px"></div>`
+            }`
+          : ""
+      }
+      <div class="meta">${metaRows}</div>
+      <div class="qr-box">
+        <p class="qr-label">QR-Code zum Einlass</p>
+        ${
+          qrDataUrlOrNull
+            ? `<img src="${qrDataUrlOrNull}" alt="QR-Code" />`
+            : `<p class="hint">Kein gültiger QR-Code</p>`
+        }
+        <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
+        <p class="hint">Am Einlass vorzeigen. Ausdruck oder Screenshot reicht.</p>
+      </div>
+      <div class="foot">
+        <p class="org">
+          <strong>Veranstalter:</strong>
+          ${escapeHtml(data.organizerDisplayName)}${
+            data.organizerAddress ? ` · ${escapeHtml(data.organizerAddress)}` : ""
+          }
+        </p>
+        <p class="tf">${escapeHtml(TF_TAGLINE)}</p>
+      </div>
     </div>
-    <div class="qr">
-      <strong>QR zum Einlass</strong><br/>
-      ${qr ? `<img src="${qr}" alt="QR-Code" />` : "kein Token"}
-      <div class="token">${escapeHtml(token)}</div>
-    </div>
-    <div class="seller">
-      Veranstalter: ${escapeHtml(organizer.displayName)}<br/>
-      ${escapeHtml(formatSellerAddress(organizer))}<br/>
-      ${escapeHtml(organizer.supportEmail ?? organizer.email ?? "")}
-    </div>
-    <div class="tf">Ticketfeeling</div>
   </div>
 </body>
 </html>`;
+}
+
+function row(label: string, value: string, valueColor = TF_NAVY) {
+  return `<div class="meta-row">
+    <div class="meta-label">${escapeHtml(label)}</div>
+    <div class="meta-value" style="color:${valueColor}">${escapeHtml(value)}</div>
+  </div>`;
 }
 
 function escapeHtml(value: string) {
@@ -107,4 +267,8 @@ function escapeHtml(value: string) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function escapeAttr(value: string) {
+  return escapeHtml(value).replaceAll("'", "&#39;");
 }

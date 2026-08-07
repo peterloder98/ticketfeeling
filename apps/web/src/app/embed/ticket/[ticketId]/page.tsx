@@ -4,7 +4,6 @@ import { ArrowLeft } from "lucide-react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { TicketQrImage } from "@/components/ticket-qr-image";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import {
   canUseTicketEntryWithGuestToken,
@@ -13,9 +12,10 @@ import {
 } from "@/lib/tickets/access";
 import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/order-access";
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
-import { formatDeDateTime } from "@/lib/datetime-de";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
+import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
+import { TicketFace } from "@/components/ticket-face";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Ticket" };
@@ -36,9 +36,8 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     include: {
-      event: { include: { location: true } },
+      event: true,
       holder: true,
-      qrTokens: { where: { status: "active" }, take: 1 },
       order: { include: { customer: true } },
     },
   });
@@ -89,44 +88,10 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
     transferred,
   });
 
-  const showQr = Boolean(ticket.qrTokens[0]?.token && canEntry);
-
-  const token = ticket.qrTokens[0]?.token ?? "";
+  const data = await loadTicketPresentation(ticket.id);
+  const showQr = Boolean(data.qrToken && canEntry);
   const walletFlags = getWalletUiFlags();
-  const when = ticket.event.eventStartsAt
-    ? formatDeDateTime(ticket.event.eventStartsAt, {
-        weekday: "long",
-        day: "numeric",
-        month: "long",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : "—";
-  const doorsOpenLabel = ticket.event.doorsOpenAt
-    ? ticket.event.doorsOpenAt.toLocaleTimeString("de-DE", {
-        timeZone: "Europe/Berlin",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
-    : null;
-  const place = ticket.event.location
-    ? [ticket.event.location.name, ticket.event.location.city].filter(Boolean).join(", ")
-    : "—";
-  const placeFull = ticket.event.location
-    ? [
-        ticket.event.location.name,
-        [ticket.event.location.street, ticket.event.location.houseNumber]
-          .filter(Boolean)
-          .join(" "),
-        [ticket.event.location.postalCode, ticket.event.location.city]
-          .filter(Boolean)
-          .join(" "),
-      ]
-        .filter(Boolean)
-        .join(", ")
-    : null;
-  const holder = `${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim();
+  const holder = data.holderName;
 
   return (
     <div className="space-y-4 text-sm">
@@ -138,109 +103,56 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
         Zurück zur Bestellung
       </Link>
 
-      <article className="overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
-        <div className="bg-[var(--tf-navy)] px-4 py-3">
-          <p className="text-[10px] font-bold tracking-[0.16em] text-[var(--tf-teal)]">TICKET</p>
-          <h1 className="mt-1 text-base font-bold text-white">{ticket.eventNameSnapshot}</h1>
-        </div>
-        <div className="h-1 bg-[var(--tf-teal)]" />
-        <div className="space-y-4 p-4">
-          <dl className="space-y-2 text-xs">
-            <div>
-              <dt className="text-[var(--tf-text-secondary)]">Kategorie</dt>
-              <dd className="font-semibold text-[var(--tf-navy)]">{ticket.categorySnapshot}</dd>
-            </div>
-            <div>
-              <dt className="text-[var(--tf-text-secondary)]">Beginn</dt>
-              <dd className="font-medium text-[var(--tf-navy)]">{when}</dd>
-            </div>
-            {doorsOpenLabel ? (
-              <div>
-                <dt className="text-[var(--tf-text-secondary)]">Einlasszeit</dt>
-                <dd className="font-medium text-[var(--tf-navy)]">
-                  ab {doorsOpenLabel} Uhr
-                </dd>
-              </div>
-            ) : null}
-            <div>
-              <dt className="text-[var(--tf-text-secondary)]">Location</dt>
-              <dd className="font-medium text-[var(--tf-navy)]">{place}</dd>
-            </div>
-            {ticket.seatLabel ? (
-              <div>
-                <dt className="text-[var(--tf-text-secondary)]">Platz</dt>
-                <dd className="font-semibold text-[var(--tf-teal-hover)]">{ticket.seatLabel}</dd>
-              </div>
-            ) : null}
-            <div>
-              <dt className="text-[var(--tf-text-secondary)]">Ticketnr.</dt>
-              <dd className="font-medium text-[var(--tf-navy)]">{ticket.ticketNumber}</dd>
-            </div>
-            {holder ? (
-              <div>
-                <dt className="text-[var(--tf-text-secondary)]">Inhaber</dt>
-                <dd className="font-medium text-[var(--tf-navy)]">{holder}</dd>
-              </div>
-            ) : null}
-          </dl>
+      <TicketFace
+        data={data}
+        showQr={showQr}
+        compact
+        qrSize={180}
+        transferredMessage={
+          transferred
+            ? `Ticket weitergeleitet${holder ? ` an ${holder}` : ""} — QR nur für Empfänger.`
+            : null
+        }
+      />
 
-          <div className="flex flex-col items-center rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
-            {showQr && token ? (
-              <>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
-                  QR-Code zum Einlass
-                </p>
-                <div className="mt-2 rounded-xl bg-white p-2 shadow-sm">
-                  <TicketQrImage token={token} size={180} />
-                </div>
-                <p className="mt-2 max-w-xs text-center text-[11px] text-[var(--tf-text-secondary)]">
-                  Am Einlass vorzeigen. Screenshot oder Ausdruck reicht.
-                </p>
-              </>
-            ) : (
-              <p className="text-center text-xs text-[var(--tf-text-secondary)]">
-                {transferred
-                  ? `Ticket weitergeleitet${holder ? ` an ${holder}` : ""} — QR nur für Empfänger.`
-                  : "QR-Code nicht verfügbar."}
-              </p>
-            )}
-          </div>
-
-          {showQr ? (
-            <>
-              <a href={pdfHref} className="tf-btn tf-btn-primary w-full !min-h-10 text-sm" target="_blank" rel="noreferrer">
-                PDF speichern
-              </a>
-              {ticket.event.eventStartsAt ? (
-                <TicketCalendarMenu
-                  icsHref={calendarHref}
-                  fullWidth
-                  event={{
-                    title: ticket.eventNameSnapshot || ticket.event.name,
-                    startsAtIso: ticket.event.eventStartsAt.toISOString(),
-                    endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
-                    locationLabel: placeFull,
-                    description: [
-                      `Ticket ${ticket.ticketNumber}${
-                        ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
-                      } · ${ticket.categorySnapshot}`,
-                      doorsOpenLabel ? `Einlass ab ${doorsOpenLabel} Uhr` : null,
-                    ]
-                      .filter(Boolean)
-                      .join("\n"),
-                  }}
-                />
-              ) : null}
-              <TicketWalletButtons
-                ticketId={ticket.id}
-                accessToken={accessToken}
-                appleEnabled={walletFlags.apple}
-                googleEnabled={walletFlags.google}
-              />
-            </>
+      {showQr ? (
+        <div className="space-y-3">
+          <a
+            href={pdfHref}
+            className="tf-btn tf-btn-primary w-full !min-h-10 text-sm"
+            target="_blank"
+            rel="noreferrer"
+          >
+            PDF speichern
+          </a>
+          {ticket.event.eventStartsAt ? (
+            <TicketCalendarMenu
+              icsHref={calendarHref}
+              fullWidth
+              event={{
+                title: data.eventName || ticket.event.name,
+                startsAtIso: ticket.event.eventStartsAt.toISOString(),
+                endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
+                locationLabel: data.locationShort,
+                description: [
+                  `Ticket ${data.ticketNumber} · ${data.placeLabel} · ${data.categoryName}`,
+                  data.doors.headline
+                    ? `${data.doors.headline}${data.doors.timeLabel ? " Uhr" : ""}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+              }}
+            />
           ) : null}
+          <TicketWalletButtons
+            ticketId={ticket.id}
+            accessToken={accessToken}
+            appleEnabled={walletFlags.apple}
+            googleEnabled={walletFlags.google}
+          />
         </div>
-      </article>
+      ) : null}
     </div>
   );
 }
