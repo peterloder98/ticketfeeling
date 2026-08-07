@@ -3,6 +3,31 @@ export function isWalkInCustomerEmail(email: string | null | undefined): boolean
   return Boolean(email?.includes("@ticketfeeling.local"));
 }
 
+/**
+ * Fake / demo buyer addresses that must never hit real SMTP
+ * (@ticketfeeling.local, @ticketfeeling-test.local, @example.test).
+ */
+export function isSyntheticBuyerEmail(email: string | null | undefined): boolean {
+  if (!email) return true;
+  const e = email.trim().toLowerCase();
+  return (
+    e.includes("@ticketfeeling.local") ||
+    e.includes("@ticketfeeling-test.local") ||
+    e.endsWith("@example.test") ||
+    e.includes(".example.test")
+  );
+}
+
+/** contractSnapshot.demo === true — seed / inspection orders, not real customers. */
+export function isDemoOrderContract(contractSnapshot: unknown): boolean {
+  return Boolean(
+    contractSnapshot &&
+      typeof contractSnapshot === "object" &&
+      !Array.isArray(contractSnapshot) &&
+      (contractSnapshot as { demo?: unknown }).demo === true,
+  );
+}
+
 export function customerDisplayEmail(email: string): string | null {
   return isWalkInCustomerEmail(email) ? null : email;
 }

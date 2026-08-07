@@ -99,7 +99,8 @@ export async function enqueueTransactionalEmail(input: {
     }
   }
 
-  if (!primaryTo || recipients.every((t) => t.includes("@ticketfeeling.local"))) {
+  const { isSyntheticBuyerEmail } = await import("@/lib/commerce/customers");
+  if (!primaryTo || recipients.every((t) => isSyntheticBuyerEmail(t))) {
     await writeAudit({
       organizationId: input.organizationId,
       action: "email.skipped_local_guest",

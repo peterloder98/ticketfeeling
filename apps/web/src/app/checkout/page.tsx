@@ -17,6 +17,7 @@ import {
 } from "@/lib/commerce/payment-fees";
 import { isSepaDisabledForCheckout } from "@/lib/commerce/sepa-availability";
 import { getPaymentProvider } from "@/lib/payments";
+import { isStripeTestMode } from "@/lib/payments/mode";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
@@ -42,17 +43,20 @@ export default async function CheckoutPage() {
       eventSepaMinDays: item.category.event.sepaMinDaysBeforeEvent,
     })),
   });
+  const providerKey = getPaymentProvider().key;
+  const stripeTest = isStripeTestMode();
   const stripeLiveConfigured = Boolean(
     process.env.STRIPE_SECRET_KEY &&
       process.env.STRIPE_PUBLISHABLE_KEY &&
-      getPaymentProvider().key === "stripe",
+      providerKey === "stripe" &&
+      !stripeTest,
   );
   const paymentOptions = buildCheckoutPaymentOptions({
     customerTotalCents: summary.grossCents,
     config: feeConfig,
     ui: uiConfig,
     stripeLiveConfigured,
-    allowDevTestCheckout: getPaymentProvider().key === "dev",
+    allowDevTestCheckout: providerKey === "dev" || stripeTest,
     sepaDisabled,
   });
   const feePercentLabel =

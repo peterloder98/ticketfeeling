@@ -365,15 +365,15 @@ export async function fulfillPaidOrder(orderId: string) {
       const cartItemsWithSeats = cartItems;
       const usedCartItemIds = new Set<string>();
 
-      const boxOfficeAssignments =
-        order.channel === "box_office"
-          ? readBoxOfficeSeatAssignments(order.contractSnapshot)
+      const snapshotAssignments = readBoxOfficeSeatAssignments(order.contractSnapshot);
+      const snapshotSeatIds =
+        order.channel === "box_office" || snapshotAssignments.length > 0
+          ? snapshotAssignments.flatMap((a) => a.seatIds)
           : [];
-      const boxOfficeSeatIds = boxOfficeAssignments.flatMap((a) => a.seatIds);
       const boxOfficeSeats =
-        boxOfficeSeatIds.length > 0
+        snapshotSeatIds.length > 0
           ? await tx.eventSeat.findMany({
-              where: { id: { in: boxOfficeSeatIds }, status: "held" },
+              where: { id: { in: snapshotSeatIds }, status: "held" },
               select: {
                 id: true,
                 blockLabel: true,
@@ -449,7 +449,7 @@ export async function fulfillPaidOrder(orderId: string) {
         if (matchedCartItem) usedCartItemIds.add(matchedCartItem.id);
         let cartSeats: SeatLike[] = matchedCartItem?.seats ?? [];
         if (cartSeats.length === 0 && item.categoryId) {
-          const assignment = boxOfficeAssignments.find(
+          const assignment = snapshotAssignments.find(
             (a) => a.categoryId === item.categoryId,
           );
           if (assignment) {

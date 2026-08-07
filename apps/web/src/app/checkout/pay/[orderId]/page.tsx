@@ -5,6 +5,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { DevPayButton } from "@/components/dev-pay-button";
 import { StripePayForm } from "@/components/stripe-pay-form";
 import { getPaymentProvider } from "@/lib/payments";
+import { isStripeTestMode } from "@/lib/payments/mode";
 import { paymentMethodLabel } from "@/lib/commerce/channels";
 import {
   PAYMENT_METHOD_META,
@@ -82,6 +83,7 @@ export default async function PayPage({ params, searchParams }: Props) {
     order.currency,
   );
   const isDev = getPaymentProvider().key === "dev";
+  const showTestModeBanner = isDev || isStripeTestMode();
   const methodKey = normalizePaymentMethodKey(order.paymentMethod ?? "") ?? order.paymentMethod;
   const methodLabel = paymentMethodLabel(methodKey);
   const meta =
@@ -192,18 +194,20 @@ export default async function PayPage({ params, searchParams }: Props) {
           </div>
 
           <div className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.06)] md:p-6">
+            {showTestModeBanner ? (
+              <p className="mb-4 rounded-xl bg-[rgba(245,158,11,0.12)] px-3 py-2 text-sm text-[#92400e]">
+                {isDev
+                  ? "Testmodus — keine echte Stripe-Zahlung. Für Live: PAYMENT_PROVIDER=stripe und Live-Keys setzen."
+                  : "Testmodus — Stripe Test-Keys (sk_test / pk_test). Keine echten Abbuchungen."}
+              </p>
+            ) : null}
             {isDev ? (
-              <>
-                <p className="mb-4 rounded-xl bg-[rgba(245,158,11,0.12)] px-3 py-2 text-sm text-[#92400e]">
-                  Testmodus — keine echte Stripe-Zahlung. Für Live: PAYMENT_PROVIDER=stripe setzen.
-                </p>
-                <DevPayButton
-                  orderId={order.id}
-                  amountLabel={amountLabel}
-                  successPath={paidHref}
-                  accessToken={accessToken ?? undefined}
-                />
-              </>
+              <DevPayButton
+                orderId={order.id}
+                amountLabel={amountLabel}
+                successPath={paidHref}
+                accessToken={accessToken ?? undefined}
+              />
             ) : clientSecret ? (
               <StripePayForm
                 clientSecret={clientSecret}

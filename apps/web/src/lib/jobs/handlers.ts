@@ -96,13 +96,30 @@ export async function enqueuePostFulfillJobs(orderId: string, organizationId: st
 }
 
 async function runPostFulfillSideEffects(orderId: string) {
-  await sendBuyerTicketEmail(orderId);
-  await sendStaffOrderEmail(orderId);
+  const { isDemoOrderContract } = await import("@/lib/commerce/customers");
   const order = await prisma.order.findUnique({
     where: { id: orderId },
-    include: { invoices: { take: 1 } },
+    select: {
+      organizationId: true,
+      contractSnapshot: true,
+      invoices: { take: 1, select: { id: true } },
+    },
   });
-  if (order?.invoices[0]?.id) {
+  if (!order) return;
+  if (isDemoOrderContract(order.contractSnapshot)) {
+    await writeAudit({
+      organizationId: order.organizationId,
+      action: "email.demo_order_skipped",
+      entityType: "order",
+      entityId: orderId,
+      after: { reason: "demo_seed" },
+    });
+    return;
+  }
+
+  await sendBuyerTicketEmail(orderId);
+  await sendStaffOrderEmail(orderId);
+  if (order.invoices[0]?.id) {
     await runAccountingStub(orderId, order.invoices[0].id);
   }
 }

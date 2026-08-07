@@ -7,6 +7,7 @@ import { getPaymentProvider } from "@/lib/payments";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { completeDevPaymentForOrder } from "@/lib/commerce/payments-dev";
+import { allowDevPaymentsInProduction } from "@/lib/payments/mode";
 
 const schema = z.object({
   orderId: z.string().uuid(),
@@ -19,8 +20,8 @@ const schema = z.object({
  * Does not require a client-side webhook secret (that left the pay button disabled on Vercel).
  */
 export async function POST(request: Request) {
-  // Never allow fake pay completion in production (#16).
-  if (process.env.VERCEL_ENV === "production") {
+  // Never allow fake pay completion in production (#16), unless temporary ALLOW_DEV_PAYMENTS=1.
+  if (process.env.VERCEL_ENV === "production" && !allowDevPaymentsInProduction()) {
     return NextResponse.json({ error: { code: "GONE" } }, { status: 404 });
   }
   let providerKey: string;

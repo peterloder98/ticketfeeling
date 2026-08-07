@@ -18,7 +18,7 @@ Short ops checklist before / during production cutover. Details: `deployment.md`
 
 | Item | Notes |
 |---|---|
-| `PAYMENT_PROVIDER=stripe` | Not `dev`. |
+| `PAYMENT_PROVIDER=stripe` | Not `dev` (unless temporary `ALLOW_DEV_PAYMENTS=1`). |
 | `STRIPE_SECRET_KEY` | Live `sk_live_…` |
 | `STRIPE_PUBLISHABLE_KEY` | Live `pk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | From Stripe Dashboard webhook endpoint |
