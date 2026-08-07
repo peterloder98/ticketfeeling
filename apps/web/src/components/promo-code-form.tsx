@@ -13,6 +13,8 @@ function normalizePromo(raw: string) {
 
 function promoErrorMessage(code: string) {
   switch (code) {
+    case "DISCOUNT_CAMPAIGN_ACTIVE":
+      return "Rabattcodes sind nicht mit laufenden Aktionspreisen kombinierbar.";
     case "DISCOUNT_NOT_FOUND":
     case "DISCOUNT_NOT_YET_VALID":
     case "DISCOUNT_EXPIRED":

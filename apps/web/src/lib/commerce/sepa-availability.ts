@@ -6,8 +6,12 @@ export const DEFAULT_SEPA_MIN_DAYS_BEFORE_EVENT = 7;
 
 export type SepaTicketReleaseMode = "after_confirmed" | "after_submission";
 
-export function normalizeSepaTicketReleaseMode(value: unknown): SepaTicketReleaseMode {
-  return value === "after_submission" ? "after_submission" : "after_confirmed";
+/**
+ * Early release (`after_submission`) is hard-gated and inactive.
+ * Always normalize to after_confirmed so stored/legacy values cannot reopen the path.
+ */
+export function normalizeSepaTicketReleaseMode(_value?: unknown): "after_confirmed" {
+  return "after_confirmed";
 }
 
 /**

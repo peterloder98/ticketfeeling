@@ -458,19 +458,17 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
 
         await sendSepaProcessingEmail(orderId);
 
-        const releaseMode = normalizeSepaTicketReleaseMode(
-          order.organization.settings?.sepaTicketReleaseMode,
-        );
-        if (releaseMode === "after_submission") {
-          // Optional admin setting — still mark payment as processing; fulfill only if
-          // product ever enables early release. Hard-gated off by default in admin UI.
+        // Early release is hard-gated inactive; tickets wait for payment_intent.succeeded.
+        const rawReleaseMode = order.organization.settings?.sepaTicketReleaseMode;
+        if (rawReleaseMode === "after_submission") {
           await writeAudit({
             organizationId: order.organizationId,
             action: "payment.sepa_early_release_skipped",
             entityType: "order",
             entityId: orderId,
             after: {
-              note: "after_submission configured but tickets still wait for succeeded for safety",
+              note: "after_submission still stored but tickets wait for succeeded (gated)",
+              normalized: normalizeSepaTicketReleaseMode(rawReleaseMode),
             },
           });
         }

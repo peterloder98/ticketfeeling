@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { getEmbedFrameAncestors, getPublicAppUrl } from "@/lib/embed/public-url";
 import {
   isAppleWalletConfigured,
   isGoogleWalletConfigured,
@@ -47,6 +47,8 @@ export async function GET() {
   const deploymentId = process.env.VERCEL_DEPLOYMENT_ID?.trim() || null;
   const resolvedAppUrl = getPublicAppUrl();
   const appHost = hostnameOnly(resolvedAppUrl);
+  const embedFrameAncestors = getEmbedFrameAncestors();
+  const embedAllowlistOpen = embedFrameAncestors.includes("*");
 
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -58,6 +60,12 @@ export async function GET() {
       warnings.push(msg);
       console.error("[health] KRITISCH:", msg);
     }
+    if (isProductionRuntime() && embedAllowlistOpen) {
+      const msg =
+        "EMBED_FRAME_ANCESTORS unset or * — embeds allow any parent origin (set allowlist to tighten)";
+      warnings.push(msg);
+      console.warn("[health]", msg);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -68,6 +76,7 @@ export async function GET() {
       deploymentId,
       appHost,
       smtp: smtpOk ? "configured" : "missing",
+      embedFrameAncestors,
       warnings: warnings.length ? warnings : undefined,
       wallet: {
         apple: isAppleWalletConfigured(),
@@ -84,6 +93,7 @@ export async function GET() {
         gitSha,
         deploymentId,
         appHost,
+        embedFrameAncestors,
         wallet: {
           apple: isAppleWalletConfigured(),
           google: isGoogleWalletConfigured(),

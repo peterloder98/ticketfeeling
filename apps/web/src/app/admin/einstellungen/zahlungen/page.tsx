@@ -135,17 +135,16 @@ export default async function ZahlungenEinstellungenPage({
                 <select
                   name="sepaTicketReleaseMode"
                   className="tf-input max-w-xl"
-                  defaultValue={settings?.sepaTicketReleaseMode ?? "after_confirmed"}
+                  defaultValue="after_confirmed"
+                  disabled
                 >
-                  <option value="after_confirmed">Erst nach bestätigter Zahlung (empfohlen)</option>
-                  <option value="after_submission">
-                    Bereits nach erfolgreicher Einreichung der Lastschrift
-                  </option>
+                  <option value="after_confirmed">Erst nach bestätigter Zahlung</option>
                 </select>
                 <span className="text-xs text-[var(--tf-text-secondary)]">
-                  Produktiv: immer „nach bestätigter Zahlung“. Frühere Freigabe erhöht das Risiko bei
-                  Rücklastschriften.
+                  Frühere Freigabe nach Einreichung der Lastschrift ist deaktiviert (Risiko bei
+                  Rücklastschriften). Tickets werden erst nach bestätigter SEPA-Zahlung versendet.
                 </span>
+                <input type="hidden" name="sepaTicketReleaseMode" value="after_confirmed" />
               </label>
               <label className="grid gap-1 text-sm">
                 <span>SEPA vor Veranstaltungsbeginn deaktivieren</span>

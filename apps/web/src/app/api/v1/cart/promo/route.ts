@@ -9,6 +9,10 @@ import {
   readCartSessionKeyFromRequest,
 } from "@/lib/commerce/cart-session";
 import { prisma } from "@/lib/db";
+import {
+  cartHasCampaignPrice,
+  DISCOUNT_CAMPAIGN_ACTIVE,
+} from "@/lib/commerce/campaign-promo";
 import { resolveDiscountCode, resolveGiftCard } from "@/lib/commerce/discounts";
 import { assertMutationAllowed } from "@/lib/security/mutation-guard";
 import { clientIpFromRequest, takeRateLimit } from "@/lib/security/rate-limit";
@@ -64,6 +68,7 @@ export async function POST(request: Request) {
 
     let discountCode: string | null = null;
     let giftCardCode: string | null = null;
+    const campaignActive = cartHasCampaignPrice(cart.items);
 
     if (single) {
       try {
@@ -74,6 +79,12 @@ export async function POST(request: Request) {
           eventIds,
         });
         if (d) {
+          if (campaignActive) {
+            return NextResponse.json(
+              { error: { code: DISCOUNT_CAMPAIGN_ACTIVE } },
+              { status: 400 },
+            );
+          }
           discountCode = d.code;
         } else {
           const g = await resolveGiftCard({
@@ -106,6 +117,12 @@ export async function POST(request: Request) {
       }
     } else {
       if (discountRaw) {
+        if (campaignActive) {
+          return NextResponse.json(
+            { error: { code: DISCOUNT_CAMPAIGN_ACTIVE } },
+            { status: 400 },
+          );
+        }
         try {
           const d = await resolveDiscountCode({
             organizationId: cart.organizationId,

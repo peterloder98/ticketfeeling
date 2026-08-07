@@ -1,7 +1,14 @@
+/**
+ * @deprecated Legacy Vorverkaufsgebühr — unused. Live fee is Verwaltungsgebühr via
+ * `platform-fee.ts` / admin Einstellungen → Preise und Gebühren.
+ * Kept only so old imports/types do not break; do not wire new call sites.
+ */
 import { splitGrossToNetTax } from "@/lib/money";
 
+/** @deprecated use platform-fee Verwaltungsgebühr */
 export type PresaleFeeMode = "none" | "fixed_per_ticket" | "percent";
 
+/** @deprecated use PlatformFeeConfig */
 export type FeeConfig = {
   mode: PresaleFeeMode;
   fixedCents: number;
@@ -10,6 +17,7 @@ export type FeeConfig = {
   source: "organization" | "event";
 };
 
+/** @deprecated */
 export type FeeComputation = {
   ticketCount: number;
   ticketsGrossCents: number;
@@ -21,11 +29,13 @@ export type FeeComputation = {
   label: string;
 };
 
+/** @deprecated */
 export function normalizeFeeMode(value: string | null | undefined): PresaleFeeMode {
   if (value === "fixed_per_ticket" || value === "percent" || value === "none") return value;
   return "none";
 }
 
+/** @deprecated */
 export function resolveFeeConfig(input: {
   orgMode?: string | null;
   orgFixedCents?: number | null;
@@ -49,6 +59,7 @@ export function resolveFeeConfig(input: {
   };
 }
 
+/** @deprecated use computePlatformFee / order-pricing */
 export function computePresaleFee(input: {
   ticketCount: number;
   ticketsGrossCents: number;

@@ -168,7 +168,9 @@ export default async function AdminDiscountsPage() {
           Rabatte & Gutscheine
         </h1>
         <p className="mt-2 text-sm text-[var(--muted)]">
-          Discount-Codes und Geschenkkarten für den Checkout.
+          Discount-Codes und Geschenkkarten für den Checkout. Rabattcodes lassen sich nicht mit
+          laufenden Aktionspreisen (Kampagnen) kombinieren — die Aktion hat Vorrang. Gutscheine
+          bleiben nutzbar.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.verkauf} />

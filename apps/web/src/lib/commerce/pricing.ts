@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { cartHasCampaignPrice } from "@/lib/commerce/campaign-promo";
 import { resolveDiscountCode, resolveGiftCard } from "@/lib/commerce/discounts";
 import { computeOrderPricing } from "@/lib/commerce/order-pricing";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
@@ -13,6 +14,7 @@ type CartLike = {
     quantity: number;
     unitPriceGrossCents: number;
     eventId: string;
+    priceCampaignId?: string | null;
     category: {
       taxRate?: { rateBps: number } | null;
       event: {
@@ -43,6 +45,10 @@ export async function priceCart(cart: CartLike) {
   let discountCents = 0;
   let discountLabel: string | null = null;
   let discountCode: string | null = cart.discountCode ?? null;
+  // Aktion prices already include campaign discount — do not stack promo codes.
+  if (discountCode && cartHasCampaignPrice(cart.items)) {
+    discountCode = null;
+  }
   if (discountCode) {
     const d = await resolveDiscountCode({
       organizationId: cart.organizationId,

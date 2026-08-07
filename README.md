@@ -10,17 +10,20 @@ Web-App für Ticketing & Eventmanagement (SCHLAGERfeeling zuerst, mandantenfähi
 |---|---|
 | Fundament (Auth, RBAC, Audit, Org) | ✅ |
 | Stammdaten / Eventseiten / Hilfe-Chat | ✅ |
-| Rechtlicher Verkäufer Peter Loder + Checkout-Recht | ✅ Entwürfe |
-| Ticketverkauf (Warenkorb, Checkout, Rechnung, QR) | ✅ lokal mit **Dev-Zahlung** |
-| Scanner Check-in/out | ✅ Basis |
-| Admin-Verkaufsstatistik | ✅ |
-| Tageskasse (intern, **kein TSE**) | ✅ Basis |
-| Ticket vergessen (Magic-Link) | ✅ Link per Mail-Stub / Dev-Console |
-| PaymentProvider (Dev + Stripe-Stub) | ✅ |
+| Rechtlicher Verkäufer + Checkout-Recht | ✅ |
+| Ticketverkauf (Warenkorb, Checkout, Rechnung, QR) | ✅ |
+| Stripe Direct (Karte, Apple/Google Pay, SEPA, Klarna) | ✅ live |
+| Scanner Check-in/out | ✅ |
+| Admin-Verkaufsstatistik / Stripe-Auszahlungen | ✅ |
+| Tageskasse (intern, **kein TSE**) | ✅ |
+| Saalplan / Sitzplatzwahl | ✅ |
+| Rabatte, Gutscheine, Preis-Kampagnen | ✅ |
+| Website-Einbindung (iframe Embed) | ✅ |
+| Ticket vergessen (Magic-Link) | ✅ |
+| Echtes PDF + E-Mail (SMTP) | ✅ wenn SMTP konfiguriert |
 | Lexware AccountingProvider | ⏳ Stub |
-| Stripe Direct live / PayPal | ⏳ |
-| Echtes PDF + E-Mail-Provider | ⏳ HTML-Ticket da |
-| Saalplan, Rabatte, Tracking-Pixel | ⏳ |
+| Fiskaly / TSE | ⏳ |
+| PayPal | ⏳ |
 
 ## Schnellstart
 
@@ -49,11 +52,9 @@ npm run dev
 1. Event öffnen: `/event/schlagerfeeling-weihnachtstraum-2026`
 2. Kategorie in den Warenkorb
 3. Checkout → **Zahlungspflichtig bestellen**
-4. Auf der Zahlungsseite **Testzahlung jetzt bezahlen** (Dev-Webhook)
+4. Auf der Zahlungsseite mit Stripe (Testmodus) bezahlen
 5. Tickets + Rechnung unter Bestellung / Konto
 6. Token im **Scanner** (`/scanner`) einfügen → Grün, zweiter Scan → Rot
-
-> Die Dev-Zahlung ist **kein** Stripe. Vor Produktivbetrieb Stripe Direct anbinden.
 
 ### Smoke-Test
 

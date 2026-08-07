@@ -364,14 +364,16 @@ export async function expireSeatHolds(
   );
 
   let freed = 0;
+  let orphanReleased = 0;
   await prisma.$transaction(async (tx) => {
     const orphanIds = seatIdsByCartItem.get(null) ?? [];
     if (orphanIds.length > 0) {
-      await tx.eventSeat.updateMany({
+      const updated = await tx.eventSeat.updateMany({
         where: { id: { in: orphanIds }, status: "held" },
         data: { status: "available", holdExpiresAt: null, cartItemId: null },
       });
-      freed += orphanIds.length;
+      orphanReleased = updated.count;
+      freed += updated.count;
     }
 
     for (const cartItemId of cartItemIds) {
@@ -395,6 +397,12 @@ export async function expireSeatHolds(
       freed += seatIds.length;
     }
   });
+
+  if (orphanReleased > 0) {
+    console.warn(
+      `[seating] released ${orphanReleased} orphan seat-hold(s) (held, no cartItemId / no expiry)`,
+    );
+  }
 
   return freed;
 }

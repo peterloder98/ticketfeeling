@@ -1,10 +1,25 @@
 import type { Prisma } from "@prisma/client";
+import { lockCategoryInventoryPools } from "@/lib/commerce/inventory-availability";
 
 export type RestoreInventoryChannel = "online" | "box_office";
 
+/** Pick preferred channel pool, then fallback, then first locked row. */
+export function pickRestoreInventoryPool<T extends { channel: string }>(
+  pools: T[],
+  preferred: RestoreInventoryChannel,
+): T | undefined {
+  const fallback: RestoreInventoryChannel =
+    preferred === "online" ? "box_office" : "online";
+  return (
+    pools.find((p) => p.channel === preferred) ??
+    pools.find((p) => p.channel === fallback) ??
+    pools[0]
+  );
+}
+
 /**
  * Cancel/void active tickets and restore inventory like box-office void:
- * decrement soldQuantity on the preferred pool, free seats, optionally revoke QR.
+ * lock pools, atomically decrement soldQuantity, free seats, optionally revoke QR.
  * Shared by Stripe full refund / dispute and Tageskasse void.
  */
 export async function cancelTicketsAndRestoreInventory(
@@ -64,26 +79,20 @@ export async function cancelTicketsAndRestoreInventory(
   }
 
   const preferred = input.preferredPoolChannel ?? "online";
-  const fallback: RestoreInventoryChannel =
-    preferred === "online" ? "box_office" : "online";
 
   let restoredQty = 0;
-  for (const { eventId, categoryId, qty } of qtyByKey.values()) {
-    const pools = await tx.inventoryPool.findMany({
-      where: { eventId, categoryId },
-    });
-    const pool =
-      pools.find((p) => p.channel === preferred) ??
-      pools.find((p) => p.channel === fallback) ??
-      pools[0];
+  for (const { categoryId, qty } of qtyByKey.values()) {
+    const pools = await lockCategoryInventoryPools(tx, categoryId);
+    const pool = pickRestoreInventoryPool(pools, preferred);
     if (pool) {
-      await tx.inventoryPool.update({
-        where: { id: pool.id },
-        data: {
-          soldQuantity: Math.max(0, pool.soldQuantity - qty),
-          version: { increment: 1 },
-        },
-      });
+      // Atomic decrement + floor at 0 (same race posture as hold release).
+      await tx.$executeRaw`
+        UPDATE inventory_pools
+        SET
+          sold_quantity = GREATEST(0, sold_quantity - ${qty}),
+          version = version + 1
+        WHERE id = ${pool.id}::uuid
+      `;
       restoredQty += qty;
     }
   }

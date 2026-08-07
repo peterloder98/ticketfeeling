@@ -80,9 +80,9 @@ export default async function EmbedSettingsPage() {
           <li>
             Framing:{" "}
             {ancestors.includes("*")
-              ? "alle Domains erlaubt (Standard)"
+              ? "alle Domains erlaubt (Standard — für Produktion empfohlen: Env EMBED_FRAME_ANCESTORS setzen, z. B. https://schlagerfeeling.de)"
               : `nur ${ancestors.join(", ")}`}
-            . Optional Env <code>EMBED_FRAME_ANCESTORS</code>.
+            . Ohne Allowlist bleibt CSP bei <code>frame-ancestors *</code> (Health warnt in Production).
           </li>
           <li>
             Optional <code>TRACKING_LINKER_DOMAINS</code> für Cross-Domain-Tracking.

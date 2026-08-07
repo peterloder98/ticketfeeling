@@ -16,7 +16,6 @@ import {
   type PaymentMethodKey,
   type PaymentUiConfig,
 } from "@/lib/commerce/payment-fees";
-import { normalizeSepaTicketReleaseMode } from "@/lib/commerce/sepa-availability";
 
 async function requireOrgWrite() {
   const session = await getServerSession(authOptions);
@@ -68,9 +67,8 @@ export async function updatePaymentFeeConfigAction(formData: FormData) {
     config[key].customerSurchargeEnabled = false;
   }
 
-  const sepaTicketReleaseMode = normalizeSepaTicketReleaseMode(
-    String(formData.get("sepaTicketReleaseMode") ?? "after_confirmed"),
-  );
+  // Early release after SEPA submission is hard-gated — always persist confirmed.
+  const sepaTicketReleaseMode = "after_confirmed" as const;
   const sepaMinDays = Math.max(
     0,
     Math.round(Number(String(formData.get("sepaMinDaysBeforeEvent") ?? "7")) || 7),

@@ -28,6 +28,10 @@ export function formatCountdown(remainingMs: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
+/**
+ * Countdown is driven solely from server `expiresAt` (remaining = end − now).
+ * Progress bar uses the standard hold window as denominator for a stable UI.
+ */
 export function getCartCountdownState(
   expiresAt: string | Date | null | undefined,
   nowMs = Date.now(),
@@ -38,11 +42,13 @@ export function getCartCountdownState(
   const remainingMs = end - nowMs;
   const expired = remainingMs <= 0;
   const label = expired ? "00:00" : formatCountdown(remainingMs);
-  const elapsed = CART_HOLD_MS - remainingMs;
-  const elapsedRatio = Math.min(1, Math.max(0, elapsed / CART_HOLD_MS));
+  const clampedRemaining = Math.max(0, remainingMs);
+  // Cap remaining for progress if hold was extended beyond the default window.
+  const progressRemaining = Math.min(clampedRemaining, CART_HOLD_MS);
+  const elapsedRatio = Math.min(1, Math.max(0, 1 - progressRemaining / CART_HOLD_MS));
 
   return {
-    remainingMs: Math.max(0, remainingMs),
+    remainingMs: clampedRemaining,
     expired,
     totalMs: CART_HOLD_MS,
     elapsedRatio,

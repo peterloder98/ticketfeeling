@@ -446,7 +446,7 @@ export function CoverImageField({
               Bild hierher ziehen oder klicken
             </p>
             <p className="max-w-xs text-xs text-[var(--tf-text-secondary)]">
-              Wird quadratisch in hoher Auflösung eingepasst. Max. 12 MB.
+              Speichert {OUT_SIZE}×{OUT_SIZE}px (Retina). Anzeige max. 444×444px. Max. 12 MB.
             </p>
           </div>
         </div>

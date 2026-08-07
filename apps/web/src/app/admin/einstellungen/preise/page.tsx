@@ -41,8 +41,8 @@ export default async function PreiseEinstellungenPage() {
           Preise und Gebühren
         </h1>
         <p className="mt-2 max-w-2xl text-[var(--tf-text-secondary)]">
-          Zentrale Verwaltungsgebühr für alle Online-Bestellungen. Änderungen gelten nur für neue
-          Bestellungen.
+          Zentrale Verwaltungsgebühr für alle Online-Bestellungen (nicht die alte
+          Vorverkaufsgebühr). Änderungen gelten nur für neue Bestellungen.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />

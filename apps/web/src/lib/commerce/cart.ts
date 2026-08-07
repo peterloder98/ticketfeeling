@@ -2,10 +2,12 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { createSecureToken } from "@/lib/crypto-token";
 import { readCartSessionKey, resolveCartSessionKey } from "@/lib/commerce/cart-session";
+import { CART_HOLD_MS } from "@/lib/cart-countdown";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { Prisma } from "@prisma/client";
 
-const HOLD_MINUTES = 10;
+/** Keep in sync with cart-countdown CART_HOLD_MS — countdown is driven by cart.expiresAt. */
+const HOLD_MINUTES = CART_HOLD_MS / (60 * 1000);
 
 /** Avoid running expire on every cart badge poll (focus/nav). */
 let lastExpireMs = 0;
