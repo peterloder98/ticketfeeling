@@ -280,8 +280,14 @@ export default async function EventPage({ params }: Props) {
             <h1 className="mt-3 max-w-3xl text-[2.125rem] font-bold leading-[1.1] tracking-tight md:text-5xl lg:text-[3.75rem]">
               {event.name}
             </h1>
+            <EventPageUrgencyCountdown
+              className="mt-5"
+              variant="heroText"
+              eventStartsAt={eventStartsIso}
+              campaignValidUntils={campaignValidUntils}
+            />
             {event.shortDescription ? (
-              <p className="mt-3 max-w-[40rem] text-base leading-relaxed text-white/85 md:text-lg">
+              <p className="mt-4 max-w-[40rem] text-base leading-relaxed text-white/85 md:text-lg">
                 {event.shortDescription}
               </p>
             ) : null}
@@ -332,11 +338,6 @@ export default async function EventPage({ params }: Props) {
                 />
               </div>
             </div>
-            <EventPageUrgencyCountdown
-              className="mt-3"
-              eventStartsAt={eventStartsIso}
-              campaignValidUntils={campaignValidUntils}
-            />
           </div>
         </div>
       </section>

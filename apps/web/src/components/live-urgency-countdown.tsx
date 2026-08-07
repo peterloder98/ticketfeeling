@@ -9,28 +9,47 @@ import {
 } from "@/lib/commerce/campaign-price-ui";
 
 type Size = "md" | "sm";
+/** `card` = bordered light panel (tickets column). `heroText` = digits on navy. */
+type Variant = "card" | "heroText";
 
 function Unit({
   value,
   label,
   size,
+  variant,
 }: {
   value: number;
   label: string;
   size: Size;
+  variant: Variant;
 }) {
   const padded = String(Math.max(0, value)).padStart(2, "0");
+  const digitClass =
+    variant === "heroText"
+      ? "text-white"
+      : "text-[var(--tf-navy)]";
+  const labelClass =
+    variant === "heroText"
+      ? "text-white/65"
+      : "text-[var(--tf-navy)]/70";
+
   return (
     <div className="min-w-0 flex-1 text-center">
       <p
-        className={`font-bold tabular-nums tracking-tight text-[var(--tf-navy)] ${
-          size === "sm" ? "text-lg leading-none" : "text-2xl leading-none md:text-[1.75rem]"
+        className={`font-bold tabular-nums tracking-tight ${digitClass} ${
+          variant === "heroText"
+            ? size === "sm"
+              ? "text-2xl leading-none"
+              : "text-3xl leading-none md:text-4xl"
+            : size === "sm"
+              ? "text-lg leading-none"
+              : "text-2xl leading-none md:text-[1.75rem]"
         }`}
       >
         {padded}
       </p>
       <p
-        className={`mt-1 font-medium uppercase tracking-[0.08em] text-[var(--tf-navy)]/70 ${
+        className={`mt-1 font-medium uppercase tracking-[0.08em] ${labelClass} ${
           size === "sm" ? "text-[9px]" : "text-[10px] md:text-[11px]"
         }`}
       >
@@ -40,12 +59,18 @@ function Unit({
   );
 }
 
-function Sep({ size }: { size: Size }) {
+function Sep({ size, variant }: { size: Size; variant: Variant }) {
   return (
     <span
       aria-hidden
       className={`shrink-0 self-start font-bold text-[var(--tf-teal)] ${
-        size === "sm" ? "pt-0.5 text-base" : "pt-1 text-xl md:text-2xl"
+        variant === "heroText"
+          ? size === "sm"
+            ? "pt-0.5 text-xl"
+            : "pt-1 text-2xl md:text-3xl"
+          : size === "sm"
+            ? "pt-0.5 text-base"
+            : "pt-1 text-xl md:text-2xl"
       }`}
     >
       :
@@ -58,14 +83,47 @@ function CountdownFace({
   title,
   kind,
   size,
+  variant,
   className,
 }: {
   parts: CountdownParts;
   title: string;
   kind: UrgencyCountdownKind;
   size: Size;
+  variant: Variant;
   className: string;
 }) {
+  if (variant === "heroText") {
+    const titleColor =
+      kind === "campaign" ? "text-[var(--tf-sale)]" : "text-[var(--tf-teal)]";
+
+    return (
+      <div
+        className={className}
+        role="timer"
+        aria-live="polite"
+        aria-label={`${title} ${parts.days} Tage ${parts.hours} Stunden ${parts.minutes} Minuten ${parts.seconds} Sekunden`}
+      >
+        <p
+          className={`font-semibold ${titleColor} ${
+            size === "sm" ? "mb-1.5 text-[11px]" : "mb-2 text-sm md:text-base"
+          }`}
+        >
+          {title}
+        </p>
+        <div className="flex max-w-md items-start gap-1.5 sm:gap-2">
+          <Unit value={parts.days} label="Tage" size={size} variant={variant} />
+          <Sep size={size} variant={variant} />
+          <Unit value={parts.hours} label="Std" size={size} variant={variant} />
+          <Sep size={size} variant={variant} />
+          <Unit value={parts.minutes} label="Min" size={size} variant={variant} />
+          <Sep size={size} variant={variant} />
+          <Unit value={parts.seconds} label="Sek" size={size} variant={variant} />
+        </div>
+      </div>
+    );
+  }
+
   const accent =
     kind === "campaign"
       ? "border-[rgba(228,90,74,0.35)] bg-[rgba(228,90,74,0.08)]"
@@ -91,13 +149,13 @@ function CountdownFace({
         {title}
       </p>
       <div className="flex items-start justify-between gap-1">
-        <Unit value={parts.days} label="Tage" size={size} />
-        <Sep size={size} />
-        <Unit value={parts.hours} label="Std" size={size} />
-        <Sep size={size} />
-        <Unit value={parts.minutes} label="Min" size={size} />
-        <Sep size={size} />
-        <Unit value={parts.seconds} label="Sek" size={size} />
+        <Unit value={parts.days} label="Tage" size={size} variant={variant} />
+        <Sep size={size} variant={variant} />
+        <Unit value={parts.hours} label="Std" size={size} variant={variant} />
+        <Sep size={size} variant={variant} />
+        <Unit value={parts.minutes} label="Min" size={size} variant={variant} />
+        <Sep size={size} variant={variant} />
+        <Unit value={parts.seconds} label="Sek" size={size} variant={variant} />
       </div>
     </div>
   );
@@ -105,19 +163,21 @@ function CountdownFace({
 
 /**
  * Live countdown (Tage · Std · Min · Sek) for a known deadline.
- * High-contrast light surface + navy digits — readable on navy heroes and white panels.
+ * `card` = high-contrast light panel; `heroText` = digits on navy heroes.
  */
 export function LiveUrgencyCountdown({
   endsAt,
   title,
   kind = "event",
   size = "md",
+  variant = "card",
   className = "",
 }: {
   endsAt: string;
   title: string;
   kind?: UrgencyCountdownKind;
   size?: Size;
+  variant?: Variant;
   className?: string;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -140,6 +200,7 @@ export function LiveUrgencyCountdown({
       title={title}
       kind={kind}
       size={size}
+      variant={variant}
       className={className}
     />
   );
@@ -153,11 +214,13 @@ export function EventPageUrgencyCountdown({
   eventStartsAt,
   campaignValidUntils,
   size = "md",
+  variant = "card",
   className = "",
 }: {
   eventStartsAt?: string | Date | null;
   campaignValidUntils?: Array<string | Date | null | undefined>;
   size?: Size;
+  variant?: Variant;
   className?: string;
 }) {
   const eventIso =
@@ -199,6 +262,7 @@ export function EventPageUrgencyCountdown({
       title={target.title}
       kind={target.kind}
       size={size}
+      variant={variant}
       className={className}
     />
   );
