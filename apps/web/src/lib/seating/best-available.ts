@@ -65,7 +65,6 @@ export function pickBestAvailableSeats(
 export function pickBestAvailablePairs(
   seats: SeatRow[],
   pairCount: number,
-  ctx?: SeatOptimizationContext | null,
 ): SeatRow[] {
   if (pairCount < 1) return [];
   const available = toOpt(seats).filter(

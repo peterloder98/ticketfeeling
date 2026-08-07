@@ -168,7 +168,7 @@ export async function claimBoxOfficeSeats(
         select: seatSelect,
       });
       if (companionFree) {
-        const picked = pickBestAvailablePairs(all, item.quantity, optCtx);
+        const picked = pickBestAvailablePairs(all, item.quantity);
         if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
         seatIdsToHold = picked.map((s) => s.id);
       } else {

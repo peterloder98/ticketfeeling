@@ -621,7 +621,7 @@ export async function addToCart(input: {
           select: seatSelect,
         });
         if (companionFree) {
-          const picked = pickBestAvailablePairs(all, input.quantity, optCtx);
+          const picked = pickBestAvailablePairs(all, input.quantity);
           if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
           seatIdsToHold = picked.map((s) => s.id);
         } else {

@@ -77,11 +77,6 @@ function isSellableAvailable(s: OptSeat) {
   return s.status === "available" && !s.locked && !s.seatKey.includes(":ST:");
 }
 
-function isUnavailableBarrier(s: OptSeat) {
-  // Locked / held / sold / missing neighbor = barrier for free-run detection.
-  return s.locked || s.status !== "available";
-}
-
 /** Occupancy over unlocked seats only (held+sold) / (all unlocked). */
 export function computeOccupancyPercent(
   seats: { status: string; locked?: boolean }[],
