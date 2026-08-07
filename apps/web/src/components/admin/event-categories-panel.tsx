@@ -38,6 +38,40 @@ const COLOR_PRESETS = [
   ...DEFAULT_CATEGORY_COLORS.filter((c) => !["#14B8A6", "#0F2747", "#D6A642"].includes(c)),
 ];
 
+function CategoryColorSwatches({
+  defaultColor,
+}: {
+  defaultColor?: string | null;
+}) {
+  const initial = defaultColor?.trim() || "";
+  const [color, setColor] = useState(initial);
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <input type="hidden" name="color" value={color} />
+      <input
+        type="color"
+        className="h-7 w-8 cursor-pointer rounded border border-[var(--tf-line)] bg-white p-0.5"
+        value={/^#([0-9A-Fa-f]{6})$/.test(color) ? color : "#14B8A6"}
+        onChange={(e) => setColor(e.target.value)}
+        aria-label="Farbe im Saalplan"
+        title="Farbe im Saalplan"
+      />
+      {COLOR_PRESETS.slice(0, 6).map((preset) => (
+        <button
+          key={preset}
+          type="button"
+          title={preset}
+          className={`h-5 w-5 rounded-full border ${
+            color === preset ? "border-[var(--tf-navy)] ring-1 ring-[var(--tf-teal)]" : "border-[var(--tf-line)]"
+          }`}
+          style={{ background: preset }}
+          onClick={() => setColor(preset)}
+        />
+      ))}
+    </div>
+  );
+}
+
 function CategoryColorField({
   defaultColor,
   compact = false,
@@ -49,13 +83,13 @@ function CategoryColorField({
   const [color, setColor] = useState(initial);
   return (
     <label className={`grid gap-1 ${compact ? "" : "md:col-span-2"}`}>
-      <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
-        Farbe im Saalplan
+      <span className={compact ? "text-xs text-[var(--tf-text-secondary)]" : "text-xs text-[var(--tf-text-secondary)]"}>
+        Farbe
       </span>
       <div className="flex flex-wrap items-center gap-2">
         <input
           type="color"
-          className="h-10 w-12 cursor-pointer rounded-lg border border-[var(--tf-line)] bg-white p-1"
+          className="h-9 w-11 cursor-pointer rounded-lg border border-[var(--tf-line)] bg-white p-1"
           value={/^#([0-9A-Fa-f]{6})$/.test(color) ? color : "#14B8A6"}
           onChange={(e) => setColor(e.target.value)}
           aria-label="Farbe wählen"
@@ -97,21 +131,18 @@ function CategoryColorField({
 function CategoryKindFields({
   defaultKind = "standard",
   defaultCompanionFree = false,
-  compact = false,
 }: {
   defaultKind?: string;
   defaultCompanionFree?: boolean;
-  /** Single-column create form */
-  compact?: boolean;
 }) {
   const [kind, setKind] = useState(defaultKind);
   return (
     <>
-      <label className={`grid gap-1 ${compact ? "" : "md:col-span-2"}`}>
-        <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>Art</span>
+      <label className="grid gap-0.5">
+        <span className="text-[11px] text-[var(--tf-text-secondary)]">Art</span>
         <select
           name="categoryKind"
-          className="tf-input"
+          className="tf-input !min-h-9 !py-1.5 text-sm"
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
@@ -123,11 +154,7 @@ function CategoryKindFields({
         </select>
       </label>
       {kind === "wheelchair" ? (
-        <label
-          className={`flex items-center gap-2 text-xs text-[var(--tf-text-secondary)] ${
-            compact ? "" : "md:col-span-2"
-          }`}
-        >
+        <label className="flex items-center gap-2 text-[11px] text-[var(--tf-text-secondary)]">
           <input type="checkbox" name="companionFree" defaultChecked={defaultCompanionFree} />
           Begleitung frei
         </label>
@@ -142,7 +169,6 @@ function ContingentField({
   standingEditable = false,
   minCapacity = 0,
   hint,
-  compact = false,
 }: {
   capacity: number;
   planBacked: boolean;
@@ -150,44 +176,39 @@ function ContingentField({
   standingEditable?: boolean;
   minCapacity?: number;
   hint?: string;
-  compact?: boolean;
 }) {
   if (planBacked && !standingEditable) {
     return (
-      <label className="grid gap-1">
-        <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
-          Kontingent
-        </span>
+      <label className="grid gap-0.5">
+        <span className="text-[11px] text-[var(--tf-text-secondary)]">Kontingent</span>
         <input
           name="capacity"
           type="number"
-          className="tf-input bg-[rgba(15,39,71,0.04)]"
+          className="tf-input !min-h-9 !py-1.5 bg-[rgba(15,39,71,0.04)] text-sm"
           value={capacity}
           readOnly
           aria-readonly="true"
         />
         {hint ? (
-          <span className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">{hint}</span>
+          <span className="text-[10px] leading-snug text-[var(--tf-text-secondary)]">{hint}</span>
         ) : null}
       </label>
     );
   }
   return (
-    <label className="grid gap-1">
-      <span className={compact ? undefined : "text-xs text-[var(--tf-text-secondary)]"}>
-        Kontingent
-      </span>
+    <label className="grid gap-0.5">
+      <span className="text-[11px] text-[var(--tf-text-secondary)]">Kontingent</span>
       <input
         name="capacity"
         type="number"
-        className="tf-input"
+        className="tf-input !min-h-9 !py-1.5 text-sm"
         defaultValue={capacity}
         key={`${capacity}-${minCapacity}`}
         min={Math.max(0, minCapacity)}
         required
       />
       {hint ? (
-        <span className="text-[11px] leading-snug text-[var(--tf-text-secondary)]">{hint}</span>
+        <span className="text-[10px] leading-snug text-[var(--tf-text-secondary)]">{hint}</span>
       ) : null}
     </label>
   );
@@ -242,7 +263,6 @@ function NewCategoryCapacityFields({ seatingEnabled }: { seatingEnabled: boolean
           key={planBacked ? "auto" : "manual"}
           capacity={planBacked ? 0 : 100}
           planBacked={planBacked}
-          compact
         />
       </div>
     </>
@@ -372,7 +392,7 @@ export function EventCategoriesPanel({
   }
 
   return (
-    <section id="kategorien" className="space-y-4 scroll-mt-24">
+    <section id="kategorien" className="space-y-3 scroll-mt-24">
       <div>
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Preiskategorien</h2>
         <p className="text-sm text-[var(--tf-text-secondary)]">
@@ -391,10 +411,13 @@ export function EventCategoriesPanel({
       ) : null}
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
 
-      <div className="space-y-3">
-        {categories.map((cat) => {
+      <div className="grid gap-3 md:grid-cols-2">
+        {categories.map((cat, catIndex) => {
           const sold = cat.pools.reduce((s, p) => s + p.soldQuantity, 0);
-          const held = cat.pools.reduce((s, p) => s + p.heldQuantity, 0);
+          const held = Math.max(
+            0,
+            cat.pools.reduce((s, p) => s + Math.max(0, p.heldQuantity), 0),
+          );
           const planBacked =
             seatingEnabled &&
             isPlanBackedTicketCategory({
@@ -406,44 +429,37 @@ export function EventCategoriesPanel({
           const committed = sold + held;
           const contingentHint = standingEditable
             ? committed > 0
-              ? `Verkaufbares Kontingent — mindestens ${committed} (verkauft/reserviert). Fläche im Saalplan ist nur der Startwert.`
-              : "Verkaufbares Kontingent — Fläche im Saalplan ist nur der Startwert. Nach Zuordnung frei erhöhbar."
+              ? `Mind. ${committed} (verkauft/reserviert).`
+              : "Nach Zuordnung frei erhöhbar."
             : planBacked
-              ? "Kommt aus der Saalplan-Zuordnung."
+              ? "Aus Saalplan-Zuordnung."
               : undefined;
           return (
-            <div key={cat.id} className="tf-card !p-4">
+            <div key={cat.id} className="tf-card !p-3">
               {canWrite ? (
                 <form
-                  className="grid gap-3 text-sm md:grid-cols-4"
+                  className="grid grid-cols-2 gap-x-2 gap-y-2 text-sm"
                   onSubmit={(e) => {
                     e.preventDefault();
                     void saveCategory(e.currentTarget, cat.id);
                   }}
                 >
-                  <div className="flex items-center gap-2 md:col-span-4">
-                    <span
-                      className="inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--tf-line)]"
-                      style={{
-                        background: resolveCategoryColor(cat.color, categories.indexOf(cat)),
-                      }}
-                      title="Farbe im Saalplan"
+                  <label className="col-span-2 grid gap-0.5">
+                    <span className="text-[11px] text-[var(--tf-text-secondary)]">Name</span>
+                    <input
+                      name="name"
+                      className="tf-input !min-h-9 !py-1.5 text-sm"
+                      defaultValue={cat.name}
+                      required
                     />
-                    <span className="text-xs text-[var(--tf-text-secondary)]">
-                      Farbe im Saalplan
-                    </span>
-                  </div>
-                  <label className="grid gap-1 md:col-span-2">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Name</span>
-                    <input name="name" className="tf-input" defaultValue={cat.name} required />
                   </label>
-                  <label className="grid gap-1">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Preis €</span>
+                  <label className="grid gap-0.5">
+                    <span className="text-[11px] text-[var(--tf-text-secondary)]">Preis €</span>
                     <input
                       name="priceEuro"
                       type="number"
                       step="0.01"
-                      className="tf-input"
+                      className="tf-input !min-h-9 !py-1.5 text-sm"
                       defaultValue={(cat.priceGrossCents / 100).toFixed(2)}
                       required
                     />
@@ -455,12 +471,12 @@ export function EventCategoriesPanel({
                     minCapacity={standingEditable ? committed : 0}
                     hint={contingentHint}
                   />
-                  <label className="grid gap-1">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Max./Best.</span>
+                  <label className="grid gap-0.5">
+                    <span className="text-[11px] text-[var(--tf-text-secondary)]">Max./Best.</span>
                     <input
                       name="maxPerOrder"
                       type="number"
-                      className="tf-input"
+                      className="tf-input !min-h-9 !py-1.5 text-sm"
                       defaultValue={cat.maxPerOrder}
                       required
                     />
@@ -469,22 +485,19 @@ export function EventCategoriesPanel({
                     defaultKind={cat.categoryKind ?? "standard"}
                     defaultCompanionFree={Boolean(cat.companionFree)}
                   />
-                  <CategoryColorField defaultColor={cat.color} />
-                  <label className="grid gap-1 md:col-span-2">
-                    <span className="text-xs text-[var(--tf-text-secondary)]">Beschreibung</span>
-                    <input
-                      name="description"
-                      className="tf-input"
-                      defaultValue={cat.description ?? ""}
-                    />
-                  </label>
-                  <p className="md:col-span-4 text-xs text-[var(--tf-text-secondary)]">
-                    Verkauft {sold} · reserviert {held} · {formatEuroFromCents(cat.priceGrossCents)}
-                  </p>
-                  <div className="flex flex-wrap gap-2 md:col-span-4">
+                  <div className="col-span-2 flex flex-wrap items-center justify-between gap-2">
+                    <CategoryColorSwatches defaultColor={cat.color} />
+                    <p className="text-[11px] tabular-nums text-[var(--tf-text-secondary)]">
+                      Verkauft {sold} · reserviert {held} ·{" "}
+                      {formatEuroFromCents(cat.priceGrossCents)}
+                    </p>
+                  </div>
+                  {/* Preserve description in DB without showing a bulky field */}
+                  <input type="hidden" name="description" value={cat.description ?? ""} />
+                  <div className="col-span-2 flex flex-wrap gap-2">
                     <button
                       type="submit"
-                      className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                      className="tf-btn tf-btn-primary !min-h-9 !px-3 text-sm"
                       disabled={savingId === cat.id}
                     >
                       {savingId === cat.id ? "Speichert…" : "Speichern"}
@@ -492,7 +505,7 @@ export function EventCategoriesPanel({
                     {sold === 0 && held === 0 ? (
                       <button
                         type="button"
-                        className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                        className="tf-btn tf-btn-secondary !min-h-9 !px-3 text-sm"
                         disabled={savingId === cat.id}
                         onClick={() => void removeCategory(cat.id)}
                       >
@@ -502,15 +515,15 @@ export function EventCategoriesPanel({
                   </div>
                 </form>
               ) : (
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-2.5">
                   <span
-                    className="mt-1 inline-block h-3.5 w-3.5 shrink-0 rounded-full border border-[var(--tf-line)]"
+                    className="mt-1 inline-block h-3 w-3 shrink-0 rounded-full border border-[var(--tf-line)]"
                     style={{
-                      background: resolveCategoryColor(cat.color, categories.indexOf(cat)),
+                      background: resolveCategoryColor(cat.color, catIndex),
                     }}
                   />
                   <div>
-                    <p className="font-semibold">{cat.name}</p>
+                    <p className="font-semibold text-[var(--tf-navy)]">{cat.name}</p>
                     <p className="text-sm text-[var(--tf-text-secondary)]">
                       {KIND_OPTIONS.find((k) => k.value === (cat.categoryKind ?? "standard"))
                         ?.label ?? "Kategorie"}
@@ -525,7 +538,7 @@ export function EventCategoriesPanel({
           );
         })}
         {categories.length === 0 ? (
-          <p className="text-sm text-[var(--tf-text-secondary)]">
+          <p className="text-sm text-[var(--tf-text-secondary)] md:col-span-2">
             Noch keine Kategorien für dieses Event.
           </p>
         ) : null}

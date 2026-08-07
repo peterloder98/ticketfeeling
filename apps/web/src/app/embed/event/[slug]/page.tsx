@@ -211,8 +211,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
         ) : (
           <EmbedBackLink fallbackHref="/embed/shop" label="Zurück" />
         )}
-        <div className="group overflow-hidden rounded-xl border border-[var(--tf-line)]">
-          <div className="relative w-full overflow-hidden bg-[var(--tf-navy)] pt-[min(100%,420px)]">
+        <div className="group mx-auto w-full max-w-[444px] overflow-hidden rounded-xl border border-[var(--tf-line)]">
+          <div className="relative aspect-square w-full max-h-[444px] overflow-hidden bg-[var(--tf-navy)]">
             <ResponsiveImage
               src={coverImageUrl}
               alt=""

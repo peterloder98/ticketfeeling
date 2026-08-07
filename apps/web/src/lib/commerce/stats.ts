@@ -180,7 +180,10 @@ export async function getSalesStats(organizationId: string) {
     inventory: [...byCategory.values()].map((row) => {
       const capacity = categoryInventoryCapacity(row.categoryCapacity);
       const sold = row.pools.reduce((s, p) => s + p.soldQuantity, 0);
-      const held = row.pools.reduce((s, p) => s + p.heldQuantity, 0);
+      const held = Math.max(
+        0,
+        row.pools.reduce((s, p) => s + Math.max(0, p.heldQuantity), 0),
+      );
       const onlineSold =
         row.pools.find((p) => p.channel === "online")?.soldQuantity ?? 0;
       const boxOfficeSold =

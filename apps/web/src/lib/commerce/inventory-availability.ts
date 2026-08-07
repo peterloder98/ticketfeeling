@@ -19,7 +19,10 @@ export function categoryInventoryCapacity(categoryCapacity: number): number {
 }
 
 export function sharedCommittedQuantity(pools: InventoryPoolQty[]): number {
-  return pools.reduce((s, p) => s + p.soldQuantity + p.heldQuantity, 0);
+  return pools.reduce(
+    (s, p) => s + p.soldQuantity + Math.max(0, p.heldQuantity),
+    0,
+  );
 }
 
 /** Tickets still sellable for the category as a whole (all channels). */
@@ -50,7 +53,9 @@ export function channelAvailableQuantity(
     pool.capacity <= 0 && categoryCapacity > 0 ? categoryCapacity : pool.capacity;
   const channelLocal = Math.max(
     0,
-    Math.min(poolCap, categoryCapacity) - pool.soldQuantity - pool.heldQuantity,
+    Math.min(poolCap, categoryCapacity) -
+      pool.soldQuantity -
+      Math.max(0, pool.heldQuantity),
   );
   return Math.min(channelLocal, shared);
 }

@@ -35,6 +35,7 @@ import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
+import { expireAndReconcileHolds } from "@/lib/commerce/cart";
 
 export const dynamic = "force-dynamic";
 
@@ -103,6 +104,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     ensureEventPricingSchema(prisma),
     ensureSaleClosedEarlyColumn(),
   ]);
+
+  // Expire stale cart holds and repair negative „reserviert“ counters before we render.
+  await expireAndReconcileHolds().catch((err) => {
+    console.error("[admin/event] hold expire/reconcile failed", err);
+  });
 
   let event;
   try {
@@ -193,7 +199,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     pools: c.pools.map((p) => ({
       channel: p.channel,
       soldQuantity: p.soldQuantity,
-      heldQuantity: p.heldQuantity,
+      heldQuantity: Math.max(0, p.heldQuantity),
       capacity: p.capacity,
     })),
   }));

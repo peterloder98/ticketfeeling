@@ -20,6 +20,11 @@ type Options = {
    * Keep false for the admin editor so object drag is unaffected.
    */
   panOverInteractive?: boolean;
+  /**
+   * Ctrl/Meta + wheel → zoom instead of pan (buttons remain primary in embeds).
+   * Return true if the zoom was applied.
+   */
+  onWheelZoom?: (deltaY: number) => void;
 };
 
 /**
@@ -34,10 +39,13 @@ export function useCanvasPan(
   options?: Options,
 ) {
   const panOverInteractive = options?.panOverInteractive ?? false;
+  const onWheelZoom = options?.onWheelZoom;
   const sessionRef = useRef<PanSession | null>(null);
   const spaceDownRef = useRef(false);
   const suppressClickRef = useRef(false);
   const [panning, setPanning] = useState(false);
+  const onWheelZoomRef = useRef(onWheelZoom);
+  onWheelZoomRef.current = onWheelZoom;
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -75,6 +83,10 @@ export function useCanvasPan(
       if (!target) return;
       // Always consume wheel on the map — pan instead of bubbling to page/iframe.
       e.preventDefault();
+      if ((e.ctrlKey || e.metaKey) && onWheelZoomRef.current) {
+        onWheelZoomRef.current(e.deltaY);
+        return;
+      }
       target.scrollLeft += e.deltaX;
       target.scrollTop += e.deltaY;
     }

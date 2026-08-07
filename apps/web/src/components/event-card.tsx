@@ -103,7 +103,7 @@ export function EventCard({ event }: { event: EventCardData }) {
       href={href}
       className="group flex h-full flex-col overflow-hidden rounded-[19px] border border-[var(--tf-line)] bg-white shadow-[0_3px_12px_rgba(15,39,71,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_8px_22px_rgba(15,39,71,0.1)]"
     >
-      <div className="relative aspect-square overflow-hidden bg-[var(--tf-navy)]">
+      <div className="relative mx-auto aspect-square w-full max-h-[444px] max-w-[444px] overflow-hidden bg-[var(--tf-navy)]">
         <ResponsiveImage
           src={event.coverImageUrl}
           alt=""

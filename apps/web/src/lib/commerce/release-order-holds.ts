@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating";
+import { releaseHeldQuantity } from "@/lib/commerce/hold-quantity";
 
 /** Release inventory holds for a failed/canceled unpaid order. */
 export async function releaseOrderHolds(orderId: string) {
@@ -40,24 +41,15 @@ export async function releaseOrderHolds(orderId: string) {
     return { released: 0 };
   }
 
+  let released = 0;
   await prisma.$transaction(async (tx) => {
     for (const hold of holds) {
-      const current = await tx.inventoryHold.findUnique({
-        where: { id: hold.id },
-        select: { id: true, status: true, cartItemId: true, quantity: true, poolId: true },
-      });
-      if (!current || current.status !== "held") continue;
-      await tx.inventoryHold.update({
-        where: { id: current.id },
-        data: { status: "released" },
-      });
-      await tx.inventoryPool.update({
-        where: { id: current.poolId },
-        data: { heldQuantity: { decrement: current.quantity } },
-      });
-      if (current.cartItemId) {
+      const applied = await releaseHeldQuantity(tx, hold, "released");
+      if (!applied) continue;
+      released += 1;
+      if (hold.cartItemId) {
         await tx.eventSeat.updateMany({
-          where: { cartItemId: current.cartItemId, status: "held" },
+          where: { cartItemId: hold.cartItemId, status: "held" },
           data: { status: "available", holdExpiresAt: null, cartItemId: null },
         });
       }
@@ -75,5 +67,5 @@ export async function releaseOrderHolds(orderId: string) {
     });
   });
 
-  return { released: holds.length };
+  return { released };
 }

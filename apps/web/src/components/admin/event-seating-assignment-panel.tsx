@@ -114,6 +114,8 @@ export function EventSeatingAssignmentPanel({
   const canvasRef = useRef<HTMLDivElement>(null);
   const { panning, panHandlers } = useCanvasPan(canvasRef);
   const initialLoadDone = useRef(false);
+  const didAutoFitRef = useRef(false);
+  const userZoomedRef = useRef(false);
   const seatsRef = useRef(seats);
   seatsRef.current = seats;
   const patchQueueRef = useRef<
@@ -304,6 +306,20 @@ export function EventSeatingAssignmentPanel({
     ro.observe(el);
     return () => ro.disconnect();
   }, [loading, enabled]);
+
+  // Default: hall width matches the content column (not oversized empty margins).
+  useEffect(() => {
+    if (loading || !enabled) return;
+    if (userZoomedRef.current) return;
+    if (viewport.w < 280 || planSize.widthCm < 1) return;
+    const padLocal = Math.max(12, Math.min(24, Math.round(viewport.w * 0.03)));
+    const fitScaleW = (viewport.w - padLocal * 2) / Math.max(1, planSize.widthCm);
+    const next = fitViewZoom(fitScaleW, readableScalePxPerCm());
+    if (!didAutoFitRef.current || Math.abs(zoom - next) > 0.04) {
+      didAutoFitRef.current = true;
+      setZoom(next);
+    }
+  }, [loading, enabled, viewport.w, planSize.widthCm]); // eslint-disable-line react-hooks/exhaustive-deps -- fit once / on width change unless user zoomed
 
   function resolveTargetSeatIds(patch: {
     seatIds?: string[];
@@ -696,13 +712,11 @@ export function EventSeatingAssignmentPanel({
   }
 
   const pad = Math.max(12, Math.min(24, Math.round(Math.min(viewport.w, viewport.h) * 0.03)));
-  const fitScale = Math.min(
-    (viewport.w - pad * 2) / Math.max(1, planSize.widthCm),
-    (viewport.h - pad * 2) / Math.max(1, planSize.depthCm),
-  );
+  // Fit hall width to the content column (height may scroll) — not oversized with empty margins.
+  const fitScaleByWidth = (viewport.w - pad * 2) / Math.max(1, planSize.widthCm);
   const readableScale = readableScalePxPerCm();
-  const fitZoom = fitViewZoom(fitScale, readableScale);
-  // 100% = readable seats; fit is a separate (usually lower) zoom.
+  const fitZoom = fitViewZoom(fitScaleByWidth, readableScale);
+  // 100% = readable seats; fit-to-width is the default for event edit.
   const scale = Math.max(0.01, readableScale * zoom);
   const hallW = planSize.widthCm * scale;
   const hallH = planSize.depthCm * scale;
@@ -1015,8 +1029,8 @@ export function EventSeatingAssignmentPanel({
       <div className="mt-4 overflow-hidden rounded-2xl border border-[var(--tf-line)] bg-white">
         <div className="flex items-center justify-between gap-2 border-b border-[var(--tf-line)] px-3 py-2">
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Ziehen = verschieben · Leertaste/Alt + ziehen überall · 50 % Standard · 100 % =
-            lesbare Platznummern
+            Ziehen = verschieben · Leertaste/Alt + ziehen überall · Start = Saalbreite passend ·
+            100 % = lesbare Platznummern
             {saving ? " · speichert…" : ""}
           </p>
           <div className="flex items-center gap-1">
@@ -1024,7 +1038,10 @@ export function EventSeatingAssignmentPanel({
               type="button"
               className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
               disabled={zoom <= MIN_VIEW_ZOOM}
-              onClick={() => setZoom((z) => clampViewZoom(z - VIEW_ZOOM_STEP))}
+              onClick={() => {
+                userZoomedRef.current = true;
+                setZoom((z) => clampViewZoom(z - VIEW_ZOOM_STEP));
+              }}
               aria-label="Verkleinern"
             >
               <ZoomOut className="h-4 w-4" />
@@ -1032,7 +1049,10 @@ export function EventSeatingAssignmentPanel({
             <button
               type="button"
               className="min-w-[3.25rem] rounded-md px-1 py-1 text-center text-xs tabular-nums hover:bg-[rgba(15,39,71,0.06)]"
-              onClick={() => setZoom(DEFAULT_VIEW_ZOOM)}
+              onClick={() => {
+                userZoomedRef.current = true;
+                setZoom(DEFAULT_VIEW_ZOOM);
+              }}
               title="Standardzoom 50 %"
             >
               {Math.round(zoom * 100)}%
@@ -1041,7 +1061,10 @@ export function EventSeatingAssignmentPanel({
               type="button"
               className="rounded-lg p-1.5 hover:bg-[rgba(15,39,71,0.06)] disabled:opacity-40"
               disabled={zoom >= MAX_VIEW_ZOOM}
-              onClick={() => setZoom((z) => clampViewZoom(z + VIEW_ZOOM_STEP))}
+              onClick={() => {
+                userZoomedRef.current = true;
+                setZoom((z) => clampViewZoom(z + VIEW_ZOOM_STEP));
+              }}
               aria-label="Vergrößern"
             >
               <ZoomIn className="h-4 w-4" />
@@ -1049,8 +1072,12 @@ export function EventSeatingAssignmentPanel({
             <button
               type="button"
               className="ml-1 rounded-md px-1.5 py-1 text-[10px] text-[var(--tf-text-secondary)] hover:bg-[rgba(15,39,71,0.06)]"
-              onClick={() => setZoom(fitZoom)}
-              title="Saal auf Fläche einpassen"
+              onClick={() => {
+                userZoomedRef.current = false;
+                didAutoFitRef.current = true;
+                setZoom(fitZoom);
+              }}
+              title="Saalbreite an Inhalt anpassen"
             >
               Einpassen
             </button>

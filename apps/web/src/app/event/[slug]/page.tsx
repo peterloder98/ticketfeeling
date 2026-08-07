@@ -309,8 +309,8 @@ export default async function EventPage({ params }: Props) {
             </div>
           </div>
 
-          <div className="group mx-auto w-full max-w-[460px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
-            <div className="aspect-square overflow-hidden">
+          <div className="group mx-auto w-full max-w-[444px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
+            <div className="aspect-square max-h-[444px] overflow-hidden">
               <ResponsiveImage
                 src={coverImageUrl}
                 alt={`Cover: ${event.name}`}

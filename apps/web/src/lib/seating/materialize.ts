@@ -7,6 +7,7 @@ import {
 import { parseSeatingLayoutConfig } from "@/lib/seating/layout-config";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { syncPlanBackedCategoryCapacities } from "@/lib/seating/sync-category-capacity";
+import { releaseHeldQuantity } from "@/lib/commerce/hold-quantity";
 
 type DesiredSeat = {
   eventId: string;
@@ -383,20 +384,7 @@ export async function expireSeatHolds(
       }
 
       if (hold) {
-        const current = await tx.inventoryHold.findUnique({
-          where: { id: hold.id },
-          select: { id: true, status: true },
-        });
-        if (current?.status === "held") {
-          await tx.inventoryHold.update({
-            where: { id: hold.id },
-            data: { status: "expired" },
-          });
-          await tx.inventoryPool.update({
-            where: { id: hold.poolId },
-            data: { heldQuantity: { decrement: hold.quantity } },
-          });
-        }
+        await releaseHeldQuantity(tx, hold, "expired");
       }
 
       // Free all held seats for this cart item (not only the expired subset) so inventory + seats stay aligned.

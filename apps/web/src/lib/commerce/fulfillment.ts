@@ -21,6 +21,7 @@ import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating"
 import { redeemOrderPromotions } from "@/lib/commerce/discounts";
 import { isOrderAlreadyFulfilled } from "@/lib/commerce/payment-amount-guard";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { releaseHeldQuantity } from "@/lib/commerce/hold-quantity";
 import type { Prisma } from "@prisma/client";
 
 type SeatLike = {
@@ -230,17 +231,13 @@ export async function fulfillPaidOrder(orderId: string) {
     for (const item of cartItems) {
       if (!item.hold || item.hold.status === "consumed") continue;
       if (item.hold.status === "held") {
-        await tx.inventoryHold.update({
-          where: { id: item.hold.id },
-          data: { status: "consumed" },
-        });
-        await tx.inventoryPool.update({
-          where: { id: item.hold.poolId },
-          data: {
-            heldQuantity: { decrement: item.hold.quantity },
-            soldQuantity: { increment: item.hold.quantity },
-          },
-        });
+        const applied = await releaseHeldQuantity(tx, item.hold, "consumed");
+        if (applied) {
+          await tx.inventoryPool.update({
+            where: { id: item.hold.poolId },
+            data: { soldQuantity: { increment: item.hold.quantity } },
+          });
+        }
       }
     }
 
@@ -249,17 +246,13 @@ export async function fulfillPaidOrder(orderId: string) {
       where: { orderId: order.id, status: "held" },
     });
     for (const hold of orderHolds) {
-      await tx.inventoryHold.update({
-        where: { id: hold.id },
-        data: { status: "consumed" },
-      });
-      await tx.inventoryPool.update({
-        where: { id: hold.poolId },
-        data: {
-          heldQuantity: { decrement: hold.quantity },
-          soldQuantity: { increment: hold.quantity },
-        },
-      });
+      const applied = await releaseHeldQuantity(tx, hold, "consumed");
+      if (applied) {
+        await tx.inventoryPool.update({
+          where: { id: hold.poolId },
+          data: { soldQuantity: { increment: hold.quantity } },
+        });
+      }
     }
 
     // Invoice (once)

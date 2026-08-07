@@ -1,3 +1,9 @@
+/** Hard display cap — never upscale covers past this CSS size (incl. embeds). */
+export const COVER_DISPLAY_MAX_PX = 444;
+
+/** Tailwind-friendly class: max width and height, no upscale past COVER_DISPLAY_MAX_PX. */
+export const COVER_DISPLAY_MAX_CLASS = "max-h-[444px] max-w-[444px]";
+
 /** Known-dead remote covers that still sit in older seed/DB rows (Safari shows "?"). */
 const DEAD_COVER_URLS = [
   "https://images.unsplash.com/photo-1459749411175-047513050fa9",

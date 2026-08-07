@@ -76,7 +76,15 @@ export function SeatMap({
   const [tooltip, setTooltip] = useState<HoverTooltip | null>(null);
   const [tooltipMounted, setTooltipMounted] = useState(false);
   const canvasRef = useRef<HTMLDivElement>(null);
-  const { panning, panHandlers } = useCanvasPan(canvasRef, { panOverInteractive: true });
+  const { panning, panHandlers } = useCanvasPan(canvasRef, {
+    panOverInteractive: true,
+    onWheelZoom: (deltaY) => {
+      setZoom((z) => {
+        const step = deltaY > 0 ? -0.25 : 0.25;
+        return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round((z + step) * 100) / 100));
+      });
+    },
+  });
 
   useEffect(() => {
     setTooltipMounted(true);
@@ -404,15 +412,19 @@ export function SeatMap({
 
   return (
     <div className="relative">
-      <div className="pointer-events-none absolute right-2 top-2 z-10">
-        <div className="pointer-events-auto inline-flex items-center rounded-lg border border-[var(--tf-line)] bg-white/95 shadow-sm backdrop-blur-sm">
+      <div className="pointer-events-none absolute right-2 top-2 z-20">
+        <div
+          className="pointer-events-auto inline-flex items-center rounded-lg border border-[var(--tf-line)] bg-white/95 shadow-sm backdrop-blur-sm"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
             disabled={zoom <= MIN_ZOOM}
-            onClick={() =>
-              setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - 0.25) * 100) / 100))
-            }
+            onClick={(e) => {
+              e.stopPropagation();
+              setZoom((z) => Math.max(MIN_ZOOM, Math.round((z - 0.25) * 100) / 100));
+            }}
             aria-label="Verkleinern"
           >
             <Minus className="h-3.5 w-3.5" />
@@ -420,7 +432,10 @@ export function SeatMap({
           <button
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center border-x border-[var(--tf-line)]"
-            onClick={() => setZoom(initialZoom)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setZoom(initialZoom);
+            }}
             aria-label="Zoom zurücksetzen"
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -429,9 +444,10 @@ export function SeatMap({
             type="button"
             className="inline-flex h-8 w-8 items-center justify-center disabled:opacity-40"
             disabled={zoom >= MAX_ZOOM}
-            onClick={() =>
-              setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + 0.25) * 100) / 100))
-            }
+            onClick={(e) => {
+              e.stopPropagation();
+              setZoom((z) => Math.min(MAX_ZOOM, Math.round((z + 0.25) * 100) / 100));
+            }}
             aria-label="Vergrößern"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -449,15 +465,23 @@ export function SeatMap({
           setTooltip(null);
         }}
       >
-        <div className="flex min-w-full justify-center">
+        <div
+          className="flex min-w-full justify-center"
+          style={{ width: Math.max(svgWidth, 1), minWidth: "100%" }}
+        >
           <svg
             width={svgWidth}
             height={svgHeight}
             viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-            className="mx-auto block h-auto max-w-full shrink-0"
+            className="mx-auto block shrink-0"
             role="img"
             aria-label={`Saalplan ${map.planName}`}
-            style={{ touchAction: "none" }}
+            style={{
+              touchAction: "none",
+              width: svgWidth,
+              height: svgHeight,
+              maxWidth: "none",
+            }}
           >
           <defs>
             <pattern

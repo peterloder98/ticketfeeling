@@ -13,6 +13,9 @@ const EXPIRE_THROTTLE_MS = 15_000;
 
 async function expireHolds(now = new Date()) {
   const { expireSeatHolds } = await import("@/lib/seating/materialize");
+  const { releaseHeldQuantity, reconcileHeldQuantities } = await import(
+    "@/lib/commerce/hold-quantity"
+  );
   await expireSeatHolds(now);
 
   const expired = await prisma.inventoryHold.findMany({
@@ -39,41 +42,47 @@ async function expireHolds(now = new Date()) {
       },
     },
   });
-  if (expired.length === 0) return;
 
-  // One transaction instead of N — each remote RTT used to add ~100–300ms.
-  await prisma.$transaction(async (tx) => {
-    for (const hold of expired) {
-      // Protect holds tied to orders awaiting async payment (SEPA processing).
-      const order = hold.cartItem?.cart?.orders?.[0];
-      const paymentStatus = order?.paymentStatus;
-      if (
-        hold.orderId ||
-        (hold.cartItem?.cart?.status === "converted" &&
-          (paymentStatus === "pending" || paymentStatus === "processing"))
-      ) {
-        continue;
+  const touchedPools = new Set<string>();
+  if (expired.length > 0) {
+    // One transaction instead of N — each remote RTT used to add ~100–300ms.
+    await prisma.$transaction(async (tx) => {
+      for (const hold of expired) {
+        // Protect holds tied to orders awaiting async payment (SEPA processing).
+        const order = hold.cartItem?.cart?.orders?.[0];
+        const paymentStatus = order?.paymentStatus;
+        if (
+          hold.orderId ||
+          (hold.cartItem?.cart?.status === "converted" &&
+            (paymentStatus === "pending" || paymentStatus === "processing"))
+        ) {
+          continue;
+        }
+
+        const applied = await releaseHeldQuantity(tx, hold, "expired");
+        if (!applied) continue;
+        touchedPools.add(hold.poolId);
+        if (hold.cartItemId) {
+          await tx.eventSeat.updateMany({
+            where: { cartItemId: hold.cartItemId, status: "held" },
+            data: { status: "available", holdExpiresAt: null, cartItemId: null },
+          });
+        }
       }
+    });
+  }
 
-      const current = await tx.inventoryHold.findUnique({
-        where: { id: hold.id },
-        select: { id: true, status: true, cartItemId: true },
-      });
-      if (!current || current.status !== "held") continue;
-      await tx.inventoryHold.update({
-        where: { id: hold.id },
-        data: { status: "expired" },
-      });
-      await tx.inventoryPool.update({
-        where: { id: hold.poolId },
-        data: { heldQuantity: { decrement: hold.quantity } },
-      });
-      await tx.eventSeat.updateMany({
-        where: { cartItemId: current.cartItemId, status: "held" },
-        data: { status: "available", holdExpiresAt: null, cartItemId: null },
-      });
-    }
+  // Repair stale/negative counters (e.g. prior double-decrements).
+  await reconcileHeldQuantities(
+    touchedPools.size > 0 ? [...touchedPools] : undefined,
+  ).catch((error) => {
+    console.error("[cart] heldQuantity reconcile failed", error);
   });
+}
+
+/** Public entry for admin pages / jobs — expire seats + inventory, then reconcile. */
+export async function expireAndReconcileHolds(now = new Date()) {
+  await expireHolds(now);
 }
 
 async function expireHoldsThrottled() {
@@ -320,18 +329,12 @@ async function releaseCartHolds(cartId: string) {
     include: { hold: true },
   });
   if (items.length === 0) return;
+  const { releaseHeldQuantity } = await import("@/lib/commerce/hold-quantity");
   // One transaction — N separate txs used to cost one RTT each.
   await prisma.$transaction(async (tx) => {
     for (const item of items) {
       if (item.hold?.status === "held") {
-        await tx.inventoryHold.update({
-          where: { id: item.hold.id },
-          data: { status: "released" },
-        });
-        await tx.inventoryPool.update({
-          where: { id: item.hold.poolId },
-          data: { heldQuantity: { decrement: item.hold.quantity } },
-        });
+        await releaseHeldQuantity(tx, item.hold, "released");
       }
       await tx.eventSeat.updateMany({
         where: { cartItemId: item.id, status: "held" },
@@ -681,16 +684,10 @@ export async function removeCartItem(
   });
   if (!item) throw new Error("NOT_FOUND");
 
+  const { releaseHeldQuantity } = await import("@/lib/commerce/hold-quantity");
   await prisma.$transaction(async (tx) => {
     if (item.hold?.status === "held") {
-      await tx.inventoryHold.update({
-        where: { id: item.hold.id },
-        data: { status: "released" },
-      });
-      await tx.inventoryPool.update({
-        where: { id: item.hold.poolId },
-        data: { heldQuantity: { decrement: item.hold.quantity } },
-      });
+      await releaseHeldQuantity(tx, item.hold, "released");
     }
     await tx.eventSeat.updateMany({
       where: { cartItemId: item.id, status: "held" },
