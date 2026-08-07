@@ -43,6 +43,8 @@ const mock: TicketPresentation = {
   locationLines: ["Olympiahalle", "Spiridon-Louis-Ring 21", "80809 München"],
   locationShort: "Olympiahalle, München",
   locationTicket: "Olympiahalle, 80809 München",
+  locationName: "Olympiahalle",
+  locationDetail: "80809 München",
   categoryName: "Kategorie 1",
   categoryKind: "seated",
   isVip: false,

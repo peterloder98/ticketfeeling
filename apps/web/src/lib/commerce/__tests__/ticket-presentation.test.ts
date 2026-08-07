@@ -5,7 +5,13 @@ import {
   parseSeatHighlight,
   resolvePlaceLabel,
   TICKET_BODY_ASPECT,
+  TICKET_COL_COVER,
+  TICKET_COL_QR,
 } from "@/lib/commerce/ticket-presentation";
+import {
+  resolveEventCoverUrl,
+  resolveTicketCoverUrl,
+} from "@/lib/commerce/event-cover";
 
 describe("isVipCategory", () => {
   it("detects vip kind and name", () => {
@@ -79,5 +85,39 @@ describe("parseSeatHighlight", () => {
 describe("TICKET_BODY_ASPECT", () => {
   it("locks landscape ~2:1", () => {
     expect(TICKET_BODY_ASPECT).toBe(2);
+  });
+
+  it("gives middle column room (~29% cover)", () => {
+    expect(TICKET_COL_COVER).toBeGreaterThanOrEqual(0.28);
+    expect(TICKET_COL_COVER).toBeLessThanOrEqual(0.3);
+    expect(TICKET_COL_COVER + TICKET_COL_QR).toBeLessThan(1);
+  });
+});
+
+describe("resolveTicketCoverUrl", () => {
+  it("prefers ticket hero over event cover", () => {
+    expect(
+      resolveTicketCoverUrl({
+        ticketHeroImageUrl: "/covers/ticket-hero.jpg",
+        coverImageUrl: "/covers/event.jpg",
+        tour: { coverImageUrl: "/covers/tour.jpg" },
+      }),
+    ).toBe("/covers/ticket-hero.jpg");
+  });
+
+  it("falls back to event/tour cover", () => {
+    expect(
+      resolveTicketCoverUrl({
+        ticketHeroImageUrl: null,
+        coverImageUrl: null,
+        tour: { coverImageUrl: "/covers/tour.jpg" },
+      }),
+    ).toBe("/covers/tour.jpg");
+    expect(
+      resolveEventCoverUrl({
+        coverImageUrl: "/covers/event.jpg",
+        tour: { coverImageUrl: "/covers/tour.jpg" },
+      }),
+    ).toBe("/covers/event.jpg");
   });
 });

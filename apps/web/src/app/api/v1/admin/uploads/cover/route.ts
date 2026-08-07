@@ -70,31 +70,46 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: { code: "TARGET_REQUIRED" } }, { status: 400 });
       }
 
+      const field = String(form.get("field") ?? "coverImageUrl").trim();
+      const isTicketHero = field === "ticketHeroImageUrl";
+
       // Event: revert to tour poster (not empty), unless tour has none
+      // Ticket hero clear: set null (falls back to event/tour cover at render time)
       let clearedEventUrl: string | null = null;
       if (eventId) {
-        const event = await prisma.event.findUnique({
-          where: { id: eventId },
-          select: { tourId: true },
-        });
-        let nextCover: string | null = null;
-        if (event?.tourId) {
-          const tour = await prisma.tour.findUnique({
-            where: { id: event.tourId },
-            select: { coverImageUrl: true },
+        if (isTicketHero) {
+          await prisma.event.update({
+            where: { id: eventId },
+            data: { ticketHeroImageUrl: null },
           });
-          nextCover = tour?.coverImageUrl?.trim() || null;
+          clearedEventUrl = null;
+        } else {
+          const event = await prisma.event.findUnique({
+            where: { id: eventId },
+            select: { tourId: true },
+          });
+          let nextCover: string | null = null;
+          if (event?.tourId) {
+            const tour = await prisma.tour.findUnique({
+              where: { id: event.tourId },
+              select: { coverImageUrl: true },
+            });
+            nextCover = tour?.coverImageUrl?.trim() || null;
+          }
+          await prisma.event.update({
+            where: { id: eventId },
+            data: { coverImageUrl: nextCover },
+          });
+          clearedEventUrl = nextCover;
         }
-        await prisma.event.update({
-          where: { id: eventId },
-          data: { coverImageUrl: nextCover },
-        });
-        clearedEventUrl = nextCover;
         revalidatePath(`/admin/events/${eventId}`);
       }
 
       // Tour: clear poster and sync inheriting dates
       if (tourId) {
+        if (isTicketHero) {
+          return NextResponse.json({ error: { code: "INVALID_FIELD" } }, { status: 400 });
+        }
         const existing = await prisma.tour.findUnique({
           where: { id: tourId },
           select: { coverImageUrl: true, slug: true },
@@ -137,10 +152,18 @@ export async function POST(request: Request) {
     });
 
     if (eventId) {
-      await prisma.event.update({
-        where: { id: eventId },
-        data: { coverImageUrl: stored.url },
-      });
+      const field = String(form.get("field") ?? "coverImageUrl").trim();
+      if (field === "ticketHeroImageUrl") {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: { ticketHeroImageUrl: stored.url },
+        });
+      } else {
+        await prisma.event.update({
+          where: { id: eventId },
+          data: { coverImageUrl: stored.url },
+        });
+      }
       revalidatePath(`/admin/events/${eventId}`);
     }
 

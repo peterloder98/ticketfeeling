@@ -35,6 +35,7 @@ import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
+import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
 import { expireAndReconcileHolds } from "@/lib/commerce/cart";
 
@@ -105,6 +106,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     ensureEventPricingSchema(prisma),
     ensureSaleClosedEarlyColumn(),
     ensureScheduleChangedAtColumn(),
+    ensureTicketHeroImageColumn(),
   ]);
 
   // Expire stale cart holds and repair negative „reserviert“ counters before we render.
@@ -431,6 +433,40 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             </div>
           ) : null}
         </div>
+      </section>
+
+      {/* Optional ticket-only cover override */}
+      <section className="tf-card !p-5">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
+            Zusätzliches Ticketbild
+          </h2>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Optional. Wird nur auf dem Print@Home-/Ticket-Gesicht gezeigt. Leer = Event-Cover.
+          </p>
+        </div>
+        {canWrite ? (
+          <div className="mt-4 max-w-xl">
+            <CoverImageField
+              name="ticketHeroImageUrl"
+              label="Ticketbild (optional)"
+              persistField="ticketHeroImageUrl"
+              initialUrl={event.ticketHeroImageUrl}
+              eventId={event.id}
+            />
+          </div>
+        ) : event.ticketHeroImageUrl ? (
+          <div className="mt-4 relative aspect-square w-full max-w-[160px] overflow-hidden rounded-2xl border border-[var(--tf-line)]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={event.ticketHeroImageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          </div>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">Kein Ticketbild hinterlegt.</p>
+        )}
       </section>
 
       {/* KPIs */}

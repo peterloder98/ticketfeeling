@@ -36,3 +36,17 @@ export function resolveEventCoverUrl(input: {
   if (own) return own;
   return normalizeCoverImageUrl(input.tour?.coverImageUrl);
 }
+
+/**
+ * Ticket / Print@Home cover: optional ticketHeroImageUrl, else event/tour cover.
+ * Does not affect listing cards or public event pages.
+ */
+export function resolveTicketCoverUrl(input: {
+  ticketHeroImageUrl?: string | null;
+  coverImageUrl?: string | null;
+  tour?: { coverImageUrl?: string | null } | null;
+}): string | null {
+  const hero = normalizeCoverImageUrl(input.ticketHeroImageUrl);
+  if (hero) return hero;
+  return resolveEventCoverUrl(input);
+}

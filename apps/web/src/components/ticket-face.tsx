@@ -34,7 +34,7 @@ const infoPct = 100 - coverPct - qrPct;
 export function TicketFace({
   data,
   showQr,
-  qrSize = 168,
+  qrSize = 176,
   transferredMessage,
   compact = false,
 }: Props) {
@@ -42,7 +42,7 @@ export function TicketFace({
   const cover = data.coverUrl;
   const admitLabel = data.isVip ? "VIP-TICKET" : "EINLASSTICKET";
   const seat = parseSeatHighlight(data.placeDisplayLabel, data.hasAssignedSeat);
-  const doorsColor =
+  const doorsAccent =
     data.isVip || data.doors.isCategoryOverride ? accent : "var(--tf-navy)";
 
   return (
@@ -64,44 +64,63 @@ export function TicketFace({
             aria-hidden
           />
 
-          {/* LEFT — cover full height */}
+          {/* LEFT — square cover contain + blur backdrop */}
           <div className="relative min-h-0 min-w-0 overflow-hidden bg-[var(--tf-navy)]">
             {cover ? (
-              <Image
-                src={cover}
-                alt=""
-                fill
-                sizes="(max-width: 900px) 33vw, 300px"
-                className="object-cover"
-                unoptimized
-                priority
-              />
+              <>
+                <div
+                  className="absolute inset-0 scale-110 bg-cover bg-center"
+                  style={{
+                    backgroundImage: `url(${cover})`,
+                    filter: "blur(18px)",
+                  }}
+                  aria-hidden
+                />
+                <div
+                  className="absolute inset-0 bg-[rgba(15,39,71,0.55)]"
+                  aria-hidden
+                />
+                <div className="absolute inset-[7%] overflow-hidden rounded-[10px] shadow-[0_6px_18px_rgba(0,0,0,0.28)] ring-1 ring-white/15">
+                  <Image
+                    src={cover}
+                    alt=""
+                    fill
+                    sizes="(max-width: 900px) 30vw, 260px"
+                    className="object-contain"
+                    unoptimized
+                    priority
+                  />
+                </div>
+              </>
             ) : (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 px-3 text-center text-white">
-                <p className="text-[10px] font-bold tracking-[0.16em] md:text-xs">
-                  TICKETFEELING
-                </p>
-                <p className="text-[9px] opacity-75 md:text-[10px]">{TF_TAGLINE}</p>
-              </div>
+              <TicketCoverFallback compact={compact} />
             )}
           </div>
 
           {/* MIDDLE — event info */}
           <div
             className={`flex min-h-0 min-w-0 flex-col bg-white ${
-              compact ? "gap-1 px-3 py-2.5" : "gap-1.5 px-4 py-3 md:px-5 md:py-3.5"
+              compact ? "gap-0.5 px-3 py-2" : "gap-1 px-4 py-2.5 md:px-5 md:py-3"
             }`}
           >
-            <div className="flex min-w-0 items-center gap-2">
-              <BrandLogo href={null} variant="full" className="!h-7 !w-auto shrink-0 sm:!h-8" />
-              <span className="truncate text-[9px] text-[var(--tf-text-secondary)] sm:text-[10px]">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BrandLogo
+                href={null}
+                variant="full"
+                className={compact ? "!h-8 !w-auto shrink-0" : "!h-9 !w-auto shrink-0 sm:!h-10"}
+              />
+              <span
+                className={`min-w-0 truncate font-medium text-[var(--tf-text-secondary)] ${
+                  compact ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+                }`}
+              >
                 {TF_TAGLINE}
               </span>
             </div>
 
             <h1
-              className={`line-clamp-2 font-bold leading-tight tracking-tight text-[var(--tf-navy)] ${
-                compact ? "text-base" : "text-lg md:text-xl"
+              className={`line-clamp-2 font-bold leading-[1.12] tracking-tight text-[var(--tf-navy)] ${
+                compact ? "text-[15px]" : "text-lg md:text-xl"
               }`}
             >
               {data.eventName}
@@ -110,53 +129,95 @@ export function TicketFace({
             {data.dateLabel ? (
               <p
                 className={`truncate font-medium text-[var(--tf-navy)] ${
-                  compact ? "text-xs" : "text-sm"
+                  compact ? "text-[11px]" : "text-xs sm:text-sm"
                 }`}
               >
                 {data.dateLabel}
               </p>
             ) : null}
 
-            {data.doors.headline ? (
-              <div className="min-w-0">
-                <p
-                  className={`truncate font-bold tracking-wide ${
-                    compact ? "text-sm" : "text-base md:text-lg"
-                  }`}
-                  style={{ color: doorsColor }}
-                >
-                  {data.doors.headline}
-                  {data.doors.timeLabel ? " Uhr" : ""}
+            {/* Location: name + city/address */}
+            <div className="min-w-0 leading-snug">
+              <p
+                className={`truncate font-semibold text-[var(--tf-navy)] ${
+                  compact ? "text-[11px]" : "text-xs sm:text-sm"
+                }`}
+              >
+                {data.locationName}
+              </p>
+              {data.locationDetail ? (
+                <p className="truncate text-[10px] text-[var(--tf-text-secondary)]">
+                  {data.locationDetail}
                 </p>
-                {data.doors.doorsNote ? (
-                  <p className="truncate text-[10px] text-[var(--tf-text-secondary)]">
-                    {data.doors.doorsNote}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            <dl
-              className={`mt-0.5 space-y-0.5 ${compact ? "text-[10px]" : "text-xs"}`}
-            >
-              {data.startLabel ? (
-                <MetaRow label="Beginn" value={data.startLabel} />
               ) : null}
-              <MetaRow label="Location" value={data.locationTicket} />
-              <MetaRow
-                label="Kategorie"
-                value={data.categoryName}
-                valueClassName={data.isVip ? "text-[var(--tf-gold)]" : undefined}
-              />
-            </dl>
+            </div>
+
+            {/* EINLASS | BEGINN compact */}
+            {(data.doors.headline || data.startLabel) && (
+              <div
+                className={`mt-0.5 grid grid-cols-2 gap-2 border-y border-[var(--tf-line)] ${
+                  compact ? "py-1" : "py-1.5"
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                    {data.doors.headlineLabel || "Einlass"}
+                  </p>
+                  <p
+                    className={`truncate font-bold ${compact ? "text-xs" : "text-sm"}`}
+                    style={{
+                      color: data.doors.timeLabel
+                        ? doorsAccent
+                        : "var(--tf-text-secondary)",
+                    }}
+                  >
+                    {data.doors.timeLabel
+                      ? `${data.doors.timeLabel} Uhr`
+                      : "—"}
+                  </p>
+                  {data.doors.doorsNote ? (
+                    <p className="truncate text-[9px] text-[var(--tf-text-secondary)]">
+                      {data.doors.doorsNote}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="min-w-0 border-l border-[var(--tf-line)] pl-2">
+                  <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                    Beginn
+                  </p>
+                  <p
+                    className={`truncate font-bold text-[var(--tf-navy)] ${
+                      compact ? "text-xs" : "text-sm"
+                    }`}
+                  >
+                    {data.startLabel ?? "—"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <p
+              className={`truncate ${compact ? "text-[10px]" : "text-xs"}`}
+            >
+              <span className="text-[var(--tf-text-secondary)]">Kategorie </span>
+              <span
+                className={`font-semibold ${
+                  data.isVip ? "text-[var(--tf-gold)]" : "text-[var(--tf-navy)]"
+                }`}
+              >
+                {data.categoryName}
+              </span>
+            </p>
 
             {/* Seat highlight */}
             {seat.mode === "boxes" ? (
-              <div className="mt-1 flex gap-1.5">
+              <div className="mt-0.5 flex gap-1.5">
                 {seat.parts.map((part) => (
                   <div
                     key={`${part.label}-${part.value}`}
-                    className="min-w-0 flex-1 rounded-md border border-[var(--tf-line)] bg-[#f8fafc] px-1 py-1.5 text-center"
+                    className={`min-w-0 flex-1 rounded-md border border-[var(--tf-line)] bg-[#f8fafc] text-center ${
+                      compact ? "px-1 py-1" : "px-1 py-1.5"
+                    }`}
                   >
                     {part.label ? (
                       <div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
@@ -175,7 +236,7 @@ export function TicketFace({
               </div>
             ) : (
               <p
-                className={`mt-1 font-bold tracking-wide text-[var(--tf-navy)] ${
+                className={`mt-0.5 font-bold tracking-wide text-[var(--tf-navy)] ${
                   compact ? "text-sm" : "text-base"
                 }`}
               >
@@ -184,7 +245,7 @@ export function TicketFace({
             )}
 
             <div
-              className={`mt-auto flex flex-wrap gap-x-4 gap-y-0.5 pt-1 text-[var(--tf-text-secondary)] ${
+              className={`mt-auto flex flex-wrap gap-x-4 gap-y-0.5 pt-0.5 text-[var(--tf-text-secondary)] ${
                 compact ? "text-[10px]" : "text-[11px]"
               }`}
             >
@@ -208,8 +269,7 @@ export function TicketFace({
           </div>
 
           {/* RIGHT — QR stub */}
-          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-2 text-center">
-            {/* Ticket notches */}
+          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1.5 text-center">
             <span
               className="pointer-events-none absolute -left-1.5 top-0 h-3 w-3 -translate-y-1/2 rounded-full bg-[rgba(248,250,252,0.95)] ring-1 ring-[var(--tf-line)]"
               aria-hidden
@@ -228,15 +288,15 @@ export function TicketFace({
 
             {showQr && data.qrToken ? (
               <>
-                <div className="mt-1.5 rounded-md bg-white p-1.5 shadow-sm">
+                <div className="mt-1 rounded-md bg-white p-1 shadow-sm">
                   <TicketQrImage
                     token={data.qrToken}
-                    size={compact ? Math.min(qrSize, 120) : Math.min(qrSize, 150)}
+                    size={compact ? Math.min(qrSize, 128) : Math.min(qrSize, 158)}
                     bare
                   />
                 </div>
                 <p
-                  className={`mt-1.5 max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
+                  className={`mt-1 max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
                     compact ? "text-[10px]" : "text-xs"
                   }`}
                 >
@@ -275,23 +335,46 @@ export function TicketFace({
   );
 }
 
-function MetaRow({
-  label,
-  value,
-  valueClassName,
-}: {
-  label: string;
-  value: string;
-  valueClassName?: string;
-}) {
+function TicketCoverFallback({ compact }: { compact: boolean }) {
   return (
-    <div className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-1.5">
-      <dt className="text-[var(--tf-text-secondary)]">{label}</dt>
-      <dd
-        className={`truncate font-semibold text-[var(--tf-navy)] ${valueClassName ?? ""}`}
+    <div className="absolute inset-0 overflow-hidden">
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(160deg, #0F2747 0%, #163A5F 48%, #0B1C33 100%)",
+        }}
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -right-3 -top-4 opacity-[0.1]"
+        aria-hidden
       >
-        {value}
-      </dd>
+        {/* Soft white plate so mark stays brand-true (no recolor filters) */}
+        <div className="rounded-2xl bg-white/90 p-2">
+          <BrandLogo href={null} variant="mark" className="!h-24 !w-auto sm:!h-28" />
+        </div>
+      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center">
+        <div className="rounded-lg bg-white/95 px-2.5 py-1.5 shadow-sm">
+          <BrandLogo
+            href={null}
+            variant="full"
+            className={compact ? "!h-7 !w-auto" : "!h-9 !w-auto"}
+          />
+        </div>
+        <p
+          className={`font-medium text-white/85 ${
+            compact ? "text-[9px]" : "text-[10px] sm:text-[11px]"
+          }`}
+        >
+          {TF_TAGLINE}
+        </p>
+        <span
+          className="mt-0.5 h-0.5 w-8 rounded-full bg-[var(--tf-teal)]"
+          aria-hidden
+        />
+      </div>
     </div>
   );
 }

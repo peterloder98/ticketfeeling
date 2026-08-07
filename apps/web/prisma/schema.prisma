@@ -677,6 +677,8 @@ model Event {
   shortDescription  String?   @map("short_description") @db.Text
   description       String?   @db.Text
   coverImageUrl     String?   @map("cover_image_url")
+  /// Optional Print@Home / ticket-face image; falls back to event/tour cover when null
+  ticketHeroImageUrl String?  @map("ticket_hero_image_url")
   mobileCoverUrl    String?   @map("mobile_cover_url")
   status            String    @default("draft")
   /// When status is `paused`, the previous selling status to restore on resume

@@ -21,6 +21,10 @@ type Props = {
   /** Preview when no own cover is set (e.g. tour poster). */
   inheritUrl?: string | null;
   inheritLabel?: string;
+  /** Field label above the control */
+  label?: string;
+  /** Which Event column to persist (cover vs optional ticket hero) */
+  persistField?: "coverImageUrl" | "ticketHeroImageUrl";
   /** When false, skip router.refresh (required in create wizard — refresh remounts and wipes state). */
   refreshOnUpload?: boolean;
   onUploaded?: (url: string) => void;
@@ -78,6 +82,8 @@ export function CoverImageField({
   tourId,
   inheritUrl,
   inheritLabel = "Tour-Plakat",
+  label = "Cover-Bild",
+  persistField = "coverImageUrl",
   refreshOnUpload = true,
   onUploaded,
   onCleared,
@@ -205,6 +211,7 @@ export function CoverImageField({
       body.append("file", blob, "cover.jpg");
       if (eventId) body.append("eventId", eventId);
       if (tourId) body.append("tourId", tourId);
+      if (persistField !== "coverImageUrl") body.append("field", persistField);
 
       const controller = new AbortController();
       const timer = window.setTimeout(() => controller.abort(), 45_000);
@@ -250,6 +257,7 @@ export function CoverImageField({
         body.append("clear", "1");
         if (eventId) body.append("eventId", eventId);
         if (tourId) body.append("tourId", tourId);
+        if (persistField !== "coverImageUrl") body.append("field", persistField);
         const res = await fetch("/api/v1/admin/uploads/cover", { method: "POST", body });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data?.error?.code ?? "CLEAR_FAILED");
@@ -276,7 +284,7 @@ export function CoverImageField({
   return (
     <div className="space-y-3 md:col-span-2">
       <input type="hidden" name={name} value={inherited ? "" : ownUrl} />
-      <p className="text-sm font-medium text-[var(--tf-navy)]">Cover-Bild</p>
+      <p className="text-sm font-medium text-[var(--tf-navy)]">{label}</p>
 
       {showingOwn && !source ? (
         <div className="flex items-center gap-3 rounded-2xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] p-3">

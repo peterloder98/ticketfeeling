@@ -3,7 +3,8 @@ import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
 import { formatSellerAddress } from "@/lib/legal/seller";
 import { buildEventOrganizerIdentity } from "@/lib/legal/event-organizer";
 import { resolveTicketDoors, type ResolvedTicketDoors } from "@/lib/commerce/ticket-doors";
-import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { resolveTicketCoverUrl } from "@/lib/commerce/event-cover";
+import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { formatEuroFromCents } from "@/lib/money";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 
@@ -25,8 +26,8 @@ export const TF_QR_HINT = "Am Einlass vorzeigen.";
  * Lock this ratio in HTML/CSS and PDF — never let A4 height stretch the ticket.
  */
 export const TICKET_BODY_ASPECT = 2;
-/** Cover | info | QR column fractions (must sum ≤ 100). */
-export const TICKET_COL_COVER = 0.33;
+/** Cover | info | QR column fractions (must sum ≤ 100). Cover ~28–30% for long titles. */
+export const TICKET_COL_COVER = 0.29;
 export const TICKET_COL_QR = 0.25;
 
 export type TicketPresentation = {
@@ -42,6 +43,10 @@ export type TicketPresentation = {
   locationShort: string;
   /** Venue (+ city) without street — for ticket face / PDF */
   locationTicket: string;
+  /** Venue name only (line 1) */
+  locationName: string;
+  /** City / address line under venue name (line 2) */
+  locationDetail: string | null;
   categoryName: string;
   categoryKind: string | null;
   isVip: boolean;
@@ -167,6 +172,18 @@ function locationTicketLine(lines: string[]): string {
   return lines.filter(Boolean).join(", ") || "—";
 }
 
+function locationNameLine(lines: string[]): string {
+  return lines[0]?.trim() || "—";
+}
+
+/** City preferred; else street — never dump full organizer address. */
+function locationDetailLine(lines: string[]): string | null {
+  const city = lines[2]?.trim();
+  if (city) return city;
+  const street = lines[1]?.trim();
+  return street || null;
+}
+
 function toAbsoluteAssetUrl(url: string | null): string | null {
   if (!url) return null;
   if (/^https?:\/\//i.test(url) || url.startsWith("data:")) return url;
@@ -177,10 +194,16 @@ function toAbsoluteAssetUrl(url: string | null): string | null {
 export async function loadTicketPresentation(
   ticketId: string,
 ): Promise<TicketPresentation> {
+  await ensureTicketHeroImageColumn();
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     include: {
-      event: { include: { location: true, tour: { select: { coverImageUrl: true } } } },
+      event: {
+        include: {
+          location: true,
+          tour: { select: { coverImageUrl: true } },
+        },
+      },
       category: true,
       holder: true,
       qrTokens: { where: { status: "active" }, take: 1 },
@@ -197,7 +220,7 @@ export async function loadTicketPresentation(
     ticket.event,
   );
   const doors = resolveTicketDoors(ticket.event, ticket.category);
-  const coverUrl = resolveEventCoverUrl(ticket.event);
+  const coverUrl = resolveTicketCoverUrl(ticket.event);
   const lines = locationLines(ticket.event.location);
   const categoryName = ticket.categorySnapshot;
   const categoryKind = ticket.category?.categoryKind ?? null;
@@ -226,6 +249,8 @@ export async function loadTicketPresentation(
     locationLines: lines,
     locationShort: lines.filter(Boolean).join(", ") || "—",
     locationTicket: locationTicketLine(lines),
+    locationName: locationNameLine(lines),
+    locationDetail: locationDetailLine(lines),
     categoryName,
     categoryKind,
     isVip,

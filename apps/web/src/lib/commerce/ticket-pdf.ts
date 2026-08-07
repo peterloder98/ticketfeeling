@@ -76,7 +76,7 @@ async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
   }
 }
 
-async function drawImageCover(
+async function drawImageContainWithBlur(
   doc: PDFKit.PDFDocument,
   buffer: Buffer,
   x: number,
@@ -84,22 +84,113 @@ async function drawImageCover(
   w: number,
   h: number,
 ) {
+  const inset = Math.max(6, Math.round(Math.min(w, h) * 0.07));
+  const ix = x + inset;
+  const iy = y + inset;
+  const iw = w - inset * 2;
+  const ih = h - inset * 2;
+
+  doc.rect(x, y, w, h).fill(TF_NAVY);
+
   try {
     const meta = await sharp(buffer).metadata();
-    const iw = meta.width || w;
-    const ih = meta.height || h;
-    const scale = Math.max(w / iw, h / ih);
-    const dw = iw * scale;
-    const dh = ih * scale;
-    const dx = x + (w - dw) / 2;
-    const dy = y + (h - dh) / 2;
+    const srcW = meta.width || iw;
+    const srcH = meta.height || ih;
+
+    // Blurred cover backdrop (fills zone; faces may crop in blur only)
+    try {
+      const blurScale = Math.max(w / srcW, h / srcH) * 1.15;
+      const bw = Math.max(1, Math.round(srcW * blurScale));
+      const bh = Math.max(1, Math.round(srcH * blurScale));
+      const blurred = await sharp(buffer)
+        .resize(bw, bh, { fit: "cover" })
+        .blur(18)
+        .modulate({ brightness: 0.55 })
+        .png()
+        .toBuffer();
+      doc.save();
+      doc.rect(x, y, w, h).clip();
+      doc.image(blurred, x + (w - bw) / 2, y + (h - bh) / 2, {
+        width: bw,
+        height: bh,
+      });
+      doc.restore();
+      doc.rect(x, y, w, h).fillOpacity(0.45).fill(TF_NAVY);
+      doc.fillOpacity(1);
+    } catch {
+      /* navy fill already applied */
+    }
+
+    // Sharp square-safe contain inset — full image visible
+    const containScale = Math.min(iw / srcW, ih / srcH);
+    const dw = srcW * containScale;
+    const dh = srcH * containScale;
+    const dx = ix + (iw - dw) / 2;
+    const dy = iy + (ih - dh) / 2;
+
     doc.save();
-    doc.rect(x, y, w, h).clip();
+    doc.roundedRect(ix, iy, iw, ih, 6).clip();
+    doc.rect(ix, iy, iw, ih).fillOpacity(0.2).fill(TF_NAVY);
+    doc.fillOpacity(1);
     doc.image(buffer, dx, dy, { width: dw, height: dh });
     doc.restore();
+
+    // Soft inset frame (ticket-integrated, not a foreign card)
+    doc
+      .roundedRect(ix, iy, iw, ih, 6)
+      .strokeColor("#FFFFFF")
+      .opacity(0.18)
+      .lineWidth(0.8)
+      .stroke();
+    doc.opacity(1);
   } catch {
     doc.rect(x, y, w, h).fill(TF_NAVY);
   }
+}
+
+function drawCoverFallback(
+  doc: PDFKit.PDFDocument,
+  logo: Buffer | null,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  const grad = doc.linearGradient(x, y, x + w, y + h);
+  grad.stop(0, "#0F2747").stop(0.5, "#163A5F").stop(1, "#0B1C33");
+  doc.rect(x, y, w, h).fill(grad);
+
+  if (logo) {
+    try {
+      const plateW = Math.min(w - 24, 118);
+      const plateH = 28;
+      const px = x + (w - plateW) / 2;
+      const py = y + h / 2 - 22;
+      doc.roundedRect(px, py, plateW, plateH, 5).fill("#FFFFFF");
+      doc.image(logo, px + 8, py + 5, {
+        height: 18,
+        fit: [plateW - 16, 18],
+      });
+    } catch {
+      /* text fallback below */
+    }
+  }
+
+  doc
+    .fillColor("#FFFFFF")
+    .fillOpacity(0.85)
+    .font("Helvetica")
+    .fontSize(7)
+    .text(TF_TAGLINE, x + 10, y + h / 2 + 14, {
+      width: w - 20,
+      align: "center",
+    });
+  doc.fillOpacity(1);
+
+  const barW = 22;
+  doc
+    .roundedRect(x + (w - barW) / 2, y + h / 2 + 28, barW, 2, 1)
+    .fill(TF_TEAL);
 }
 
 async function drawTicketPage(
@@ -140,56 +231,31 @@ async function drawTicketPage(
 
   // ── Zone A: cover ────────────────────────────────────────────────
   const ax = ticketX;
-  doc.rect(ax, ticketY, zoneA, ticketH).fill(TF_NAVY);
   if (cover) {
-    await drawImageCover(doc, cover, ax, ticketY, zoneA, ticketH);
-    doc.save();
-    doc.rect(ax, ticketY, zoneA, ticketH).clip();
-    const grad = doc.linearGradient(ax + zoneA * 0.55, ticketY, ax + zoneA, ticketY);
-    grad.stop(0, TF_NAVY, 0).stop(1, TF_NAVY, 0.28);
-    doc.rect(ax, ticketY, zoneA, ticketH).fill(grad);
-    doc.restore();
+    await drawImageContainWithBlur(doc, cover, ax, ticketY, zoneA, ticketH);
   } else {
-    doc
-      .fillColor("#FFFFFF")
-      .font("Helvetica-Bold")
-      .fontSize(11)
-      .text("TICKETFEELING", ax + 12, ticketY + ticketH / 2 - 14, {
-        width: zoneA - 24,
-        align: "center",
-        characterSpacing: 1.5,
-      });
-    doc
-      .fillColor("#FFFFFF")
-      .fillOpacity(0.72)
-      .font("Helvetica")
-      .fontSize(7)
-      .text(TF_TAGLINE, ax + 12, ticketY + ticketH / 2 + 4, {
-        width: zoneA - 24,
-        align: "center",
-      });
-    doc.fillOpacity(1);
+    drawCoverFallback(doc, logo, ax, ticketY, zoneA, ticketH);
   }
 
   // ── Zone B: info ─────────────────────────────────────────────────
   const bx = ticketX + zoneA;
   doc.rect(bx, ticketY, zoneB, ticketH).fill("#FFFFFF");
 
-  const bPadX = 14;
-  const bPadY = 12;
+  const bPadX = 12;
+  const bPadY = 10;
   const bInnerW = zoneB - bPadX * 2;
   let by = ticketY + bPadY;
 
-  // Brand + claim at top
+  // Brand + claim at top (larger lockup)
   if (logo) {
     try {
-      doc.image(logo, bx + bPadX, by, { height: 16, fit: [88, 16] });
+      doc.image(logo, bx + bPadX, by, { height: 20, fit: [108, 20] });
       doc
         .font("Helvetica")
-        .fontSize(7)
+        .fontSize(7.5)
         .fillColor(TF_MUTED)
-        .text(TF_TAGLINE, bx + bPadX + 94, by + 4, {
-          width: bInnerW - 94,
+        .text(TF_TAGLINE, bx + bPadX + 112, by + 5, {
+          width: Math.max(40, bInnerW - 112),
           height: 10,
           ellipsis: true,
         });
@@ -211,98 +277,150 @@ async function drawTicketPage(
         width: bInnerW,
       });
   }
-  by += 22;
+  by += 24;
 
   doc
     .fillColor(TF_NAVY)
     .font("Helvetica-Bold")
-    .fontSize(15)
+    .fontSize(14)
     .text(data.eventName, bx + bPadX, by, {
       width: bInnerW,
-      height: 34,
+      height: 32,
       ellipsis: true,
       lineGap: 1,
     });
-  by = Math.min(doc.y + 3, ticketY + bPadY + 58);
+  by = Math.min(doc.y + 2, ticketY + bPadY + 56);
 
   if (data.dateLabel) {
     doc
       .font("Helvetica")
-      .fontSize(9)
+      .fontSize(8.5)
       .fillColor(TF_NAVY)
       .text(data.dateLabel, bx + bPadX, by, {
         width: bInnerW,
-        height: 12,
-        ellipsis: true,
-      });
-    by = doc.y + 4;
-  }
-
-  if (data.doors.headline) {
-    const doorsText = `${data.doors.headline}${data.doors.timeLabel ? " Uhr" : ""}`;
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(12)
-      .fillColor(data.isVip || data.doors.isCategoryOverride ? accent : TF_NAVY)
-      .text(doorsText, bx + bPadX, by, {
-        width: bInnerW,
-        height: 14,
+        height: 11,
         ellipsis: true,
       });
     by = doc.y + 2;
-    if (data.doors.doorsNote) {
-      doc
-        .font("Helvetica")
-        .fontSize(7)
-        .fillColor(TF_MUTED)
-        .text(data.doors.doorsNote, bx + bPadX, by, {
-          width: bInnerW,
-          height: 10,
-          ellipsis: true,
-        });
-      by = doc.y + 4;
-    } else {
-      by += 4;
-    }
   }
 
-  const meta: { label: string; value: string; accent?: boolean }[] = [
-    data.startLabel ? { label: "Beginn", value: data.startLabel } : null,
-    { label: "Location", value: data.locationTicket },
-    {
-      label: "Kategorie",
-      value: data.categoryName,
-      accent: data.isVip,
-    },
-  ].filter(Boolean) as { label: string; value: string; accent?: boolean }[];
-
-  const labelCol = 52;
-  for (const row of meta) {
-    if (by > ticketY + ticketH - 70) break;
+  // Location: name + city/address
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(8.5)
+    .fillColor(TF_NAVY)
+    .text(data.locationName, bx + bPadX, by, {
+      width: bInnerW,
+      height: 11,
+      ellipsis: true,
+    });
+  by = doc.y + 1;
+  if (data.locationDetail) {
     doc
       .font("Helvetica")
       .fontSize(7)
       .fillColor(TF_MUTED)
-      .text(row.label, bx + bPadX, by, { width: labelCol });
-    doc
-      .font("Helvetica-Bold")
-      .fontSize(8)
-      .fillColor(row.accent ? TF_GOLD : TF_INK)
-      .text(row.value, bx + bPadX + labelCol, by, {
-        width: bInnerW - labelCol,
-        height: 11,
+      .text(data.locationDetail, bx + bPadX, by, {
+        width: bInnerW,
+        height: 9,
         ellipsis: true,
       });
-    by += 12;
+    by = doc.y + 3;
+  } else {
+    by += 3;
   }
 
+  // EINLASS | BEGINN side by side
+  if (data.doors.headline || data.startLabel) {
+    const colW = (bInnerW - 8) / 2;
+    doc
+      .moveTo(bx + bPadX, by)
+      .lineTo(bx + bPadX + bInnerW, by)
+      .strokeColor(TF_LINE)
+      .lineWidth(0.6)
+      .stroke();
+    by += 4;
+
+    const doorsColor =
+      data.isVip || data.doors.isCategoryOverride ? accent : TF_NAVY;
+    doc
+      .font("Helvetica")
+      .fontSize(6)
+      .fillColor(TF_MUTED)
+      .text((data.doors.headlineLabel || "Einlass").toUpperCase(), bx + bPadX, by, {
+        width: colW,
+        characterSpacing: 0.6,
+      });
+    doc
+      .font("Helvetica")
+      .fontSize(6)
+      .fillColor(TF_MUTED)
+      .text("BEGINN", bx + bPadX + colW + 8, by, {
+        width: colW,
+        characterSpacing: 0.6,
+      });
+    by += 9;
+
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(data.doors.timeLabel ? doorsColor : TF_MUTED)
+      .text(
+        data.doors.timeLabel ? `${data.doors.timeLabel} Uhr` : "—",
+        bx + bPadX,
+        by,
+        { width: colW, height: 12, ellipsis: true },
+      );
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(10)
+      .fillColor(TF_NAVY)
+      .text(data.startLabel ?? "—", bx + bPadX + colW + 8, by, {
+        width: colW,
+        height: 12,
+        ellipsis: true,
+      });
+    by += 13;
+    if (data.doors.doorsNote) {
+      doc
+        .font("Helvetica")
+        .fontSize(6.5)
+        .fillColor(TF_MUTED)
+        .text(data.doors.doorsNote, bx + bPadX, by, {
+          width: bInnerW,
+          height: 9,
+          ellipsis: true,
+        });
+      by = doc.y + 2;
+    }
+    doc
+      .moveTo(bx + bPadX, by)
+      .lineTo(bx + bPadX + bInnerW, by)
+      .strokeColor(TF_LINE)
+      .lineWidth(0.6)
+      .stroke();
+    by += 4;
+  }
+
+  // Category (VIP gold accent only)
+  doc
+    .font("Helvetica")
+    .fontSize(7.5)
+    .fillColor(TF_MUTED)
+    .text("Kategorie  ", bx + bPadX, by, { continued: true });
+  doc
+    .font("Helvetica-Bold")
+    .fontSize(8)
+    .fillColor(data.isVip ? TF_GOLD : TF_NAVY)
+    .text(data.categoryName, { continued: false });
+  by = doc.y + 4;
+
   // Seat highlight boxes / text
-  by += 3;
   if (seat.mode === "boxes" && seat.parts.length > 0) {
     const gap = 5;
     const n = seat.parts.length;
     const boxW = (bInnerW - gap * (n - 1)) / n;
-    const boxH = 28;
+    const boxH = 26;
     for (let i = 0; i < n; i += 1) {
       const part = seat.parts[i]!;
       const ox = bx + bPadX + i * (boxW + gap);
@@ -317,23 +435,23 @@ async function drawTicketPage(
           .font("Helvetica")
           .fontSize(6)
           .fillColor(TF_MUTED)
-          .text(part.label, ox + 2, by + 4, {
+          .text(part.label, ox + 2, by + 3, {
             width: boxW - 4,
             align: "center",
           });
       }
       doc
         .font("Helvetica-Bold")
-        .fontSize(11)
+        .fontSize(10)
         .fillColor(TF_NAVY)
-        .text(part.value, ox + 2, by + (part.label ? 13 : 8), {
+        .text(part.value, ox + 2, by + (part.label ? 12 : 7), {
           width: boxW - 4,
           align: "center",
-          height: 14,
+          height: 12,
           ellipsis: true,
         });
     }
-    by += boxH + 6;
+    by += boxH + 5;
   } else {
     doc
       .font("Helvetica-Bold")
@@ -341,10 +459,10 @@ async function drawTicketPage(
       .fillColor(TF_NAVY)
       .text(seat.text, bx + bPadX, by, {
         width: bInnerW,
-        height: 14,
+        height: 13,
         ellipsis: true,
       });
-    by = doc.y + 6;
+    by = doc.y + 5;
   }
 
   const footerMeta: { label: string; value: string }[] = [
@@ -352,8 +470,11 @@ async function drawTicketPage(
     data.priceLabel ? { label: "Preis", value: data.priceLabel } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
+  // Pin holder|price near bottom of zone
+  const footerY = Math.max(by, ticketY + ticketH - 18 - footerMeta.length * 11);
+  by = footerY;
   for (const row of footerMeta) {
-    if (by > ticketY + ticketH - 18) break;
+    if (by > ticketY + ticketH - 12) break;
     doc
       .font("Helvetica")
       .fontSize(7)
@@ -380,9 +501,9 @@ async function drawTicketPage(
     .stroke()
     .undash();
 
-  const cPad = 10;
+  const cPad = 8;
   const cInnerW = zoneC - cPad * 2;
-  let cy = ticketY + 10;
+  let cy = ticketY + 8;
 
   doc
     .font("Helvetica-Bold")
@@ -393,10 +514,10 @@ async function drawTicketPage(
       align: "center",
       characterSpacing: 1.1,
     });
-  cy = doc.y + 6;
+  cy = doc.y + 4;
 
-  const qrMax = Math.min(cInnerW - 4, ticketH - 78, 118);
-  const quiet = 6;
+  const qrMax = Math.min(cInnerW - 2, ticketH - 64, 128);
+  const quiet = 5;
   const qrPlate = qrMax + quiet * 2;
   const qrPlateX = cx + (zoneC - qrPlate) / 2;
 
@@ -429,7 +550,7 @@ async function drawTicketPage(
         align: "center",
       });
   }
-  cy += qrPlate + 6;
+  cy += qrPlate + 5;
 
   doc
     .font("Helvetica-Bold")
@@ -441,7 +562,7 @@ async function drawTicketPage(
       height: 11,
       ellipsis: true,
     });
-  cy = doc.y + 3;
+  cy = doc.y + 2;
 
   doc
     .font("Helvetica")
