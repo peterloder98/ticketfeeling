@@ -7,11 +7,15 @@ import { buildTicketsResentMail } from "@/lib/email/ticket-mail";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { signOrderAccessToken } from "@/lib/commerce/order-access";
 
-const GENERIC_MESSAGE =
+export const FORGOTTEN_TICKET_GENERIC_MESSAGE =
   "Falls zu dieser E-Mail-Adresse eine passende bezahlte Bestellung existiert, senden wir dir in Kürze einen sicheren Link. Bitte prüfe auch deinen Spam-Ordner.";
 
 function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
+}
+
+function normalizeLastName(value: string) {
+  return value.trim().toLocaleLowerCase("de-DE");
 }
 
 function hashValue(value: string) {
@@ -29,6 +33,7 @@ async function findDefaultOrganizationId() {
 export async function requestForgottenTicket(input: {
   email: string;
   orderNumberHint?: string;
+  lastName?: string;
   ip?: string;
   organizationId?: string;
 }) {
@@ -39,6 +44,7 @@ export async function requestForgottenTicket(input: {
   }
 
   const emailNormalized = normalizeEmail(input.email);
+  const lastNameHint = input.lastName?.trim() ? input.lastName.trim() : undefined;
   const ipHash = hashValue(input.ip ?? "unknown");
 
   const since = new Date(Date.now() - 60 * 60 * 1000);
@@ -56,11 +62,24 @@ export async function requestForgottenTicket(input: {
         organizationId,
         emailNormalized,
         orderNumberHint: input.orderNumberHint,
+        lastNameHint: lastNameHint ?? null,
         ipHash,
         status: "rate_limited",
       },
     });
-    return { message: GENERIC_MESSAGE, rateLimited: true };
+    await writeAudit({
+      organizationId,
+      action: "support.forgotten_ticket.rate_limited",
+      entityType: "forgotten_ticket_request",
+      entityId: emailNormalized,
+      after: {
+        emailHash: hashValue(emailNormalized),
+        hasOrderHint: Boolean(input.orderNumberHint),
+        hasLastName: Boolean(lastNameHint),
+        ipHash,
+      },
+    });
+    return { message: FORGOTTEN_TICKET_GENERIC_MESSAGE, rateLimited: true };
   }
 
   const customer = await prisma.customer.findUnique({
@@ -75,13 +94,20 @@ export async function requestForgottenTicket(input: {
             ? { orderNumber: input.orderNumberHint.trim() }
             : {}),
         },
-        take: 5,
+        take: 10,
         orderBy: { createdAt: "desc" },
       },
     },
   });
 
-  const matched = Boolean(customer && customer.orders.length > 0);
+  let matched = Boolean(customer && customer.orders.length > 0);
+  // Optional last-name gate — must match when provided (no existence leak either way).
+  if (matched && customer && lastNameHint) {
+    const wanted = normalizeLastName(lastNameHint);
+    const customerLast = normalizeLastName(customer.lastName ?? "");
+    matched = customerLast === wanted && customerLast.length > 0;
+  }
+
   let recoveryPath: string | undefined;
 
   const request = await prisma.forgottenTicketRequest.create({
@@ -89,6 +115,7 @@ export async function requestForgottenTicket(input: {
       organizationId,
       emailNormalized,
       orderNumberHint: input.orderNumberHint,
+      lastNameHint: lastNameHint ?? null,
       ipHash,
       status: matched ? "matched" : "received",
     },
@@ -118,6 +145,7 @@ export async function requestForgottenTicket(input: {
         expiresAt: expiresAt.toISOString(),
         orderNumbers: customer.orders.map((o) => o.orderNumber),
       },
+      trackDelivery: true,
     });
 
     // Local/dev visibility only — never expose in API response (anti-enumeration).
@@ -134,13 +162,14 @@ export async function requestForgottenTicket(input: {
     after: {
       emailHash: hashValue(emailNormalized),
       hasOrderHint: Boolean(input.orderNumberHint),
+      hasLastName: Boolean(lastNameHint),
       matched,
       nonce: randomBytes(8).toString("hex"),
       mailQueued: matched,
     },
   });
 
-  return { message: GENERIC_MESSAGE, rateLimited: false };
+  return { message: FORGOTTEN_TICKET_GENERIC_MESSAGE, rateLimited: false };
 }
 
 export async function resolveRecoveryToken(token: string) {
@@ -153,6 +182,14 @@ export async function resolveRecoveryToken(token: string) {
   await prisma.accessRecoveryToken.update({
     where: { id: row.id },
     data: { usedAt: new Date() },
+  });
+
+  await writeAudit({
+    organizationId: row.organizationId,
+    action: "support.forgotten_ticket.token_consumed",
+    entityType: "access_recovery_token",
+    entityId: row.id,
+    after: { emailHash: hashValue(row.emailNormalized) },
   });
 
   const customer = await prisma.customer.findUnique({
@@ -225,6 +262,8 @@ export async function resendTicketMail(input: {
     text: mail.text,
     html: mail.html,
     embedLogo: true,
+    orderId: ticket.orderId,
+    trackDelivery: true,
   });
 
   await writeAudit({

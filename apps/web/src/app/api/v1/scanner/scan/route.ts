@@ -3,9 +3,13 @@ import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { scanTicket } from "@/lib/commerce/checkin";
+import { scanTicket, technicalScanErrorResult } from "@/lib/commerce/checkin";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { prisma } from "@/lib/db";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+export const maxDuration = 15;
 
 const schema = z.object({
   eventId: z.string().uuid(),
@@ -44,14 +48,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
     }
 
-    const result = await scanTicket({
-      ...body,
-      actorUserId: session.user.id,
-      deviceLabel: body.deviceLabel?.trim() || "web-scanner",
-    });
-    return NextResponse.json(result);
+    try {
+      const result = await scanTicket({
+        ...body,
+        actorUserId: session.user.id,
+        deviceLabel: body.deviceLabel?.trim() || "web-scanner",
+      });
+      return NextResponse.json(result);
+    } catch (scanError) {
+      console.error("[scanner/scan] technical", scanError);
+      // Never surface as INVALID — door staff must retry, not refuse entry on infra blips.
+      return NextResponse.json(technicalScanErrorResult(), { status: 503 });
+    }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "ERROR";
-    return NextResponse.json({ error: { code: message } }, { status: 400 });
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: { code: "VALIDATION" } }, { status: 400 });
+    }
+    console.error("[scanner/scan]", error);
+    return NextResponse.json(technicalScanErrorResult(), { status: 503 });
   }
 }

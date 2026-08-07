@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requestForgottenTicket } from "@/lib/support/forgotten-ticket";
+import {
+  FORGOTTEN_TICKET_GENERIC_MESSAGE,
+  requestForgottenTicket,
+} from "@/lib/support/forgotten-ticket";
+import { clientIpFromRequest, takeRateLimit } from "@/lib/security/rate-limit";
 
 const bodySchema = z.object({
   email: z.string().email(),
   orderNumberHint: z.string().max(64).optional(),
+  lastName: z.string().max(80).optional(),
 });
 
 export async function POST(request: Request) {
@@ -12,30 +17,34 @@ export async function POST(request: Request) {
     const json = await request.json();
     const parsed = bodySchema.safeParse(json);
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: { code: "VALIDATION_ERROR", message: "Ungültige E-Mail" } },
-        { status: 400 },
-      );
+      // Neutral — do not leak validation details that help enumeration
+      return NextResponse.json({ message: FORGOTTEN_TICKET_GENERIC_MESSAGE });
     }
 
-    const ip =
-      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-      request.headers.get("x-real-ip") ??
-      "unknown";
+    const ip = clientIpFromRequest(request);
+    const limited = await takeRateLimit({
+      key: `forgotten-ticket:ip:${ip}`,
+      limit: 20,
+      windowMs: 60 * 60 * 1000,
+    });
+    if (!limited.ok) {
+      return NextResponse.json({
+        message: FORGOTTEN_TICKET_GENERIC_MESSAGE,
+        rateLimited: true,
+      });
+    }
 
     const result = await requestForgottenTicket({
       email: parsed.data.email,
       orderNumberHint: parsed.data.orderNumberHint,
+      lastName: parsed.data.lastName,
       ip,
     });
 
     return NextResponse.json(result);
   } catch {
     return NextResponse.json(
-      {
-        message:
-          "Falls zu dieser E-Mail-Adresse eine passende bezahlte Bestellung existiert, senden wir dir in Kürze einen sicheren Link.",
-      },
+      { message: FORGOTTEN_TICKET_GENERIC_MESSAGE },
       { status: 200 },
     );
   }

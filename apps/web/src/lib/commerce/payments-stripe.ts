@@ -215,13 +215,49 @@ async function sendSepaDisputeEmail(orderId: string) {
 }
 
 export async function processStripeWebhookEvent(event: Stripe.Event) {
-  const existing = await prisma.webhookInbox.findUnique({
-    where: {
-      provider_providerEventId: { provider: "stripe", providerEventId: event.id },
-    },
-  });
-  if (existing?.status === "processed") {
-    return { ok: true as const, duplicate: true };
+  // Atomic claim via unique (provider, providerEventId). Concurrent duplicates lose the race.
+  let claimed = false;
+  try {
+    await prisma.webhookInbox.create({
+      data: {
+        provider: "stripe",
+        providerEventId: event.id,
+        payload: event as object,
+        status: "received",
+      },
+    });
+    claimed = true;
+  } catch (error) {
+    const isUnique =
+      typeof error === "object" &&
+      error &&
+      "code" in error &&
+      (error as { code?: string }).code === "P2002";
+    if (!isUnique) throw error;
+
+    const existing = await prisma.webhookInbox.findUnique({
+      where: {
+        provider_providerEventId: { provider: "stripe", providerEventId: event.id },
+      },
+    });
+    if (existing?.status === "processed") {
+      return { ok: true as const, duplicate: true };
+    }
+    if (existing?.status === "received" || existing?.status === "processing") {
+      // Another worker owns this event — treat as in-flight duplicate (Stripe will retry if it fails).
+      return { ok: true as const, duplicate: true, inFlight: true };
+    }
+    // failed / ignored — allow reprocess by updating payload and continuing
+    await prisma.webhookInbox.update({
+      where: { id: existing!.id },
+      data: {
+        status: "received",
+        payload: event as object,
+        errorMessage: null,
+        processedAt: null,
+      },
+    });
+    claimed = true;
   }
 
   try {
@@ -435,6 +471,18 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         });
         if (!order) break;
 
+        // Out-of-order: never downgrade a paid/fulfilled order back to processing.
+        if (
+          order.paymentStatus === "paid" ||
+          order.paymentStatus === "refunded" ||
+          order.paymentStatus === "disputed" ||
+          order.fulfillmentLockedAt ||
+          order.status === "paid" ||
+          order.status === "fulfilled"
+        ) {
+          break;
+        }
+
         // SEPA Mandate submitted — NOT paid yet. Never issue tickets here (default).
         const sepaDetails = await extractSepaDetails(pi);
         await prisma.order.update({
@@ -479,6 +527,29 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
         const pi = event.data.object as Stripe.PaymentIntent;
         const orderId = pi.metadata?.orderId;
         if (!orderId) break;
+        const existingOrder = await prisma.order.findUnique({ where: { id: orderId } });
+        if (!existingOrder) break;
+        // Out-of-order: do not void a settled payment on a late fail/cancel event.
+        if (
+          existingOrder.paymentStatus === "paid" ||
+          existingOrder.paymentStatus === "refunded" ||
+          existingOrder.paymentStatus === "disputed" ||
+          existingOrder.fulfillmentLockedAt
+        ) {
+          await writeAudit({
+            organizationId: existingOrder.organizationId,
+            action: "payment.late_fail_ignored",
+            entityType: "order",
+            entityId: orderId,
+            after: {
+              eventType: event.type,
+              paymentStatus: existingOrder.paymentStatus,
+              paymentIntentId: pi.id,
+            },
+            reason: "Out-of-order fail/cancel after paid — ignored",
+          });
+          break;
+        }
         const failed = event.type === "payment_intent.payment_failed";
         await prisma.order.update({
           where: { id: orderId },
@@ -649,7 +720,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
     }
 
     await markInbox(event.id, event, "processed");
-    return { ok: true as const, duplicate: false };
+    return { ok: true as const, duplicate: false, claimed };
   } catch (error) {
     const message = error instanceof Error ? error.message : "webhook_failed";
     await markInbox(event.id, event, "failed", message);

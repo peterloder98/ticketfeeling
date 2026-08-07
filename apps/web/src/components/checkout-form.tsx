@@ -17,6 +17,7 @@ import {
   filterStreetNameInput,
   streetContainsDigits,
 } from "@/lib/commerce/address";
+import { suggestEmailDomainFix } from "@/lib/email/typo-hint";
 
 type Mode = "guest" | "register";
 
@@ -130,6 +131,7 @@ export function CheckoutForm({
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldKey, boolean>>>({});
+  const [emailDomainHint, setEmailDomainHint] = useState<string | null>(null);
   const [postalCode, setPostalCode] = useState("");
   const [city, setCity] = useState("");
   const [cityAuto, setCityAuto] = useState(false);
@@ -460,8 +462,30 @@ export function CheckoutForm({
             autoComplete="email"
             defaultValue={isStaff ? "" : (loginEmail ?? "")}
             readOnly={isLoggedIn && !isStaff}
-            onChange={() => clearFieldError("email")}
+            onChange={(event) => {
+              clearFieldError("email");
+              setEmailDomainHint(suggestEmailDomainFix(event.target.value));
+            }}
           />
+          {emailDomainHint ? (
+            <p className="mt-1.5 text-sm text-[var(--tf-text-secondary)]">
+              Meintest du{" "}
+              <button
+                type="button"
+                className="font-medium text-[var(--tf-teal)] underline"
+                onClick={() => {
+                  const el = document.getElementById("email") as HTMLInputElement | null;
+                  if (el && emailDomainHint) {
+                    el.value = emailDomainHint;
+                    setEmailDomainHint(null);
+                  }
+                }}
+              >
+                {emailDomainHint}
+              </button>
+              ?
+            </p>
+          ) : null}
         </div>
 
         {mode === "register" && (!isLoggedIn || isStaff) ? (

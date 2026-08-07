@@ -5,6 +5,7 @@ import { FormEvent, useState } from "react";
 export function ForgottenTicketForm() {
   const [email, setEmail] = useState("");
   const [orderNumberHint, setOrderNumberHint] = useState("");
+  const [lastName, setLastName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -19,6 +20,7 @@ export function ForgottenTicketForm() {
         body: JSON.stringify({
           email,
           orderNumberHint: orderNumberHint || undefined,
+          lastName: lastName || undefined,
         }),
       });
       const data = await response.json();
@@ -61,13 +63,25 @@ export function ForgottenTicketForm() {
           onChange={(event) => setOrderNumberHint(event.target.value)}
         />
       </div>
+      <div>
+        <label className="tf-label" htmlFor="lastName">
+          Nachname (optional)
+        </label>
+        <input
+          id="lastName"
+          className="tf-input"
+          autoComplete="family-name"
+          value={lastName}
+          onChange={(event) => setLastName(event.target.value)}
+        />
+      </div>
       <button type="submit" className="tf-btn tf-btn-primary" disabled={loading}>
         {loading ? "Wird geprüft…" : "Sicheren Link anfordern"}
       </button>
-      {message ? <p className="text-sm text-[var(--gold-soft)]">{message}</p> : null}
-      <p className="text-xs text-[var(--muted)]">
-        Aus Sicherheitsgründen teilen wir nicht mit, ob eine E-Mail bekannt ist. Treffer werden
-        intern protokolliert; E-Mail-Versand an den Provider folgt als nächster Schritt.
+      {message ? <p className="text-sm text-[var(--tf-text-secondary)]">{message}</p> : null}
+      <p className="text-xs text-[var(--tf-text-secondary)]">
+        Aus Sicherheitsgründen teilen wir nicht mit, ob eine Bestellung bekannt ist. Der Link ist
+        nur kurz gültig und einmalig nutzbar.
       </p>
     </form>
   );

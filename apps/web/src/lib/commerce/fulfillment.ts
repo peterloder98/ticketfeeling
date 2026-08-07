@@ -1,18 +1,6 @@
 import { prisma } from "@/lib/db";
 import { createSecureToken, hashToken } from "@/lib/crypto-token";
 import { writeAudit } from "@/lib/audit";
-import { enqueueTransactionalEmail } from "@/lib/email/outbox";
-import {
-  buildOrderPaidTicketsMail,
-  formatEventDateForSubject,
-} from "@/lib/email/ticket-mail";
-import {
-  buildOrderStaffNotificationMail,
-  resolveOrderNotificationRecipients,
-} from "@/lib/email/order-staff-mail";
-import { withOrderAccessQuery } from "@/lib/commerce/order-access";
-import { getPublicAppUrl } from "@/lib/embed/public-url";
-import { getAccountingProvider } from "@/lib/accounting/provider";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
@@ -20,8 +8,8 @@ import { buildBillingSellerIdentity, sellerSnapshotPayload } from "@/lib/legal/s
 import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating";
 import { redeemOrderPromotions } from "@/lib/commerce/discounts";
 import { isOrderAlreadyFulfilled } from "@/lib/commerce/payment-amount-guard";
-import { formatDeDateTime } from "@/lib/datetime-de";
 import { releaseHeldQuantity } from "@/lib/commerce/hold-quantity";
+import { enqueuePostFulfillJobs } from "@/lib/jobs/handlers";
 import type { Prisma } from "@prisma/client";
 
 type SeatLike = {
@@ -659,299 +647,28 @@ export async function fulfillPaidOrder(orderId: string) {
       },
     });
 
-    // Send buyer mail on first fulfillment, or retry if tickets exist but mail never landed.
-    const shouldSendBuyerMail =
+    // Durable post-fulfill: buyer email, staff mail, accounting stub (retries via queue).
+    const shouldEnqueuePost =
       !result.alreadyFulfilled ||
       (result.alreadyFulfilled &&
         !result.order.ticketSentAt &&
-        result.order.channel !== "box_office");
+        result.order.channel !== "box_office") ||
+      Boolean(result.invoice?.id && !result.alreadyFulfilled);
 
-    if (shouldSendBuyerMail) {
-      const fresh = await prisma.order.findUnique({
-        where: { id: result.order.id },
-        include: {
-          customer: true,
-          tickets: { include: { event: { include: { location: true } } } },
-          invoices: true,
-          items: true,
-          payments: true,
-          soldByUser: { select: { name: true, email: true } },
-        },
-      });
-
-      const appBase = getPublicAppUrl();
-
-      // Tageskasse: Verkäufer wählt Druck/E-Mail am Beleg — kein Auto-Versand an Käufer
-      if (fresh?.customer.email && fresh.channel !== "box_office" && !fresh.ticketSentAt) {
-        const event =
-          fresh.tickets[0]?.event ??
-          null;
-        const eventName =
-          fresh.tickets[0]?.eventNameSnapshot ||
-          fresh.items[0]?.eventNameSnapshot ||
-          "dein Event";
-        const startsAt = event?.eventStartsAt ?? fresh.items[0]?.eventStartsAtSnapshot ?? null;
-        const whenLabel = startsAt
-          ? formatDeDateTime(startsAt, {
-              dateStyle: "full",
-              timeStyle: "short",
-            })
-          : "Termin siehe Ticket";
-        const loc = event?.location;
-        const locationLabel = loc
-          ? [
-              loc.name,
-              [loc.street, loc.houseNumber].filter(Boolean).join(" "),
-              [loc.postalCode, loc.city].filter(Boolean).join(" "),
-            ]
-              .filter(Boolean)
-              .join(", ")
-          : fresh.items[0]?.locationSnapshot ?? null;
-        const eventDateLabel = formatEventDateForSubject(startsAt);
-
-        // Tickets + invoice: link-only (tokenized) — never attach ticket PDF blobs
-        const invoiceRow = fresh.invoices[0];
-        let invoiceAttachmentNumber: string | null = null;
-        let invoiceDownloadUrl: string | null = null;
-        if (invoiceRow && fresh.invoiceRequested) {
-          invoiceAttachmentNumber = invoiceRow.invoiceNumber;
-        }
-
-        const { signOrderAccessToken } = await import("@/lib/commerce/order-access");
-        const mailAccessToken = signOrderAccessToken(
-          fresh.id,
-          30 * 24 * 60 * 60 * 1000,
-        );
-        if (invoiceRow && fresh.invoiceRequested) {
-          const path = `/api/v1/invoices/${invoiceRow.id}/pdf`;
-          invoiceDownloadUrl = `${appBase}${withOrderAccessQuery(path, mailAccessToken)}`;
-        }
-        const mail = buildOrderPaidTicketsMail({
-          firstName: fresh.customer.firstName,
-          lastName: fresh.customer.lastName,
-          gender: fresh.customer.gender,
-          salutation: fresh.customer.salutation,
-          eventName,
-          whenLabel,
-          eventDateLabel,
-          locationLabel,
-          orderId: fresh.id,
-          orderNumber: fresh.orderNumber,
-          ticketCount: fresh.tickets.length,
-          hasAttachment: false,
-          invoiceNumber: invoiceAttachmentNumber,
-          invoiceDownloadUrl,
-          firstTicketId: fresh.tickets[0]?.id ?? null,
-          accessToken: mailAccessToken,
-        });
-        const sendResult = await enqueueTransactionalEmail({
-          organizationId: fresh.organizationId,
-          to: fresh.customer.email,
-          template: "order_paid_tickets",
-          subject: mail.subject,
-          payload: {
-            orderNumber: fresh.orderNumber,
-            ticketCount: fresh.tickets.length,
-            invoiceNumber: fresh.invoices[0]?.invoiceNumber,
-            invoiceRequested: fresh.invoiceRequested,
-            eventName,
-            eventDate: eventDateLabel,
+    if (shouldEnqueuePost || !result.alreadyFulfilled) {
+      try {
+        await enqueuePostFulfillJobs(result.order.id, result.order.organizationId);
+      } catch (error) {
+        console.error("[fulfillment] enqueue post-fulfill failed", result.order.id, error);
+        await writeAudit({
+          organizationId: result.order.organizationId,
+          action: "fulfillment.post_enqueue_failed",
+          entityType: "order",
+          entityId: result.order.id,
+          after: {
+            error: error instanceof Error ? error.message : String(error),
           },
-          text: mail.text,
-          html: mail.html,
-          embedLogo: true,
         });
-        // Only mark emailed when SMTP actually accepted the message (not stub).
-        if (sendResult.provider === "smtp") {
-          await prisma.order.update({
-            where: { id: fresh.id },
-            data: {
-              ticketSentAt: new Date(),
-              deliveryEmailedAt: new Date(),
-              deliveryStatus:
-                fresh.deliveryStatus === "printed" || fresh.deliveryStatus === "both"
-                  ? "both"
-                  : "emailed",
-            },
-          });
-        } else {
-          console.error(
-            "[fulfillment] ticket mail NOT delivered (smtp missing or skipped)",
-            fresh.id,
-            sendResult.provider,
-            "reason" in sendResult ? sendResult.reason : "",
-          );
-          await writeAudit({
-            organizationId: fresh.organizationId,
-            action: "email.ticket_not_delivered",
-            entityType: "order",
-            entityId: fresh.id,
-            after: {
-              to: fresh.customer.email,
-              provider: sendResult.provider,
-              reason: "reason" in sendResult ? sendResult.reason : null,
-            },
-          });
-        }
-      }
-
-      // Staff „Neue Bestellung“ — every fulfilled paid order (incl. Tageskasse)
-      if (fresh) {
-        try {
-          const alreadyNotified = await prisma.auditLog.findFirst({
-            where: {
-              organizationId: fresh.organizationId,
-              entityType: "order",
-              entityId: fresh.id,
-              action: "email.order_staff_notified",
-            },
-            select: { id: true },
-          });
-          if (!alreadyNotified) {
-            const recipients = await resolveOrderNotificationRecipients(fresh.organizationId);
-            if (recipients.to.length > 0) {
-              const event =
-                fresh.tickets[0]?.event ?? null;
-              const eventName =
-                fresh.tickets[0]?.eventNameSnapshot ||
-                fresh.items[0]?.eventNameSnapshot ||
-                "Event";
-              const startsAt =
-                event?.eventStartsAt ?? fresh.items[0]?.eventStartsAtSnapshot ?? null;
-              const whenLabel = startsAt
-                ? formatDeDateTime(startsAt, {
-                    dateStyle: "full",
-                    timeStyle: "short",
-                  })
-                : "Termin siehe Bestellung";
-              const loc = event?.location;
-              const locationLabel = loc
-                ? [
-                    loc.name,
-                    [loc.street, loc.houseNumber].filter(Boolean).join(" "),
-                    [loc.postalCode, loc.city].filter(Boolean).join(" "),
-                  ]
-                    .filter(Boolean)
-                    .join(", ")
-                : fresh.items[0]?.locationSnapshot ?? null;
-              const paidPayment = fresh.payments.find((p) => p.status === "paid");
-              const paymentMethod =
-                paidPayment?.method ?? fresh.paymentMethod ?? null;
-              const buyerName = [fresh.customer.firstName, fresh.customer.lastName]
-                .filter(Boolean)
-                .join(" ")
-                .trim() || "Unbekannt";
-              const categories = mergeSameCategoryLines(
-                fresh.items.map((item) => ({
-                  quantity: item.quantity,
-                  categoryLabel: item.categorySnapshot || item.productNameSnapshot,
-                  unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
-                  lineGrossCents: item.grossCents,
-                  eventKey: item.eventId,
-                })),
-              ).map((line) => ({
-                name: line.categoryLabel,
-                quantity: line.quantity,
-                grossCents: line.lineGrossCents,
-              }));
-              const invoiceRow = fresh.invoices[0];
-              const invoiceDownloadUrl = invoiceRow
-                ? `${appBase}/api/v1/invoices/${invoiceRow.id}/pdf`
-                : null;
-              const staffMail = buildOrderStaffNotificationMail({
-                orderId: fresh.id,
-                orderNumber: fresh.orderNumber,
-                channel: fresh.channel,
-                eventName,
-                whenLabel,
-                locationLabel,
-                buyerName,
-                buyerEmail: fresh.customer.email,
-                sellerName: fresh.soldByUser?.name ?? null,
-                sellerEmail: fresh.soldByUser?.email ?? null,
-                ticketCount: fresh.tickets.length || categories.reduce((n, c) => n + c.quantity, 0),
-                categories,
-                totalCents: fresh.customerTotalCents || fresh.grossCents,
-                currency: fresh.currency,
-                paymentMethod,
-                invoiceNumber: invoiceRow?.invoiceNumber ?? null,
-                invoiceId: invoiceRow?.id ?? null,
-                invoiceDownloadUrl,
-              });
-              const staffSend = await enqueueTransactionalEmail({
-                organizationId: fresh.organizationId,
-                to: recipients.to,
-                template: "order_staff_notification",
-                subject: staffMail.subject,
-                payload: {
-                  orderNumber: fresh.orderNumber,
-                  recipients: recipients.to,
-                  source: recipients.source,
-                },
-                text: staffMail.text,
-                html: staffMail.html,
-                embedLogo: true,
-              });
-              await writeAudit({
-                organizationId: fresh.organizationId,
-                action: "email.order_staff_notified",
-                entityType: "order",
-                entityId: fresh.id,
-                after: {
-                  to: recipients.to,
-                  source: recipients.source,
-                  skipped: recipients.skipped,
-                  provider: staffSend.provider,
-                  reason: "reason" in staffSend ? staffSend.reason : null,
-                },
-              });
-            } else {
-              await writeAudit({
-                organizationId: fresh.organizationId,
-                action: "email.order_staff_skipped",
-                entityType: "order",
-                entityId: fresh.id,
-                after: {
-                  reason: "no_recipients",
-                  skipped: recipients.skipped,
-                  source: recipients.source,
-                },
-              });
-            }
-          }
-        } catch (error) {
-          console.error("[fulfillment] staff order notification failed", fresh.id, error);
-        }
-      }
-
-      if (result.invoice?.id) {
-        try {
-          const sync = await getAccountingProvider().createInvoice({
-            invoiceId: result.invoice.id,
-          });
-          await prisma.order.update({
-            where: { id: orderId },
-            data: {
-              lexofficeVoucherId: sync.externalId,
-              lexofficeSyncStatus: "queued",
-              lexofficeSyncedAt: null,
-            },
-          });
-        } catch (error) {
-          // Real Lexware throws until implemented; keep fulfillment successful.
-          console.error(
-            "[fulfillment] accounting sync skipped",
-            result.invoice.id,
-            error,
-          );
-          await prisma.order.update({
-            where: { id: orderId },
-            data: {
-              lexofficeSyncStatus: "queued",
-              lexofficeSyncedAt: null,
-            },
-          });
-        }
       }
     }
 

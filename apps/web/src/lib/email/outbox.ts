@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { writeAudit } from "@/lib/audit";
+import { prisma } from "@/lib/db";
 import { renderTicketHtml } from "@/lib/commerce/ticket-document";
 import { renderOrderTicketsPdf, renderTicketPdf } from "@/lib/commerce/ticket-pdf";
 import { normalizeSmtpTransport, resolveOutboundSmtp } from "@/lib/email/accounts";
@@ -62,12 +63,41 @@ export async function enqueueTransactionalEmail(input: {
   compactPdf?: boolean;
   /** Embed brand logo as CID (default true for ticket mails) */
   embedLogo?: boolean;
+  /** Optional order link for EmailDelivery tracking */
+  orderId?: string;
+  /** Persist EmailDelivery row (QUEUED→SENT/FAILED) */
+  trackDelivery?: boolean;
 }): Promise<MailSendResult> {
   const recipients = (Array.isArray(input.to) ? input.to : [input.to])
     .map((t) => t.trim())
     .filter(Boolean);
   const toHeader = recipients.join(", ");
   const primaryTo = recipients[0] ?? "";
+
+  let deliveryId: string | null = null;
+  const track = input.trackDelivery === true && Boolean(primaryTo);
+
+  async function markDelivery(
+    status: string,
+    extra?: { provider?: string; messageId?: string; error?: string },
+  ) {
+    if (!track || !deliveryId) return;
+    try {
+      await prisma.emailDelivery.update({
+        where: { id: deliveryId },
+        data: {
+          status,
+          provider: extra?.provider,
+          providerMessageId: extra?.messageId,
+          lastError: extra?.error ?? null,
+          sentAt: status === "SENT" ? new Date() : undefined,
+          attemptCount: { increment: 1 },
+        },
+      });
+    } catch (error) {
+      console.error("[email] delivery status update failed", deliveryId, error);
+    }
+  }
 
   if (!primaryTo || recipients.every((t) => t.includes("@ticketfeeling.local"))) {
     await writeAudit({
@@ -83,6 +113,26 @@ export async function enqueueTransactionalEmail(input: {
       reason: "local_guest",
       attachments: 0,
     };
+  }
+
+  if (track) {
+    try {
+      const row = await prisma.emailDelivery.create({
+        data: {
+          organizationId: input.organizationId,
+          toEmail: primaryTo.toLowerCase(),
+          template: input.template,
+          subject: input.subject,
+          status: "QUEUED",
+          orderId: input.orderId ?? null,
+          payload: input.payload as object,
+        },
+        select: { id: true },
+      });
+      deliveryId = row.id;
+    } catch (error) {
+      console.error("[email] delivery row create failed", error);
+    }
   }
 
   const attachments: Attachment[] = [];
@@ -193,6 +243,7 @@ export async function enqueueTransactionalEmail(input: {
 
   const smtp = await resolveOutboundSmtp(input.organizationId);
   if (!smtp) {
+    await markDelivery("FAILED", { provider: "stub", error: "smtp_not_configured" });
     await writeAudit({
       organizationId: input.organizationId,
       action: "email.queued_stub",
@@ -204,6 +255,7 @@ export async function enqueueTransactionalEmail(input: {
         subject: input.subject,
         reason: "smtp_not_configured",
         pdfAttachments: pdfCount,
+        deliveryId,
       },
     });
     if (process.env.NODE_ENV === "development") {
@@ -244,44 +296,53 @@ export async function enqueueTransactionalEmail(input: {
     tls: { minVersion: "TLSv1.2" },
   });
 
-  const info = await transporter.sendMail({
-    from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
-    to: toHeader,
-    subject: input.subject,
-    text: textBody,
-    html: htmlBody,
-    attachments: attachments.map((a) => ({
-      filename: a.filename,
-      content: a.content,
-      contentType: a.contentType,
-      cid: a.cid,
-      contentDisposition: a.contentDisposition,
-    })),
-  });
-
-  await writeAudit({
-    organizationId: input.organizationId,
-    action: "email.sent",
-    entityType: "email",
-    entityId: input.template,
-    after: {
-      to: toHeader.toLowerCase(),
-      template: input.template,
+  try {
+    await markDelivery("SENDING", { provider: "smtp" });
+    const info = await transporter.sendMail({
+      from: `"${smtp.fromName}" <${smtp.fromEmail}>`,
+      to: toHeader,
       subject: input.subject,
-      messageId: info.messageId,
-      attachments: attachments.length,
-      pdfAttachments: pdfCount,
-      accountId: smtp.accountId,
-      accountLabel: smtp.label,
-    },
-  });
+      text: textBody,
+      html: htmlBody,
+      attachments: attachments.map((a) => ({
+        filename: a.filename,
+        content: a.content,
+        contentType: a.contentType,
+        cid: a.cid,
+        contentDisposition: a.contentDisposition,
+      })),
+    });
 
-  return {
-    queued: true,
-    provider: "smtp",
-    messageId: info.messageId,
-    attachments: pdfCount,
-  };
+    await markDelivery("SENT", { provider: "smtp", messageId: info.messageId });
+    await writeAudit({
+      organizationId: input.organizationId,
+      action: "email.sent",
+      entityType: "email",
+      entityId: input.template,
+      after: {
+        to: toHeader.toLowerCase(),
+        template: input.template,
+        subject: input.subject,
+        messageId: info.messageId,
+        attachments: attachments.length,
+        pdfAttachments: pdfCount,
+        accountId: smtp.accountId,
+        accountLabel: smtp.label,
+        deliveryId,
+      },
+    });
+
+    return {
+      queued: true,
+      provider: "smtp",
+      messageId: info.messageId,
+      attachments: pdfCount,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await markDelivery("FAILED", { provider: "smtp", error: message });
+    throw error;
+  }
 }
 
 /** Optional HTML body helper for richer tickets mail later */

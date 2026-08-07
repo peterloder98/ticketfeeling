@@ -141,6 +141,11 @@ export const ADMIN_SUBNAV = {
   system: [
     { href: "/admin/system", label: "Übersicht", description: "Support & Protokoll" },
     {
+      href: "/admin/system/exceptions",
+      label: "Ausnahmen",
+      description: "Dead-Letter, needs_review, Queue",
+    },
+    {
       href: "/admin/benutzer",
       label: "Benutzerverwaltung",
       description: "Admin, Vorverkauf, Scanner",

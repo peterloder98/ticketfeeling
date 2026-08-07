@@ -19,6 +19,7 @@ type ScanMode = "in" | "out" | "info";
 
 type ScanResult = {
   color: "green" | "red" | "orange" | "blue";
+  code?: string;
   message: string;
   salesChannelLabel?: string | null;
   ticket?: {
@@ -31,6 +32,9 @@ type ScanResult = {
   } | null;
   stats?: ScannerStats;
 };
+
+const SCAN_REQUEST_TIMEOUT_MS = 8000;
+const SCAN_NETWORK_RETRIES = 1;
 
 export type ScannerStats = {
   sold: number;
@@ -724,27 +728,103 @@ export function ScannerClient({
 
       setLoading(true);
       try {
-        const response = await fetch("/api/v1/scanner/scan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            eventId,
-            token: cleaned,
-            action: modeRef.current,
-            deviceLabel: gateRef.current,
-          }),
-        });
-        const data = await response.json();
-        const scanResult: ScanResult = response.ok
-          ? data
-          : {
+        if (!navigator.onLine) {
+          const offlineResult: ScanResult = {
+            color: "orange",
+            code: "TECHNICAL_ERROR",
+            message: "Offline — Ticket konnte momentan nicht geprüft werden.",
+            ticket: null,
+          };
+          setResult(offlineResult);
+          setFlash("orange");
+          setHistory((prev) => [offlineResult, ...prev].slice(0, 8));
+          playScanSound("orange");
+          if (resultClearRef.current) window.clearTimeout(resultClearRef.current);
+          if (flashClearRef.current) window.clearTimeout(flashClearRef.current);
+          flashClearRef.current = window.setTimeout(() => setFlash(null), 1800);
+          resultClearRef.current = window.setTimeout(() => {
+            setResult(null);
+            resultShowingRef.current = false;
+            needClearFramesRef.current = true;
+            clearMissCountRef.current = 0;
+          }, RESULT_HOLD_MS);
+          return;
+        }
+
+        let lastError: unknown = null;
+        let scanResult: ScanResult | null = null;
+        for (let attempt = 0; attempt <= SCAN_NETWORK_RETRIES; attempt += 1) {
+          const controller = new AbortController();
+          const timer = window.setTimeout(() => controller.abort(), SCAN_REQUEST_TIMEOUT_MS);
+          try {
+            const response = await fetch("/api/v1/scanner/scan", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                eventId,
+                token: cleaned,
+                action: modeRef.current,
+                deviceLabel: gateRef.current,
+              }),
+              signal: controller.signal,
+            });
+            const data = await response.json().catch(() => ({}));
+            if (response.ok) {
+              scanResult = data as ScanResult;
+              break;
+            }
+            // 503 / technical — orange, never INVALID
+            if (
+              response.status >= 500 ||
+              data?.code === "TECHNICAL_ERROR" ||
+              data?.error?.code === "TECHNICAL_ERROR"
+            ) {
+              scanResult = {
+                color: "orange",
+                code: "TECHNICAL_ERROR",
+                message:
+                  typeof data?.message === "string"
+                    ? data.message
+                    : "Ticket konnte momentan nicht geprüft werden.",
+                ticket: data?.ticket ?? null,
+              };
+              if (attempt < SCAN_NETWORK_RETRIES) {
+                lastError = new Error("retryable_server");
+                continue;
+              }
+              break;
+            }
+            scanResult = {
               color: "red",
-              message: data?.error?.code ?? "Scan fehlgeschlagen",
-              ticket: null,
+              code: data?.code ?? data?.error?.code,
+              message:
+                typeof data?.message === "string"
+                  ? data.message
+                  : data?.error?.code ?? "Scan fehlgeschlagen",
+              ticket: data?.ticket ?? null,
             };
+            break;
+          } catch (err) {
+            lastError = err;
+            if (attempt < SCAN_NETWORK_RETRIES) continue;
+          } finally {
+            window.clearTimeout(timer);
+          }
+        }
+
+        if (!scanResult) {
+          scanResult = {
+            color: "orange",
+            code: "TECHNICAL_ERROR",
+            message: "Ticket konnte momentan nicht geprüft werden.",
+            ticket: null,
+          };
+          void lastError;
+        }
+
         setResult(scanResult);
         setFlash(scanResult.color);
-        setHistory((prev) => [scanResult, ...prev].slice(0, 8));
+        setHistory((prev) => [scanResult!, ...prev].slice(0, 8));
         playScanSound(scanResult.color);
         if (scanResult.color === "green" || scanResult.color === "blue") setToken("");
         if (isScannerStats(scanResult.stats)) {
@@ -764,12 +844,13 @@ export function ScannerClient({
         }, RESULT_HOLD_MS);
       } catch {
         setResult({
-          color: "red",
-          message: "Netzwerkfehler — erneut scannen",
+          color: "orange",
+          code: "TECHNICAL_ERROR",
+          message: "Ticket konnte momentan nicht geprüft werden.",
           ticket: null,
         });
         resultShowingRef.current = true;
-        playScanSound("red");
+        playScanSound("orange");
         if (resultClearRef.current) window.clearTimeout(resultClearRef.current);
         resultClearRef.current = window.setTimeout(() => {
           setResult(null);

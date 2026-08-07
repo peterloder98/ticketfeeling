@@ -8,6 +8,18 @@ import {
 } from "@/lib/commerce/checkin-gate";
 import { resolveTicketDoors } from "@/lib/commerce/ticket-doors";
 
+/** Stable machine codes for scanner clients (German messages stay human-facing). */
+export type ScanResultCode =
+  | "VALID"
+  | "ALREADY_CHECKED_IN"
+  | "ALREADY_CHECKED_OUT"
+  | "INVALID"
+  | "WRONG_EVENT"
+  | "DOORS_LOCKED"
+  | "INFO"
+  | "NOT_ARRIVED"
+  | "TECHNICAL_ERROR";
+
 function ticketPayload(ticket: {
   ticketNumber: string;
   categorySnapshot: string;
@@ -26,6 +38,17 @@ function ticketPayload(ticket: {
     status: ticket.status,
     eventNameSnapshot: ticket.eventNameSnapshot,
     holderName,
+  };
+}
+
+export function technicalScanErrorResult() {
+  return {
+    color: "orange" as const,
+    code: "TECHNICAL_ERROR" as const satisfies ScanResultCode,
+    message: "Ticket konnte momentan nicht geprüft werden.",
+    ticket: null,
+    salesChannel: null as string | null,
+    salesChannelLabel: null as string | null,
   };
 }
 
@@ -51,6 +74,7 @@ export async function scanTicket(input: {
   if (!qr || qr.status !== "active") {
     return {
       color: "red" as const,
+      code: "INVALID" as const,
       message: "Ungültiger QR-Code",
       ticket: null,
       salesChannel: null as string | null,
@@ -91,6 +115,7 @@ export async function scanTicket(input: {
     });
     return {
       color: "orange" as const,
+      code: "WRONG_EVENT" as const,
       message: "Falsches Event",
       ticket: payload(),
       salesChannel,
@@ -114,6 +139,7 @@ export async function scanTicket(input: {
     });
     return {
       color: "red" as const,
+      code: "INVALID" as const,
       message: `Ticket ungültig (${ticket.status})`,
       ticket: payload(),
       salesChannel,
@@ -139,6 +165,7 @@ export async function scanTicket(input: {
     });
     return {
       color: "blue" as const,
+      code: "INFO" as const,
       message: checkinOpen ? "Ticket-Info" : "Testmodus — Ticket-Info",
       ticket: payload(),
       salesChannel,
@@ -166,6 +193,7 @@ export async function scanTicket(input: {
     });
     return {
       color: "orange" as const,
+      code: "DOORS_LOCKED" as const,
       message: lockedMsg,
       ticket: payload(),
       salesChannel,
@@ -193,6 +221,7 @@ export async function scanTicket(input: {
     });
     return {
       color: "red" as const,
+      code: "ALREADY_CHECKED_IN" as const,
       message: "Bereits eingecheckt",
       ticket: payload(),
       salesChannel,
@@ -217,6 +246,7 @@ export async function scanTicket(input: {
     });
     return {
       color: "red" as const,
+      code: "ALREADY_CHECKED_OUT" as const,
       message: "Bereits ausgecheckt",
       ticket: payload(),
       salesChannel,
@@ -231,6 +261,7 @@ export async function scanTicket(input: {
   if (action === "out" && ticket.presence === "not_arrived") {
     return {
       color: "orange" as const,
+      code: "NOT_ARRIVED" as const,
       message: "Noch nicht eingecheckt",
       ticket: payload(),
       salesChannel,
@@ -291,6 +322,10 @@ export async function scanTicket(input: {
   if (!race.ok) {
     return {
       color: "red" as const,
+      code:
+        race.reason === "already_out"
+          ? ("ALREADY_CHECKED_OUT" as const)
+          : ("ALREADY_CHECKED_IN" as const),
       message:
         race.reason === "already_out"
           ? "Bereits ausgecheckt"
@@ -315,6 +350,7 @@ export async function scanTicket(input: {
   const isVip = /vip/i.test(ticket.categorySnapshot);
   return {
     color: isVip ? ("blue" as const) : ("green" as const),
+    code: "VALID" as const,
     message: action === "in" ? "Einlass OK" : "Ausgecheckt",
     ticket: ticketPayload({ ...ticket, presence: nextPresence }),
     salesChannel,

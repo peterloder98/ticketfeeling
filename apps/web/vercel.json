@@ -19,6 +19,10 @@
     {
       "path": "/api/v1/cron/expire-holds",
       "schedule": "15 6 * * *"
+    },
+    {
+      "path": "/api/v1/cron/commerce-reconcile",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

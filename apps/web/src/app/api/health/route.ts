@@ -40,6 +40,72 @@ async function smtpConfigured(): Promise<boolean> {
   }
 }
 
+async function opsSnapshot() {
+  try {
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const [
+      queuePending,
+      queueDead,
+      queueNeedsAttention,
+      lastWebhook,
+      failedWebhooks24h,
+      needsReviewOrders,
+      bouncedEmails24h,
+      autoHealed24h,
+    ] = await Promise.all([
+      prisma.backgroundJob.count({ where: { status: "pending" } }).catch(() => -1),
+      prisma.backgroundJob.count({ where: { status: "dead_letter" } }).catch(() => -1),
+      prisma.backgroundJob.count({ where: { status: "needs_attention" } }).catch(() => -1),
+      prisma.webhookInbox
+        .findFirst({
+          where: { provider: "stripe" },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true, status: true, providerEventId: true },
+        })
+        .catch(() => null),
+      prisma.webhookInbox
+        .count({
+          where: {
+            provider: "stripe",
+            status: "failed",
+            createdAt: { gte: since24h },
+          },
+        })
+        .catch(() => -1),
+      prisma.order.count({ where: { paymentStatus: "needs_review" } }).catch(() => -1),
+      prisma.emailDelivery
+        .count({ where: { status: "BOUNCED", createdAt: { gte: since24h } } })
+        .catch(() => -1),
+      prisma.auditLog
+        .count({
+          where: {
+            action: { in: ["reconcile.commerce_run", "order.fulfilled"] },
+            createdAt: { gte: since24h },
+          },
+        })
+        .catch(() => -1),
+    ]);
+
+    return {
+      queue: {
+        pending: queuePending,
+        deadLetter: queueDead,
+        needsAttention: queueNeedsAttention,
+      },
+      webhooks: {
+        lastAt: lastWebhook?.createdAt?.toISOString() ?? null,
+        lastStatus: lastWebhook?.status ?? null,
+        failed24h: failedWebhooks24h,
+      },
+      ordersNeedsReview: needsReviewOrders,
+      emailBounced24h: bouncedEmails24h,
+      autoProcessedSignals24h: autoHealed24h,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const gitSha =
     process.env.VERCEL_GIT_COMMIT_SHA?.trim() ||
@@ -54,6 +120,7 @@ export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
     const smtpOk = await smtpConfigured();
+    const ops = await opsSnapshot();
     const warnings: string[] = [];
     if (isProductionRuntime() && !smtpOk) {
       const msg =
@@ -74,6 +141,12 @@ export async function GET() {
       warnings.push(msg);
       console.warn("[health]", msg);
     }
+    if (ops && ops.queue.deadLetter > 0) {
+      warnings.push(`Job dead-letter queue depth: ${ops.queue.deadLetter}`);
+    }
+    if (ops && ops.ordersNeedsReview > 0) {
+      warnings.push(`Orders needing review: ${ops.ordersNeedsReview}`);
+    }
 
     return NextResponse.json({
       ok: true,
@@ -86,6 +159,7 @@ export async function GET() {
       smtp: smtpOk ? "configured" : "missing",
       embedFrameAncestors,
       rateLimit: rateLimitBackend,
+      ops,
       warnings: warnings.length ? warnings : undefined,
       wallet: {
         apple: isAppleWalletConfigured(),
