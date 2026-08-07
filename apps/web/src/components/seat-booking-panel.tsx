@@ -207,6 +207,23 @@ export function SeatBookingPanel({
     );
   }, [map, seatCategories]);
 
+  const mapCategoryPrices = useMemo(
+    () =>
+      seatCategories.map((c) => ({
+        id: c.id,
+        name: c.name,
+        priceGrossCents: unitPriceFor(c),
+        listPriceGrossCents: listPriceFor(c),
+        campaignName:
+          accessibilitySelected && accessibilityOffer
+            ? accessibilityOffer.label
+            : c.campaignName,
+      })),
+    // unit/list helpers close over accessibilitySelected
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional
+    [seatCategories, accessibilitySelected, accessibilityOffer],
+  );
+
   const loadMap = useCallback(async () => {
     const seq = ++mapLoadSeq.current;
     setMapLoading(true);
@@ -490,14 +507,9 @@ export function SeatBookingPanel({
     }
   }
 
-  const mapBlock =
+  const mapCanvas =
     showMap ? (
-      <div className="space-y-3">
-        {!useExternalMap ? (
-          <h2 id="saalplan-heading" className="tf-display scroll-mt-24 text-xl">
-            Saalplan
-          </h2>
-        ) : null}
+      <div>
         {mapLoading && !map ? (
           <p className="text-sm text-[var(--tf-text-secondary)]">Saalplan wird geladen…</p>
         ) : map ? (
@@ -510,10 +522,12 @@ export function SeatBookingPanel({
             availableCount={mapFreeCount}
             multiCategory
             initialZoom={1.75}
+            categoryPrices={mapCategoryPrices}
+            feeSurchargeNote={feeSurchargeNote ?? null}
             hint={
               seatCategories.some((c) => c.companionFree)
-                ? "Wähle Plätze frei — auch gemischt aus mehreren Kategorien. Beim Rollstuhlplatz wird der Begleitplatz automatisch mitreserviert."
-                : "Tippe freie Plätze — auch aus verschiedenen Preiskategorien. Türkis = deine Auswahl."
+                ? "Beim Rollstuhlplatz wird der Begleitplatz automatisch mitreserviert."
+                : null
             }
           />
         ) : (
@@ -522,22 +536,9 @@ export function SeatBookingPanel({
       </div>
     ) : null;
 
-  const externalMap =
-    useExternalMap && showMap && mapHostEl
-      ? createPortal(
-          <div className="scroll-mt-24 rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-8">
-            <h2 id="saalplan-heading" className="tf-display scroll-mt-24 text-2xl md:text-3xl">
-              Saalplan
-            </h2>
-            <p className="mt-1 max-w-2xl text-base text-[var(--tf-text-secondary)]">
-              Wähle deine Plätze — auch gemischt aus mehreren Kategorien. Die Auswahl erscheint
-              rechts im Ticketkasten.
-            </p>
-            <div className="mt-5">{mapBlock}</div>
-          </div>,
-          mapHostEl,
-        )
-      : null;
+  const saalplanSticky = useExternalMap && showMap;
+  const saalplanIntro =
+    "Wähle deine Plätze — auch gemischt aus mehreren Kategorien. Die Auswahl erscheint rechts im Ticketkasten.";
 
   if (categories.length === 0) {
     return (
@@ -545,9 +546,8 @@ export function SeatBookingPanel({
     );
   }
 
-  return (
-    <div className="space-y-5">
-      {externalMap}
+  const ticketBody = (
+    <>
       {accessibilityOffer ? (
         <label className="flex items-start gap-2 rounded-[14px] border border-[var(--tf-line)] bg-white px-3 py-2.5 text-sm text-[var(--tf-navy)]">
           <input
@@ -768,15 +768,16 @@ export function SeatBookingPanel({
                 </ul>
               ) : (
                 <p className="text-sm text-[var(--tf-text-secondary)]">
-                  {useExternalMap
-                    ? "Wähle unten im Saalplan deine Plätze — auch gemischt aus mehreren Kategorien."
-                    : "Tippe auf freie Plätze — auch aus verschiedenen Preiskategorien."}
+                  {saalplanSticky
+                    ? "Tippe freie Plätze links im Saalplan — auch gemischt aus mehreren Kategorien."
+                    : useExternalMap
+                      ? "Wähle unten im Saalplan deine Plätze — auch gemischt aus mehreren Kategorien."
+                      : "Tippe auf freie Plätze — auch aus verschiedenen Preiskategorien."}
                 </p>
               )}
-              {!useExternalMap ? mapBlock : null}
+              {!useExternalMap ? mapCanvas : null}
             </div>
           )}
-
         </div>
       ) : null}
 
@@ -884,7 +885,7 @@ export function SeatBookingPanel({
         </div>
       ) : null}
 
-      {(seatedCategories.length > 0 || cardCategories.length > 0) ? (
+      {seatedCategories.length > 0 || cardCategories.length > 0 ? (
         <button
           type="button"
           className="tf-btn tf-btn-primary w-full !min-h-12"
@@ -937,6 +938,77 @@ export function SeatBookingPanel({
           <Smartphone className="h-4 w-4 text-[var(--tf-teal)]" /> Digitales Ticket
         </li>
       </ul>
+    </>
+  );
+
+  const stickyPortal =
+    saalplanSticky && mapHostEl
+      ? createPortal(
+          <div className="scroll-mt-24 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)] lg:items-start lg:gap-5">
+            <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-3 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-4">
+              <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+                <h2
+                  id="saalplan-heading"
+                  className="tf-display shrink-0 scroll-mt-24 text-xl md:text-2xl"
+                >
+                  Saalplan
+                </h2>
+                <p className="min-w-0 text-sm leading-snug text-[var(--tf-text-secondary)] sm:truncate">
+                  {saalplanIntro}
+                </p>
+              </div>
+              <div className="mt-3">{mapCanvas}</div>
+            </div>
+            <aside id="tickets" className="mt-4 h-fit scroll-mt-24 lg:mt-0 lg:sticky lg:top-[88px]">
+              <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-4 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-5">
+                <h2 className="tf-display text-xl">Tickets</h2>
+                <div className="mt-3 space-y-4">{ticketBody}</div>
+              </div>
+            </aside>
+          </div>,
+          mapHostEl,
+        )
+      : null;
+
+  if (saalplanSticky) {
+    return (
+      <>
+        {stickyPortal}
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Saalplan aktiv — Auswahl und Preise findest du neben dem Plan.
+          </p>
+          <a href="#saalplan-heading" className="tf-link text-sm">
+            Zum Saalplan
+          </a>
+          {bookingMode === "seat_map_and_best" ? (
+            <button
+              type="button"
+              className="tf-btn tf-btn-secondary w-full !min-h-10 text-sm"
+              onClick={() => {
+                setMode("best_available");
+                setSelectedByCategory({});
+                requestAnimationFrame(() => scrollToId(cartScrollId));
+              }}
+            >
+              Zur Bestplatzbuchung
+            </button>
+          ) : null}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <div id="tickets" className="scroll-mt-24 space-y-5">
+      {!useExternalMap && showMap ? (
+        <div className="space-y-2">
+          <h2 id="saalplan-heading" className="tf-display scroll-mt-24 text-xl">
+            Saalplan
+          </h2>
+        </div>
+      ) : null}
+      {ticketBody}
     </div>
   );
 }

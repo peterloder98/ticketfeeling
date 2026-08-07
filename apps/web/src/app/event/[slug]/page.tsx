@@ -454,10 +454,7 @@ export default async function EventPage({ params }: Props) {
             </div>
           </aside>
         ) : (
-          <aside
-            id="tickets"
-            className="order-1 h-fit scroll-mt-24 lg:sticky lg:top-[88px] lg:order-2"
-          >
+          <aside className="order-1 h-fit scroll-mt-24 lg:sticky lg:top-[88px] lg:order-2">
             <div className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-6">
               <h2 className="tf-display text-2xl">Tickets</h2>
               {saleOpen ? (
@@ -496,7 +493,7 @@ export default async function EventPage({ params }: Props) {
       </section>
 
       {hasReservedSeating ? (
-        <div id="saalplan-map" className="scroll-mt-24" />
+        <div id="saalplan-map" className="tf-container scroll-mt-24 pb-8" />
       ) : null}
 
       {saleOpen ? (

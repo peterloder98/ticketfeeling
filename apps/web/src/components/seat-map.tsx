@@ -5,11 +5,20 @@ import { Minus, Plus, RotateCcw } from "lucide-react";
 import type { PublicSeat, SeatMapPayload } from "@/lib/seating/types";
 import { categoryFillRgba, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
+import { formatEuroFromCents } from "@/lib/money";
 
 /** Public buy flow: two zoom steps further out than the previous 2.25 default. */
 const DEFAULT_BUY_ZOOM = 1.75;
 const MIN_ZOOM = 0.75;
 const MAX_ZOOM = 4;
+
+export type SeatMapCategoryPrice = {
+  id: string;
+  name: string;
+  priceGrossCents: number;
+  listPriceGrossCents?: number;
+  campaignName?: string | null;
+};
 
 type Props = {
   map: SeatMapPayload;
@@ -37,6 +46,16 @@ type Props = {
   hint?: string | null;
   /** Higher default zoom for public buy flow */
   initialZoom?: number;
+  /** Category prices for hover tooltips (campaign / sale aware). */
+  categoryPrices?: SeatMapCategoryPrice[];
+  /** e.g. „zzgl. 4 % Verwaltungsgebühr“ */
+  feeSurchargeNote?: string | null;
+};
+
+type HoverTooltip = {
+  x: number;
+  y: number;
+  lines: { kind: "title" | "price" | "strike" | "fee" | "meta"; text: string }[];
 };
 
 export function SeatMap({
@@ -50,11 +69,16 @@ export function SeatMap({
   availableCount: availableCountProp,
   hint,
   initialZoom = DEFAULT_BUY_ZOOM,
+  categoryPrices,
+  feeSurchargeNote,
 }: Props) {
   const freeCount = availableCountProp ?? map.availableCount;
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const [zoom, setZoom] = useState(initialZoom);
+  const [hoveredStandingId, setHoveredStandingId] = useState<string | null>(null);
+  const [tooltip, setTooltip] = useState<HoverTooltip | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const { panning, panHandlers } = useCanvasPan(canvasRef, { panOverInteractive: true });
 
   const colorByCategory = useMemo(() => {
@@ -64,6 +88,12 @@ export function SeatMap({
     });
     return m;
   }, [map.categories]);
+
+  const priceByCategory = useMemo(() => {
+    const m = new Map<string, SeatMapCategoryPrice>();
+    for (const c of categoryPrices ?? []) m.set(c.id, c);
+    return m;
+  }, [categoryPrices]);
 
   /** Once any seat is assigned, only matching-category seats sell (legacy: all unlocked). */
   const hasAssignments = useMemo(
@@ -100,8 +130,7 @@ export function SeatMap({
       const maxX = Math.max(0, el.scrollWidth - el.clientWidth);
       el.scrollLeft = maxX / 2;
       if (map.stage) {
-        const stageTop =
-          toY(map.stage.yCm) - toS(map.stage.heightCm) / 2;
+        const stageTop = toY(map.stage.yCm) - toS(map.stage.heightCm) / 2;
         el.scrollTop = Math.max(0, stageTop - 16);
       } else {
         el.scrollTop = 0;
@@ -156,28 +185,59 @@ export function SeatMap({
     return "#E2E8F0";
   }
 
-  function seatTitle(
-    seat: PublicSeat,
-    selectable: boolean,
-    locked: boolean,
-    taken: boolean,
-    heldOther: boolean,
-  ) {
-    const base = `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`;
-    if (taken) return `${base} — Bereits verkauft`;
-    if (heldOther) return `${base} — Zurzeit nicht verfügbar`;
-    if (locked) return `${base} — noch nicht freigegeben`;
-    if (seat.status === "held_by_you") return `${base} — Bereits im Warenkorb`;
-    if (!selectable && hasAssignments && !multiCategory) return `${base} — andere Kategorie`;
-    if (!selectable && hasAssignments && !seat.categoryId) {
-      return `${base} — keiner Preiskategorie zugeordnet`;
+  function buildSeatTooltip(seat: PublicSeat, clientX: number, clientY: number) {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const lines: HoverTooltip["lines"] = [
+      {
+        kind: "title",
+        text: `${seat.blockLabel} · Reihe ${seat.rowLabel} · Platz ${seat.seatNumber}`,
+      },
+    ];
+
+    const price = seat.categoryId ? priceByCategory.get(seat.categoryId) : undefined;
+    if (price) {
+      const list = price.listPriceGrossCents ?? price.priceGrossCents;
+      const unit = price.priceGrossCents;
+      if (list > unit) {
+        lines.push({ kind: "strike", text: formatEuroFromCents(list) });
+        lines.push({
+          kind: "price",
+          text: `${price.name} · ${formatEuroFromCents(unit)}`,
+        });
+      } else {
+        lines.push({
+          kind: "price",
+          text: `${price.name} · ${formatEuroFromCents(unit)}`,
+        });
+      }
+      if (feeSurchargeNote) {
+        lines.push({ kind: "fee", text: feeSurchargeNote });
+      }
+    } else if (seat.categoryId) {
+      const legend = map.categories.find((c) => c.id === seat.categoryId);
+      if (legend) lines.push({ kind: "meta", text: legend.name });
     }
-    return base;
+
+    if (seat.status === "taken") lines.push({ kind: "meta", text: "Bereits verkauft" });
+    else if (seat.status === "held") lines.push({ kind: "meta", text: "Zurzeit nicht verfügbar" });
+    else if (seat.status === "locked" || seat.locked) {
+      lines.push({ kind: "meta", text: "Noch nicht freigegeben" });
+    } else if (seat.status === "held_by_you") {
+      lines.push({ kind: "meta", text: "Bereits im Warenkorb" });
+    }
+
+    setTooltip({
+      x: clientX - rect.left + 12,
+      y: clientY - rect.top + 12,
+      lines,
+    });
   }
 
   return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3 text-xs text-[var(--tf-text-secondary)]">
+    <div ref={wrapRef} className="relative space-y-2">
+      <div className="flex flex-wrap items-center gap-2.5 text-xs text-[var(--tf-text-secondary)]">
         <Legend color="#14B8A6" label="Ausgewählt" />
         <Legend color="#99F6E4" border="#0F766E" label="Bereits im Warenkorb" />
         <Legend color="#E2E8F0" border="#0F2747" label="Frei" />
@@ -227,22 +287,22 @@ export function SeatMap({
         </div>
       </div>
 
-      <p className="text-xs text-[var(--tf-text-secondary)]">
-        Ziehe mit der Hand über den Saalplan, um ihn zu verschieben — kurze Tipps wählen Plätze.
-      </p>
-
       <div
         ref={canvasRef}
-        className={`max-h-[78vh] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-[#eef2f7] shadow-inner ${
+        className={`max-h-[min(86vh,920px)] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-[#eef2f7] shadow-inner ${
           panning ? "cursor-grabbing select-none" : "cursor-grab"
         }`}
         {...panHandlers}
+        onMouseLeave={() => {
+          setTooltip(null);
+          setHoveredStandingId(null);
+        }}
       >
         <svg
           width={svgWidth}
           height={svgHeight}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="block min-h-[480px] w-full min-w-[920px]"
+          className="block min-h-[560px] w-full min-w-[920px]"
           role="img"
           aria-label={`Saalplan ${map.planName}`}
           style={{ touchAction: "none" }}
@@ -316,15 +376,25 @@ export function SeatMap({
             const fill = assignedColor
               ? categoryFillRgba(assignedColor)
               : "rgba(15,39,71,0.06)";
-            const freeLabel =
+            const capacity =
               typeof area.availableCount === "number" && assignedColor
                 ? area.availableCount
                 : (area.capacity ?? area.estimatedCapacity);
+            const showHover = hoveredStandingId === area.objectId;
+            const hoverLabel =
+              capacity > 0
+                ? `Stehplätze · Kapazität ${capacity}`
+                : "Stehplätze";
             return (
               <g
                 key={area.objectId}
                 transform={`rotate(${area.rotationDeg} ${toX(area.xCm)} ${toY(area.yCm)})`}
+                onMouseEnter={() => setHoveredStandingId(area.objectId)}
+                onMouseLeave={() =>
+                  setHoveredStandingId((id) => (id === area.objectId ? null : id))
+                }
               >
+                <title>{hoverLabel}</title>
                 <rect
                   x={left}
                   y={top}
@@ -336,14 +406,21 @@ export function SeatMap({
                   strokeDasharray={assignedColor ? undefined : "6 4"}
                   rx={5}
                 />
-                <text
-                  x={toX(area.xCm)}
-                  y={top - 8}
-                  textAnchor="middle"
-                  style={{ fontSize: 12, fontWeight: 700, fill: "#0F2747" }}
-                >
-                  {freeLabel > 0 ? `Stehplätze ${freeLabel}` : "Stehplätze"}
-                </text>
+                {showHover ? (
+                  <text
+                    x={toX(area.xCm)}
+                    y={top - 8}
+                    textAnchor="middle"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      fill: "#0F2747",
+                      pointerEvents: "none",
+                    }}
+                  >
+                    {hoverLabel}
+                  </text>
+                ) : null}
               </g>
             );
           })}
@@ -390,14 +467,14 @@ export function SeatMap({
                   ? Array.from({ length: rows }, (_, ri) => {
                       const rowNum = ri + 1;
                       const cy = top + seatPadY + cellH * (rowNum - 0.5);
-                      const fontSize = Math.max(6, Math.min(10, cellH * 0.28));
+                      const fontSize = Math.max(7, Math.min(11, cellH * 0.32));
                       return (
                         <g key={`row-${rowNum}`}>
                           <text
                             x={left + Math.max(6, seatPadX * 0.55)}
                             y={cy + 3}
                             textAnchor="middle"
-                            style={{ fontSize, fontWeight: 600, fill: "#64748B" }}
+                            style={{ fontSize, fontWeight: 700, fill: "#475569" }}
                           >
                             {rowNum}
                           </text>
@@ -405,7 +482,7 @@ export function SeatMap({
                             x={left + w - Math.max(6, seatPadX * 0.55)}
                             y={cy + 3}
                             textAnchor="middle"
-                            style={{ fontSize, fontWeight: 600, fill: "#64748B" }}
+                            style={{ fontSize, fontWeight: 700, fill: "#475569" }}
                           >
                             {rowNum}
                           </text>
@@ -423,7 +500,7 @@ export function SeatMap({
                       const heldByYou = seat.status === "held_by_you";
                       const cx = left + seatPadX + cellW * (seat.seatIndex - 0.5);
                       const cy = top + seatPadY + cellH * (seat.rowIndex - 0.5);
-                      const r = Math.max(3.5, Math.min(cellW, cellH) * 0.34);
+                      const r = Math.max(4.5, Math.min(cellW, cellH) * 0.4);
                       const fill = seatFill(seat, isSel);
                       const stroke = locked
                         ? "#64748B"
@@ -434,13 +511,9 @@ export function SeatMap({
                             : heldByYou
                               ? "#0F766E"
                               : "#0F2747";
-                      const lightText =
-                        (taken ||
-                          heldOther ||
-                          isSel ||
-                          Boolean(seat.categoryId && !locked && !heldByYou)) &&
-                        !taken &&
-                        !heldOther;
+                      // White numbers only on solid teal / mint; navy on light category fills.
+                      const lightNumber = isSel || heldByYou;
+                      const numberSize = Math.max(8, Math.min(13, r * 1.05));
                       return (
                         <g key={seat.id} data-saalplan-interactive="">
                           <circle
@@ -454,7 +527,7 @@ export function SeatMap({
                                 ? 2.25
                                 : heldByYou || locked || taken || heldOther
                                   ? 1.75
-                                  : 1
+                                  : 1.25
                             }
                             strokeDasharray={locked ? "3 2" : taken ? "2 2" : undefined}
                             opacity={
@@ -474,11 +547,14 @@ export function SeatMap({
                             onClick={() => {
                               if (selectable) onToggle(seat);
                             }}
-                          >
-                            <title>
-                              {seatTitle(seat, selectable, locked, taken, heldOther)}
-                            </title>
-                          </circle>
+                            onMouseEnter={(e) => {
+                              buildSeatTooltip(seat, e.clientX, e.clientY);
+                            }}
+                            onMouseMove={(e) => {
+                              buildSeatTooltip(seat, e.clientX, e.clientY);
+                            }}
+                            onMouseLeave={() => setTooltip(null)}
+                          />
                           {taken && r >= 5 ? (
                             <g pointerEvents="none" opacity={0.9}>
                               <line
@@ -513,15 +589,20 @@ export function SeatMap({
                               />
                             </g>
                           ) : null}
-                          {r >= 6 && !taken && !heldByYou && !heldOther ? (
+                          {r >= 5 && !taken && !heldByYou && !heldOther ? (
                             <text
                               x={cx}
-                              y={cy + 3}
+                              y={cy + numberSize * 0.35}
                               textAnchor="middle"
                               style={{
-                                fontSize: Math.min(10, r * 0.95),
-                                fontWeight: 700,
-                                fill: lightText && !locked ? "#fff" : "#0F2747",
+                                fontSize: numberSize,
+                                fontWeight: 800,
+                                fill: lightNumber ? "#fff" : "#0F2747",
+                                paintOrder: "stroke",
+                                stroke: lightNumber
+                                  ? "rgba(15,39,71,0.15)"
+                                  : "rgba(255,255,255,0.85)",
+                                strokeWidth: 2.5,
                                 pointerEvents: "none",
                               }}
                             >
@@ -551,6 +632,59 @@ export function SeatMap({
           })}
         </svg>
       </div>
+
+      {tooltip ? (
+        <div
+          className="pointer-events-none absolute z-20 max-w-[240px] rounded-lg border border-[var(--tf-line)] bg-white px-2.5 py-2 shadow-[0_8px_24px_rgba(15,39,71,0.14)]"
+          style={{
+            left: Math.min(tooltip.x, (wrapRef.current?.clientWidth ?? 320) - 220),
+            top: tooltip.y,
+          }}
+          role="tooltip"
+        >
+          {tooltip.lines.map((line, i) => {
+            if (line.kind === "strike") {
+              return (
+                <p
+                  key={`s-${i}`}
+                  className="text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through"
+                >
+                  {line.text}
+                </p>
+              );
+            }
+            if (line.kind === "price") {
+              return (
+                <p
+                  key={`p-${i}`}
+                  className="text-xs font-semibold tabular-nums text-[var(--tf-navy)]"
+                >
+                  {line.text}
+                </p>
+              );
+            }
+            if (line.kind === "fee") {
+              return (
+                <p key={`f-${i}`} className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]">
+                  {line.text}
+                </p>
+              );
+            }
+            if (line.kind === "meta") {
+              return (
+                <p key={`m-${i}`} className="mt-0.5 text-[11px] text-[var(--tf-text-secondary)]">
+                  {line.text}
+                </p>
+              );
+            }
+            return (
+              <p key={`t-${i}`} className="text-[11px] font-medium text-[var(--tf-navy)]">
+                {line.text}
+              </p>
+            );
+          })}
+        </div>
+      ) : null}
 
       {hint ? <p className="text-sm text-[var(--tf-text-secondary)]">{hint}</p> : null}
     </div>
