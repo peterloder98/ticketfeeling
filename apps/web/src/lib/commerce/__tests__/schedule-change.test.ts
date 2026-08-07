@@ -8,6 +8,8 @@ import {
 import {
   formatCampaignCountdown,
   formatEventStartCountdown,
+  getCountdownParts,
+  resolveUrgencyCountdown,
 } from "@/lib/commerce/campaign-price-ui";
 
 describe("schedule-change", () => {
@@ -76,5 +78,39 @@ describe("countdown copy", () => {
     const now = Date.parse("2026-08-10T12:00:00.000Z");
     const start = new Date("2026-08-13T18:00:00.000Z");
     expect(formatEventStartCountdown(start, now)).toMatch(/Nur noch/);
+  });
+
+  it("resolves live parts with seconds", () => {
+    const now = Date.parse("2026-08-10T12:00:00.000Z");
+    const until = new Date("2026-08-13T14:05:07.000Z");
+    const parts = getCountdownParts(until, now);
+    expect(parts).toMatchObject({
+      days: 3,
+      hours: 2,
+      minutes: 5,
+      seconds: 7,
+    });
+  });
+
+  it("resolveUrgencyCountdown prefers campaign over event", () => {
+    const now = Date.parse("2026-08-10T12:00:00.000Z");
+    const eventStartsAt = new Date("2026-08-13T18:00:00.000Z");
+    const campaignUntil = new Date("2026-08-12T17:59:00.000Z");
+    const target = resolveUrgencyCountdown({
+      eventStartsAt,
+      campaignValidUntils: [campaignUntil],
+      nowMs: now,
+    });
+    expect(target?.kind).toBe("campaign");
+    expect(target?.title).toBe("Aktion endet in");
+    expect(target?.endsAt).toBe(campaignUntil.toISOString());
+
+    const eventOnly = resolveUrgencyCountdown({
+      eventStartsAt,
+      campaignValidUntils: [null],
+      nowMs: now,
+    });
+    expect(eventOnly?.kind).toBe("event");
+    expect(eventOnly?.title).toBe("Event startet in");
   });
 });

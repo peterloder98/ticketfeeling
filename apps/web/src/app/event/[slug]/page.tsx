@@ -30,8 +30,7 @@ import {
 } from "@/lib/seating/sync-category-capacity";
 import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
 import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
-import { EventUrgencyCountdown } from "@/components/event-urgency-countdown";
-import { shouldShowEventStartCountdown } from "@/lib/commerce/schedule-change";
+import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 
 export const dynamic = "force-dynamic";
@@ -229,10 +228,8 @@ export default async function EventPage({ params }: Props) {
       : `Tickets ${fromPrice.totalLabel}`
     : "Tickets";
 
-  const showEventCountdown = shouldShowEventStartCountdown({
-    eventStartsAt: event.eventStartsAt,
-    campaignValidUntils: categories.map((c) => c.campaignValidUntil),
-  });
+  const campaignValidUntils = categories.map((c) => c.campaignValidUntil);
+  const eventStartsIso = event.eventStartsAt?.toISOString() ?? null;
 
   const placeName = event.location?.name ?? null;
   const placeAddress = event.location
@@ -311,11 +308,6 @@ export default async function EventPage({ params }: Props) {
                 <ScheduleChangedBanner />
               </div>
             ) : null}
-            {showEventCountdown && event.eventStartsAt ? (
-              <div className="mt-3 max-w-xl">
-                <EventUrgencyCountdown eventStartsAt={event.eventStartsAt.toISOString()} />
-              </div>
-            ) : null}
             <div className="mt-6">
               {saleOpen ? (
                 <a href="#tickets" className="tf-btn tf-btn-primary !min-h-12 !px-6 text-base">
@@ -329,15 +321,22 @@ export default async function EventPage({ params }: Props) {
             </div>
           </div>
 
-          <div className="group mx-auto w-full max-w-[444px] overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
-            <div className="aspect-square max-h-[444px] overflow-hidden">
-              <ResponsiveImage
-                src={coverImageUrl}
-                alt={`Cover: ${event.name}`}
-                className="h-full w-full transition duration-300 group-hover:scale-[1.02]"
-                fallback="event"
-              />
+          <div className="mx-auto w-full max-w-[444px]">
+            <div className="group overflow-hidden rounded-[28px] border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.25)]">
+              <div className="aspect-square max-h-[444px] overflow-hidden">
+                <ResponsiveImage
+                  src={coverImageUrl}
+                  alt={`Cover: ${event.name}`}
+                  className="h-full w-full transition duration-300 group-hover:scale-[1.02]"
+                  fallback="event"
+                />
+              </div>
             </div>
+            <EventPageUrgencyCountdown
+              className="mt-3"
+              eventStartsAt={eventStartsIso}
+              campaignValidUntils={campaignValidUntils}
+            />
           </div>
         </div>
       </section>
@@ -449,6 +448,11 @@ export default async function EventPage({ params }: Props) {
               <p className="mt-1 text-base text-[var(--tf-text-secondary)]">
                 Sichere dir jetzt deinen Platz.
               </p>
+              <EventPageUrgencyCountdown
+                className="mt-3"
+                eventStartsAt={eventStartsIso}
+                campaignValidUntils={campaignValidUntils}
+              />
               {saleOpen ? (
                 <div className="mt-4">
                   <AddToCartPanel
@@ -479,6 +483,11 @@ export default async function EventPage({ params }: Props) {
               <h2 id="tickets" className="tf-display scroll-mt-24 text-2xl lg:scroll-mt-[96px]">
                 Tickets
               </h2>
+              <EventPageUrgencyCountdown
+                className="mt-3"
+                eventStartsAt={eventStartsIso}
+                campaignValidUntils={campaignValidUntils}
+              />
               {saleOpen ? (
                 <div className="mt-4">
                   <SeatBookingPanel

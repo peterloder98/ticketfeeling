@@ -22,8 +22,7 @@ import {
 } from "@/lib/seating/sync-category-capacity";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
-import { EventUrgencyCountdown } from "@/components/event-urgency-countdown";
-import { shouldShowEventStartCountdown } from "@/lib/commerce/schedule-change";
+import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 
 export const dynamic = "force-dynamic";
@@ -206,10 +205,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
     ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
     : null;
 
-  const showEventCountdown = shouldShowEventStartCountdown({
-    eventStartsAt: event.eventStartsAt,
-    campaignValidUntils: categories.map((c) => c.campaignValidUntil),
-  });
+  const campaignValidUntils = categories.map((c) => c.campaignValidUntil);
+  const eventStartsIso = event.eventStartsAt?.toISOString() ?? null;
 
   return (
     <>
@@ -222,43 +219,45 @@ export default async function EmbedEventShopPage({ params }: Props) {
           <EmbedBackLink fallbackHref="/embed/shop" label="Zurück" />
         )}
         {event.scheduleChangedAt ? <ScheduleChangedBanner compact /> : null}
-        {showEventCountdown && event.eventStartsAt ? (
-          <EventUrgencyCountdown
-            compact
-            eventStartsAt={event.eventStartsAt.toISOString()}
+        <div className="mx-auto w-full max-w-[444px]">
+          <div className="group overflow-hidden rounded-xl border border-[var(--tf-line)]">
+            <div className="relative aspect-square w-full max-h-[444px] overflow-hidden bg-[var(--tf-navy)]">
+              <ResponsiveImage
+                src={coverImageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                fallback="event"
+              />
+            </div>
+            <div className="space-y-1.5 p-3">
+              <h1 className="text-base font-bold leading-snug text-[var(--tf-navy)]">
+                {event.name}
+              </h1>
+              {when ? (
+                <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
+                  <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                  <span>{when}</span>
+                </p>
+              ) : null}
+              {place ? (
+                <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
+                  <span>{place}</span>
+                </p>
+              ) : null}
+              {fromPrice ? (
+                <p className="pt-0.5 text-base font-semibold text-[var(--tf-navy)]">
+                  {fromPrice.totalLabel}
+                </p>
+              ) : null}
+            </div>
+          </div>
+          <EventPageUrgencyCountdown
+            className="mt-2"
+            size="sm"
+            eventStartsAt={eventStartsIso}
+            campaignValidUntils={campaignValidUntils}
           />
-        ) : null}
-        <div className="group mx-auto w-full max-w-[444px] overflow-hidden rounded-xl border border-[var(--tf-line)]">
-          <div className="relative aspect-square w-full max-h-[444px] overflow-hidden bg-[var(--tf-navy)]">
-            <ResponsiveImage
-              src={coverImageUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-              fallback="event"
-            />
-          </div>
-          <div className="space-y-1.5 p-3">
-            <h1 className="text-base font-bold leading-snug text-[var(--tf-navy)]">
-              {event.name}
-            </h1>
-            {when ? (
-              <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
-                <Calendar className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                <span>{when}</span>
-              </p>
-            ) : null}
-            {place ? (
-              <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
-                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" />
-                <span>{place}</span>
-              </p>
-            ) : null}
-            {fromPrice ? (
-              <p className="pt-0.5 text-base font-semibold text-[var(--tf-navy)]">
-                {fromPrice.totalLabel}
-              </p>
-            ) : null}
-          </div>
         </div>
 
         {event.shortDescription ? (
@@ -271,6 +270,12 @@ export default async function EmbedEventShopPage({ params }: Props) {
           <h2 id="tickets" className="scroll-mt-3 text-sm font-semibold text-[var(--tf-navy)]">
             Tickets
           </h2>
+          <EventPageUrgencyCountdown
+            className="mt-2"
+            size="sm"
+            eventStartsAt={eventStartsIso}
+            campaignValidUntils={campaignValidUntils}
+          />
           <div className="mt-2">
             {saleOpen ? (
               hasReservedSeating ? (

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { formatEuroFromCents } from "@/lib/money";
 import {
   discountBadgeLabel,
@@ -15,7 +14,7 @@ type Props = {
   unitCents: number;
   /** Campaign name, or accessibility label when that discount is active */
   promoLabel?: string | null;
-  /** Campaign end (ISO) — countdown when ≤7 days left */
+  /** @deprecated Countdown lives in EventPageUrgencyCountdown — kept for call-site compat */
   validUntil?: string | null;
   feeNote?: string | null;
   feePercentageBasisPoints?: number;
@@ -30,12 +29,12 @@ type Props = {
  *
  * Sale attention: badge + sale price use `--tf-sale` (warm coral) — punchier than teal
  * for „Achtung Rabatt“, but not VIP gold (`--tf-gold`) and not purple. Primary CTAs stay teal.
+ * Live Aktion/Event countdown is rendered once via EventPageUrgencyCountdown.
  */
 export function CampaignPriceDisplay({
   listCents,
   unitCents,
   promoLabel = null,
-  validUntil = null,
   feeNote = null,
   feePercentageBasisPoints,
   size = "md",
@@ -44,22 +43,6 @@ export function CampaignPriceDisplay({
 }: Props) {
   const showStrike = listCents > unitCents;
   const badge = showStrike ? discountBadgeLabel(listCents, unitCents) : null;
-  const [nowMs, setNowMs] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (!validUntil || !showStrike) return;
-    const end = Date.parse(validUntil);
-    if (!Number.isFinite(end)) return;
-    const tick = () => setNowMs(Date.now());
-    tick();
-    const id = window.setInterval(tick, 1000);
-    return () => window.clearInterval(id);
-  }, [validUntil, showStrike]);
-
-  const countdown =
-    showStrike && validUntil && !inline
-      ? formatCampaignCountdown(validUntil, nowMs)
-      : null;
 
   const priceSize =
     size === "lg" ? "text-xl" : size === "sm" ? "text-sm" : "text-lg";
@@ -98,14 +81,6 @@ export function CampaignPriceDisplay({
       </div>
       {!inline && promoLabel ? (
         <p className="mt-0.5 text-[11px] font-medium text-[var(--tf-navy)]">{promoLabel}</p>
-      ) : null}
-      {!inline && countdown ? (
-        <p
-          className="mt-0.5 text-[11px] font-semibold tabular-nums text-[var(--tf-sale)]"
-          aria-live="polite"
-        >
-          {countdown}
-        </p>
       ) : null}
       {!inline && feeNote && size === "sm" ? (
         <FeeSurchargeNote
