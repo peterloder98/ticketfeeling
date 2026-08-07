@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import type { PublicSeat, PublicStandingArea, SeatMapPayload } from "@/lib/seating/types";
 import { categoryFillRgba, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 import { formatEuroFromCents } from "@/lib/money";
+import { discountBadgeLabel } from "@/lib/commerce/campaign-price-ui";
 
 /** Public buy flow: two zoom steps further out than the previous 2.25 default. */
 const DEFAULT_BUY_ZOOM = 1.75;
@@ -53,7 +54,10 @@ type Props = {
 type HoverTooltip = {
   x: number;
   y: number;
-  lines: { kind: "title" | "price" | "strike" | "fee" | "meta"; text: string }[];
+  lines: {
+    kind: "title" | "price" | "sale" | "strike" | "fee" | "meta" | "badge" | "promo";
+    text: string;
+  }[];
 };
 
 export function SeatMap({
@@ -98,22 +102,28 @@ export function SeatMap({
     [map.blocks],
   );
 
-  const padX = 48;
-  const padTop = 28;
-  const padBottom = 48;
-  const baseW = 1100;
-  const baseH = 780;
-  const viewW = baseW;
-  const viewH = baseH;
-  const scale =
-    Math.min((viewW - padX * 2) / map.widthCm, (viewH - padTop - padBottom) / map.depthCm) *
-    zoom;
+  // Crop the SVG to the plan geometry — no fixed 1100×780 grey sheet around it.
+  const padX = 20;
+  const padBottom = 20;
+  // Stage centered near y≈0 can overhang above the hall; keep just enough room + block labels.
+  const stageOverhangCm = map.stage
+    ? Math.max(0, map.stage.heightCm / 2 - map.stage.yCm)
+    : 0;
+  const labelRoomCm = 18;
+  const padTopCm = stageOverhangCm + labelRoomCm;
+  const fitW = 1100;
+  const fitH = 780;
+  const fitScale = Math.min(
+    (fitW - padX * 2) / map.widthCm,
+    (fitH - 40) / (map.depthCm + padTopCm),
+  );
+  const scale = fitScale * zoom;
   const contentW = map.widthCm * scale;
   const contentH = map.depthCm * scale;
-  // Top-align the plan so the stage (usually at y≈0) sits at the top of the canvas.
-  const svgWidth = Math.max(viewW, contentW + padX * 2);
-  const svgHeight = Math.max(viewH, contentH + padTop + padBottom);
-  const offsetX = (svgWidth - contentW) / 2;
+  const padTop = padTopCm * scale;
+  const svgWidth = contentW + padX * 2;
+  const svgHeight = contentH + padTop + padBottom;
+  const offsetX = padX;
   const offsetY = padTop;
   const toX = (cm: number) => offsetX + cm * scale;
   const toY = (cm: number) => offsetY + cm * scale;
@@ -191,12 +201,17 @@ export function SeatMap({
     if (price) {
       const list = price.listPriceGrossCents ?? price.priceGrossCents;
       const unit = price.priceGrossCents;
+      // Same visual language as CampaignPriceDisplay (no countdown in hover).
       if (list > unit) {
         lines.push({ kind: "strike", text: formatEuroFromCents(list) });
-        lines.push({
-          kind: "price",
-          text: `${price.name} · ${formatEuroFromCents(unit)}`,
-        });
+        const badge = discountBadgeLabel(list, unit);
+        if (badge) lines.push({ kind: "badge", text: badge });
+        lines.push({ kind: "sale", text: formatEuroFromCents(unit) });
+        if (price.campaignName) {
+          lines.push({ kind: "promo", text: price.campaignName });
+        } else {
+          lines.push({ kind: "meta", text: price.name });
+        }
       } else {
         lines.push({
           kind: "price",
@@ -277,53 +292,108 @@ export function SeatMap({
             }}
             role="tooltip"
           >
-            {tooltip.lines.map((line, i) => {
-              if (line.kind === "strike") {
-                return (
-                  <p
-                    key={`s-${i}`}
-                    className="text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through"
-                  >
-                    {line.text}
-                  </p>
-                );
+            {(() => {
+              const nodes: ReactNode[] = [];
+              let i = 0;
+              while (i < tooltip.lines.length) {
+                const line = tooltip.lines[i]!;
+                if (line.kind === "strike" || line.kind === "badge" || line.kind === "sale") {
+                  const row: typeof tooltip.lines = [];
+                  while (
+                    i < tooltip.lines.length &&
+                    (tooltip.lines[i]!.kind === "strike" ||
+                      tooltip.lines[i]!.kind === "badge" ||
+                      tooltip.lines[i]!.kind === "sale")
+                  ) {
+                    row.push(tooltip.lines[i]!);
+                    i += 1;
+                  }
+                  nodes.push(
+                    <div
+                      key={`sale-row-${i}`}
+                      className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"
+                    >
+                      {row.map((r, j) => {
+                        if (r.kind === "strike") {
+                          return (
+                            <span
+                              key={j}
+                              className="text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through"
+                            >
+                              {r.text}
+                            </span>
+                          );
+                        }
+                        if (r.kind === "badge") {
+                          return (
+                            <span
+                              key={j}
+                              className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none"
+                            >
+                              {r.text}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            key={j}
+                            className="text-xs font-bold tabular-nums text-[var(--tf-sale)]"
+                          >
+                            {r.text}
+                          </span>
+                        );
+                      })}
+                    </div>,
+                  );
+                  continue;
+                }
+                if (line.kind === "price") {
+                  nodes.push(
+                    <p
+                      key={`p-${i}`}
+                      className="text-xs font-semibold tabular-nums text-[var(--tf-navy)]"
+                    >
+                      {line.text}
+                    </p>,
+                  );
+                } else if (line.kind === "promo") {
+                  nodes.push(
+                    <p
+                      key={`promo-${i}`}
+                      className="mt-0.5 text-[11px] font-medium text-[var(--tf-navy)]"
+                    >
+                      {line.text}
+                    </p>,
+                  );
+                } else if (line.kind === "fee") {
+                  nodes.push(
+                    <p
+                      key={`f-${i}`}
+                      className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]"
+                    >
+                      {line.text}
+                    </p>,
+                  );
+                } else if (line.kind === "meta") {
+                  nodes.push(
+                    <p
+                      key={`m-${i}`}
+                      className="mt-0.5 text-[11px] text-[var(--tf-text-secondary)]"
+                    >
+                      {line.text}
+                    </p>,
+                  );
+                } else {
+                  nodes.push(
+                    <p key={`t-${i}`} className="text-[11px] font-medium text-[var(--tf-navy)]">
+                      {line.text}
+                    </p>,
+                  );
+                }
+                i += 1;
               }
-              if (line.kind === "price") {
-                return (
-                  <p
-                    key={`p-${i}`}
-                    className="text-xs font-semibold tabular-nums text-[var(--tf-navy)]"
-                  >
-                    {line.text}
-                  </p>
-                );
-              }
-              if (line.kind === "fee") {
-                return (
-                  <p
-                    key={`f-${i}`}
-                    className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]"
-                  >
-                    {line.text}
-                  </p>
-                );
-              }
-              if (line.kind === "meta") {
-                return (
-                  <p
-                    key={`m-${i}`}
-                    className="mt-0.5 text-[11px] text-[var(--tf-text-secondary)]"
-                  >
-                    {line.text}
-                  </p>
-                );
-              }
-              return (
-                <p key={`t-${i}`} className="text-[11px] font-medium text-[var(--tf-navy)]">
-                  {line.text}
-                </p>
-              );
-            })}
+              return nodes;
+            })()}
           </div>,
           document.body,
         )
@@ -367,7 +437,7 @@ export function SeatMap({
       </div>
       <div
         ref={canvasRef}
-        className={`max-h-[min(86vh,920px)] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-[#eef2f7] shadow-inner ${
+        className={`max-h-[min(86vh,920px)] overflow-auto rounded-2xl border border-[var(--tf-line)] bg-white shadow-inner ${
           panning ? "cursor-grabbing select-none" : "cursor-grab"
         }`}
         {...panHandlers}
@@ -379,7 +449,7 @@ export function SeatMap({
           width={svgWidth}
           height={svgHeight}
           viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          className="block min-h-[560px] w-full min-w-[920px]"
+          className="block h-auto max-w-full"
           role="img"
           aria-label={`Saalplan ${map.planName}`}
           style={{ touchAction: "none" }}
@@ -399,8 +469,7 @@ export function SeatMap({
               <line x1="0" y1="0" x2="0" y2="6" stroke="#64748B" strokeWidth="2" />
             </pattern>
           </defs>
-          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="#f8fafc" />
-          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="url(#tf-seat-grid)" />
+          <rect x={0} y={0} width={svgWidth} height={svgHeight} fill="#ffffff" />
           <rect
             x={toX(0)}
             y={toY(0)}
@@ -410,6 +479,13 @@ export function SeatMap({
             stroke="#0F2747"
             strokeWidth={1.5}
             rx={6}
+          />
+          <rect
+            x={toX(0)}
+            y={toY(0)}
+            width={toS(map.widthCm)}
+            height={toS(map.depthCm)}
+            fill="url(#tf-seat-grid)"
           />
 
           {map.stage ? (

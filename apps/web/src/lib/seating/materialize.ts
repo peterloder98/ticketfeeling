@@ -299,16 +299,23 @@ function isProtectedPaymentHold(hold: {
  * while inventory still looks held (which would let checkout sell without seats).
  * SEPA / pending-payment holds are never released here.
  */
-export async function expireSeatHolds(now = new Date()) {
+export async function expireSeatHolds(
+  now = new Date(),
+  opts?: { force?: boolean },
+) {
   const t = Date.now();
-  if (t - lastSeatExpireMs < SEAT_EXPIRE_THROTTLE_MS) return 0;
+  if (!opts?.force && t - lastSeatExpireMs < SEAT_EXPIRE_THROTTLE_MS) return 0;
   lastSeatExpireMs = t;
 
   await ensureSeatingAssignmentSchema(prisma);
+  // Free timed-out holds, plus orphan holds with no cart link and no expiry.
   const expired = await prisma.eventSeat.findMany({
     where: {
       status: "held",
-      holdExpiresAt: { lt: now },
+      OR: [
+        { holdExpiresAt: { lt: now } },
+        { holdExpiresAt: null, cartItemId: null },
+      ],
     },
     select: { id: true, cartItemId: true },
     take: 500,

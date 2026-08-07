@@ -11,6 +11,7 @@ export function toPublicSeatStatus(
   if (s.status === "sold") return "taken";
   if (s.status === "held") {
     // Own cart → mint in-cart. Other carts → reserved (not sold hatch).
+    // Expired holds are freed by expireSeatHolds (awaited before map payload).
     return s.cartItemId && viewerSet.has(s.cartItemId) ? "held_by_you" : "held";
   }
   return "available";

@@ -962,7 +962,7 @@ export function SeatBookingPanel({
               </div>
               <div className="mt-3">{mapCanvas}</div>
             </div>
-            <aside id="tickets" className="mt-0 h-fit scroll-mt-24 lg:sticky lg:top-[88px]">
+            <aside className="mt-0 h-fit lg:sticky lg:top-[88px]">
               <div className="rounded-[24px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_12px_40px_rgba(15,39,71,0.08)] md:p-6">
                 <h2 className="tf-display text-2xl">Tickets</h2>
                 <div className="mt-4 space-y-4">{ticketBody}</div>
@@ -1004,7 +1004,7 @@ export function SeatBookingPanel({
   }
 
   return (
-    <div id="tickets" className="scroll-mt-24 space-y-5">
+    <div className="space-y-5">
       {!useExternalMap && showMap ? (
         <div className="space-y-2">
           <h2 id="saalplan-heading" className="tf-display scroll-mt-24 text-xl">

@@ -50,8 +50,8 @@ export async function getSeatMapPayload(
   opts?: { viewerCartItemIds?: string[]; categoryId?: string | null },
 ): Promise<SeatMapPayload | null> {
   await ensureSeatingAssignmentSchema(prisma);
-  // Never block seat-map paint on hold cleanup.
-  void expireSeatHolds().catch(() => undefined);
+  // Free expired holds before we read seats so the map never shows stale greys.
+  await expireSeatHolds(new Date(), { force: true }).catch(() => undefined);
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
