@@ -10,7 +10,8 @@ export type SepaTicketReleaseMode = "after_confirmed" | "after_submission";
  * Early release (`after_submission`) is hard-gated and inactive.
  * Always normalize to after_confirmed so stored/legacy values cannot reopen the path.
  */
-export function normalizeSepaTicketReleaseMode(_value?: unknown): "after_confirmed" {
+export function normalizeSepaTicketReleaseMode(value?: unknown): "after_confirmed" {
+  void value;
   return "after_confirmed";
 }
 
