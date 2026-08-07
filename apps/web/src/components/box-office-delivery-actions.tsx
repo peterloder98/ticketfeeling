@@ -44,6 +44,34 @@ export function BoxOfficeDeliveryActions({
   const isConsignment = paymentMethod === "consignment";
   const assignedIds = assignedTicketIds ?? [];
 
+  useEffect(() => {
+    if (voided || autoDone || !preferredDelivery || deliveryStatus !== "none") return;
+    setAutoDone(true);
+    if (preferredDelivery === "print" || preferredDelivery === "both") {
+      window.open(`/api/v1/orders/${orderId}/pdf`, "_blank", "noopener,noreferrer");
+      void fetch("/api/v1/box-office/delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId, action: "print" }),
+      }).then(() => router.refresh());
+    }
+    if (
+      (preferredDelivery === "email" || preferredDelivery === "both") &&
+      email.trim()
+    ) {
+      void fetch("/api/v1/box-office/delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          orderId,
+          action: "email",
+          toEmail: email.trim(),
+        }),
+      }).then(() => router.refresh());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot preferred delivery
+  }, [preferredDelivery, deliveryStatus, autoDone, voided]);
+
   if (voided) {
     return (
       <p className="rounded-xl border border-[var(--danger)]/40 bg-[rgba(226,92,92,0.08)] px-3 py-2 text-sm text-[var(--danger)]">
@@ -134,18 +162,6 @@ export function BoxOfficeDeliveryActions({
       setBusy(null);
     }
   }
-
-  useEffect(() => {
-    if (autoDone || !preferredDelivery || deliveryStatus !== "none") return;
-    setAutoDone(true);
-    if (preferredDelivery === "print" || preferredDelivery === "both") {
-      void markPrinted();
-    }
-    if (preferredDelivery === "email" || preferredDelivery === "both") {
-      if (email.trim()) void sendEmail();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot preferred delivery
-  }, [preferredDelivery, deliveryStatus, autoDone]);
 
   return (
     <div className="space-y-4 rounded-2xl border border-[var(--tf-line)] bg-white p-5">
