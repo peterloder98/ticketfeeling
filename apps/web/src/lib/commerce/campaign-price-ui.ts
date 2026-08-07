@@ -59,6 +59,12 @@ function withinSevenDaysWindow(endsAtMs: number, nowMs: number): boolean {
   return remaining > 0 && remaining <= SEVEN_DAYS_MS;
 }
 
+/** German label above Aktion countdown units — prefer campaign name when set. */
+export function campaignCountdownTitle(campaignName?: string | null): string {
+  const name = campaignName?.trim();
+  return name ? `${name} endet in` : "Aktion endet in";
+}
+
 /**
  * Priority: Aktion/campaign wins over event start.
  * Among active campaign ends, pick the soonest.
@@ -66,6 +72,8 @@ function withinSevenDaysWindow(endsAtMs: number, nowMs: number): boolean {
 export function resolveUrgencyCountdown(opts: {
   eventStartsAt?: Date | string | null;
   campaignValidUntils?: Array<Date | string | null | undefined>;
+  /** Used for Aktion label when a campaign countdown wins (e.g. „Frühbucherrabatt endet in“) */
+  campaignName?: string | null;
   nowMs?: number;
 }): UrgencyCountdownTarget | null {
   const nowMs = opts.nowMs ?? Date.now();
@@ -78,7 +86,7 @@ export function resolveUrgencyCountdown(opts: {
     return {
       kind: "campaign",
       endsAt: new Date(campaignEnds[0]).toISOString(),
-      title: "Aktion endet in",
+      title: campaignCountdownTitle(opts.campaignName),
     };
   }
 

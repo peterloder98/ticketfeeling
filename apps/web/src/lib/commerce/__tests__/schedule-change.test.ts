@@ -105,6 +105,15 @@ describe("countdown copy", () => {
     expect(target?.title).toBe("Aktion endet in");
     expect(target?.endsAt).toBe(campaignUntil.toISOString());
 
+    const named = resolveUrgencyCountdown({
+      eventStartsAt,
+      campaignValidUntils: [campaignUntil],
+      campaignName: "Frühbucherrabatt",
+      nowMs: now,
+    });
+    expect(named?.kind).toBe("campaign");
+    expect(named?.title).toBe("Frühbucherrabatt endet in");
+
     const eventOnly = resolveUrgencyCountdown({
       eventStartsAt,
       campaignValidUntils: [null],

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
+import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
@@ -28,6 +29,8 @@ export type EventCardData = {
   /** e.g. "−20%" — same Aktion language as ticket UI */
   saleBadge?: string | null;
   campaignName?: string | null;
+  /** ISO end of the ab-price Aktion (listing countdown priority) */
+  campaignValidUntil?: string | null;
   /** Small note under price, e.g. "zzgl. 4 % Verwaltungsgebühr" */
   priceNote?: string | null;
   remainingTickets?: number | null;
@@ -121,6 +124,17 @@ export function EventCard({ event }: { event: EventCardData }) {
         <h3 className="line-clamp-3 min-h-[3.6rem] text-base font-bold leading-snug text-[var(--tf-navy)] md:text-lg">
           {event.name}
         </h3>
+
+        <EventPageUrgencyCountdown
+          className="py-0.5"
+          variant="compact"
+          size="sm"
+          eventStartsAt={event.eventStartsAt}
+          campaignValidUntils={
+            event.campaignValidUntil ? [event.campaignValidUntil] : []
+          }
+          campaignName={event.campaignName}
+        />
 
         {/* Always: 1) Datum/Uhrzeit  2) Location/Ort */}
         <div className="flex flex-col gap-1 text-[13px] leading-snug text-[var(--tf-text-secondary)]">

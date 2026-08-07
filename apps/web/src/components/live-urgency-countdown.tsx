@@ -9,8 +9,12 @@ import {
 } from "@/lib/commerce/campaign-price-ui";
 
 type Size = "md" | "sm";
-/** `card` = bordered light panel (tickets column). `heroText` = digits on navy. */
-type Variant = "card" | "heroText";
+/**
+ * `card` = bordered light panel (tickets column).
+ * `heroText` = digits on navy.
+ * `compact` = inline listing-card strip (no heavy box).
+ */
+type Variant = "card" | "heroText" | "compact";
 
 function Unit({
   value,
@@ -33,24 +37,38 @@ function Unit({
       ? "text-white/65"
       : "text-[var(--tf-navy)]/70";
 
+  const digitSize =
+    variant === "compact"
+      ? "text-sm leading-none"
+      : variant === "heroText"
+        ? size === "sm"
+          ? "text-2xl leading-none"
+          : "text-3xl leading-none md:text-4xl"
+        : size === "sm"
+          ? "text-lg leading-none"
+          : "text-2xl leading-none md:text-[1.75rem]";
+
+  const labelSize =
+    variant === "compact"
+      ? "text-[8px]"
+      : size === "sm"
+        ? "text-[9px]"
+        : "text-[10px] md:text-[11px]";
+
   return (
-    <div className="min-w-0 flex-1 text-center">
+    <div
+      className={`min-w-0 text-center ${
+        variant === "compact" ? "w-[2.35rem] shrink-0" : "flex-1"
+      }`}
+    >
       <p
-        className={`font-bold tabular-nums tracking-tight ${digitClass} ${
-          variant === "heroText"
-            ? size === "sm"
-              ? "text-2xl leading-none"
-              : "text-3xl leading-none md:text-4xl"
-            : size === "sm"
-              ? "text-lg leading-none"
-              : "text-2xl leading-none md:text-[1.75rem]"
-        }`}
+        className={`font-bold tabular-nums tracking-tight ${digitClass} ${digitSize}`}
       >
         {padded}
       </p>
       <p
-        className={`mt-1 font-medium uppercase tracking-[0.08em] ${labelClass} ${
-          size === "sm" ? "text-[9px]" : "text-[10px] md:text-[11px]"
+        className={`font-medium uppercase tracking-[0.08em] ${labelClass} ${labelSize} ${
+          variant === "compact" ? "mt-0.5" : "mt-1"
         }`}
       >
         {label}
@@ -64,13 +82,15 @@ function Sep({ size, variant }: { size: Size; variant: Variant }) {
     <span
       aria-hidden
       className={`shrink-0 self-start font-bold text-[var(--tf-teal)] ${
-        variant === "heroText"
-          ? size === "sm"
-            ? "pt-0.5 text-xl"
-            : "pt-1 text-2xl md:text-3xl"
-          : size === "sm"
-            ? "pt-0.5 text-base"
-            : "pt-1 text-xl md:text-2xl"
+        variant === "compact"
+          ? "pt-px text-sm"
+          : variant === "heroText"
+            ? size === "sm"
+              ? "pt-0.5 text-xl"
+              : "pt-1 text-2xl md:text-3xl"
+            : size === "sm"
+              ? "pt-0.5 text-base"
+              : "pt-1 text-xl md:text-2xl"
       }`}
     >
       :
@@ -93,16 +113,41 @@ function CountdownFace({
   variant: Variant;
   className: string;
 }) {
-  if (variant === "heroText") {
-    const titleColor =
-      kind === "campaign" ? "text-[var(--tf-sale)]" : "text-[var(--tf-teal)]";
+  const titleColor =
+    kind === "campaign" ? "text-[var(--tf-sale)]" : "text-[var(--tf-teal)]";
+  const aria = `${title} ${parts.days} Tage ${parts.hours} Stunden ${parts.minutes} Minuten ${parts.seconds} Sekunden`;
 
+  if (variant === "compact") {
     return (
       <div
         className={className}
         role="timer"
         aria-live="polite"
-        aria-label={`${title} ${parts.days} Tage ${parts.hours} Stunden ${parts.minutes} Minuten ${parts.seconds} Sekunden`}
+        aria-label={aria}
+      >
+        <p className={`mb-1 text-[11px] font-semibold leading-tight ${titleColor}`}>
+          {title}
+        </p>
+        <div className="flex items-start gap-0.5">
+          <Unit value={parts.days} label="Tage" size={size} variant={variant} />
+          <Sep size={size} variant={variant} />
+          <Unit value={parts.hours} label="Std" size={size} variant={variant} />
+          <Sep size={size} variant={variant} />
+          <Unit value={parts.minutes} label="Min" size={size} variant={variant} />
+          <Sep size={size} variant={variant} />
+          <Unit value={parts.seconds} label="Sek" size={size} variant={variant} />
+        </div>
+      </div>
+    );
+  }
+
+  if (variant === "heroText") {
+    return (
+      <div
+        className={className}
+        role="timer"
+        aria-live="polite"
+        aria-label={aria}
       >
         <p
           className={`font-semibold ${titleColor} ${
@@ -129,9 +174,6 @@ function CountdownFace({
       ? "border-[rgba(228,90,74,0.35)] bg-[rgba(228,90,74,0.08)]"
       : "border-[rgba(20,184,166,0.4)] bg-white";
 
-  const titleColor =
-    kind === "campaign" ? "text-[var(--tf-sale)]" : "text-[var(--tf-teal)]";
-
   return (
     <div
       className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,39,71,0.08)] ${accent} ${
@@ -139,7 +181,7 @@ function CountdownFace({
       } ${className}`}
       role="timer"
       aria-live="polite"
-      aria-label={`${title} ${parts.days} Tage ${parts.hours} Stunden ${parts.minutes} Minuten ${parts.seconds} Sekunden`}
+      aria-label={aria}
     >
       <p
         className={`font-semibold ${titleColor} ${
@@ -213,12 +255,15 @@ export function LiveUrgencyCountdown({
 export function EventPageUrgencyCountdown({
   eventStartsAt,
   campaignValidUntils,
+  campaignName,
   size = "md",
   variant = "card",
   className = "",
 }: {
   eventStartsAt?: string | Date | null;
   campaignValidUntils?: Array<string | Date | null | undefined>;
+  /** Prefer „{name} endet in“ over generic „Aktion endet in“ */
+  campaignName?: string | null;
   size?: Size;
   variant?: Variant;
   className?: string;
@@ -232,6 +277,7 @@ export function EventPageUrgencyCountdown({
   const campaignKey = (campaignValidUntils ?? [])
     .map((u) => (typeof u === "string" ? u : u ? u.toISOString() : ""))
     .join("|");
+  const campaignNameKey = campaignName?.trim() ?? "";
 
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -240,7 +286,7 @@ export function EventPageUrgencyCountdown({
     tick();
     const id = window.setInterval(tick, 1000);
     return () => window.clearInterval(id);
-  }, [eventIso, campaignKey]);
+  }, [eventIso, campaignKey, campaignNameKey]);
 
   const campaignIsos = campaignKey
     ? campaignKey.split("|").map((s) => (s.length > 0 ? s : null))
@@ -249,6 +295,7 @@ export function EventPageUrgencyCountdown({
   const target = resolveUrgencyCountdown({
     eventStartsAt: eventIso,
     campaignValidUntils: campaignIsos,
+    campaignName: campaignNameKey || null,
     nowMs,
   });
   if (!target) return null;
