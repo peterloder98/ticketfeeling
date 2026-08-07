@@ -18,7 +18,7 @@
     },
     {
       "path": "/api/v1/cron/expire-holds",
-      "schedule": "*/5 * * * *"
+      "schedule": "15 6 * * *"
     }
   ]
 }
