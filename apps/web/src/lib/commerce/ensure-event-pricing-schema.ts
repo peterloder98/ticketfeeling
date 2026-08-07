@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { withTimeoutFallback } from "@/lib/async-timeout";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
 const STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "accessibility_discount_enabled" BOOLEAN NOT NULL DEFAULT false`,
@@ -56,11 +57,17 @@ async function probeReady(db: PrismaClient): Promise<boolean> {
   }
 }
 
-/** Best-effort DDL when migrate deploy has not run yet. */
+/** Best-effort DDL when migrate deploy has not run yet (local/dev). Skipped in production. */
 export async function ensureEventPricingSchema(db: PrismaClient) {
   if (schemaReady) return;
   if (await probeReady(db)) {
     schemaReady = true;
+    return;
+  }
+  if (shouldSkipRuntimeDdl()) {
+    console.error(
+      "[ensureEventPricingSchema] schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
+    );
     return;
   }
   if (!ensurePromise) {

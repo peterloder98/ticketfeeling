@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { withTimeoutFallback } from "@/lib/async-timeout";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
 const SEPA_SCHEMA_STATEMENTS = [
   `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "payment_ui_config" JSONB NOT NULL DEFAULT '{}'`,
@@ -52,7 +53,8 @@ async function probeSepaSchemaReady(db: PrismaClient): Promise<boolean> {
 }
 
 /**
- * Best-effort column patch when migrate deploy has not run yet.
+ * Best-effort column patch when migrate deploy has not run yet (local/dev).
+ * Production/Vercel skips ALTER and relies on migrate-deploy (#4/#33).
  * Sequential DDL only — parallel ALTER on the same table deadlocks/hangs on Neon.
  * Memoized on success; bounded so checkout never waits minutes on DDL.
  */
@@ -62,6 +64,14 @@ export async function ensureSepaPaymentSchema(db: PrismaClient) {
     ensurePromise = (async () => {
       if (await probeSepaSchemaReady(db)) {
         schemaReady = true;
+        return;
+      }
+
+      if (shouldSkipRuntimeDdl()) {
+        console.error(
+          "[sepa] ensureSepaPaymentSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
+        );
+        ensurePromise = null;
         return;
       }
 

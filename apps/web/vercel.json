@@ -15,6 +15,10 @@
     {
       "path": "/api/v1/cron/release-presale",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/v1/cron/expire-holds",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

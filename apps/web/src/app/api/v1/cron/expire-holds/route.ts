@@ -1,30 +1,32 @@
 import { NextResponse } from "next/server";
 import { authorizeCron, cronUnauthorizedResponse } from "@/lib/cron-auth";
-import { runPayoutReconcileJob } from "@/lib/stripe-payout/sync";
+import { expireAndReconcileHolds } from "@/lib/commerce/cart";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 300;
+export const maxDuration = 60;
 
-/** Auth: Bearer CRON_SECRET only (no query-string secret). */
+/**
+ * Expire seat holds + inventory holds on a schedule (complements cart-traffic expiry).
+ * Secured with Bearer CRON_SECRET only.
+ */
 export async function GET(request: Request) {
   const auth = authorizeCron(request);
   if (auth !== "ok") {
     const res = cronUnauthorizedResponse(auth);
     return NextResponse.json(res.body, { status: res.status });
   }
-  const url = new URL(request.url);
-  const kind = url.searchParams.get("kind") === "monthly" ? "monthly" : "daily";
-  const lookbackDays =
-    kind === "monthly"
-      ? Number(url.searchParams.get("days") ?? 120)
-      : Number(url.searchParams.get("days") ?? 45);
 
+  const started = Date.now();
   try {
-    const result = await runPayoutReconcileJob({ kind, lookbackDays });
-    return NextResponse.json({ ok: true, ...result });
+    await expireAndReconcileHolds(new Date(), { forceSeatExpire: true });
+    return NextResponse.json({
+      ok: true,
+      elapsedMs: Date.now() - started,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    console.error("[cron/expire-holds]", message);
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

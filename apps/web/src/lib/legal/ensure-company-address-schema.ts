@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { withTimeoutFallback } from "@/lib/async-timeout";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
 const STATEMENTS = [
   `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "public_company_address" JSONB NOT NULL DEFAULT '{}'`,
@@ -27,8 +28,9 @@ const STATEMENTS = [
 let ensurePromise: Promise<void> | null = null;
 const ENSURE_BUDGET_MS = 8_000;
 
-/** Idempotent DDL so Prisma Client can load settings after deploy before migrate catches up. */
+/** Idempotent DDL so Prisma Client can load settings after deploy before migrate catches up (local/dev). */
 export async function ensureCompanyAddressSchema(db: PrismaClient) {
+  if (shouldSkipRuntimeDdl()) return;
   if (!ensurePromise) {
     ensurePromise = (async () => {
       for (const sql of STATEMENTS) {

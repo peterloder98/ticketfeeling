@@ -1,9 +1,14 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
+/**
+ * Same secret chain as order-access / NextAuth: ORDER_ACCESS_SECRET ||
+ * NEXTAUTH_SECRET || AUTH_SECRET (so AUTH_SECRET-only envs still work).
+ */
 function tapSecret() {
   return (
     process.env.ORDER_ACCESS_SECRET?.trim() ||
     process.env.NEXTAUTH_SECRET?.trim() ||
+    process.env.AUTH_SECRET?.trim() ||
     ""
   );
 }

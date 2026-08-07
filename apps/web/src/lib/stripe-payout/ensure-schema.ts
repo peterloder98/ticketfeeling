@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 import { withTimeoutFallback } from "@/lib/async-timeout";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
 /**
  * Idempotent CREATE TABLE / INDEX for Stripe payout reconciliation.
@@ -218,6 +219,14 @@ export async function ensureStripePayoutSchema(db: PrismaClient) {
     ensurePromise = (async () => {
       if (await probeStripePayoutSchemaReady(db)) {
         schemaReady = true;
+        return;
+      }
+
+      if (shouldSkipRuntimeDdl()) {
+        console.error(
+          "[stripe-payout] ensureStripePayoutSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
+        );
+        ensurePromise = null;
         return;
       }
 

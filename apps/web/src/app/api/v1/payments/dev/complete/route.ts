@@ -19,7 +19,17 @@ const schema = z.object({
  * Does not require a client-side webhook secret (that left the pay button disabled on Vercel).
  */
 export async function POST(request: Request) {
-  if (getPaymentProvider().key !== "dev") {
+  // Never allow fake pay completion in production (#16).
+  if (process.env.VERCEL_ENV === "production") {
+    return NextResponse.json({ error: { code: "GONE" } }, { status: 404 });
+  }
+  let providerKey: string;
+  try {
+    providerKey = getPaymentProvider().key;
+  } catch {
+    return NextResponse.json({ error: { code: "GONE" } }, { status: 404 });
+  }
+  if (providerKey !== "dev") {
     return NextResponse.json({ error: { code: "GONE" } }, { status: 404 });
   }
 

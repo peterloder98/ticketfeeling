@@ -1,9 +1,14 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
+/**
+ * Same secret chain as NextAuth (`auth.ts`): dedicated ORDER_ACCESS_SECRET,
+ * then NEXTAUTH_SECRET, then AUTH_SECRET (Auth.js v5 / AUTH_SECRET-only envs).
+ */
 function accessSecret() {
   return (
     process.env.ORDER_ACCESS_SECRET?.trim() ||
     process.env.NEXTAUTH_SECRET?.trim() ||
+    process.env.AUTH_SECRET?.trim() ||
     ""
   );
 }

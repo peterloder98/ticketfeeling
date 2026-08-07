@@ -3,6 +3,7 @@ import { prisma as defaultPrisma } from "@/lib/db";
 import { LEGAL_SEED_CATALOG } from "@/lib/legal/content/catalog";
 import { LEGAL_DOCUMENT_TYPES } from "@/lib/legal/document-types";
 import { withTimeoutFallback } from "@/lib/async-timeout";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
 type PublishedLegalVersion = {
   id: string;
@@ -45,6 +46,14 @@ export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
     legalEnsurePromise = (async () => {
       if (await columnExists(db, "legal_documents", "enabled")) {
         legalSchemaReady = true;
+        return;
+      }
+
+      if (shouldSkipRuntimeDdl()) {
+        console.error(
+          "[legal] ensureLegalSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
+        );
+        legalEnsurePromise = null;
         return;
       }
 

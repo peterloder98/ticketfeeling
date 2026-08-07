@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { prisma as defaultPrisma } from "@/lib/db";
 import { withTimeoutFallback } from "@/lib/async-timeout";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
 /**
  * Best-effort DDL when migrate deploy lags behind (common on Vercel/Neon).
@@ -68,6 +69,14 @@ export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPr
     ensurePromise = (async () => {
       if (await probeSeatingSchemaReady(db)) {
         schemaReady = true;
+        return;
+      }
+
+      if (shouldSkipRuntimeDdl()) {
+        console.error(
+          "[seating] ensureSeatingAssignmentSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
+        );
+        ensurePromise = null;
         return;
       }
 
