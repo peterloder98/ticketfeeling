@@ -59,20 +59,16 @@ export const DEFAULT_PLATFORM_FEE_CONFIG: PlatformFeeConfig = {
   version: 1,
 };
 
-/** What the Verwaltungsgebühr covers — shown in the checkout info dialog. */
+/** What the Verwaltungsgebühr covers — shown in the compact info dialog. */
 export const PLATFORM_FEE_INFO_BULLETS = [
-  "Betrieb der Ticketfeeling-Plattform",
-  "Sichere Zahlungsabwicklung",
-  "Erstellung und Versand Ihrer Tickets",
-  "QR-Codes und Einlasskontrolle",
-  "Hosting und technische Infrastruktur",
-  "Persönlichen Kundenservice",
-  "Weiterentwicklung des Produkts",
+  "Plattformbetrieb und sichere Zahlungsabwicklung",
+  "Tickets, QR-Codes und Einlasskontrolle",
+  "Persönlicher Support und Weiterentwicklung",
 ] as const;
 
 export function buildPlatformFeeInfoClosing(bps: number): string {
   const pct = feePercentNumberLabel(bps);
-  return `Mit ${pct} % bleibt Ticketfeeling bewusst deutlich unter den Gebühren vieler klassischer Ticketanbieter.`;
+  return `Mit nur ${pct} % liegen wir bewusst unter den Gebühren klassischer Ticketanbieter.`;
 }
 
 export function parsePlatformFeeConfig(raw: unknown): PlatformFeeConfig {

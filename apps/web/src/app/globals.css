@@ -100,6 +100,11 @@ body {
   min-height: 100%;
 }
 
+html {
+  /* Avoid layout jump when modals lock body scroll */
+  scrollbar-gutter: stable;
+}
+
 body {
   background: var(--tf-bg);
   color: var(--tf-text);
