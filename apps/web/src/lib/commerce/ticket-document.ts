@@ -10,11 +10,11 @@ import {
   TF_PRINT_HINT,
   TF_QR_HINT,
   TF_SOFT,
-  TF_TAGLINE,
   TF_TEAL,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_SPONSOR_LOGO_MAX_H_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -61,6 +61,12 @@ export function buildTicketHtmlDocument(
     .filter(Boolean)
     .join("");
 
+  const sponsorAbove =
+    data.sponsorLogoAboveAbsoluteUrl ?? data.sponsorLogoAboveUrl;
+  const sponsorBelow =
+    data.sponsorLogoBelowAbsoluteUrl ?? data.sponsorLogoBelowUrl;
+  const hasSponsor = Boolean(sponsorAbove || sponsorBelow);
+
   const coverHtml = cover
     ? `<div class="cover-blur" style="background-image:url('${escapeAttr(cover)}')"></div>
        <div class="cover-shade"></div>
@@ -70,9 +76,15 @@ export function buildTicketHtmlDocument(
          <div class="fallback-logo-plate">
            <img src="/brand/logo-email.png" alt="Ticketfeeling" />
          </div>
-         <span class="fallback-claim">${escapeHtml(TF_TAGLINE)}</span>
          <span class="fallback-accent" aria-hidden="true"></span>
        </div>`;
+
+  const sponsorAboveHtml = sponsorAbove
+    ? `<div class="sponsor-logo"><img src="${escapeAttr(sponsorAbove)}" alt="" /></div>`
+    : "";
+  const sponsorBelowHtml = sponsorBelow
+    ? `<div class="sponsor-logo"><img src="${escapeAttr(sponsorBelow)}" alt="" /></div>`
+    : "";
 
   const doorsBeginHtml =
     data.doors.headline || data.startLabel
@@ -225,11 +237,6 @@ export function buildTicketHtmlDocument(
       max-width: 120px;
       object-fit: contain;
     }
-    .fallback-claim {
-      font-size: 10px;
-      font-weight: 500;
-      opacity: .85;
-    }
     .fallback-accent {
       width: 28px;
       height: 2px;
@@ -248,7 +255,6 @@ export function buildTicketHtmlDocument(
     .brand-row {
       display: flex;
       align-items: center;
-      gap: 8px;
       min-width: 0;
     }
     .brand-row img {
@@ -256,14 +262,6 @@ export function buildTicketHtmlDocument(
       width: auto;
       max-width: 130px;
       object-fit: contain;
-    }
-    .brand-row span {
-      font-size: 10px;
-      font-weight: 500;
-      color: ${TF_MUTED};
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
     .event {
       margin: 0;
@@ -407,10 +405,24 @@ export function buildTicketHtmlDocument(
       flex-direction: column;
       align-items: center;
       justify-content: center;
+      gap: 4px;
       text-align: center;
       min-width: 0;
       min-height: 0;
       position: relative;
+    }
+    .sponsor-logo {
+      width: 92%;
+      max-width: 120px;
+      height: ${TICKET_SPONSOR_LOGO_MAX_H_PX}px;
+      flex-shrink: 0;
+      line-height: 0;
+    }
+    .sponsor-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
     }
     .zone-c::before,
     .zone-c::after {
@@ -430,22 +442,23 @@ export function buildTicketHtmlDocument(
       font-weight: 700;
       letter-spacing: .14em;
       color: ${accent};
-      margin: 0 0 4px;
+      margin: 0;
     }
     .qr-plate {
       background: #fff;
       padding: 5px;
       border-radius: 4px;
       line-height: 0;
+      flex-shrink: 0;
     }
     .qr-plate img {
-      width: min(128px, 20vw);
+      width: min(${hasSponsor ? 112 : 128}px, 20vw);
       height: auto;
       aspect-ratio: 1;
       display: block;
     }
     .ticket-no {
-      margin-top: 5px;
+      margin: 0;
       font-size: 10px;
       font-weight: 700;
       color: ${TF_NAVY};
@@ -455,7 +468,7 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
     }
     .qr-hint {
-      margin: 2px 0 0;
+      margin: 0;
       font-size: 9px;
       color: ${TF_MUTED};
     }
@@ -497,7 +510,6 @@ export function buildTicketHtmlDocument(
         <div class="zone-b">
           <div class="brand-row">
             <img src="/brand/logo-email.png" alt="Ticketfeeling" />
-            <span>${escapeHtml(TF_TAGLINE)}</span>
           </div>
           <h1 class="event">${escapeHtml(data.eventName)}</h1>
           ${data.dateLabel ? `<p class="date">${escapeHtml(data.dateLabel)}</p>` : ""}
@@ -514,6 +526,7 @@ export function buildTicketHtmlDocument(
         </div>
         <div class="zone-c">
           <p class="admit">${escapeHtml(admitLabel)}</p>
+          ${sponsorAboveHtml}
           <div class="qr-plate">
             ${
               qrDataUrlOrNull
@@ -521,6 +534,7 @@ export function buildTicketHtmlDocument(
                 : `<p class="qr-hint">Kein gültiger QR-Code</p>`
             }
           </div>
+          ${sponsorBelowHtml}
           <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
           <p class="qr-hint">${escapeHtml(TF_QR_HINT)}</p>
         </div>

@@ -5,10 +5,10 @@ import {
   parseSeatHighlight,
   TF_PRINT_HINT,
   TF_QR_HINT,
-  TF_TAGLINE,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_SPONSOR_LOGO_MAX_H_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -25,6 +25,33 @@ type Props = {
 const coverPct = Math.round(TICKET_COL_COVER * 100);
 const qrPct = Math.round(TICKET_COL_QR * 100);
 const infoPct = 100 - coverPct - qrPct;
+
+function SponsorLogo({
+  src,
+  compact,
+}: {
+  src: string;
+  compact?: boolean;
+}) {
+  const h = compact
+    ? Math.min(22, TICKET_SPONSOR_LOGO_MAX_H_PX)
+    : TICKET_SPONSOR_LOGO_MAX_H_PX;
+  return (
+    <div
+      className="relative mx-auto w-full max-w-[92%] shrink-0"
+      style={{ height: h }}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        className="h-full w-full object-contain"
+        loading="lazy"
+        decoding="async"
+      />
+    </div>
+  );
+}
 
 /**
  * Live ticket face — locked landscape ~2:1 concert strip (cover | info | QR).
@@ -44,6 +71,11 @@ export function TicketFace({
   const seat = parseSeatHighlight(data.placeDisplayLabel, data.hasAssignedSeat);
   const doorsAccent =
     data.isVip || data.doors.isCategoryOverride ? accent : "var(--tf-navy)";
+  const hasSponsor =
+    Boolean(data.sponsorLogoAboveUrl) || Boolean(data.sponsorLogoBelowUrl);
+  const qrPx = compact
+    ? Math.min(qrSize, hasSponsor ? 112 : 128)
+    : Math.min(qrSize, hasSponsor ? 136 : 158);
 
   return (
     <div className="w-full min-w-0">
@@ -103,19 +135,12 @@ export function TicketFace({
               compact ? "gap-0.5 px-3 py-2" : "gap-1 px-4 py-2.5 md:px-5 md:py-3"
             }`}
           >
-            <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex min-w-0 items-center">
               <BrandLogo
                 href={null}
                 variant="full"
                 className={compact ? "!h-8 !w-auto shrink-0" : "!h-9 !w-auto shrink-0 sm:!h-10"}
               />
-              <span
-                className={`min-w-0 truncate font-medium text-[var(--tf-text-secondary)] ${
-                  compact ? "text-[9px]" : "text-[10px] sm:text-[11px]"
-                }`}
-              >
-                {TF_TAGLINE}
-              </span>
             </div>
 
             <h1
@@ -269,7 +294,7 @@ export function TicketFace({
           </div>
 
           {/* RIGHT — QR stub */}
-          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1.5 text-center">
+          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center gap-1 border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1.5 text-center">
             <span
               className="pointer-events-none absolute -left-1.5 top-0 h-3 w-3 -translate-y-1/2 rounded-full bg-[rgba(248,250,252,0.95)] ring-1 ring-[var(--tf-line)]"
               aria-hidden
@@ -286,28 +311,35 @@ export function TicketFace({
               {admitLabel}
             </p>
 
+            {data.sponsorLogoAboveUrl ? (
+              <SponsorLogo src={data.sponsorLogoAboveUrl} compact={compact} />
+            ) : null}
+
             {showQr && data.qrToken ? (
               <>
-                <div className="mt-1 rounded-md bg-white p-1 shadow-sm">
+                <div className="shrink-0 rounded-md bg-white p-1 shadow-sm">
                   <TicketQrImage
                     token={data.qrToken}
-                    size={compact ? Math.min(qrSize, 128) : Math.min(qrSize, 158)}
+                    size={qrPx}
                     bare
                   />
                 </div>
+                {data.sponsorLogoBelowUrl ? (
+                  <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
+                ) : null}
                 <p
-                  className={`mt-1 max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
+                  className={`max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
                     compact ? "text-[10px]" : "text-xs"
                   }`}
                 >
                   {data.ticketNumber}
                 </p>
-                <p className="mt-0.5 text-[9px] text-[var(--tf-text-secondary)]">
+                <p className="text-[9px] text-[var(--tf-text-secondary)]">
                   {TF_QR_HINT}
                 </p>
               </>
             ) : (
-              <div className="mt-2 max-w-[11rem] px-1">
+              <div className="max-w-[11rem] px-1">
                 <p className="text-[11px] font-semibold text-[var(--tf-navy)]">
                   {transferredMessage ? "Ticket weitergeleitet" : "QR nicht verfügbar"}
                 </p>
@@ -315,6 +347,11 @@ export function TicketFace({
                   <p className="mt-1 text-[10px] leading-snug text-[var(--tf-text-secondary)]">
                     {transferredMessage}
                   </p>
+                ) : null}
+                {data.sponsorLogoBelowUrl ? (
+                  <div className="mt-2">
+                    <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
+                  </div>
                 ) : null}
                 <p className="mt-2 text-[11px] font-medium text-[var(--tf-navy)]">
                   {data.ticketNumber}
@@ -363,13 +400,6 @@ function TicketCoverFallback({ compact }: { compact: boolean }) {
             className={compact ? "!h-7 !w-auto" : "!h-9 !w-auto"}
           />
         </div>
-        <p
-          className={`font-medium text-white/85 ${
-            compact ? "text-[9px]" : "text-[10px] sm:text-[11px]"
-          }`}
-        >
-          {TF_TAGLINE}
-        </p>
         <span
           className="mt-0.5 h-0.5 w-8 rounded-full bg-[var(--tf-teal)]"
           aria-hidden

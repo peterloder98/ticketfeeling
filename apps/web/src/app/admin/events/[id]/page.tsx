@@ -13,6 +13,7 @@ import {
 } from "@/components/admin/category-sales-table";
 import { SalesPieChart, SalesTimelineChart } from "@/components/admin/sales-charts";
 import { CoverImageField } from "@/components/admin/cover-image-field";
+import { TicketSponsorLogoField } from "@/components/admin/ticket-sponsor-logo-field";
 import { EventSeatingSetup } from "@/components/admin/event-seating-setup";
 import { EventDiscountsPanel } from "@/components/admin/event-discounts-panel";
 import { EventEditForm } from "@/components/admin/event-edit-form";
@@ -36,6 +37,7 @@ import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-sc
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
+import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
 import { expireAndReconcileHolds } from "@/lib/commerce/cart";
 
@@ -107,6 +109,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     ensureSaleClosedEarlyColumn(),
     ensureScheduleChangedAtColumn(),
     ensureTicketHeroImageColumn(),
+    ensureTicketSponsorLogoColumns(),
   ]);
 
   // Expire stale cart holds and repair negative „reserviert“ counters before we render.
@@ -466,6 +469,71 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           </div>
         ) : (
           <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">Kein Ticketbild hinterlegt.</p>
+        )}
+      </section>
+
+      {/* Optional QR-stub sponsor logos */}
+      <section className="tf-card !p-5">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
+            Sponsorenlogos auf dem Ticket
+          </h2>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Optional. Bis zu zwei Logos am QR-Stub — eines oberhalb, eines unterhalb des Codes.
+            Leer = wie bisher ohne Sponsoren.
+          </p>
+        </div>
+        {canWrite ? (
+          <div className="mt-4 grid gap-5 md:grid-cols-2">
+            <TicketSponsorLogoField
+              field="ticketSponsorLogoAboveUrl"
+              label="Logo oberhalb QR"
+              eventId={event.id}
+              initialUrl={event.ticketSponsorLogoAboveUrl}
+              hint="Erscheint zwischen Einlass-Label und QR-Code."
+            />
+            <TicketSponsorLogoField
+              field="ticketSponsorLogoBelowUrl"
+              label="Logo unterhalb QR"
+              eventId={event.id}
+              initialUrl={event.ticketSponsorLogoBelowUrl}
+              hint="Erscheint zwischen QR-Code und Ticketnummer."
+            />
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            {event.ticketSponsorLogoAboveUrl ? (
+              <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-3">
+                <p className="text-xs font-medium text-[var(--tf-text-secondary)]">
+                  Oberhalb QR
+                </p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={event.ticketSponsorLogoAboveUrl}
+                  alt=""
+                  className="mt-2 h-12 w-full object-contain"
+                />
+              </div>
+            ) : null}
+            {event.ticketSponsorLogoBelowUrl ? (
+              <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-3">
+                <p className="text-xs font-medium text-[var(--tf-text-secondary)]">
+                  Unterhalb QR
+                </p>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={event.ticketSponsorLogoBelowUrl}
+                  alt=""
+                  className="mt-2 h-12 w-full object-contain"
+                />
+              </div>
+            ) : null}
+            {!event.ticketSponsorLogoAboveUrl && !event.ticketSponsorLogoBelowUrl ? (
+              <p className="text-sm text-[var(--tf-text-secondary)]">
+                Keine Sponsorenlogos hinterlegt.
+              </p>
+            ) : null}
+          </div>
         )}
       </section>
 

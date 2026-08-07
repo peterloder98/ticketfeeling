@@ -5,6 +5,7 @@ import { buildEventOrganizerIdentity } from "@/lib/legal/event-organizer";
 import { resolveTicketDoors, type ResolvedTicketDoors } from "@/lib/commerce/ticket-doors";
 import { resolveTicketCoverUrl } from "@/lib/commerce/event-cover";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
+import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { formatEuroFromCents } from "@/lib/money";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 
@@ -16,10 +17,13 @@ export const TF_INK = "#0B1421";
 export const TF_LINE = "#E5E7EB";
 export const TF_PAPER = "#FFFFFF";
 export const TF_SOFT = "#F8FAFC";
+/** Site/meta claim — not shown on the ticket face (BrandLogo alone). */
 export const TF_TAGLINE = "Mehr als ein Ticket";
 export const TF_PRINT_HINT =
   "Am Einlass auf dem Smartphone vorzeigen oder ausdrucken.";
 export const TF_QR_HINT = "Am Einlass vorzeigen.";
+/** Modest CSS height for QR-stub sponsor logos (keep QR large + quiet zone). */
+export const TICKET_SPONSOR_LOGO_MAX_H_PX = 28;
 
 /**
  * Print@Home ticket BODY (not the A4 sheet): landscape ~2:1, e.g. 200×100 mm.
@@ -60,6 +64,12 @@ export type TicketPresentation = {
   coverUrl: string | null;
   /** Absolute URL for print/PDF embedding */
   coverAbsoluteUrl: string | null;
+  /** Optional sponsor logo above QR (relative or absolute) */
+  sponsorLogoAboveUrl: string | null;
+  sponsorLogoAboveAbsoluteUrl: string | null;
+  /** Optional sponsor logo below QR */
+  sponsorLogoBelowUrl: string | null;
+  sponsorLogoBelowAbsoluteUrl: string | null;
   organizerDisplayName: string;
   organizerAddress: string;
   organizerContact: string | null;
@@ -194,7 +204,10 @@ function toAbsoluteAssetUrl(url: string | null): string | null {
 export async function loadTicketPresentation(
   ticketId: string,
 ): Promise<TicketPresentation> {
-  await ensureTicketHeroImageColumn();
+  await Promise.all([
+    ensureTicketHeroImageColumn(),
+    ensureTicketSponsorLogoColumns(),
+  ]);
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
     include: {
@@ -221,6 +234,10 @@ export async function loadTicketPresentation(
   );
   const doors = resolveTicketDoors(ticket.event, ticket.category);
   const coverUrl = resolveTicketCoverUrl(ticket.event);
+  const sponsorAbove =
+    ticket.event.ticketSponsorLogoAboveUrl?.trim() || null;
+  const sponsorBelow =
+    ticket.event.ticketSponsorLogoBelowUrl?.trim() || null;
   const lines = locationLines(ticket.event.location);
   const categoryName = ticket.categorySnapshot;
   const categoryKind = ticket.category?.categoryKind ?? null;
@@ -260,6 +277,10 @@ export async function loadTicketPresentation(
     priceLabel,
     coverUrl,
     coverAbsoluteUrl: toAbsoluteAssetUrl(coverUrl),
+    sponsorLogoAboveUrl: sponsorAbove,
+    sponsorLogoAboveAbsoluteUrl: toAbsoluteAssetUrl(sponsorAbove),
+    sponsorLogoBelowUrl: sponsorBelow,
+    sponsorLogoBelowAbsoluteUrl: toAbsoluteAssetUrl(sponsorBelow),
     organizerDisplayName: organizer.displayName,
     organizerAddress: formatSellerAddress(organizer),
     organizerContact: organizer.supportEmail ?? organizer.email ?? null,

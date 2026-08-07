@@ -14,7 +14,6 @@ import {
   TF_PRINT_HINT,
   TF_QR_HINT,
   TF_SOFT,
-  TF_TAGLINE,
   TF_TEAL,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
@@ -54,6 +53,10 @@ const mock: TicketPresentation = {
   priceLabel: "79,00 €",
   coverUrl: null,
   coverAbsoluteUrl: null,
+  sponsorLogoAboveUrl: null,
+  sponsorLogoAboveAbsoluteUrl: null,
+  sponsorLogoBelowUrl: null,
+  sponsorLogoBelowAbsoluteUrl: null,
   organizerDisplayName: "Demo Veranstalter GmbH",
   organizerAddress: "SHOULD NOT APPEAR",
   organizerContact: null,
@@ -133,8 +136,8 @@ async function main() {
   doc
     .fillColor(TF_NAVY)
     .font("Helvetica-Bold")
-    .fontSize(8)
-    .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + 14, by, { width: zoneB - 28 });
+    .fontSize(9)
+    .text("Ticketfeeling", bx + 14, by, { width: zoneB - 28 });
   by += 18;
   doc.fontSize(15).text(mock.eventName, bx + 14, by, { width: zoneB - 28, height: 34 });
   by = doc.y + 4;

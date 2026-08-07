@@ -15,7 +15,6 @@ import {
   TF_PRINT_HINT,
   TF_QR_HINT,
   TF_SOFT,
-  TF_TAGLINE,
   TF_TEAL,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
@@ -165,7 +164,7 @@ function drawCoverFallback(
       const plateW = Math.min(w - 24, 118);
       const plateH = 28;
       const px = x + (w - plateW) / 2;
-      const py = y + h / 2 - 22;
+      const py = y + h / 2 - 14;
       doc.roundedRect(px, py, plateW, plateH, 5).fill("#FFFFFF");
       doc.image(logo, px + 8, py + 5, {
         height: 18,
@@ -176,20 +175,9 @@ function drawCoverFallback(
     }
   }
 
-  doc
-    .fillColor("#FFFFFF")
-    .fillOpacity(0.85)
-    .font("Helvetica")
-    .fontSize(7)
-    .text(TF_TAGLINE, x + 10, y + h / 2 + 14, {
-      width: w - 20,
-      align: "center",
-    });
-  doc.fillOpacity(1);
-
   const barW = 22;
   doc
-    .roundedRect(x + (w - barW) / 2, y + h / 2 + 28, barW, 2, 1)
+    .roundedRect(x + (w - barW) / 2, y + h / 2 + 22, barW, 2, 1)
     .fill(TF_TEAL);
 }
 
@@ -199,7 +187,10 @@ async function drawTicketPage(
   qr: string | null,
   cover: Buffer | null,
   logo: Buffer | null,
-  options?: DrawOptions,
+  options?: DrawOptions & {
+    sponsorAbove?: Buffer | null;
+    sponsorBelow?: Buffer | null;
+  },
 ) {
   const pageW = doc.page.width;
   const pageH = doc.page.height;
@@ -208,6 +199,9 @@ async function drawTicketPage(
   const admitLabel =
     options?.pageIndexLabel ?? (data.isVip ? "VIP-TICKET" : "EINLASSTICKET");
   const seat = parseSeatHighlight(data.placeDisplayLabel, data.hasAssignedSeat);
+  const sponsorAbove = options?.sponsorAbove ?? null;
+  const sponsorBelow = options?.sponsorBelow ?? null;
+  const hasSponsor = Boolean(sponsorAbove || sponsorBelow);
 
   doc.rect(0, 0, pageW, pageH).fill("#FFFFFF");
 
@@ -246,34 +240,25 @@ async function drawTicketPage(
   const bInnerW = zoneB - bPadX * 2;
   let by = ticketY + bPadY;
 
-  // Brand + claim at top (larger lockup)
+  // Brand lockup only (no claim / tagline on the ticket)
   if (logo) {
     try {
       doc.image(logo, bx + bPadX, by, { height: 20, fit: [108, 20] });
-      doc
-        .font("Helvetica")
-        .fontSize(7.5)
-        .fillColor(TF_MUTED)
-        .text(TF_TAGLINE, bx + bPadX + 112, by + 5, {
-          width: Math.max(40, bInnerW - 112),
-          height: 10,
-          ellipsis: true,
-        });
     } catch {
       doc
         .font("Helvetica-Bold")
-        .fontSize(8)
+        .fontSize(9)
         .fillColor(TF_NAVY)
-        .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + bPadX, by, {
+        .text("Ticketfeeling", bx + bPadX, by + 4, {
           width: bInnerW,
         });
     }
   } else {
     doc
       .font("Helvetica-Bold")
-      .fontSize(8)
+      .fontSize(9)
       .fillColor(TF_NAVY)
-      .text(`Ticketfeeling · ${TF_TAGLINE}`, bx + bPadX, by, {
+      .text("Ticketfeeling", bx + bPadX, by + 4, {
         width: bInnerW,
       });
   }
@@ -504,6 +489,9 @@ async function drawTicketPage(
   const cPad = 8;
   const cInnerW = zoneC - cPad * 2;
   let cy = ticketY + 8;
+  const sponsorH = 18;
+  const sponsorReserve =
+    (sponsorAbove ? sponsorH + 4 : 0) + (sponsorBelow ? sponsorH + 4 : 0);
 
   doc
     .font("Helvetica-Bold")
@@ -516,7 +504,24 @@ async function drawTicketPage(
     });
   cy = doc.y + 4;
 
-  const qrMax = Math.min(cInnerW - 2, ticketH - 64, 128);
+  if (sponsorAbove) {
+    try {
+      doc.image(sponsorAbove, cx + cPad, cy, {
+        fit: [cInnerW, sponsorH],
+        align: "center",
+        valign: "center",
+      });
+    } catch {
+      /* skip broken sponsor asset */
+    }
+    cy += sponsorH + 4;
+  }
+
+  const qrMax = Math.min(
+    cInnerW - 2,
+    ticketH - 64 - sponsorReserve,
+    hasSponsor ? 112 : 128,
+  );
   const quiet = 5;
   const qrPlate = qrMax + quiet * 2;
   const qrPlateX = cx + (zoneC - qrPlate) / 2;
@@ -550,7 +555,20 @@ async function drawTicketPage(
         align: "center",
       });
   }
-  cy += qrPlate + 5;
+  cy += qrPlate + 4;
+
+  if (sponsorBelow) {
+    try {
+      doc.image(sponsorBelow, cx + cPad, cy, {
+        fit: [cInnerW, sponsorH],
+        align: "center",
+        valign: "center",
+      });
+    } catch {
+      /* skip broken sponsor asset */
+    }
+    cy += sponsorH + 4;
+  }
 
   doc
     .font("Helvetica-Bold")
@@ -621,6 +639,12 @@ export async function renderTicketPdf(ticketId: string): Promise<{
   const data = await loadTicketPresentation(ticketId);
   const qr = data.qrToken ? await qrDataUrl(data.qrToken, 320) : null;
   const cover = await loadCoverBuffer(data.coverUrl ?? data.coverAbsoluteUrl);
+  const sponsorAbove = await loadCoverBuffer(
+    data.sponsorLogoAboveUrl ?? data.sponsorLogoAboveAbsoluteUrl,
+  );
+  const sponsorBelow = await loadCoverBuffer(
+    data.sponsorLogoBelowUrl ?? data.sponsorLogoBelowAbsoluteUrl,
+  );
   const logo = loadLogoBuffer();
 
   const doc = new PDFDocument({
@@ -636,7 +660,10 @@ export async function renderTicketPdf(ticketId: string): Promise<{
     doc.on("error", reject);
   });
 
-  await drawTicketPage(doc, data, qr, cover, logo);
+  await drawTicketPage(doc, data, qr, cover, logo, {
+    sponsorAbove,
+    sponsorBelow,
+  });
   doc.end();
   const buffer = await done;
   return {
@@ -664,7 +691,13 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
       const data = await loadTicketPresentation(t.id);
       const qr = data.qrToken ? await qrDataUrl(data.qrToken, 320) : null;
       const cover = await loadCoverBuffer(data.coverUrl ?? data.coverAbsoluteUrl);
-      return { data, qr, cover };
+      const sponsorAbove = await loadCoverBuffer(
+        data.sponsorLogoAboveUrl ?? data.sponsorLogoAboveAbsoluteUrl,
+      );
+      const sponsorBelow = await loadCoverBuffer(
+        data.sponsorLogoBelowUrl ?? data.sponsorLogoBelowAbsoluteUrl,
+      );
+      return { data, qr, cover, sponsorAbove, sponsorBelow };
     }),
   );
   const logo = loadLogoBuffer();
@@ -678,13 +711,15 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
   });
 
   for (let i = 0; i < presentations.length; i += 1) {
-    const { data, qr, cover } = presentations[i]!;
+    const { data, qr, cover, sponsorAbove, sponsorBelow } = presentations[i]!;
     if (i > 0) doc.addPage({ size: "A4", margin: 0 });
     await drawTicketPage(doc, data, qr, cover, logo, {
       pageIndexLabel:
         presentations.length > 1
           ? `${data.isVip ? "VIP-TICKET" : "EINLASSTICKET"}  ${i + 1}/${presentations.length}`
           : null,
+      sponsorAbove,
+      sponsorBelow,
     });
   }
 
