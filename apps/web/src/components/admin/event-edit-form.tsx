@@ -1,11 +1,20 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { updateEventAction } from "@/app/admin/events/actions";
-import { EVENT_STATUSES, toDatetimeLocalValue } from "@/lib/admin/event-form";
+import {
+  EVENT_STATUSES,
+  parseDatetimeLocalBerlin,
+  toDatetimeLocalValue,
+} from "@/lib/admin/event-form";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
+import {
+  scheduleStartChanged,
+  shouldConfirmScheduleChange,
+  shiftRelativeToStart,
+} from "@/lib/commerce/schedule-change";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
 import { EventVenuePlanFields } from "@/components/admin/event-venue-plan-fields";
 import {
@@ -13,6 +22,7 @@ import {
   openSaalplanEditorWindow,
   SAALPLAN_WINDOW_NAME,
 } from "@/lib/saalplan/popup";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 type LocationOpt = { id: string; name: string; city: string | null };
 type PlanOpt = {
@@ -40,9 +50,34 @@ function humanizeEventSaveError(code: string): string {
       return "Ungültiger Status.";
     case "NOT_FOUND":
       return "Event nicht gefunden.";
+    case "SCHEDULE_CHANGE_CONFIRM_REQUIRED":
+      return "Bitte die Terminänderung bestätigen.";
     default:
       return code || "Speichern fehlgeschlagen";
   }
+}
+
+function formatScheduleLabel(localValue: string): string {
+  const d = parseDatetimeLocalBerlin(localValue);
+  if (!d) return localValue || "—";
+  return formatDeDateTime(d, {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function shiftLocalByStoredOffset(
+  companionStored: Date | null,
+  oldStartStored: Date | null,
+  newStartLocal: string,
+): string {
+  const newStart = parseDatetimeLocalBerlin(newStartLocal);
+  const shifted = shiftRelativeToStart(companionStored, oldStartStored, newStart);
+  return toDatetimeLocalValue(shifted);
 }
 
 export function EventEditForm({
@@ -51,6 +86,7 @@ export function EventEditForm({
   planOptions,
   venuePlan,
   tours,
+  ticketsSold = 0,
 }: {
   event: {
     id: string;
@@ -74,11 +110,13 @@ export function EventEditForm({
     administrationFeeCustomTaxRateBasisPoints: number | null;
     sepaMinDaysBeforeEvent: number | null;
     coverImageUrl: string | null;
+    scheduleChangedAt?: Date | null;
   };
   locations: LocationOpt[];
   planOptions: PlanOpt[];
   venuePlan: { id: string; name: string } | null;
   tours: TourOpt[];
+  ticketsSold?: number;
 }) {
   const [status, setStatus] = useState(event.status);
   const [startsAt, setStartsAt] = useState(toDatetimeLocalValue(event.eventStartsAt));
@@ -89,8 +127,34 @@ export function EventEditForm({
   );
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
+  const [saveHint, setSaveHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
+  const dialogTitleId = useId();
   const router = useRouter();
+
+  const needsScheduleGate = shouldConfirmScheduleChange({
+    status: event.status,
+    ticketsSold,
+  });
+
+  useEffect(() => {
+    if (!confirmOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !pending) {
+        setConfirmOpen(false);
+        setPendingFormData(null);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [confirmOpen, pending]);
 
   function onStatusChange(next: string) {
     setStatus(next);
@@ -100,14 +164,28 @@ export function EventEditForm({
     }
   }
 
-  function onSubmit(formData: FormData) {
+  function submitFormData(formData: FormData) {
     setError(null);
     setSaved(false);
+    setSaveHint(null);
     startTransition(async () => {
       try {
-        await updateEventAction(formData);
+        const result = await updateEventAction(formData);
         setSaved(true);
-        // Refresh server tree so seating assignment UI appears after plan assign.
+        if (result.scheduleChanged) {
+          const parts = [
+            "Terminänderung gespeichert.",
+            result.buyersEmailed > 0
+              ? `${result.buyersEmailed} Käufer per E-Mail informiert.`
+              : null,
+            result.campaignsAdjusted > 0
+              ? `${result.campaignsAdjusted} Preisaktion(en) angepasst.`
+              : null,
+          ].filter(Boolean);
+          setSaveHint(parts.join(" "));
+        }
+        setConfirmOpen(false);
+        setPendingFormData(null);
         router.refresh();
       } catch (err) {
         setError(
@@ -119,223 +197,389 @@ export function EventEditForm({
     });
   }
 
+  function onSubmit(formData: FormData) {
+    // Controlled datetime fields may not be in FormData if SmartDateTimeInput
+    // only syncs via React state — always stamp current values.
+    formData.set("eventStartsAt", startsAt);
+    formData.set("eventEndsAt", endsAt);
+    formData.set("doorsOpenAt", doorsOpenAt);
+    formData.set("presaleStartsAt", presaleStartsAt);
+
+    const nextStart = parseDatetimeLocalBerlin(startsAt);
+    const startChanged = scheduleStartChanged(event.eventStartsAt, nextStart);
+
+    if (startChanged && needsScheduleGate) {
+      setPendingFormData(formData);
+      setConfirmOpen(true);
+      setError(null);
+      return;
+    }
+
+    submitFormData(formData);
+  }
+
+  function onConfirmScheduleChange() {
+    if (!pendingFormData) return;
+    const nextEnds = shiftLocalByStoredOffset(
+      event.eventEndsAt,
+      event.eventStartsAt,
+      startsAt,
+    );
+    const nextDoors = shiftLocalByStoredOffset(
+      event.doorsOpenAt,
+      event.eventStartsAt,
+      startsAt,
+    );
+    setEndsAt(nextEnds);
+    setDoorsOpenAt(nextDoors);
+
+    const fd = pendingFormData;
+    fd.set("eventStartsAt", startsAt);
+    fd.set("eventEndsAt", nextEnds);
+    fd.set("doorsOpenAt", nextDoors);
+    fd.set("presaleStartsAt", presaleStartsAt);
+    fd.set("scheduleChangeConfirmed", "1");
+    submitFormData(fd);
+  }
+
+  function closeConfirm() {
+    if (pending) return;
+    setConfirmOpen(false);
+    setPendingFormData(null);
+  }
+
+  const previewEnds = shiftLocalByStoredOffset(
+    event.eventEndsAt,
+    event.eventStartsAt,
+    startsAt,
+  );
+  const previewDoors = shiftLocalByStoredOffset(
+    event.doorsOpenAt,
+    event.eventStartsAt,
+    startsAt,
+  );
+  const willNotifyBuyers =
+    needsScheduleGate &&
+    (isEventSalesReleased(event.status) ||
+      event.status === "paused" ||
+      event.status === "sold_out" ||
+      ticketsSold > 0);
+
   return (
-    <form action={onSubmit} className="relative mt-5 grid gap-3 text-sm md:grid-cols-2">
-      {pending ? (
-        <div
-          className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-[rgba(248,250,252,0.72)] backdrop-blur-[1px]"
-          aria-live="polite"
-        >
-          <p className="rounded-xl border border-[var(--tf-line)] bg-white px-4 py-2 text-sm font-medium text-[var(--tf-navy)] shadow-sm">
-            Speichert…
+    <>
+      <form action={onSubmit} className="relative mt-5 grid gap-3 text-sm md:grid-cols-2">
+        {pending ? (
+          <div
+            className="absolute inset-0 z-30 flex items-center justify-center rounded-2xl bg-[rgba(248,250,252,0.72)] backdrop-blur-[1px]"
+            aria-live="polite"
+          >
+            <p className="rounded-xl border border-[var(--tf-line)] bg-white px-4 py-2 text-sm font-medium text-[var(--tf-navy)] shadow-sm">
+              Speichert…
+            </p>
+          </div>
+        ) : null}
+        <input type="hidden" name="eventId" value={event.id} />
+
+        <label className="grid gap-1 md:col-span-2">
+          <span className="font-medium">Name</span>
+          <input name="name" className="tf-input" required defaultValue={event.name} />
+        </label>
+
+        <label className="grid gap-1 md:col-span-2">
+          <span className="font-medium">Kurzbeschreibung</span>
+          <textarea
+            name="shortDescription"
+            rows={2}
+            className="tf-input"
+            defaultValue={event.shortDescription ?? ""}
+          />
+        </label>
+
+        <label className="grid gap-1 md:col-span-2">
+          <span className="font-medium">Beschreibung</span>
+          <textarea
+            name="description"
+            rows={5}
+            className="tf-input"
+            defaultValue={event.description ?? ""}
+          />
+        </label>
+
+        <label className="grid gap-1">
+          <span className="font-medium">Untertitel</span>
+          <input name="subtitle" className="tf-input" defaultValue={event.subtitle ?? ""} />
+        </label>
+
+        <label className="grid gap-1">
+          <span className="font-medium">Link-Name</span>
+          <input name="slug" className="tf-input" required defaultValue={event.slug} />
+        </label>
+
+        <label className="grid gap-1 md:col-span-2">
+          <span className="font-medium">Tour</span>
+          <select name="tourId" className="tf-input" defaultValue={event.tourId ?? ""}>
+            <option value="">Kein Tour-Termin (einzelnes Event)</option>
+            {tours.map((tour) => (
+              <option key={tour.id} value={tour.id}>
+                {tour.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="grid gap-1 md:col-span-2">
+          <span className="font-medium">Status / Verkaufsfreigabe</span>
+          <select
+            name="status"
+            className="tf-input"
+            value={status}
+            onChange={(e) => onStatusChange(e.target.value)}
+          >
+            {EVENT_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {eventStatusLabel(s)}
+              </option>
+            ))}
+          </select>
+          {isEventSalesReleased(status) && !isEventSalesReleased(event.status) ? (
+            <span className="text-xs text-[var(--tf-text-secondary)]">
+              Vorverkaufsstart wird auf jetzt gesetzt — das Event ist sofort online kaufbar.
+            </span>
+          ) : status === "draft" ? (
+            <span className="text-xs text-[var(--tf-text-secondary)]">
+              Entwurf erscheint nicht öffentlich. Mit Vorverkaufsstart wird beim Speichern
+              automatisch „Verkauf geplant“ gesetzt — und ab dem Start „Im Verkauf“.
+            </span>
+          ) : status === "announcement" ? (
+            <span className="text-xs text-[var(--tf-text-secondary)]">
+              Ab Vorverkaufsstart geht das Event automatisch in den Verkauf und erscheint auf
+              Startseite und Events.
+            </span>
+          ) : null}
+        </label>
+
+        <label className="flex items-center gap-2 md:col-span-2">
+          <input
+            type="checkbox"
+            name="showRemainingAvailability"
+            className="mt-1"
+            defaultChecked={event.showRemainingAvailability}
+          />
+          <span className="font-medium">Restliche Verfügbarkeit öffentlich anzeigen</span>
+        </label>
+
+        <EventVenuePlanFields
+          locations={locations}
+          plans={planOptions}
+          initialLocationId={event.locationId ?? ""}
+          initialVenuePlanId={event.venuePlanId ?? ""}
+          initialSeatingBookingMode={event.seatingBookingMode}
+          eventId={event.id}
+        />
+        {venuePlan ? (
+          <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
+            Aktuell:{" "}
+            <a
+              href={buildSaalplanEditorHref(venuePlan.id, {
+                returnTo: `/admin/events/${event.id}#saalplan`,
+                returnLabel: "Zurück zum Event",
+              })}
+              target={SAALPLAN_WINDOW_NAME}
+              className="font-medium text-[var(--tf-navy)] underline"
+              onClick={(e) => {
+                e.preventDefault();
+                openSaalplanEditorWindow(
+                  buildSaalplanEditorHref(venuePlan.id, {
+                    returnTo: `/admin/events/${event.id}#saalplan`,
+                    returnLabel: "Zurück zum Event",
+                  }),
+                );
+              }}
+            >
+              {venuePlan.name} bearbeiten
+            </a>
           </p>
+        ) : null}
+
+        {event.scheduleChangedAt ? (
+          <p className="md:col-span-2 rounded-xl border border-[rgba(185,28,28,0.35)] bg-[rgba(185,28,28,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+            Öffentlicher Hinweis „Achtung, geänderter Termin“ ist aktiv (seit{" "}
+            {formatDeDateTime(new Date(event.scheduleChangedAt), {
+              dateStyle: "medium",
+              timeStyle: "short",
+            })}
+            ).
+          </p>
+        ) : null}
+
+        <div className="relative z-20 md:col-span-2 grid gap-3 md:grid-cols-2">
+          <SmartDateTimeInput
+            name="eventStartsAt"
+            label="Beginn"
+            value={startsAt}
+            onChange={setStartsAt}
+          />
+          <SmartDateTimeInput name="eventEndsAt" label="Ende" value={endsAt} onChange={setEndsAt} />
+          <SmartDateTimeInput
+            name="doorsOpenAt"
+            label="Einlass"
+            value={doorsOpenAt}
+            onChange={setDoorsOpenAt}
+          />
+          <SmartDateTimeInput
+            name="presaleStartsAt"
+            label="Vorverkaufsstart"
+            value={presaleStartsAt}
+            onChange={setPresaleStartsAt}
+          />
+        </div>
+
+        <label className="grid gap-1">
+          <span className="font-medium">Ticket-Umsatzsteuer (%)</span>
+          <select
+            name="ticketTaxPercent"
+            className="tf-input"
+            defaultValue={String((event.ticketTaxRateBasisPoints ?? 700) / 100)}
+          >
+            <option value="0">0 %</option>
+            <option value="7">7 %</option>
+            <option value="19">19 %</option>
+          </select>
+        </label>
+        <label className="grid gap-1">
+          <span className="font-medium">USt Verwaltungsgebühr</span>
+          <select
+            name="administrationFeeTaxMode"
+            className="tf-input"
+            defaultValue={event.administrationFeeTaxMode ?? "inherit"}
+          >
+            <option value="inherit">Steuersatz des Tickets übernehmen</option>
+            <option value="custom">Eigener Steuersatz</option>
+          </select>
+        </label>
+        <label className="grid gap-1">
+          <span className="font-medium">Eigener Gebühren-Steuersatz (%)</span>
+          <input
+            name="administrationFeeCustomTaxPercent"
+            type="number"
+            min="0"
+            step="0.01"
+            className="tf-input"
+            defaultValue={((event.administrationFeeCustomTaxRateBasisPoints ?? 700) / 100).toFixed(2)}
+          />
+        </label>
+        <label className="grid gap-1 md:col-span-2">
+          <span className="font-medium">SEPA deaktivieren (Tage vor Event)</span>
+          <input
+            name="sepaMinDaysBeforeEvent"
+            type="number"
+            min="0"
+            className="tf-input max-w-xs"
+            placeholder="Org-Standard"
+            defaultValue={
+              event.sepaMinDaysBeforeEvent != null ? String(event.sepaMinDaysBeforeEvent) : ""
+            }
+          />
+          <span className="text-xs text-[var(--tf-text-secondary)]">
+            Leer = Organisationseinstellung. Überschreibt den globalen Wert nur für dieses Event.
+          </span>
+        </label>
+
+        <div className="md:col-span-2 flex flex-wrap items-center gap-3">
+          <button type="submit" className="tf-btn tf-btn-primary" disabled={pending}>
+            {pending ? "Speichert…" : "Event speichern"}
+          </button>
+          {saved ? (
+            <p className="text-sm font-medium text-[var(--tf-teal-hover)]">
+              {saveHint ?? "Änderungen gespeichert."}
+            </p>
+          ) : null}
+          {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+        </div>
+      </form>
+
+      {confirmOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,39,71,0.45)] p-4"
+          role="presentation"
+          onClick={closeConfirm}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={dialogTitleId}
+            className="relative w-full max-w-lg rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id={dialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
+              Termin wirklich ändern?
+            </h2>
+            <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+              Du änderst den Beginn eines{" "}
+              {willNotifyBuyers ? "laufenden bzw. verkauften" : "bereits vorbereiteten"} Events.
+              Ende und Einlass werden automatisch mitverschoben (gleiche Abstände zum Beginn).
+              {willNotifyBuyers
+                ? " Alle Käufer mit bezahlten Tickets erhalten eine E-Mail. Auf der öffentlichen Event-Seite erscheint der Hinweis „Achtung, geänderter Termin“."
+                : " Preisaktionen, die über den neuen Beginn hinauslaufen, werden gekürzt."}
+            </p>
+
+            <dl className="mt-4 space-y-2 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] px-3 py-3 text-sm">
+              <div>
+                <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                  Beginn
+                </dt>
+                <dd className="font-medium text-[var(--tf-navy)]">
+                  {formatScheduleLabel(toDatetimeLocalValue(event.eventStartsAt))} →{" "}
+                  {formatScheduleLabel(startsAt)}
+                </dd>
+              </div>
+              {previewEnds ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                    Ende (automatisch)
+                  </dt>
+                  <dd className="font-medium text-[var(--tf-navy)]">
+                    {formatScheduleLabel(toDatetimeLocalValue(event.eventEndsAt))} →{" "}
+                    {formatScheduleLabel(previewEnds)}
+                  </dd>
+                </div>
+              ) : null}
+              {previewDoors ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                    Einlass (automatisch)
+                  </dt>
+                  <dd className="font-medium text-[var(--tf-navy)]">
+                    {formatScheduleLabel(toDatetimeLocalValue(event.doorsOpenAt))} →{" "}
+                    {formatScheduleLabel(previewDoors)}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+
+            {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                disabled={pending}
+                onClick={closeConfirm}
+              >
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                disabled={pending}
+                onClick={onConfirmScheduleChange}
+              >
+                {pending ? "Speichert…" : "Ja, Termin ändern"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
-      <input type="hidden" name="eventId" value={event.id} />
-
-      <label className="grid gap-1 md:col-span-2">
-        <span className="font-medium">Name</span>
-        <input name="name" className="tf-input" required defaultValue={event.name} />
-      </label>
-
-      <label className="grid gap-1 md:col-span-2">
-        <span className="font-medium">Kurzbeschreibung</span>
-        <textarea
-          name="shortDescription"
-          rows={2}
-          className="tf-input"
-          defaultValue={event.shortDescription ?? ""}
-        />
-      </label>
-
-      <label className="grid gap-1 md:col-span-2">
-        <span className="font-medium">Beschreibung</span>
-        <textarea
-          name="description"
-          rows={5}
-          className="tf-input"
-          defaultValue={event.description ?? ""}
-        />
-      </label>
-
-      <label className="grid gap-1">
-        <span className="font-medium">Untertitel</span>
-        <input name="subtitle" className="tf-input" defaultValue={event.subtitle ?? ""} />
-      </label>
-
-      <label className="grid gap-1">
-        <span className="font-medium">Link-Name</span>
-        <input name="slug" className="tf-input" required defaultValue={event.slug} />
-      </label>
-
-      <label className="grid gap-1 md:col-span-2">
-        <span className="font-medium">Tour</span>
-        <select name="tourId" className="tf-input" defaultValue={event.tourId ?? ""}>
-          <option value="">Kein Tour-Termin (einzelnes Event)</option>
-          {tours.map((tour) => (
-            <option key={tour.id} value={tour.id}>
-              {tour.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <label className="grid gap-1 md:col-span-2">
-        <span className="font-medium">Status / Verkaufsfreigabe</span>
-        <select
-          name="status"
-          className="tf-input"
-          value={status}
-          onChange={(e) => onStatusChange(e.target.value)}
-        >
-          {EVENT_STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {eventStatusLabel(s)}
-            </option>
-          ))}
-        </select>
-        {isEventSalesReleased(status) && !isEventSalesReleased(event.status) ? (
-          <span className="text-xs text-[var(--tf-text-secondary)]">
-            Vorverkaufsstart wird auf jetzt gesetzt — das Event ist sofort online kaufbar.
-          </span>
-        ) : status === "draft" ? (
-          <span className="text-xs text-[var(--tf-text-secondary)]">
-            Entwurf erscheint nicht öffentlich. Mit Vorverkaufsstart wird beim Speichern
-            automatisch „Verkauf geplant“ gesetzt — und ab dem Start „Im Verkauf“.
-          </span>
-        ) : status === "announcement" ? (
-          <span className="text-xs text-[var(--tf-text-secondary)]">
-            Ab Vorverkaufsstart geht das Event automatisch in den Verkauf und erscheint auf
-            Startseite und Events.
-          </span>
-        ) : null}
-      </label>
-
-      <label className="flex items-center gap-2 md:col-span-2">
-        <input
-          type="checkbox"
-          name="showRemainingAvailability"
-          className="mt-1"
-          defaultChecked={event.showRemainingAvailability}
-        />
-        <span className="font-medium">Restliche Verfügbarkeit öffentlich anzeigen</span>
-      </label>
-
-      <EventVenuePlanFields
-        locations={locations}
-        plans={planOptions}
-        initialLocationId={event.locationId ?? ""}
-        initialVenuePlanId={event.venuePlanId ?? ""}
-        initialSeatingBookingMode={event.seatingBookingMode}
-        eventId={event.id}
-      />
-      {venuePlan ? (
-        <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
-          Aktuell:{" "}
-          <a
-            href={buildSaalplanEditorHref(venuePlan.id, {
-              returnTo: `/admin/events/${event.id}#saalplan`,
-              returnLabel: "Zurück zum Event",
-            })}
-            target={SAALPLAN_WINDOW_NAME}
-            className="font-medium text-[var(--tf-navy)] underline"
-            onClick={(e) => {
-              e.preventDefault();
-              openSaalplanEditorWindow(
-                buildSaalplanEditorHref(venuePlan.id, {
-                  returnTo: `/admin/events/${event.id}#saalplan`,
-                  returnLabel: "Zurück zum Event",
-                }),
-              );
-            }}
-          >
-            {venuePlan.name} bearbeiten
-          </a>
-        </p>
-      ) : null}
-
-      <div className="relative z-20 md:col-span-2 grid gap-3 md:grid-cols-2">
-        <SmartDateTimeInput
-          name="eventStartsAt"
-          label="Beginn"
-          value={startsAt}
-          onChange={setStartsAt}
-        />
-        <SmartDateTimeInput name="eventEndsAt" label="Ende" value={endsAt} onChange={setEndsAt} />
-        <SmartDateTimeInput
-          name="doorsOpenAt"
-          label="Einlass"
-          value={doorsOpenAt}
-          onChange={setDoorsOpenAt}
-        />
-        <SmartDateTimeInput
-          name="presaleStartsAt"
-          label="Vorverkaufsstart"
-          value={presaleStartsAt}
-          onChange={setPresaleStartsAt}
-        />
-      </div>
-
-      <label className="grid gap-1">
-        <span className="font-medium">Ticket-Umsatzsteuer (%)</span>
-        <select
-          name="ticketTaxPercent"
-          className="tf-input"
-          defaultValue={String((event.ticketTaxRateBasisPoints ?? 700) / 100)}
-        >
-          <option value="0">0 %</option>
-          <option value="7">7 %</option>
-          <option value="19">19 %</option>
-        </select>
-      </label>
-      <label className="grid gap-1">
-        <span className="font-medium">USt Verwaltungsgebühr</span>
-        <select
-          name="administrationFeeTaxMode"
-          className="tf-input"
-          defaultValue={event.administrationFeeTaxMode ?? "inherit"}
-        >
-          <option value="inherit">Steuersatz des Tickets übernehmen</option>
-          <option value="custom">Eigener Steuersatz</option>
-        </select>
-      </label>
-      <label className="grid gap-1">
-        <span className="font-medium">Eigener Gebühren-Steuersatz (%)</span>
-        <input
-          name="administrationFeeCustomTaxPercent"
-          type="number"
-          min="0"
-          step="0.01"
-          className="tf-input"
-          defaultValue={((event.administrationFeeCustomTaxRateBasisPoints ?? 700) / 100).toFixed(2)}
-        />
-      </label>
-      <label className="grid gap-1 md:col-span-2">
-        <span className="font-medium">SEPA deaktivieren (Tage vor Event)</span>
-        <input
-          name="sepaMinDaysBeforeEvent"
-          type="number"
-          min="0"
-          className="tf-input max-w-xs"
-          placeholder="Org-Standard"
-          defaultValue={
-            event.sepaMinDaysBeforeEvent != null ? String(event.sepaMinDaysBeforeEvent) : ""
-          }
-        />
-        <span className="text-xs text-[var(--tf-text-secondary)]">
-          Leer = Organisationseinstellung. Überschreibt den globalen Wert nur für dieses Event.
-        </span>
-      </label>
-
-      <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-        <button type="submit" className="tf-btn tf-btn-primary" disabled={pending}>
-          {pending ? "Speichert…" : "Event speichern"}
-        </button>
-        {saved ? (
-          <p className="text-sm font-medium text-[var(--tf-teal-hover)]">Änderungen gespeichert.</p>
-        ) : null}
-        {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
-      </div>
-    </form>
+    </>
   );
 }

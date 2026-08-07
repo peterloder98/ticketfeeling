@@ -29,6 +29,10 @@ import {
   resolveSellableCategoryCapacity,
 } from "@/lib/seating/sync-category-capacity";
 import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
+import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
+import { EventUrgencyCountdown } from "@/components/event-urgency-countdown";
+import { shouldShowEventStartCountdown } from "@/lib/commerce/schedule-change";
+import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +61,7 @@ export default async function EventPage({ params }: Props) {
     "@/lib/commerce/ensure-event-pricing-schema"
   );
   await ensureEventPricingSchema(prisma);
+  await ensureScheduleChangedAtColumn();
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {
@@ -224,6 +229,11 @@ export default async function EventPage({ params }: Props) {
       : `Tickets ${fromPrice.totalLabel}`
     : "Tickets";
 
+  const showEventCountdown = shouldShowEventStartCountdown({
+    eventStartsAt: event.eventStartsAt,
+    campaignValidUntils: categories.map((c) => c.campaignValidUntil),
+  });
+
   const placeName = event.location?.name ?? null;
   const placeAddress = event.location
     ? [
@@ -296,6 +306,16 @@ export default async function EventPage({ params }: Props) {
                 </p>
               ) : null}
             </div>
+            {event.scheduleChangedAt ? (
+              <div className="mt-4 max-w-xl">
+                <ScheduleChangedBanner />
+              </div>
+            ) : null}
+            {showEventCountdown && event.eventStartsAt ? (
+              <div className="mt-3 max-w-xl">
+                <EventUrgencyCountdown eventStartsAt={event.eventStartsAt.toISOString()} />
+              </div>
+            ) : null}
             <div className="mt-6">
               {saleOpen ? (
                 <a href="#tickets" className="tf-btn tf-btn-primary !min-h-12 !px-6 text-base">

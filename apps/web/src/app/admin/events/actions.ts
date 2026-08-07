@@ -29,6 +29,14 @@ import {
   postalCodeContainsNonDigits,
 } from "@/lib/commerce/address";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
+import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
+import {
+  clampEventCampaignsToNewStart,
+  requiresStrictScheduleConfirm,
+  scheduleStartChanged,
+  shiftRelativeToStart,
+  shouldConfirmScheduleChange,
+} from "@/lib/commerce/schedule-change";
 
 async function requireEventWrite() {
   const session = await getServerSession(authOptions);
@@ -498,10 +506,13 @@ async function createEventFromFormData(
 export async function updateEventAction(formData: FormData) {
   const { session, membership } = await requireEventWrite();
   await ensureEventPauseColumn();
+  await ensureScheduleChangedAtColumn();
+  await ensureSaleClosedEarlyColumn();
 
   const eventId = String(formData.get("eventId") ?? "");
   const event = await prisma.event.findFirst({
     where: { id: eventId, organizationId: membership.organizationId },
+    include: { location: { select: { name: true, city: true } } },
   });
   if (!event) throw new Error("NOT_FOUND");
 
@@ -548,10 +559,36 @@ export async function updateEventAction(formData: FormData) {
     seatingBookingMode = "none";
   }
 
-  const eventStartsAt = parseDt(formData, "eventStartsAt");
-  const eventEndsAt = parseDt(formData, "eventEndsAt");
-  const doorsOpenAt = parseDt(formData, "doorsOpenAt");
+  let eventStartsAt = parseDt(formData, "eventStartsAt");
+  let eventEndsAt = parseDt(formData, "eventEndsAt");
+  let doorsOpenAt = parseDt(formData, "doorsOpenAt");
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
+  const scheduleChangeConfirmed =
+    String(formData.get("scheduleChangeConfirmed") ?? "") === "1";
+  const startChanged = scheduleStartChanged(event.eventStartsAt, eventStartsAt);
+
+  const ticketsSold = startChanged
+    ? await prisma.ticket.count({ where: { eventId: event.id } })
+    : 0;
+  const needsScheduleConfirm =
+    startChanged &&
+    shouldConfirmScheduleChange({ status: event.status, ticketsSold });
+
+  if (needsScheduleConfirm && !scheduleChangeConfirmed) {
+    throw new Error("SCHEDULE_CHANGE_CONFIRM_REQUIRED");
+  }
+
+  // On confirmed start move: preserve relative Ende / Einlass offsets from the stored start.
+  if (startChanged && scheduleChangeConfirmed) {
+    eventEndsAt = shiftRelativeToStart(event.eventEndsAt, event.eventStartsAt, eventStartsAt);
+    doorsOpenAt = shiftRelativeToStart(event.doorsOpenAt, event.eventStartsAt, eventStartsAt);
+  }
+
+  const notifyBuyers =
+    startChanged &&
+    scheduleChangeConfirmed &&
+    (requiresStrictScheduleConfirm(event.status) || ticketsSold > 0);
+
   // Manual „Im Verkauf“: Vorverkaufsstart becomes now so the shop is buyable immediately.
   const becomingOnSale =
     isEventSalesReleased(requestedStatus) && !isEventSalesReleased(event.status);
@@ -640,6 +677,13 @@ export async function updateEventAction(formData: FormData) {
           : "presale_active"
       : null;
 
+  const scheduleChangedAt =
+    startChanged && scheduleChangeConfirmed ? new Date() : event.scheduleChangedAt;
+
+  const oldStartsAt = event.eventStartsAt;
+  const oldEndsAt = event.eventEndsAt;
+  const oldDoorsOpenAt = event.doorsOpenAt;
+
   await prisma.event.update({
     where: { id: event.id },
     data: {
@@ -664,8 +708,44 @@ export async function updateEventAction(formData: FormData) {
       administrationFeeCustomTaxRateBasisPoints,
       showRemainingAvailability,
       sepaMinDaysBeforeEvent,
+      ...(startChanged && scheduleChangeConfirmed ? { scheduleChangedAt } : {}),
     },
   });
+
+  let campaignsAdjusted = 0;
+  if (startChanged && eventStartsAt) {
+    const clamp = await clampEventCampaignsToNewStart(prisma, event.id, eventStartsAt);
+    campaignsAdjusted = clamp.adjusted;
+  }
+
+  let buyersEmailed = 0;
+  if (notifyBuyers) {
+    const { notifyBuyersOfScheduleChange } = await import(
+      "@/lib/commerce/notify-schedule-change"
+    );
+    const locationLabel =
+      locationName || event.location?.name
+        ? `${locationName ?? event.location?.name ?? ""}${
+            (locationCity ?? event.location?.city)
+              ? `, ${locationCity ?? event.location?.city}`
+              : ""
+          }`
+        : null;
+    const notified = await notifyBuyersOfScheduleChange({
+      organizationId: membership.organizationId,
+      eventId: event.id,
+      eventName: name,
+      eventSlug: slug,
+      locationLabel,
+      oldStartsAt,
+      newStartsAt: eventStartsAt,
+      oldEndsAt,
+      newEndsAt: eventEndsAt,
+      oldDoorsOpenAt,
+      newDoorsOpenAt: doorsOpenAt,
+    });
+    buyersEmailed = notified.emailed;
+  }
 
   await writeAudit({
     organizationId: membership.organizationId,
@@ -683,6 +763,9 @@ export async function updateEventAction(formData: FormData) {
       administrationFeeCustomTaxRateBasisPoints:
         event.administrationFeeCustomTaxRateBasisPoints,
       showRemainingAvailability: event.showRemainingAvailability,
+      eventStartsAt: oldStartsAt,
+      eventEndsAt: oldEndsAt,
+      doorsOpenAt: oldDoorsOpenAt,
     },
     after: {
       name,
@@ -694,7 +777,17 @@ export async function updateEventAction(formData: FormData) {
       administrationFeeTaxMode,
       administrationFeeCustomTaxRateBasisPoints,
       showRemainingAvailability,
+      eventStartsAt,
+      eventEndsAt,
+      doorsOpenAt,
       ...(becomingOnSale ? { presaleStartsAt } : {}),
+      ...(startChanged && scheduleChangeConfirmed
+        ? {
+            scheduleChangedAt,
+            campaignsAdjusted,
+            buyersEmailed,
+          }
+        : {}),
     },
   });
 
@@ -708,7 +801,11 @@ export async function updateEventAction(formData: FormData) {
   revalidatePath(`/admin/events/${event.id}`);
   revalidatePath("/events");
   revalidatePath(`/event/${event.slug}`);
-  if (event.slug !== slug) revalidatePath(`/event/${slug}`);
+  revalidatePath(`/embed/event/${event.slug}`);
+  if (event.slug !== slug) {
+    revalidatePath(`/event/${slug}`);
+    revalidatePath(`/embed/event/${slug}`);
+  }
   revalidatePath("/");
   revalidatePath("/kasse");
   revalidatePath("/scanner");
@@ -721,6 +818,9 @@ export async function updateEventAction(formData: FormData) {
     eventId: event.id,
     venuePlanId,
     seatingBookingMode,
+    scheduleChanged: Boolean(startChanged && scheduleChangeConfirmed),
+    buyersEmailed,
+    campaignsAdjusted,
   };
 }
 

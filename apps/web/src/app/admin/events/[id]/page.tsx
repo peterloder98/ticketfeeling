@@ -34,6 +34,7 @@ import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { ensureSepaPaymentSchema } from "@/lib/commerce/ensure-sepa-schema";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
+import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
 import { expireAndReconcileHolds } from "@/lib/commerce/cart";
 
@@ -103,6 +104,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     ensureSepaPaymentSchema(prisma),
     ensureEventPricingSchema(prisma),
     ensureSaleClosedEarlyColumn(),
+    ensureScheduleChangedAtColumn(),
   ]);
 
   // Expire stale cart holds and repair negative „reserviert“ counters before we render.
@@ -183,6 +185,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     administrationFeeCustomTaxRateBasisPoints: event.administrationFeeCustomTaxRateBasisPoints,
     sepaMinDaysBeforeEvent: event.sepaMinDaysBeforeEvent,
     coverImageUrl: event.coverImageUrl,
+    scheduleChangedAt: event.scheduleChangedAt,
   };
 
   const seatingCategoriesRows: EventCategoryRow[] = event.ticketCategories.map((c) => ({
@@ -512,6 +515,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             planOptions={planOptions}
             venuePlan={event.venuePlan}
             tours={tours}
+            ticketsSold={ticketsSold}
           />
         ) : (
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">

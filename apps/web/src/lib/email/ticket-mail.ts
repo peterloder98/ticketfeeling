@@ -588,3 +588,95 @@ export function buildBoxOfficeTicketsMail(input: {
     ),
   };
 }
+
+function scheduleLine(label: string, oldValue: string | null, newValue: string | null) {
+  if (!oldValue && !newValue) return null;
+  if (oldValue && newValue && oldValue === newValue) {
+    return `${label}: ${newValue}`;
+  }
+  if (oldValue && newValue) {
+    return `${label}: ${oldValue} → ${newValue}`;
+  }
+  return `${label}: ${newValue ?? oldValue}`;
+}
+
+/** Buyer notice when an event’s Beginn / Ende / Einlass was moved. */
+export function buildScheduleChangedMail(input: {
+  firstName?: string | null;
+  lastName?: string | null;
+  gender?: string | null;
+  salutation?: string | null;
+  eventName: string;
+  locationLabel?: string | null;
+  oldStartsLabel: string | null;
+  newStartsLabel: string | null;
+  oldEndsLabel?: string | null;
+  newEndsLabel?: string | null;
+  oldDoorsLabel?: string | null;
+  newDoorsLabel?: string | null;
+  eventUrl: string;
+  orderUrl: string;
+  orderNumber: string;
+}): TicketMailContent {
+  const greeting = formalGermanGreeting({
+    gender: input.gender,
+    salutation: input.salutation,
+    firstName: input.firstName,
+    lastName: input.lastName,
+  });
+  const place = input.locationLabel?.trim() || null;
+  const base = appBaseUrl();
+  const hilfeUrl = `${base}/hilfe`;
+  const agbUrl = `${base}/recht/agb`;
+
+  const beginn = scheduleLine("Beginn", input.oldStartsLabel, input.newStartsLabel);
+  const einlass = scheduleLine(
+    "Einlass",
+    input.oldDoorsLabel ?? null,
+    input.newDoorsLabel ?? null,
+  );
+  const ende = scheduleLine("Ende", input.oldEndsLabel ?? null, input.newEndsLabel ?? null);
+
+  const scheduleLines = [beginn, einlass, ende].filter(Boolean) as string[];
+
+  const lines = [
+    `${greeting},`,
+    "",
+    `der Termin für „${input.eventName}“ hat sich geändert.`,
+    "",
+    "Bisher → neu:",
+    ...scheduleLines,
+    ...(place ? [`Ort: ${place}`] : []),
+    "",
+    `Ihre Tickets bleiben gültig für den neuen Termin. Bestellung ${input.orderNumber}:`,
+    input.orderUrl,
+    "",
+    `Event-Seite: ${input.eventUrl}`,
+    "",
+    "Falls Sie am neuen Termin nicht teilnehmen können, melden Sie sich bitte beim Support oder beim Veranstalter — Storno- und Erstattungsoptionen richten sich nach den AGB.",
+    `Hilfe / Kontakt: ${hilfeUrl}`,
+    `AGB: ${agbUrl}`,
+    "",
+    "Ihr Ticketfeeling-Team",
+  ];
+
+  const scheduleHtml = scheduleLines
+    .map((l) => escapeHtml(l))
+    .join("<br/>");
+
+  return {
+    subject: `Wichtiger Hinweis: Terminänderung – ${input.eventName}`,
+    text: lines.join("\n"),
+    html: wrapHtml([
+      escapeHtml(`${greeting},`),
+      `der Termin für <strong>${escapeHtml(input.eventName)}</strong> hat sich geändert.`,
+      `<strong>Bisher → neu</strong><br/>${scheduleHtml}${
+        place ? `<br/>Ort: ${escapeHtml(place)}` : ""
+      }`,
+      `Ihre Tickets bleiben gültig für den neuen Termin.<br/><a href="${escapeHtml(input.orderUrl)}" style="color:#0D9488;font-weight:600">Bestellung ${escapeHtml(input.orderNumber)} öffnen</a>`,
+      `<a href="${escapeHtml(input.eventUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Event-Seite öffnen</a>`,
+      `Falls Sie am neuen Termin nicht teilnehmen können, melden Sie sich bitte beim Support oder beim Veranstalter — Storno- und Erstattungsoptionen richten sich nach den <a href="${escapeHtml(agbUrl)}" style="color:#0D9488">AGB</a>. <a href="${escapeHtml(hilfeUrl)}" style="color:#0D9488">Hilfe / Kontakt</a>`,
+      "Ihr Ticketfeeling-Team",
+    ]),
+  };
+}

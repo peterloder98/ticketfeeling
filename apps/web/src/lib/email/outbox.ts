@@ -34,6 +34,7 @@ const NEVER_ATTACH_TICKET_PDF_TEMPLATES = new Set([
   "order_paid_tickets",
   "sepa_payment_succeeded",
   "tickets_resent",
+  "event_schedule_changed",
 ]);
 
 export async function enqueueTransactionalEmail(input: {

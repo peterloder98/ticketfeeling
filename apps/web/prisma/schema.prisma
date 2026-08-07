@@ -713,6 +713,8 @@ model Event {
   trackingGoogleAdsId      String? @map("tracking_google_ads_id")
   /// Public: show remaining counts / scarcity badges (off by default)
   showRemainingAvailability Boolean @default(false) @map("show_remaining_availability")
+  /// Set when Beginn was changed on a live / ticketed event (public „geänderter Termin“ banner)
+  scheduleChangedAt DateTime? @map("schedule_changed_at")
   /// Block/row defaults for seat category + lock (applied on rematerialize)
   seatingLayoutConfig Json @default("{}") @map("seating_layout_config")
   /// Optional self-serve accessibility / reduced fare (trust basis)

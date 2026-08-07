@@ -21,6 +21,10 @@ import {
   resolveSellableCategoryCapacity,
 } from "@/lib/seating/sync-category-capacity";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
+import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
+import { EventUrgencyCountdown } from "@/components/event-urgency-countdown";
+import { shouldShowEventStartCountdown } from "@/lib/commerce/schedule-change";
+import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +42,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
     "@/lib/commerce/ensure-event-pricing-schema"
   );
   await ensureEventPricingSchema(prisma);
+  await ensureScheduleChangedAtColumn();
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {
@@ -201,6 +206,11 @@ export default async function EmbedEventShopPage({ params }: Props) {
     ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
     : null;
 
+  const showEventCountdown = shouldShowEventStartCountdown({
+    eventStartsAt: event.eventStartsAt,
+    campaignValidUntils: categories.map((c) => c.campaignValidUntil),
+  });
+
   return (
     <>
       <OrgTracking embedMode eventSlug={event.slug} eventTracking={event} />
@@ -211,6 +221,13 @@ export default async function EmbedEventShopPage({ params }: Props) {
         ) : (
           <EmbedBackLink fallbackHref="/embed/shop" label="Zurück" />
         )}
+        {event.scheduleChangedAt ? <ScheduleChangedBanner compact /> : null}
+        {showEventCountdown && event.eventStartsAt ? (
+          <EventUrgencyCountdown
+            compact
+            eventStartsAt={event.eventStartsAt.toISOString()}
+          />
+        ) : null}
         <div className="group mx-auto w-full max-w-[444px] overflow-hidden rounded-xl border border-[var(--tf-line)]">
           <div className="relative aspect-square w-full max-h-[444px] overflow-hidden bg-[var(--tf-navy)]">
             <ResponsiveImage
