@@ -29,7 +29,9 @@ export async function GET(_request: Request, { params }: Params) {
   if (membership?.organizationId === order.organizationId) {
     isStaff =
       (await userHasPermission(session.user.id, membership.organizationId, "events:read")) ||
+      (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
       (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
+      (await userHasPermission(session.user.id, membership.organizationId, "audit:read")) ||
       (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell"));
   }
 

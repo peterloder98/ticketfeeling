@@ -59,7 +59,7 @@ export async function enqueueTransactionalEmail(input: {
   /** Optional body overrides (fixed templates) */
   text?: string;
   html?: string;
-  /** Smaller PDF for email attachments */
+  /** @deprecated Ignored — Print@Home is always DIN A4 landscape ticket strip */
   compactPdf?: boolean;
   /** Embed brand logo as CID (default true for ticket mails) */
   embedLogo?: boolean;
@@ -141,9 +141,6 @@ export async function enqueueTransactionalEmail(input: {
   // Hard rule: buyer confirmations never get ticket PDFs, even if a caller
   // accidentally passes attachTicketPdfs / ticketIds / pdfAttachments.
   const allowTicketPdfs = !neverTicketPdfs && input.attachTicketPdfs === true;
-  const compact =
-    input.compactPdf ??
-    Boolean(allowTicketPdfs && (input.ticketIds?.length || input.orderIdForCombinedPdf));
   const embedLogo = input.embedLogo !== false;
 
   if (input.pdfAttachments?.length) {
@@ -194,7 +191,7 @@ export async function enqueueTransactionalEmail(input: {
   ) {
     for (const ticketId of input.ticketIds) {
       try {
-        const pdf = await renderTicketPdf(ticketId, { compact });
+        const pdf = await renderTicketPdf(ticketId);
         if (pdf.buffer.length > 0) {
           attachments.push({
             filename: pdf.filename,

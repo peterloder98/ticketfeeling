@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { COVER_DISPLAY_MAX_CLASS } from "@/lib/commerce/event-cover";
 import {
+  TF_PRINT_HINT,
+  TF_QR_HINT,
   TF_TAGLINE,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -17,8 +19,8 @@ type Props = {
 };
 
 /**
- * Classic-professional ticket face — shared visual language with PDF / print HTML.
- * Hierarchy: Event → Datum → Einlass → Beginn → Location → Kategorie → Platz → QR → Nr. → Veranstalter → TF footer.
+ * Live digital ticket face — richer than print/PDF.
+ * Print@Home uses the landscape A4 strip in ticket-pdf / ticket-document.
  */
 export function TicketFace({
   data,
@@ -95,7 +97,12 @@ export function TicketFace({
               className={`font-bold tracking-wide ${
                 compact ? "text-lg" : "text-xl md:text-2xl"
               }`}
-              style={{ color: data.isVip ? "var(--tf-gold)" : "var(--tf-navy)" }}
+              style={{
+                color:
+                  data.isVip || data.doors.isCategoryOverride
+                    ? accent
+                    : "var(--tf-navy)",
+              }}
             >
               {data.doors.headline}
               {data.doors.timeLabel ? " Uhr" : ""}
@@ -116,16 +123,29 @@ export function TicketFace({
           {data.startLabel ? (
             <MetaRow label="Beginn" value={data.startLabel} />
           ) : null}
-          <MetaRow label="Location" value={data.locationShort} />
+          <MetaRow label="Location" value={data.locationTicket} />
           <MetaRow
             label="Kategorie"
             value={data.categoryName}
             valueClassName={data.isVip ? "text-[var(--tf-gold)]" : undefined}
           />
-          <MetaRow label="Platz" value={data.placeLabel} />
           {data.priceLabel ? <MetaRow label="Preis" value={data.priceLabel} /> : null}
           {data.holderName ? <MetaRow label="Inhaber" value={data.holderName} /> : null}
         </dl>
+
+        <p
+          className={`text-center font-bold tracking-wide text-[var(--tf-navy)] ${
+            data.hasAssignedSeat
+              ? compact
+                ? "text-base"
+                : "text-lg md:text-xl"
+              : compact
+                ? "text-sm"
+                : "text-base"
+          }`}
+        >
+          {data.placeDisplayLabel}
+        </p>
 
         <div className="flex flex-col items-center rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-6">
           {showQr && data.qrToken ? (
@@ -134,7 +154,7 @@ export function TicketFace({
                 className="text-[10px] font-semibold uppercase tracking-[0.14em]"
                 style={{ color: accent }}
               >
-                QR-Code zum Einlass
+                {data.isVip ? "VIP-Ticket" : "Einlassticket"}
               </p>
               <div className="mt-3 rounded-xl bg-white p-3 shadow-sm">
                 <TicketQrImage token={data.qrToken} size={qrSize} />
@@ -147,7 +167,7 @@ export function TicketFace({
                 {data.ticketNumber}
               </p>
               <p className="mt-1 max-w-xs text-center text-xs text-[var(--tf-text-secondary)]">
-                Am Einlass vorzeigen. Screenshot oder Ausdruck reicht.
+                {TF_QR_HINT}
               </p>
             </>
           ) : (
@@ -168,13 +188,11 @@ export function TicketFace({
         </div>
 
         <footer className="space-y-2 border-t border-[var(--tf-line)] pt-5 text-center">
-          <p className="text-xs text-[var(--tf-text-secondary)] md:text-sm">
-            <span className="font-semibold text-[var(--tf-navy)]">Veranstalter:</span>{" "}
-            {data.organizerDisplayName}
-            {data.organizerAddress ? ` · ${data.organizerAddress}` : ""}
+          <p className="text-xs text-[var(--tf-text-secondary)]">
+            {TF_PRINT_HINT}
           </p>
           <p className="text-[11px] font-medium tracking-wide text-[var(--tf-text-secondary)]">
-            {TF_TAGLINE}
+            Ticketfeeling · {TF_TAGLINE}
           </p>
         </footer>
       </div>

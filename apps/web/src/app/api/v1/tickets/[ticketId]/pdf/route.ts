@@ -28,6 +28,9 @@ export async function GET(request: Request, { params }: Params) {
     if (membership?.organizationId === ticket.organizationId) {
       isStaff =
         (await userHasPermission(session.user.id, membership.organizationId, "events:read")) ||
+        (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
+        (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
+        (await userHasPermission(session.user.id, membership.organizationId, "audit:read")) ||
         (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell"));
     }
   }
@@ -68,7 +71,8 @@ export async function GET(request: Request, { params }: Params) {
       status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${pdf.filename}"`,
+        "Content-Disposition": `inline; filename="${pdf.filename}"`,
+        "Cache-Control": "private, no-store",
       },
     });
   } catch (error) {

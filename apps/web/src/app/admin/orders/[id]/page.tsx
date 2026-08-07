@@ -242,7 +242,19 @@ export default async function AdminOrderDetailPage({ params }: Props) {
 
       {order.tickets.length > 0 ? (
         <section className="tf-card space-y-3">
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Tickets</h2>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Tickets</h2>
+            {order.tickets.some((t) => t.status !== "voided") ? (
+              <a
+                href={`/api/v1/orders/${order.id}/pdf`}
+                className="text-sm font-semibold text-[var(--tf-teal)] hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Alle PDFs
+              </a>
+            ) : null}
+          </div>
           <ul className="space-y-2 text-sm">
             {order.tickets.map((t) => (
               <li
@@ -252,11 +264,23 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                 }`}
               >
                 <span className="font-mono">{t.ticketNumber}</span>
-                <span>
-                  {t.categorySnapshot}
-                  {t.seatLabel ? ` · ${t.seatLabel}` : ""}
-                  {t.status === "voided" ? " · storniert" : ""}
-                  {t.presence === "in" ? " · eingecheckt" : ""}
+                <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                  <span>
+                    {t.categorySnapshot}
+                    {t.seatLabel ? ` · ${t.seatLabel}` : ""}
+                    {t.status === "voided" ? " · storniert" : ""}
+                    {t.presence === "in" ? " · eingecheckt" : ""}
+                  </span>
+                  {t.status !== "voided" ? (
+                    <a
+                      href={`/api/v1/tickets/${t.id}/pdf`}
+                      className="font-semibold text-[var(--tf-teal)] hover:underline"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      PDF
+                    </a>
+                  ) : null}
                 </span>
               </li>
             ))}

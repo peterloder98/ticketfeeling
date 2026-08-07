@@ -15,7 +15,10 @@ export const TF_INK = "#0B1421";
 export const TF_LINE = "#E5E7EB";
 export const TF_PAPER = "#FFFFFF";
 export const TF_SOFT = "#F8FAFC";
-export const TF_TAGLINE = "Ticketfeeling · Mehr als ein Ticket";
+export const TF_TAGLINE = "Mehr als ein Ticket";
+export const TF_PRINT_HINT =
+  "Am Einlass auf dem Smartphone vorzeigen oder ausdrucken.";
+export const TF_QR_HINT = "Am Einlass vorzeigen.";
 
 export type TicketPresentation = {
   ticketId: string;
@@ -28,11 +31,17 @@ export type TicketPresentation = {
   doors: ResolvedTicketDoors;
   locationLines: string[];
   locationShort: string;
+  /** Venue (+ city) without street — for ticket face / PDF */
+  locationTicket: string;
   categoryName: string;
   categoryKind: string | null;
   isVip: boolean;
   /** Row/seat or Stehplatz / Freie Platzwahl */
   placeLabel: string;
+  /** Prominent print line: BLOCK A · REIHE 1 · PLATZ 9 / FREIE PLATZWAHL / Stehplatz */
+  placeDisplayLabel: string;
+  /** True when placeDisplayLabel is a concrete seat assignment */
+  hasAssignedSeat: boolean;
   priceLabel: string | null;
   coverUrl: string | null;
   /** Absolute URL for print/PDF embedding */
@@ -91,6 +100,38 @@ export function resolvePlaceLabel(input: {
   return "Freie Platzwahl";
 }
 
+/**
+ * Print/PDF seat hierarchy: assigned seats uppercase; free seating all-caps;
+ * plain standing title-case.
+ */
+export function formatProminentPlaceLabel(placeLabel: string): {
+  label: string;
+  hasAssignedSeat: boolean;
+} {
+  const raw = placeLabel.trim();
+  if (!raw) return { label: "FREIE PLATZWAHL", hasAssignedSeat: false };
+  const lower = raw.toLowerCase();
+  if (lower === "freie platzwahl") {
+    return { label: "FREIE PLATZWAHL", hasAssignedSeat: false };
+  }
+  if (lower === "stehplatz") {
+    return { label: "Stehplatz", hasAssignedSeat: false };
+  }
+  // Assigned seat / standing unit with block — emphasize as ticket strip line
+  if (/reihe|platz|block|stehplatz/i.test(raw) || raw.includes("·")) {
+    return { label: raw.toUpperCase(), hasAssignedSeat: true };
+  }
+  return { label: raw, hasAssignedSeat: false };
+}
+
+function locationTicketLine(lines: string[]): string {
+  const name = lines[0]?.trim();
+  const city = lines[2]?.trim(); // street is [1]
+  if (name && city) return `${name}, ${city}`;
+  if (name) return name;
+  return lines.filter(Boolean).join(", ") || "—";
+}
+
 function toAbsoluteAssetUrl(url: string | null): string | null {
   if (!url) return null;
   if (/^https?:\/\//i.test(url) || url.startsWith("data:")) return url;
@@ -131,6 +172,12 @@ export async function loadTicketPresentation(
     typeof unitCents === "number" && unitCents >= 0
       ? formatEuroFromCents(unitCents, ticket.order.currency || "EUR")
       : null;
+  const placeLabel = resolvePlaceLabel({
+    seatLabel: ticket.seatLabel,
+    categoryKind,
+    freeSeating: ticket.category?.freeSeating,
+  });
+  const place = formatProminentPlaceLabel(placeLabel);
 
   return {
     ticketId: ticket.id,
@@ -143,14 +190,13 @@ export async function loadTicketPresentation(
     doors,
     locationLines: lines,
     locationShort: lines.filter(Boolean).join(", ") || "—",
+    locationTicket: locationTicketLine(lines),
     categoryName,
     categoryKind,
     isVip,
-    placeLabel: resolvePlaceLabel({
-      seatLabel: ticket.seatLabel,
-      categoryKind,
-      freeSeating: ticket.category?.freeSeating,
-    }),
+    placeLabel,
+    placeDisplayLabel: place.label,
+    hasAssignedSeat: place.hasAssignedSeat,
     priceLabel,
     coverUrl,
     coverAbsoluteUrl: toAbsoluteAssetUrl(coverUrl),
