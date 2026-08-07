@@ -8,6 +8,7 @@ import {
   claimBoxOfficeSeats,
   type BoxOfficeSeatingMode,
 } from "@/lib/commerce/box-office-seating";
+import { allocateOrderNumber } from "@/lib/commerce/order-number";
 import type { Prisma } from "@prisma/client";
 
 export type BoxOfficeSaleItem = {
@@ -260,11 +261,11 @@ export async function createBoxOfficeSale(input: {
       },
     });
 
-    const kasseCount = await tx.order.count({
-      where: { organizationId: input.organizationId, channel: "box_office" },
-    });
-    const year = new Date().getFullYear();
-    const orderNumber = `TF-K-${year}-${String(kasseCount + 1).padStart(6, "0")}`;
+    const orderNumber = await allocateOrderNumber(
+      tx,
+      input.organizationId,
+      "TF-K",
+    );
 
     const sellerSnapshot = sellerSnapshotPayload(seller, "seller");
 

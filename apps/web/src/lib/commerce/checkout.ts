@@ -21,6 +21,8 @@ import { ensureLegalSchema } from "@/lib/legal/sync-catalog";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { categoryNeedsSeats, seatsPerTicket } from "@/lib/seating/types";
 import { withTimeout } from "@/lib/async-timeout";
+import { allocateOrderNumber } from "@/lib/commerce/order-number";
+import { releaseOrderHolds } from "@/lib/commerce/release-order-holds";
 
 const STRIPE_CREATE_TIMEOUT_MS = 20_000;
 const CHECKOUT_ENSURE_BUDGET_MS = 5_000;
@@ -234,6 +236,27 @@ export async function createOrderFromCart(input: {
   });
 
   const order = await prisma.$transaction(async (tx) => {
+    const {
+      categoryInventoryCapacity,
+      sharedCommittedQuantity,
+      lockCategoryInventoryPools,
+    } = await import("@/lib/commerce/inventory-availability");
+
+    // Lock pools FOR UPDATE (same as add-to-cart) before validating capacity.
+    const categoryIdsToLock = [
+      ...new Set(cart.items.map((item) => item.categoryId).filter(Boolean)),
+    ];
+    const lockedByCategory = new Map<
+      string,
+      Awaited<ReturnType<typeof lockCategoryInventoryPools>>
+    >();
+    for (const categoryId of categoryIdsToLock) {
+      lockedByCategory.set(
+        categoryId,
+        await lockCategoryInventoryPools(tx, categoryId),
+      );
+    }
+
     const poolIds = [
       ...new Set(
         cart.items
@@ -246,21 +269,6 @@ export async function createOrderFromCart(input: {
         ? await tx.inventoryPool.findMany({ where: { id: { in: poolIds } } })
         : [];
     const poolById = new Map(pools.map((p) => [p.id, p]));
-    const categoryIds = [...new Set(pools.map((p) => p.categoryId))];
-    const siblingPools =
-      categoryIds.length > 0
-        ? await tx.inventoryPool.findMany({ where: { categoryId: { in: categoryIds } } })
-        : [];
-    const siblingsByCategory = new Map<string, typeof siblingPools>();
-    for (const p of siblingPools) {
-      const list = siblingsByCategory.get(p.categoryId) ?? [];
-      list.push(p);
-      siblingsByCategory.set(p.categoryId, list);
-    }
-    const {
-      categoryInventoryCapacity,
-      sharedCommittedQuantity,
-    } = await import("@/lib/commerce/inventory-availability");
 
     for (const item of cart.items) {
       if (!item.hold || item.hold.status !== "held" || item.hold.expiresAt < new Date()) {
@@ -268,11 +276,20 @@ export async function createOrderFromCart(input: {
       }
       const pool = poolById.get(item.hold.poolId);
       if (!pool) throw new Error("INVENTORY_INVALID");
-      if (pool.soldQuantity + pool.heldQuantity > pool.capacity) {
+      // Prefer locked rows for sold/held counters (same snapshot as cart add).
+      const locked = lockedByCategory.get(pool.categoryId) ?? [];
+      const lockedPool = locked.find((p) => p.id === pool.id);
+      const soldQuantity = lockedPool?.soldQuantity ?? pool.soldQuantity;
+      const heldQuantity = lockedPool?.heldQuantity ?? pool.heldQuantity;
+      const capacity = lockedPool?.capacity ?? pool.capacity;
+      if (soldQuantity + heldQuantity > capacity) {
         throw new Error("INVENTORY_INVALID");
       }
       // Shared Kontingent: Online + Tageskasse must not exceed category capacity.
-      const siblings = siblingsByCategory.get(pool.categoryId) ?? [pool];
+      const siblings =
+        locked.length > 0
+          ? locked
+          : [{ soldQuantity, heldQuantity, capacity, id: pool.id, channel: pool.channel }];
       const sharedCap = categoryInventoryCapacity(item.category.capacity);
       if (sharedCommittedQuantity(siblings) > sharedCap) {
         throw new Error("INVENTORY_INVALID");
@@ -301,9 +318,7 @@ export async function createOrderFromCart(input: {
       }
     }
 
-    const count = await tx.order.count({ where: { organizationId: cart.organizationId } });
-    const year = new Date().getFullYear();
-    const orderNumber = `TF-B-${year}-${String(count + 1).padStart(6, "0")}`;
+    const orderNumber = await allocateOrderNumber(tx, cart.organizationId, "TF-B");
 
     if (priced.lineSplits.length !== cart.items.length) throw new Error("PRICE_MISMATCH");
 
@@ -495,18 +510,55 @@ export async function createOrderFromCart(input: {
     );
   } catch (error) {
     const code = error instanceof Error ? error.message : "PAYMENT_PROVIDER_ERROR";
-    console.error("[checkout] createPayment failed", {
+    console.error("[checkout] createPayment failed — compensating order", {
       orderId: order.id,
       paymentMethod,
       code,
     });
+    try {
+      await releaseOrderHolds(order.id);
+      await prisma.order.update({
+        where: { id: order.id },
+        data: {
+          status: "cancelled",
+          paymentStatus: "canceled",
+          failedReasonCode: code,
+          failedReasonMessage:
+            "Zahlungsanbieter konnte nicht gestartet werden — Bestellung storniert, Reservierung freigegeben.",
+        },
+      });
+      // Leave cart converted/expired so holds stay released; next getOpenCart
+      // expires this session cart and opens a fresh one.
+      if (order.cartId) {
+        await prisma.cart.update({
+          where: { id: order.cartId },
+          data: { status: "expired" },
+        });
+      }
+      await writeAudit({
+        organizationId: cart.organizationId,
+        actorUserId: userId,
+        action: "order.payment_create_compensated",
+        entityType: "order",
+        entityId: order.id,
+        after: { code },
+        reason: "createPayment failed after order create — cancelled + holds released",
+      });
+    } catch (compensateError) {
+      console.error("[checkout] compensation after createPayment failed", {
+        orderId: order.id,
+        compensateError,
+      });
+    }
     // Order exists pending — surface a clear retryable error instead of hanging.
     throw new Error(
       code === "PAYMENT_PROVIDER_TIMEOUT" || code === "TIMEOUT"
         ? "PAYMENT_PROVIDER_TIMEOUT"
         : code === "STRIPE_NOT_CONFIGURED"
           ? "STRIPE_NOT_CONFIGURED"
-          : "PAYMENT_PROVIDER_ERROR",
+          : code === "PAYMENT_PROVIDER_DEV_FORBIDDEN_IN_PRODUCTION"
+            ? "PAYMENT_PROVIDER_DEV_FORBIDDEN_IN_PRODUCTION"
+            : "PAYMENT_PROVIDER_ERROR",
     );
   }
 

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { canVoidBoxOfficeOrder } from "@/lib/commerce/box-office-access";
+import { cancelTicketsAndRestoreInventory } from "@/lib/commerce/restore-ticket-inventory";
 import { invalidateWalletPassesForTickets } from "@/lib/wallet/invalidate";
 
 type VoidResult = {
@@ -78,60 +79,13 @@ export async function voidBoxOfficeOrder(input: {
   );
   const cancelOrder = remainingActive.length === 0;
 
-  // Decrement inventory by category for voided tickets (not full item qty when partial).
-  const qtyByKey = new Map<string, { eventId: string; categoryId: string; qty: number }>();
-  for (const ticket of targets) {
-    if (!ticket.categoryId) continue;
-    const key = `${ticket.eventId}:${ticket.categoryId}`;
-    const prev = qtyByKey.get(key);
-    if (prev) prev.qty += 1;
-    else {
-      qtyByKey.set(key, {
-        eventId: ticket.eventId,
-        categoryId: ticket.categoryId,
-        qty: 1,
-      });
-    }
-  }
-
   await prisma.$transaction(async (tx) => {
-    for (const { eventId, categoryId, qty } of qtyByKey.values()) {
-      const pools = await tx.inventoryPool.findMany({
-        where: { eventId, categoryId },
-      });
-      const pool =
-        pools.find((p) => p.channel === "box_office") ??
-        pools.find((p) => p.channel === "online");
-      if (pool) {
-        await tx.inventoryPool.update({
-          where: { id: pool.id },
-          data: {
-            soldQuantity: Math.max(0, pool.soldQuantity - qty),
-            version: { increment: 1 },
-          },
-        });
-      }
-    }
-
-    await tx.ticket.updateMany({
-      where: { id: { in: voidIds } },
-      data: { status: "voided" },
-    });
-
-    await tx.ticketQrToken.updateMany({
-      where: { ticketId: { in: voidIds }, status: "active" },
-      data: { status: "revoked", revokedAt: new Date() },
-    });
-
-    // Free linked seats so they can be sold again.
-    await tx.eventSeat.updateMany({
-      where: { ticketId: { in: voidIds } },
-      data: {
-        status: "available",
-        ticketId: null,
-        cartItemId: null,
-        holdExpiresAt: null,
-      },
+    await cancelTicketsAndRestoreInventory(tx, {
+      orderId: order.id,
+      ticketIds: voidIds,
+      nextTicketStatus: "voided",
+      preferredPoolChannel: "box_office",
+      revokeQr: true,
     });
 
     if (cancelOrder) {

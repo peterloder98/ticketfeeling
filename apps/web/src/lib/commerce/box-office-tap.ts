@@ -12,6 +12,7 @@ import {
   isStripeTerminalConfigured,
 } from "@/lib/payments/stripe-terminal";
 import { signBoxOfficeTapHandoff } from "@/lib/commerce/box-office-tap-token";
+import { allocateOrderNumber } from "@/lib/commerce/order-number";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 
 const TAP_HOLD_MS = 20 * 60 * 1000;
@@ -230,11 +231,11 @@ export async function createBoxOfficeTapSale(input: {
       },
     });
 
-    const kasseCount = await tx.order.count({
-      where: { organizationId: input.organizationId, channel: "box_office" },
-    });
-    const year = new Date().getFullYear();
-    const orderNumber = `TF-K-${year}-${String(kasseCount + 1).padStart(6, "0")}`;
+    const orderNumber = await allocateOrderNumber(
+      tx,
+      input.organizationId,
+      "TF-K",
+    );
 
     const sellerSnapshot = sellerSnapshotPayload(seller, "seller");
     if (priced.lineSplits.length !== resolved.length) throw new Error("PRICE_MISMATCH");

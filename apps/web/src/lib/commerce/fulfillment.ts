@@ -200,7 +200,13 @@ export async function fulfillPaidOrder(orderId: string) {
         ticketCount: order.tickets.length,
       })
     ) {
-      return { order, alreadyFulfilled: true as const };
+      return {
+        order,
+        alreadyFulfilled: true as const,
+        invoice: order.invoices[0] ?? null,
+        issuedTokens: [] as { ticketId: string; token: string }[],
+        promoReviewCode: null as string | null,
+      };
     }
 
     if (!order.fulfillmentLockedAt) {
@@ -546,14 +552,36 @@ export async function fulfillPaidOrder(orderId: string) {
         });
       }
 
-      // Same transaction as ticket mint: rollback on failure → no over-redeem / stable QR retry.
-      await redeemOrderPromotions(tx, {
-        id: order.id,
-        organizationId: order.organizationId,
-        discountCode: order.discountCode,
-        giftCardCode: order.giftCardCode,
-        giftCardAppliedCents: order.giftCardAppliedCents,
-      });
+      // Same transaction as ticket mint. On promo/gift exhaustion after payment,
+      // soft-fail: keep tickets (customer paid) and flag for ops review.
+      let promoReviewCode: string | null = null;
+      try {
+        await redeemOrderPromotions(tx, {
+          id: order.id,
+          organizationId: order.organizationId,
+          discountCode: order.discountCode,
+          giftCardCode: order.giftCardCode,
+          giftCardAppliedCents: order.giftCardAppliedCents,
+        });
+      } catch (promoError) {
+        const code =
+          promoError instanceof Error ? promoError.message : "PROMO_REDEEM_FAILED";
+        const softFail =
+          code === "DISCOUNT_EXHAUSTED" ||
+          code === "DISCOUNT_NOT_FOUND" ||
+          code.startsWith("GIFT_CARD_");
+        if (!softFail) throw promoError;
+        promoReviewCode = code;
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            paymentStatus: "needs_review",
+            failedReasonCode: code,
+            failedReasonMessage:
+              "Rabatt oder Gutschein konnte nach Zahlung nicht eingelöst werden — Tickets wurden trotzdem ausgestellt. Bitte manuell prüfen.",
+          },
+        });
+      }
 
       const plainTokens = planned.map((p) => {
         const ticket = ticketByNumber.get(p.ticketNumber);
@@ -571,6 +599,7 @@ export async function fulfillPaidOrder(orderId: string) {
         invoice,
         alreadyFulfilled: false as const,
         issuedTokens: plainTokens,
+        promoReviewCode,
       };
     }
 
@@ -584,6 +613,7 @@ export async function fulfillPaidOrder(orderId: string) {
       invoice,
       alreadyFulfilled: true as const,
       issuedTokens: [] as { ticketId: string; token: string }[],
+      promoReviewCode: null as string | null,
     };
   },
       {
@@ -593,6 +623,26 @@ export async function fulfillPaidOrder(orderId: string) {
       },
     )
     .then(async (result) => {
+    if (result.promoReviewCode) {
+      console.error(
+        "[fulfillment] KRITISCH: Promo-/Gutschein nach Zahlung nicht eingelöst — Tickets ausgestellt, needs_review",
+        { orderId: result.order.id, code: result.promoReviewCode },
+      );
+      await writeAudit({
+        organizationId: result.order.organizationId,
+        action: "payment.promo_redeem_soft_fail",
+        entityType: "order",
+        entityId: result.order.id,
+        after: {
+          code: result.promoReviewCode,
+          fulfilled: true,
+          ticketsIssued: result.issuedTokens.length,
+        },
+        reason:
+          "Promo/gift redemption failed after paid — tickets issued, flagged needs_review",
+      });
+    }
+
     await writeAudit({
       organizationId: result.order.organizationId,
       action: "order.fulfilled",
@@ -602,6 +652,7 @@ export async function fulfillPaidOrder(orderId: string) {
         alreadyFulfilled: result.alreadyFulfilled,
         invoiceId: result.invoice?.id,
         tickets: result.alreadyFulfilled ? "existing" : result.issuedTokens.length,
+        promoReviewCode: result.promoReviewCode ?? null,
       },
     });
 

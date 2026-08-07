@@ -11,12 +11,12 @@ const HOLD_MINUTES = 10;
 let lastExpireMs = 0;
 const EXPIRE_THROTTLE_MS = 15_000;
 
-async function expireHolds(now = new Date()) {
+async function expireHolds(now = new Date(), opts?: { forceSeatExpire?: boolean }) {
   const { expireSeatHolds } = await import("@/lib/seating/materialize");
   const { releaseHeldQuantity, reconcileHeldQuantities } = await import(
     "@/lib/commerce/hold-quantity"
   );
-  await expireSeatHolds(now);
+  await expireSeatHolds(now, opts?.forceSeatExpire ? { force: true } : undefined);
 
   const expired = await prisma.inventoryHold.findMany({
     where: { status: "held", expiresAt: { lt: now } },
@@ -81,8 +81,11 @@ async function expireHolds(now = new Date()) {
 }
 
 /** Public entry for admin pages / jobs — expire seats + inventory, then reconcile. */
-export async function expireAndReconcileHolds(now = new Date()) {
-  await expireHolds(now);
+export async function expireAndReconcileHolds(
+  now = new Date(),
+  opts?: { forceSeatExpire?: boolean },
+) {
+  await expireHolds(now, opts);
 }
 
 async function expireHoldsThrottled() {
@@ -378,6 +381,14 @@ export async function addToCart(input: {
   }
   if (category.event.organizationId !== cart.organizationId) {
     throw new Error("ORG_MISMATCH");
+  }
+
+  // Soft-block multi-event carts — one event per order (#17).
+  if (cart.items.length > 0) {
+    const existingEventId = cart.items[0]?.eventId;
+    if (existingEventId && existingEventId !== category.eventId) {
+      throw new Error("MULTI_EVENT_CART");
+    }
   }
 
   const now = new Date();

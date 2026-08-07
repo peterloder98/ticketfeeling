@@ -30,6 +30,8 @@ export function cartErrorMessage(
       return "Der Vorverkauf ist geschlossen.";
     case "ORG_MISMATCH":
       return "Warenkorb gehört zu einem anderen Veranstalter — bitte neu starten.";
+    case "MULTI_EVENT_CART":
+      return "Pro Bestellung ist nur ein Event möglich — bitte zuerst den Warenkorb leeren oder abschließen.";
     case "CART_EXPIRED":
       return "Reservierung abgelaufen — bitte erneut in den Warenkorb legen.";
     case "HOLD_EXPIRED":

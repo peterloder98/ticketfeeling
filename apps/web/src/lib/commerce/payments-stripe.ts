@@ -4,6 +4,7 @@ import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 import { paymentAmountMatchesOrder } from "@/lib/commerce/payment-amount-guard";
 import { shouldVoidTicketsOnRefund } from "@/lib/commerce/refund-rules";
 import { releaseOrderHolds } from "@/lib/commerce/release-order-holds";
+import { cancelTicketsAndRestoreInventory } from "@/lib/commerce/restore-ticket-inventory";
 import { normalizeSepaTicketReleaseMode } from "@/lib/commerce/sepa-availability";
 import { writeAudit } from "@/lib/audit";
 import { getStripe } from "@/lib/payments/stripe-client";
@@ -341,41 +342,9 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             ? pi.latest_charge
             : pi.latest_charge?.id ?? null;
         await applyBalanceFees(orderId, chargeId);
-        try {
-          await fulfillPaidOrder(orderId);
-        } catch (fulfillError) {
-          const code =
-            fulfillError instanceof Error ? fulfillError.message : "FULFILL_FAILED";
-          const promoFail =
-            code === "DISCOUNT_EXHAUSTED" ||
-            code === "DISCOUNT_NOT_FOUND" ||
-            code.startsWith("GIFT_CARD_");
-          if (promoFail) {
-            console.error(
-              "[stripe] KRITISCH: Promo-/Gutschein-Einlösung nach Zahlung fehlgeschlagen — keine Tickets",
-              { orderId, paymentIntentId: pi.id, code },
-            );
-            await prisma.order.update({
-              where: { id: orderId },
-              data: {
-                paymentStatus: "needs_review",
-                failedReasonCode: code,
-                failedReasonMessage:
-                  "Rabatt oder Gutschein konnte nach erfolgreicher Zahlung nicht eingelöst werden. Bitte manuell prüfen — Tickets wurden nicht ausgestellt.",
-              },
-            });
-            await writeAudit({
-              organizationId: order.organizationId,
-              action: "payment.promo_redeem_blocked",
-              entityType: "order",
-              entityId: orderId,
-              after: { paymentIntentId: pi.id, code, fulfilled: false },
-              reason: "Promo redemption failed after paid — fulfillment blocked",
-            });
-            break;
-          }
-          throw fulfillError;
-        }
+        // Promo/gift soft-fail lives inside fulfillPaidOrder: tickets are issued
+        // even if redemption is exhausted; order is flagged needs_review for ops.
+        await fulfillPaidOrder(orderId);
         await prisma.order.update({
           where: { id: orderId },
           data: {
@@ -565,15 +534,24 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             status: full ? "refunded" : order.status,
           },
         });
+        let restoredQty = 0;
         if (full) {
-          await prisma.ticket.updateMany({
-            where: { orderId: order.id, status: "active" },
-            data: { status: "cancelled" },
+          const preferredPoolChannel =
+            order.channel === "box_office" ? "box_office" : "online";
+          const restore = await prisma.$transaction(async (tx) => {
+            const result = await cancelTicketsAndRestoreInventory(tx, {
+              orderId: order.id,
+              nextTicketStatus: "cancelled",
+              preferredPoolChannel,
+              revokeQr: true,
+            });
+            await tx.payment.updateMany({
+              where: { orderId: order.id, provider: "stripe" },
+              data: { status: "refunded" },
+            });
+            return result;
           });
-          await prisma.payment.updateMany({
-            where: { orderId: order.id, provider: "stripe" },
-            data: { status: "refunded" },
-          });
+          restoredQty = restore.restoredQty;
           await invalidateWalletPassesForOrder(order.id).catch((error) => {
             console.error("[wallet] invalidate after refund", order.id, error);
           });
@@ -587,6 +565,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
             refundedAmountCents: refunded,
             fullRefund: full,
             ticketsVoided: full,
+            inventoryRestoredQty: restoredQty,
             chargeId: charge.id,
             note: "No customer self-serve refund; Stripe-side / event-cancel only",
           },
@@ -619,16 +598,32 @@ export async function processStripeWebhookEvent(event: Stripe.Event) {
           },
         });
         if (event.type === "charge.dispute.created") {
-          await prisma.order.update({
-            where: { id: order.id },
-            data: {
-              paymentStatus: "disputed",
-              status: "disputed",
-            },
+          const preferredPoolChannel =
+            order.channel === "box_office" ? "box_office" : "online";
+          const restore = await prisma.$transaction(async (tx) => {
+            await tx.order.update({
+              where: { id: order.id },
+              data: {
+                paymentStatus: "disputed",
+                status: "disputed",
+              },
+            });
+            return cancelTicketsAndRestoreInventory(tx, {
+              orderId: order.id,
+              nextTicketStatus: "cancelled",
+              preferredPoolChannel,
+              revokeQr: true,
+            });
           });
-          await prisma.ticket.updateMany({
-            where: { orderId: order.id, status: "active" },
-            data: { status: "cancelled" },
+          await writeAudit({
+            organizationId: order.organizationId,
+            action: "payment.dispute.inventory_restored",
+            entityType: "order",
+            entityId: order.id,
+            after: {
+              ticketIds: restore.ticketIds,
+              inventoryRestoredQty: restore.restoredQty,
+            },
           });
           await invalidateWalletPassesForOrder(order.id).catch((error) => {
             console.error("[wallet] invalidate after dispute", order.id, error);

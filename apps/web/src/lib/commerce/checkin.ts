@@ -225,13 +225,41 @@ export async function scanTicket(input: {
     };
   }
 
-  // Atomic presence flip so Im-Haus counts never lag the scan response
-  await prisma.$transaction([
-    prisma.ticket.update({
-      where: { id: ticket.id },
+  // Conditional update so concurrent double-scans cannot both succeed as first check-in.
+  const race = await prisma.$transaction(async (tx) => {
+    const flipped = await tx.ticket.updateMany({
+      where: { id: ticket.id, presence: previous },
       data: { presence: nextPresence },
-    }),
-    prisma.checkinEvent.create({
+    });
+    if (flipped.count === 0) {
+      const fresh = await tx.ticket.findUnique({
+        where: { id: ticket.id },
+        select: { presence: true },
+      });
+      const current = fresh?.presence ?? ticket.presence;
+      const reason =
+        action === "in" && current === "in"
+          ? "already_in"
+          : action === "out" && current === "out"
+            ? "already_out"
+            : "presence_race";
+      await tx.checkinEvent.create({
+        data: {
+          eventId: ticket.eventId,
+          ticketId: ticket.id,
+          action,
+          result: "red",
+          previousPresence: current,
+          newPresence: current,
+          reason,
+          actorUserId: input.actorUserId,
+          deviceLabel: input.deviceLabel,
+        },
+      });
+      return { ok: false as const, reason, presence: current };
+    }
+
+    await tx.checkinEvent.create({
       data: {
         eventId: ticket.eventId,
         ticketId: ticket.id,
@@ -242,8 +270,23 @@ export async function scanTicket(input: {
         actorUserId: input.actorUserId,
         deviceLabel: input.deviceLabel,
       },
-    }),
-  ]);
+    });
+    return { ok: true as const };
+  });
+
+  if (!race.ok) {
+    return {
+      color: "red" as const,
+      message:
+        race.reason === "already_out"
+          ? "Bereits ausgecheckt"
+          : "Bereits eingecheckt",
+      ticket: ticketPayload({ ...ticket, presence: race.presence }),
+      salesChannel,
+      salesChannelLabel,
+      stats: await getEventCheckinStats(ticket.eventId),
+    };
+  }
 
   await writeAudit({
     organizationId: ticket.organizationId,
