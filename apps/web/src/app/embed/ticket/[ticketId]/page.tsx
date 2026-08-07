@@ -15,6 +15,7 @@ import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
+import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { TicketFace } from "@/components/ticket-face";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ type Props = {
  * Embed ticket view — guests use the checkout access token (`?t=`), no login required.
  */
 export default async function EmbedTicketPage({ params, searchParams }: Props) {
+  await ensureTicketHeroImageColumn();
   const session = await getServerSession(authOptions);
   const { ticketId } = await params;
   const sp = await searchParams;
