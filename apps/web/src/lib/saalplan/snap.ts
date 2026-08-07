@@ -66,9 +66,14 @@ export function newObjectId() {
   return `obj_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function seatBlockSizeCm(rows: number, seatsPerRow: number) {
+export function seatBlockSizeCm(
+  rows: number,
+  seatsPerRow: number,
+  opts?: { aisleExtraCm?: number },
+) {
+  const aisleExtra = Math.max(0, Math.round(opts?.aisleExtraCm ?? 0));
   return {
-    widthCm: Math.max(80, seatsPerRow * SEAT_PITCH_CM),
+    widthCm: Math.max(80, seatsPerRow * SEAT_PITCH_CM + aisleExtra),
     heightCm: Math.max(80, rows * ROW_PITCH_CM),
   };
 }
@@ -86,6 +91,26 @@ export function createStage(hallWidthCm: number, hallDepthCm: number): VenuePlan
     rotationDeg: 0,
     label: "Bühne",
     zIndex: 1,
+  };
+}
+
+export function createFoh(
+  hallWidthCm: number,
+  hallDepthCm: number,
+  opts?: { label?: string },
+): VenuePlanObject {
+  const widthCm = Math.min(280, Math.round(hallWidthCm * 0.18));
+  const heightCm = Math.min(160, Math.round(hallDepthCm * 0.12));
+  return {
+    id: newObjectId(),
+    type: "foh",
+    xCm: hallWidthCm / 2,
+    yCm: Math.min(hallDepthCm - heightCm / 2 - 20, hallDepthCm * 0.88),
+    widthCm,
+    heightCm,
+    rotationDeg: 0,
+    label: opts?.label ?? "FOH / Technik",
+    zIndex: 3,
   };
 }
 

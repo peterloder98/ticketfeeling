@@ -4,6 +4,7 @@ import {
   resolveStandingCapacity,
   standingSeatKey,
 } from "@/lib/saalplan/types";
+import { resolveSeatBlockRows } from "@/lib/saalplan/seat-structure";
 import { parseSeatingLayoutConfig } from "@/lib/seating/layout-config";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { syncPlanBackedCategoryCapacities } from "@/lib/seating/sync-category-capacity";
@@ -20,6 +21,10 @@ type DesiredSeat = {
   seatNumber: string;
   seatKey: string;
   status: string;
+  segmentIndex: number;
+  positionInSegment: number;
+  seatType: string;
+  companionOfSeatKey: string | null;
 };
 
 function buildDesiredSeats(
@@ -44,6 +49,10 @@ function buildDesiredSeats(
           seatNumber: String(s),
           seatKey: standingSeatKey(block.id, s),
           status: "available",
+          segmentIndex: 0,
+          positionInSegment: s - 1,
+          seatType: "standard",
+          companionOfSeatKey: null,
         });
       }
       continue;
@@ -51,22 +60,30 @@ function buildDesiredSeats(
     if (block.type !== "seat_block") continue;
     // Free-choice / unnumbered blocks are geometry only — no EventSeat inventory.
     if (block.numberedSeats === false) continue;
-    const rowCount = Math.max(0, Math.round(block.rows ?? 0));
-    const colCount = Math.max(0, Math.round(block.seatsPerRow ?? 0));
     const blockLabel = (block.label ?? "Block").trim() || "Block";
-    for (let r = 1; r <= rowCount; r += 1) {
-      for (let s = 1; s <= colCount; s += 1) {
+    const layouts = resolveSeatBlockRows(block);
+    for (const layout of layouts) {
+      for (const seat of layout.seats) {
+        const companionOfSeatKey =
+          seat.companionOfSeatNumber != null
+            ? `${block.id}:R${layout.rowIndex}:S${seat.companionOfSeatNumber}`
+            : null;
         rows.push({
           eventId,
           venuePlanId,
           blockObjectId: block.id,
           blockLabel,
-          rowIndex: r,
-          seatIndex: s,
-          rowLabel: String(r),
-          seatNumber: String(s),
-          seatKey: `${block.id}:R${r}:S${s}`,
+          rowIndex: layout.rowIndex,
+          // seatIndex stays the display seat number (stable; remove ≠ renumber).
+          seatIndex: seat.seatNumber,
+          rowLabel: layout.rowLabel,
+          seatNumber: String(seat.seatNumber),
+          seatKey: `${block.id}:R${layout.rowIndex}:S${seat.seatNumber}`,
           status: "available",
+          segmentIndex: seat.segmentIndex,
+          positionInSegment: seat.positionInSegment,
+          seatType: seat.seatType,
+          companionOfSeatKey,
         });
       }
     }
@@ -132,6 +149,10 @@ export async function ensureEventSeats(eventId: string) {
       seatIndex: true,
       categoryId: true,
       locked: true,
+      segmentIndex: true,
+      positionInSegment: true,
+      seatType: true,
+      companionOfSeatKey: true,
     },
   });
   const existingByKey = new Map(existing.map((s) => [s.seatKey, s]));
@@ -169,7 +190,11 @@ export async function ensureEventSeats(eventId: string) {
       seat.seatNumber !== next.seatNumber ||
       seat.blockObjectId !== next.blockObjectId ||
       seat.rowIndex !== next.rowIndex ||
-      seat.seatIndex !== next.seatIndex;
+      seat.seatIndex !== next.seatIndex ||
+      seat.segmentIndex !== next.segmentIndex ||
+      seat.positionInSegment !== next.positionInSegment ||
+      seat.seatType !== next.seatType ||
+      seat.companionOfSeatKey !== next.companionOfSeatKey;
 
     if (geometryChanged) {
       await prisma.eventSeat.update({
@@ -181,6 +206,10 @@ export async function ensureEventSeats(eventId: string) {
           blockObjectId: next.blockObjectId,
           rowIndex: next.rowIndex,
           seatIndex: next.seatIndex,
+          segmentIndex: next.segmentIndex,
+          positionInSegment: next.positionInSegment,
+          seatType: next.seatType,
+          companionOfSeatKey: next.companionOfSeatKey,
         },
       });
       updated += 1;

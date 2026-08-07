@@ -20,6 +20,9 @@ const seatSelect = {
   status: true,
   categoryId: true,
   locked: true,
+  segmentIndex: true,
+  positionInSegment: true,
+  seatType: true,
 } as const;
 
 type Tx = Prisma.TransactionClient;
@@ -43,13 +46,25 @@ export async function claimBoxOfficeSeats(
       companionFree: boolean;
     }[];
     holdExpiresAt: Date;
+    seatOpt?: {
+      seatOptPreferContiguous?: boolean;
+      seatOptPreventNewSingletons?: boolean;
+      seatOptIntelligentRemnants?: boolean;
+      seatOptGapRelaxOccupancyPercent?: number;
+    } | null;
   },
 ): Promise<BoxOfficeSeatAssignment[]> {
   const {
     pickBestAvailableSeats,
     pickBestAvailablePairs,
     assignCompanionSeats,
+    validateSeatSelection,
+    computeOccupancyPercent,
   } = await import("@/lib/seating/best-available");
+  const { parseSeatOptimizationSettings } = await import(
+    "@/lib/seating/seat-optimization-settings"
+  );
+  const seatOptSettings = parseSeatOptimizationSettings(input.seatOpt);
 
   const assignments: BoxOfficeSeatAssignment[] = [];
 
@@ -89,6 +104,20 @@ export async function claimBoxOfficeSeats(
       ...categoryFilter,
     };
 
+    const occupancyPool = await tx.eventSeat.findMany({
+      where: {
+        eventId: input.eventId,
+        locked: false,
+        ...categoryFilter,
+        seatKey: { not: { contains: ":ST:" } },
+      },
+      select: { status: true, locked: true },
+    });
+    const optCtx = {
+      settings: seatOptSettings,
+      occupancyPercent: computeOccupancyPercent(occupancyPool),
+    };
+
     let seatIdsToHold: string[] = [];
 
     if (mode === "seat_map") {
@@ -103,6 +132,23 @@ export async function claimBoxOfficeSeats(
         select: seatSelect,
       });
       if (requested.length !== item.quantity) throw new Error("SEATS_UNAVAILABLE");
+
+      const poolForValidation = await tx.eventSeat.findMany({
+        where: {
+          eventId: input.eventId,
+          locked: false,
+          ...categoryFilter,
+          seatKey: { not: { contains: ":ST:" } },
+        },
+        select: seatSelect,
+      });
+      const validation = validateSeatSelection(
+        poolForValidation,
+        requested.map((s) => s.id),
+        optCtx,
+      );
+      if (!validation.ok) throw new Error(validation.code);
+
       if (companionFree) {
         const poolSeats = await tx.eventSeat.findMany({
           where: sellableWhere,
@@ -122,11 +168,11 @@ export async function claimBoxOfficeSeats(
         select: seatSelect,
       });
       if (companionFree) {
-        const picked = pickBestAvailablePairs(all, item.quantity);
+        const picked = pickBestAvailablePairs(all, item.quantity, optCtx);
         if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
         seatIdsToHold = picked.map((s) => s.id);
       } else {
-        const picked = pickBestAvailableSeats(all, item.quantity);
+        const picked = pickBestAvailableSeats(all, item.quantity, optCtx);
         if (picked.length !== item.quantity) throw new Error("SEATS_UNAVAILABLE");
         seatIdsToHold = picked.map((s) => s.id);
       }

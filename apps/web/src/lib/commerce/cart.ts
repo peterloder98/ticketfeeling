@@ -426,7 +426,12 @@ export async function addToCart(input: {
     pickBestAvailableSeats,
     pickBestAvailablePairs,
     assignCompanionSeats,
+    validateSeatSelection,
+    computeOccupancyPercent,
   } = await import("@/lib/seating/best-available");
+  const { parseSeatOptimizationSettings } = await import(
+    "@/lib/seating/seat-optimization-settings"
+  );
 
   const needsSeats = categoryNeedsSeats({
     seatingBookingMode: category.event.seatingBookingMode,
@@ -484,9 +489,27 @@ export async function addToCart(input: {
     status: true,
     categoryId: true,
     locked: true,
+    segmentIndex: true,
+    positionInSegment: true,
+    seatType: true,
   } as const;
 
-  await prisma.$transaction(async (tx) => {
+  const seatOptSettings = parseSeatOptimizationSettings(
+    category.event as {
+      seatOptPreferContiguous?: boolean;
+      seatOptPreventNewSingletons?: boolean;
+      seatOptIntelligentRemnants?: boolean;
+      seatOptGapRelaxOccupancyPercent?: number;
+    },
+  );
+
+  // Holds: compute → revalidate → atomic claim; retry Bestplatz on concurrent conflict.
+  const MAX_SEAT_CLAIM_ATTEMPTS = 3;
+  let lastSeatError: Error | null = null;
+
+  for (let attempt = 1; attempt <= MAX_SEAT_CLAIM_ATTEMPTS; attempt += 1) {
+    try {
+      await prisma.$transaction(async (tx) => {
     const {
       assertSufficientStock,
       channelAvailableQuantity,
@@ -537,6 +560,19 @@ export async function addToCart(input: {
         ...categoryFilter,
       };
 
+      // Occupancy over all unlocked seats for this event (or category when assigned).
+      const occupancyPool = await tx.eventSeat.findMany({
+        where: {
+          eventId: category.eventId,
+          locked: false,
+          ...categoryFilter,
+          seatKey: { not: { contains: ":ST:" } },
+        },
+        select: { status: true, locked: true },
+      });
+      const occupancyPercent = computeOccupancyPercent(occupancyPool);
+      const optCtx = { settings: seatOptSettings, occupancyPercent };
+
       if (seatingMode === "seat_map") {
         const requested = await tx.eventSeat.findMany({
           where: {
@@ -546,6 +582,26 @@ export async function addToCart(input: {
           select: seatSelect,
         });
         if (requested.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
+
+        // Validate gap rule against the full category pool (including requested).
+        const poolForValidation = await tx.eventSeat.findMany({
+          where: {
+            eventId: category.eventId,
+            locked: false,
+            ...categoryFilter,
+            seatKey: { not: { contains: ":ST:" } },
+          },
+          select: seatSelect,
+        });
+        const validation = validateSeatSelection(
+          poolForValidation,
+          requested.map((s) => s.id),
+          optCtx,
+        );
+        if (!validation.ok) {
+          throw new Error(validation.code);
+        }
+
         if (companionFree) {
           const poolSeats = await tx.eventSeat.findMany({
             where: sellableWhere,
@@ -565,16 +621,15 @@ export async function addToCart(input: {
           select: seatSelect,
         });
         if (companionFree) {
-          const picked = pickBestAvailablePairs(all, input.quantity);
+          const picked = pickBestAvailablePairs(all, input.quantity, optCtx);
           if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
           seatIdsToHold = picked.map((s) => s.id);
         } else {
-          const picked = pickBestAvailableSeats(all, input.quantity);
+          const picked = pickBestAvailableSeats(all, input.quantity, optCtx);
           if (picked.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
           seatIdsToHold = picked.map((s) => s.id);
         }
       }
-
     }
 
     await tx.inventoryPool.update({
@@ -674,7 +729,22 @@ export async function addToCart(input: {
       where: { id: cart.id },
       data: { expiresAt },
     });
-  });
+      });
+      lastSeatError = null;
+      break;
+    } catch (err) {
+      lastSeatError = err instanceof Error ? err : new Error(String(err));
+      // Retry only Bestplatz races — manual selection / gap rule / stock should fail fast.
+      const code = lastSeatError.message;
+      const retryable =
+        needsSeats &&
+        seatingMode === "best_available" &&
+        code === "SEATS_UNAVAILABLE" &&
+        attempt < MAX_SEAT_CLAIM_ATTEMPTS;
+      if (!retryable) throw lastSeatError;
+    }
+  }
+  if (lastSeatError) throw lastSeatError;
 
   // Prefer read-only reload — never mint a second empty cart after a successful add.
   // Skip seating schema ensure on reload: transaction already touched seats if needed.

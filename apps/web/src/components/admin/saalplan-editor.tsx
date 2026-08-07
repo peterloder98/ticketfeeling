@@ -22,8 +22,10 @@ import {
   resolveStandingCapacity,
   seatCountOfObject,
   visualSeatCountOfObject,
+  seatBlockAisleExtraCm,
 } from "@/lib/saalplan/types";
 import {
+  createFoh,
   createSeatBlock,
   createStage,
   createStandingArea,
@@ -47,6 +49,8 @@ import {
 } from "@/lib/saalplan/view-zoom";
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 import { SaalplanReturnButton } from "@/components/admin/saalplan-return-button";
+import { SaalplanRowStructurePanel } from "@/components/admin/saalplan-row-structure-panel";
+import { layoutSeatBlockPoints } from "@/lib/saalplan/seat-layout";
 
 type Props = {
   planId: string;
@@ -198,7 +202,9 @@ export function SaalplanEditor({
       MAX_SEATS_PER_ROW,
       Math.max(1, Math.round(rawSeatsPerRow) || 1),
     );
-    const size = seatBlockSizeCm(rows, seatsPerRow);
+    const size = seatBlockSizeCm(rows, seatsPerRow, {
+      aisleExtraCm: seatBlockAisleExtraCm(selected ?? { type: "seat_block", rows, seatsPerRow } as VenuePlanObject),
+    });
     const maxW = widthCm;
     const maxH = depthCm;
     const nextW = Math.min(size.widthCm, maxW);
@@ -267,6 +273,13 @@ export function SaalplanEditor({
     });
     markDirty([...objects, area]);
     setSelectedId(area.id);
+  }
+
+  function addFoh() {
+    if (geometryFrozen) return;
+    const foh = createFoh(widthCm, depthCm);
+    markDirty([...objects, foh]);
+    setSelectedId(foh.id);
   }
 
   /** Screen pixels → SVG viewBox delta → cm */
@@ -790,15 +803,19 @@ export function SaalplanEditor({
                         fill={
                           obj.type === "stage"
                             ? "rgba(15,39,71,0.05)"
-                            : obj.type === "standing_area"
-                              ? "rgba(15,39,71,0.07)"
-                              : numbered
-                                ? "rgba(20,184,166,0.1)"
-                                : "rgba(20,184,166,0.16)"
+                            : obj.type === "foh"
+                              ? "rgba(100,116,139,0.2)"
+                              : obj.type === "standing_area"
+                                ? "rgba(15,39,71,0.07)"
+                                : numbered
+                                  ? "rgba(20,184,166,0.1)"
+                                  : "rgba(20,184,166,0.16)"
                         }
                         stroke={isSel ? "var(--tf-teal)" : "var(--tf-navy)"}
                         strokeWidth={isSel ? 2 : 1.25}
-                        strokeDasharray={obj.type === "standing_area" ? "7 4" : undefined}
+                        strokeDasharray={
+                          obj.type === "standing_area" || obj.type === "foh" ? "7 4" : undefined
+                        }
                       />
 
                       {showStageIcon ? (
@@ -878,10 +895,18 @@ export function SaalplanEditor({
           >
             <Plus className="mr-1 inline h-4 w-4" /> Stehbereich einfügen
           </button>
+          <button
+            type="button"
+            className="tf-btn w-full justify-start text-sm"
+            onClick={addFoh}
+            disabled={geometryFrozen}
+          >
+            <Plus className="mr-1 inline h-4 w-4" /> FOH / Technik einfügen
+          </button>
           <p className="text-xs text-[var(--tf-text-secondary)]">
-            Sitzblöcke: nummeriert oder freie Platzwahl. Stehbereiche: Kapazität aus der Fläche
-            (änderbar) — keine automatische Preiskategorie. Zuordnung und Preise legst du danach am
-            Event fest.
+            Sitzblöcke: nummeriert oder freie Platzwahl. Unterbrechungen/Gänge in der Auswahl.
+            Stehbereiche und FOH sind nicht verkaufbar als Einzelsitze. Zuordnung und Preise am
+            Event.
           </p>
 
           <h3 className="pt-2 text-sm font-semibold text-[var(--tf-navy)]">Auswahl</h3>
@@ -955,6 +980,14 @@ export function SaalplanEditor({
                         : `= ${seatCountOfObject(selected)} nummerierte Sitze in diesem Block`}
                     </p>
                   </div>
+                  <SaalplanRowStructurePanel
+                    selected={selected}
+                    geometryFrozen={geometryFrozen}
+                    onChange={(patch, notice) => updateSelected(patch, notice)}
+                    onConfirmStructural={(message) =>
+                      typeof window !== "undefined" ? window.confirm(message) : true
+                    }
+                  />
                 </div>
               ) : null}
 
@@ -1129,104 +1162,105 @@ function renderSeatDots(
   w: number,
   h: number,
 ) {
-  const rows = Math.min(obj.rows ?? 0, 24);
-  const cols = Math.min(obj.seatsPerRow ?? 0, 40);
-  if (rows < 1 || cols < 1) return null;
   const numbered = obj.numberedSeats !== false;
-  const padX = w * (numbered ? 0.05 : 0.03);
-  const padY = h * 0.05;
-  const innerW = w - padX * 2;
-  const innerH = h - padY * 2;
-  const cellW = innerW / cols;
-  const cellH = innerH / rows;
-  const r = Math.max(1.2, Math.min(cellW, cellH) * (numbered ? 0.32 : 0.28));
-  const nodes: ReactNode[] = [];
-
-  if (numbered) {
+  if (!numbered) {
+    const rows = Math.min(obj.rows ?? 0, 24);
+    const cols = Math.min(obj.seatsPerRow ?? 0, 40);
+    if (rows < 1 || cols < 1) return null;
+    const padX = w * 0.03;
+    const padY = h * 0.05;
+    const cellW = (w - padX * 2) / cols;
+    const cellH = (h - padY * 2) / rows;
+    const r = Math.max(1.2, Math.min(cellW, cellH) * 0.28);
+    const nodes: ReactNode[] = [];
     for (let row = 0; row < rows; row += 1) {
-      const cy = y + padY + cellH * (row + 0.5);
-      const rowLabel = String(row + 1);
-      const fontSize = Math.max(6, Math.min(10, cellH * 0.28));
-      nodes.push(
-        <text
-          key={`rl-${row}`}
-          x={x + Math.max(6, padX * 0.55)}
-          y={cy + fontSize * 0.35}
-          textAnchor="middle"
-          style={{
-            fontSize,
-            fontWeight: 600,
-            fill: "var(--tf-text-secondary)",
-            pointerEvents: "none",
-          }}
-        >
-          {rowLabel}
-        </text>,
-        <text
-          key={`rr-${row}`}
-          x={x + w - Math.max(6, padX * 0.55)}
-          y={cy + fontSize * 0.35}
-          textAnchor="middle"
-          style={{
-            fontSize,
-            fontWeight: 600,
-            fill: "var(--tf-text-secondary)",
-            pointerEvents: "none",
-          }}
-        >
-          {rowLabel}
-        </text>,
-      );
-    }
-  }
-
-  for (let row = 0; row < rows; row += 1) {
-    for (let col = 0; col < cols; col += 1) {
-      const cx = x + padX + cellW * (col + 0.5);
-      const cy = y + padY + cellH * (row + 0.5);
-      nodes.push(
-        <circle
-          key={`${row}-${col}`}
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="var(--tf-navy)"
-          opacity={numbered ? 0.45 : 0.28}
-          style={{ pointerEvents: "none" }}
-        />,
-      );
-      if (numbered && r >= 5.5) {
+      for (let col = 0; col < cols; col += 1) {
         nodes.push(
-          <text
-            key={`n-${row}-${col}`}
-            x={cx}
-            y={cy + r * 0.35}
-            textAnchor="middle"
-            style={{
-              fontSize: Math.min(9, r * 0.95),
-              fontWeight: 700,
-              fill: "#fff",
-              pointerEvents: "none",
-            }}
-          >
-            {col + 1}
-          </text>,
+          <circle
+            key={`${row}-${col}`}
+            cx={x + padX + cellW * (col + 0.5)}
+            cy={y + padY + cellH * (row + 0.5)}
+            r={r}
+            fill="var(--tf-navy)"
+            opacity={0.28}
+            style={{ pointerEvents: "none" }}
+          />,
         );
       }
     }
+    return <g style={{ pointerEvents: "none" }}>{nodes}</g>;
   }
-  if ((obj.rows ?? 0) > rows || (obj.seatsPerRow ?? 0) > cols) {
+
+  const points = layoutSeatBlockPoints(obj).slice(0, 800);
+  if (points.length === 0) return null;
+  const padX = w * 0.05;
+  const padY = h * 0.05;
+  const innerW = w - padX * 2;
+  const innerH = h - padY * 2;
+  const r = Math.max(1.2, Math.min(innerW / Math.max(1, obj.seatsPerRow ?? 10), innerH / Math.max(1, obj.rows ?? 5)) * 0.32);
+  const nodes: ReactNode[] = [];
+
+  const rowCount = Math.max(1, obj.rows ?? 1);
+  for (let row = 0; row < Math.min(rowCount, 24); row += 1) {
+    const cy = y + padY + innerH * ((row + 0.5) / rowCount);
+    const fontSize = Math.max(6, Math.min(10, (innerH / rowCount) * 0.28));
+    const rowLabel = String(row + 1);
     nodes.push(
       <text
-        key="more"
-        x={x + w / 2}
-        y={y + h - 6}
+        key={`rl-${row}`}
+        x={x + Math.max(6, padX * 0.55)}
+        y={cy + fontSize * 0.35}
         textAnchor="middle"
-        style={{ fontSize: 9, fill: "var(--tf-text-secondary)", pointerEvents: "none" }}
+        style={{
+          fontSize,
+          fontWeight: 600,
+          fill: "var(--tf-text-secondary)",
+          pointerEvents: "none",
+        }}
       >
-        Ausschnitt
+        {rowLabel}
       </text>,
     );
+  }
+
+  for (const p of points) {
+    const cx = x + padX + innerW * p.xFrac;
+    const cy = y + padY + innerH * p.yFrac;
+    const fill =
+      p.seatType === "wheelchair"
+        ? "#D6A642"
+        : p.seatType === "companion"
+          ? "#14B8A6"
+          : "var(--tf-navy)";
+    nodes.push(
+      <circle
+        key={`${p.rowIndex}-${p.seatNumber}`}
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill={fill}
+        opacity={0.5}
+        style={{ pointerEvents: "none" }}
+      />,
+    );
+    if (r >= 5.5) {
+      nodes.push(
+        <text
+          key={`n-${p.rowIndex}-${p.seatNumber}`}
+          x={cx}
+          y={cy + r * 0.35}
+          textAnchor="middle"
+          style={{
+            fontSize: Math.min(9, r * 0.95),
+            fontWeight: 700,
+            fill: "#fff",
+            pointerEvents: "none",
+          }}
+        >
+          {p.seatNumber}
+        </text>,
+      );
+    }
   }
   return <g style={{ pointerEvents: "none" }}>{nodes}</g>;
 }

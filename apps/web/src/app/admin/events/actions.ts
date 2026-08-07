@@ -559,6 +559,9 @@ export async function updateEventAction(formData: FormData) {
     seatingBookingMode = "none";
   }
 
+  const { seatOptFromFormData } = await import("@/lib/seating/seat-optimization-settings");
+  const seatOptFields = seatOptFromFormData(formData);
+
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   let eventEndsAt = parseDt(formData, "eventEndsAt");
   let doorsOpenAt = parseDt(formData, "doorsOpenAt");
@@ -695,6 +698,7 @@ export async function updateEventAction(formData: FormData) {
       locationId,
       venuePlanId,
       seatingBookingMode,
+      ...seatOptFields,
       subtitle,
       shortDescription,
       description,

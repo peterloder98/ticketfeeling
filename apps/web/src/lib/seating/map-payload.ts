@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/db";
 import { parseVenuePlanObjects, resolveStandingCapacity } from "@/lib/saalplan/types";
+import { resolveSeatBlockRows } from "@/lib/saalplan/seat-structure";
 import { ensureEventSeatsIfNeeded, expireSeatHolds } from "@/lib/seating/materialize";
 import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { resolveCategoryColor } from "@/lib/seating/layout-config";
 import { countSellableAvailableSeats } from "@/lib/seating/availability";
 import { toPublicSeatStatus } from "@/lib/seating/public-seat-status";
 import type {
+  PublicFohArea,
   PublicSeat,
   PublicSeatBlock,
   PublicStandingArea,
@@ -27,9 +29,14 @@ function toPublicSeat(
     cartItemId: string | null;
     categoryId: string | null;
     locked: boolean;
+    segmentIndex?: number | null;
+    positionInSegment?: number | null;
+    seatType?: string | null;
   },
   viewerSet: Set<string>,
 ): PublicSeat {
+  const seatType =
+    s.seatType === "wheelchair" || s.seatType === "companion" ? s.seatType : "standard";
   return {
     id: s.id,
     seatKey: s.seatKey,
@@ -41,6 +48,10 @@ function toPublicSeat(
     seatNumber: s.seatNumber,
     categoryId: s.categoryId,
     locked: s.locked,
+    segmentIndex: s.segmentIndex ?? 0,
+    positionInSegment:
+      typeof s.positionInSegment === "number" ? s.positionInSegment : Math.max(0, s.seatIndex - 1),
+    seatType,
     status: toPublicSeatStatus(s, viewerSet),
   };
 }
@@ -90,6 +101,9 @@ export async function getSeatMapPayload(
       cartItemId: true,
       categoryId: true,
       locked: true,
+      segmentIndex: true,
+      positionInSegment: true,
+      seatType: true,
     },
   });
 
@@ -117,8 +131,22 @@ export async function getSeatMapPayload(
   const blocks: PublicSeatBlock[] = [];
   const standingAreas: PublicStandingArea[] = [];
   const standingSeats: PublicSeat[] = [];
+  const fohAreas: PublicFohArea[] = [];
 
   for (const obj of objects) {
+    if (obj.type === "foh") {
+      fohAreas.push({
+        objectId: obj.id,
+        label: obj.label ?? "FOH / Technik",
+        xCm: obj.xCm,
+        yCm: obj.yCm,
+        widthCm: obj.widthCm,
+        heightCm: obj.heightCm,
+        rotationDeg: obj.rotationDeg,
+      });
+      continue;
+    }
+
     if (obj.type === "standing_area") {
       const mode = obj.standingMode === "standing_tables" ? "standing_tables" : "standing";
       const capacity = resolveStandingCapacity(obj);
@@ -154,6 +182,7 @@ export async function getSeatMapPayload(
     if (obj.type !== "seat_block") continue;
     const numbered = obj.numberedSeats !== false;
     const blockSeats = numbered ? (seatsByBlock.get(obj.id) ?? []) : [];
+    const layouts = numbered ? resolveSeatBlockRows(obj) : [];
     blocks.push({
       objectId: obj.id,
       label: obj.label ?? "Block",
@@ -166,6 +195,17 @@ export async function getSeatMapPayload(
       rotationDeg: obj.rotationDeg,
       numberedSeats: numbered,
       seats: blockSeats.map((s) => toPublicSeat(s, viewerSet)),
+      rowLayouts: layouts.map((row) => ({
+        rowIndex: row.rowIndex,
+        rowLabel: row.rowLabel,
+        seatCount: row.seatCount,
+        aisles: row.aisles,
+        removedSeatNumbers: row.removedSeatNumbers,
+        segments: row.segments.map((seg) => ({
+          segmentIndex: seg.segmentIndex,
+          seatNumbers: seg.seatNumbers,
+        })),
+      })),
     });
   }
 
@@ -194,6 +234,7 @@ export async function getSeatMapPayload(
     blocks,
     standingAreas,
     standingSeats,
+    fohAreas,
     categories,
     availableCount,
   };
