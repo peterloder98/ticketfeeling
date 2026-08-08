@@ -90,7 +90,7 @@ export default async function CheckoutPage() {
 
   return (
     <div className="border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.85)]">
-      <div className="tf-container grid gap-8 py-10 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)] lg:gap-12 lg:py-14 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.85fr)]">
+      <div className="tf-container grid items-start gap-8 py-10 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.9fr)] lg:gap-12 lg:py-14 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.85fr)]">
         <div className="min-w-0 space-y-5">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-teal)]">
@@ -122,7 +122,7 @@ export default async function CheckoutPage() {
           />
         </div>
 
-        <aside className="h-fit space-y-3 lg:sticky lg:top-28">
+        <aside className="h-fit w-full self-start space-y-3 lg:sticky lg:top-28">
           <CartCountdownDisplay
             expiresAt={cart.expiresAt.toISOString()}
             eventHref={
