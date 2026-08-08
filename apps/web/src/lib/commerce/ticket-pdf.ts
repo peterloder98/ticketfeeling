@@ -27,6 +27,10 @@ import { parseUploadedAssetId } from "@/lib/uploads/optimize-sponsor-logo";
 
 /** ~12 mm printer-safe margin on DIN A4 */
 const PAGE_MARGIN = 34;
+/** Match TicketFace `rounded-[16px]` at ~900px ticket width. */
+const TICKET_CORNER_R = 14;
+/** Brand lockup display height (TicketFace ~h-11 / 44px). */
+const BRAND_LOGO_H = 42;
 
 type DrawOptions = {
   pageIndexLabel?: string | null;
@@ -55,7 +59,10 @@ async function toPdfImageBuffer(input: Buffer): Promise<Buffer> {
 }
 
 async function loadLogoBuffer(): Promise<Buffer | null> {
+  // Same master as BrandLogo — prefer full lockup over email/1x derivatives.
   const candidates = [
+    path.join(process.cwd(), "public/brand/logo-ticketfeeling.png"),
+    path.join(process.cwd(), "apps/web/public/brand/logo-ticketfeeling.png"),
     path.join(process.cwd(), "public/brand/logo-email.png"),
     path.join(process.cwd(), "public/brand/logo-lockup-1x.png"),
     path.join(process.cwd(), "apps/web/public/brand/logo-email.png"),
@@ -64,13 +71,43 @@ async function loadLogoBuffer(): Promise<Buffer | null> {
   for (const file of candidates) {
     if (existsSync(file)) {
       try {
-        return await toPdfImageBuffer(readFileSync(file));
+        // Keep alpha until we size for PDF; flatten happens in prepareBrandLogo.
+        return readFileSync(file);
       } catch {
         /* try next */
       }
     }
   }
   return null;
+}
+
+/**
+ * Pre-rasterize brand lockup at 2× display size so PDFKit embeds crisp pixels,
+ * then place at true aspect (avoids wide fit-box left-bias).
+ */
+async function prepareBrandLogo(
+  logo: Buffer | null,
+  displayH: number,
+): Promise<{ buf: Buffer; w: number; h: number } | null> {
+  if (!logo) return null;
+  try {
+    const meta = await sharp(logo).metadata();
+    const srcW = meta.width || 544;
+    const srcH = meta.height || 381;
+    const h = displayH;
+    const w = Math.max(1, Math.round(h * (srcW / srcH)));
+    const buf = await sharp(logo)
+      .resize(w * 2, h * 2, {
+        fit: "contain",
+        background: { r: 255, g: 255, b: 255, alpha: 1 },
+      })
+      .flatten({ background: { r: 255, g: 255, b: 255 } })
+      .png()
+      .toBuffer();
+    return { buf, w, h };
+  } catch {
+    return null;
+  }
 }
 
 async function loadUploadedAssetBuffer(url: string): Promise<Buffer | null> {
@@ -157,6 +194,24 @@ function withClip(
   try {
     doc.rect(x, y, w, h).clip();
     draw();
+  } finally {
+    doc.restore();
+  }
+}
+
+async function withRoundedClipAsync(
+  doc: PDFKit.PDFDocument,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+  draw: () => void | Promise<void>,
+) {
+  doc.save();
+  try {
+    doc.roundedRect(x, y, w, h, r).clip();
+    await draw();
   } finally {
     doc.restore();
   }
@@ -300,40 +355,48 @@ async function drawTicketPage(
   const zoneA = Math.round(ticketW * TICKET_COL_COVER);
   const zoneC = Math.round(ticketW * TICKET_COL_QR);
   const zoneB = ticketW - zoneA - zoneC;
-
-  // Paint ticket body WITHOUT a page-wide clip around text/images.
-  // PDFKit + unrestored nested clips previously wiped the info/QR stub.
-  doc.save();
-  try {
-    doc.roundedRect(ticketX, ticketY, ticketW, ticketH, 8).clip();
-    doc.rect(ticketX, ticketY, ticketW, ticketH).fill("#FFFFFF");
-  } finally {
-    doc.restore();
-  }
-
-  // ── Zone A: cover ────────────────────────────────────────────────
   const ax = ticketX;
-  if (cover) {
-    await drawImageContainWithBlur(doc, cover, ax, ticketY, zoneA, ticketH);
-  } else {
-    drawCoverFallback(doc, logo, ax, ticketY, zoneA, ticketH);
-  }
+  const bx = ticketX + zoneA;
+  const cx = ticketX + zoneA + zoneB;
+
+  // Zone fills + cover under one rounded clip so navy never squares past the
+  // ticket corners (left top/bottom). Text/images stay outside this clip so a
+  // nested cover clip cannot wipe the info/QR stub.
+  await withRoundedClipAsync(
+    doc,
+    ticketX,
+    ticketY,
+    ticketW,
+    ticketH,
+    TICKET_CORNER_R,
+    async () => {
+      doc.rect(ticketX, ticketY, ticketW, ticketH).fill("#FFFFFF");
+      if (cover) {
+        await drawImageContainWithBlur(doc, cover, ax, ticketY, zoneA, ticketH);
+      } else {
+        drawCoverFallback(doc, logo, ax, ticketY, zoneA, ticketH);
+      }
+      doc.rect(bx, ticketY, zoneB, ticketH).fill("#FFFFFF");
+      doc.rect(cx, ticketY, zoneC, ticketH).fill(TF_SOFT);
+      doc.rect(ticketX, ticketY, ticketW, 3).fill(accent);
+    },
+  );
 
   // ── Zone B: info ─────────────────────────────────────────────────
-  const bx = ticketX + zoneA;
-  doc.rect(bx, ticketY, zoneB, ticketH).fill("#FFFFFF");
-
   const bPadX = 12;
   const bPadY = 8;
   const bInnerW = zoneB - bPadX * 2;
   let by = ticketY + bPadY;
 
   // Brand lockup centered at top of middle zone — match TicketFace air before title
-  const logoH = 26;
-  if (logo) {
+  const brandLogo = await prepareBrandLogo(logo, BRAND_LOGO_H);
+  const logoH = brandLogo?.h ?? BRAND_LOGO_H;
+  if (brandLogo) {
     try {
-      const logoW = 132;
-      doc.image(logo, bx + (zoneB - logoW) / 2, by, { height: logoH, fit: [logoW, logoH] });
+      doc.image(brandLogo.buf, bx + (zoneB - brandLogo.w) / 2, by, {
+        width: brandLogo.w,
+        height: brandLogo.h,
+      });
     } catch {
       doc
         .font("Helvetica-Bold")
@@ -609,10 +672,7 @@ async function drawTicketPage(
     by = doc.y + 1;
   }
 
-  // ── Zone C: QR stub ──────────────────────────────────────────────
-  const cx = ticketX + zoneA + zoneB;
-  doc.rect(cx, ticketY, zoneC, ticketH).fill(TF_SOFT);
-
+  // ── Zone C: QR stub (soft fill already painted under rounded clip) ──
   doc
     .moveTo(cx, ticketY + 12)
     .lineTo(cx, ticketY + ticketH - 12)
@@ -762,13 +822,12 @@ async function drawTicketPage(
   doc.circle(cx, ticketY, notchR).fill("#FFFFFF");
   doc.circle(cx, ticketY + ticketH, notchR).fill("#FFFFFF");
 
-  // Outer stroke + accent edge
+  // Outer stroke — accent already painted inside the rounded body clip
   doc
-    .roundedRect(ticketX, ticketY, ticketW, ticketH, 8)
+    .roundedRect(ticketX, ticketY, ticketW, ticketH, TICKET_CORNER_R)
     .strokeColor(TF_LINE)
     .lineWidth(1.25)
     .stroke();
-  doc.rect(ticketX, ticketY, ticketW, 3).fill(accent);
 
   // Notes below strip (organizer name only — never street address)
   let notesY = ticketY + ticketH + 22;
