@@ -491,59 +491,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         </div>
       </section>
 
-      <EventSalesReadiness
-        event={{
-          id: event.id,
-          status: event.status,
-          coverImageUrl: displayCover,
-          eventStartsAt: event.eventStartsAt,
-          doorsOpenAt: event.doorsOpenAt,
-          presaleStartsAt: event.presaleStartsAt,
-          tour: event.tour,
-          ticketCategories: event.ticketCategories.map((c) => ({
-            priceGrossCents: c.priceGrossCents,
-            capacity: c.capacity,
-          })),
-        }}
-        previewTicketId={previewTicket?.id ?? null}
-      />
-
-      {/* Optional ticket-only cover override */}
-      <section className="tf-card !p-5">
-        <div>
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
-            Zusätzliches Ticketbild
-          </h2>
-          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Optional. Wird nur auf dem Print@Home-/Ticket-Gesicht gezeigt. Leer = Event-Cover.
-          </p>
-        </div>
-        {canWrite ? (
-          <div className="mt-4 max-w-xl">
-            <CoverImageField
-              name="ticketHeroImageUrl"
-              label="Ticketbild (optional)"
-              persistField="ticketHeroImageUrl"
-              initialUrl={event.ticketHeroImageUrl}
-              eventId={event.id}
-            />
-          </div>
-        ) : event.ticketHeroImageUrl ? (
-          <div className="mt-4 relative aspect-square w-full max-w-[160px] overflow-hidden rounded-2xl border border-[var(--tf-line)]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={event.ticketHeroImageUrl}
-              alt=""
-              className="h-full w-full object-cover"
-            />
-          </div>
-        ) : (
-          <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">Kein Ticketbild hinterlegt.</p>
-        )}
-      </section>
-
-      {/* Optional QR-stub sponsor logos */}
-      <section className="tf-card !p-5">
+      {/* Optional QR-stub sponsor logos — directly under Cover */}
+      <section className="tf-card !p-5" id="sponsorenlogos">
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
             Sponsorenlogos auf dem Ticket
@@ -607,6 +556,61 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           </div>
         )}
       </section>
+
+      {/* Verkaufsbereitschaft + Ticketbild side by side on desktop */}
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <EventSalesReadiness
+          event={{
+            id: event.id,
+            status: event.status,
+            coverImageUrl: displayCover,
+            eventStartsAt: event.eventStartsAt,
+            doorsOpenAt: event.doorsOpenAt,
+            presaleStartsAt: event.presaleStartsAt,
+            tour: event.tour,
+            ticketCategories: event.ticketCategories.map((c) => ({
+              priceGrossCents: c.priceGrossCents,
+              capacity: c.capacity,
+            })),
+          }}
+          previewTicketId={previewTicket?.id ?? null}
+        />
+
+        <section className="tf-card !p-5" id="ticketbild">
+          <div>
+            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">
+              Zusätzliches Ticketbild
+            </h2>
+            <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+              Optional. Wird nur auf dem Print@Home-/Ticket-Gesicht gezeigt. Leer = Event-Cover.
+            </p>
+          </div>
+          {canWrite ? (
+            <div className="mt-4">
+              <CoverImageField
+                name="ticketHeroImageUrl"
+                label="Ticketbild (optional)"
+                persistField="ticketHeroImageUrl"
+                initialUrl={event.ticketHeroImageUrl}
+                eventId={event.id}
+              />
+            </div>
+          ) : event.ticketHeroImageUrl ? (
+            <div className="mt-4 relative aspect-square w-full max-w-[160px] overflow-hidden rounded-2xl border border-[var(--tf-line)]">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={event.ticketHeroImageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+              />
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-[var(--tf-text-secondary)]">
+              Kein Ticketbild hinterlegt.
+            </p>
+          )}
+        </section>
+      </div>
 
       <Suspense fallback={null}>
         <BuyerHeatmap

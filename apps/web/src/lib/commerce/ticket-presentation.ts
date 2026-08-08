@@ -22,8 +22,12 @@ export const TF_TAGLINE = "Mehr als ein Ticket";
 export const TF_PRINT_HINT =
   "Am Einlass auf dem Smartphone vorzeigen oder ausdrucken.";
 export const TF_QR_HINT = "Am Einlass vorzeigen.";
-/** Modest CSS height for QR-stub sponsor logos (keep QR large + quiet zone). */
-export const TICKET_SPONSOR_LOGO_MAX_H_PX = 24;
+/**
+ * Max CSS box for QR-stub sponsor logos.
+ * Logos use leftover air above/below the QR block; never shrink the QR below its floor.
+ */
+export const TICKET_SPONSOR_LOGO_MAX_H_PX = 42;
+export const TICKET_SPONSOR_LOGO_MAX_W_PX = 140;
 /** Floor for QR plate when sponsors are present — shrink logos, never the QR. */
 export const TICKET_QR_MIN_PX = 112;
 

@@ -1,6 +1,6 @@
 import sharp from "sharp";
 
-/** Max stored size for ticket-stub logos (retina for ~120×36 CSS display). */
+/** Max stored size for ticket-stub logos (retina for ~140×42 CSS display). */
 export const SPONSOR_LOGO_MAX_WIDTH = 480;
 export const SPONSOR_LOGO_MAX_HEIGHT = 160;
 const WEBP_QUALITY = 84;

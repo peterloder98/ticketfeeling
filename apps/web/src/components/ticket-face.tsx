@@ -1,4 +1,5 @@
 import Image from "next/image";
+import type { ReactNode } from "react";
 import { BrandLogo } from "@/components/brand-logo";
 import { TicketQrImage } from "@/components/ticket-qr-image";
 import {
@@ -10,6 +11,7 @@ import {
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
+  TICKET_SPONSOR_LOGO_MAX_W_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -34,22 +36,34 @@ function SponsorLogo({
   src: string;
   compact?: boolean;
 }) {
-  const h = compact
-    ? Math.min(20, TICKET_SPONSOR_LOGO_MAX_H_PX)
+  const maxH = compact
+    ? Math.min(34, TICKET_SPONSOR_LOGO_MAX_H_PX)
     : TICKET_SPONSOR_LOGO_MAX_H_PX;
+  const maxW = compact
+    ? Math.min(118, TICKET_SPONSOR_LOGO_MAX_W_PX)
+    : TICKET_SPONSOR_LOGO_MAX_W_PX;
   return (
-    <div
-      className="relative mx-auto w-full max-w-[88%] shrink-0"
-      style={{ height: h }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
-        className="h-full w-full object-contain"
-        loading="lazy"
-        decoding="async"
-      />
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      className="object-contain"
+      style={{ maxHeight: maxH, maxWidth: maxW, width: "auto", height: "auto" }}
+      loading="lazy"
+      decoding="async"
+    />
+  );
+}
+
+/** Flex spacer that centers a sponsor logo in leftover stub air (no empty box). */
+function SponsorSlot({
+  children,
+}: {
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex min-h-0 w-full flex-1 items-center justify-center self-stretch px-1 py-1">
+      {children ?? null}
     </div>
   );
 }
@@ -306,8 +320,8 @@ export function TicketFace({
             )}
           </div>
 
-          {/* RIGHT — QR stub: sponsor → admit → QR → # → hint → sponsor */}
-          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center gap-0.5 border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1 text-center">
+          {/* RIGHT — QR stub: sponsor zone | admit+QR+# +hint | sponsor zone */}
+          <div className="relative flex min-h-0 min-w-0 flex-col items-center border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1.5 text-center">
             <span
               className="pointer-events-none absolute -left-1.5 top-0 h-3 w-3 -translate-y-1/2 rounded-full bg-[rgba(248,250,252,0.95)] ring-1 ring-[var(--tf-line)]"
               aria-hidden
@@ -317,60 +331,62 @@ export function TicketFace({
               aria-hidden
             />
 
-            {data.sponsorLogoAboveUrl ? (
-              <SponsorLogo src={data.sponsorLogoAboveUrl} compact={compact} />
-            ) : null}
+            <SponsorSlot>
+              {data.sponsorLogoAboveUrl ? (
+                <SponsorLogo src={data.sponsorLogoAboveUrl} compact={compact} />
+              ) : null}
+            </SponsorSlot>
 
-            <p
-              className="text-[9px] font-bold uppercase tracking-[0.14em]"
-              style={{ color: accent }}
-            >
-              {admitLabel}
-            </p>
+            <div className="flex w-full shrink-0 flex-col items-center gap-0.5">
+              <p
+                className="text-[9px] font-bold uppercase tracking-[0.14em]"
+                style={{ color: accent }}
+              >
+                {admitLabel}
+              </p>
 
-            {showQr && data.qrToken ? (
-              <>
-                <div className="shrink-0 rounded-md bg-white p-1 shadow-sm">
-                  <TicketQrImage
-                    token={data.qrToken}
-                    size={qrPx}
-                    bare
-                  />
-                </div>
-                <p
-                  className={`max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
-                    compact ? "text-[9px]" : "text-[10px]"
-                  }`}
-                >
-                  {data.ticketNumber}
-                </p>
-                <p className="text-[9px] text-[var(--tf-text-secondary)]">
-                  {TF_QR_HINT}
-                </p>
-                {data.sponsorLogoBelowUrl ? (
-                  <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
-                ) : null}
-              </>
-            ) : (
-              <div className="max-w-[11rem] px-1">
-                <p className="text-[11px] font-semibold text-[var(--tf-navy)]">
-                  {transferredMessage ? "Ticket weitergeleitet" : "QR nicht verfügbar"}
-                </p>
-                {transferredMessage ? (
-                  <p className="mt-1 text-[10px] leading-snug text-[var(--tf-text-secondary)]">
-                    {transferredMessage}
-                  </p>
-                ) : null}
-                <p className="mt-1.5 text-[10px] font-medium text-[var(--tf-navy)]">
-                  {data.ticketNumber}
-                </p>
-                {data.sponsorLogoBelowUrl ? (
-                  <div className="mt-1.5">
-                    <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
+              {showQr && data.qrToken ? (
+                <>
+                  <div className="shrink-0 rounded-md bg-white p-1 shadow-sm">
+                    <TicketQrImage
+                      token={data.qrToken}
+                      size={qrPx}
+                      bare
+                    />
                   </div>
-                ) : null}
-              </div>
-            )}
+                  <p
+                    className={`max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
+                      compact ? "text-[9px]" : "text-[10px]"
+                    }`}
+                  >
+                    {data.ticketNumber}
+                  </p>
+                  <p className="text-[9px] text-[var(--tf-text-secondary)]">
+                    {TF_QR_HINT}
+                  </p>
+                </>
+              ) : (
+                <div className="max-w-[11rem] px-1">
+                  <p className="text-[11px] font-semibold text-[var(--tf-navy)]">
+                    {transferredMessage ? "Ticket weitergeleitet" : "QR nicht verfügbar"}
+                  </p>
+                  {transferredMessage ? (
+                    <p className="mt-1 text-[10px] leading-snug text-[var(--tf-text-secondary)]">
+                      {transferredMessage}
+                    </p>
+                  ) : null}
+                  <p className="mt-1.5 text-[10px] font-medium text-[var(--tf-navy)]">
+                    {data.ticketNumber}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <SponsorSlot>
+              {data.sponsorLogoBelowUrl ? (
+                <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
+              ) : null}
+            </SponsorSlot>
           </div>
         </article>
       </div>

@@ -21,6 +21,7 @@ import {
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
+  TICKET_SPONSOR_LOGO_MAX_W_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -504,23 +505,65 @@ async function drawTicketPage(
 
   const cPad = 8;
   const cInnerW = zoneC - cPad * 2;
-  let cy = ticketY + 6;
-  const sponsorH = Math.min(16, TICKET_SPONSOR_LOGO_MAX_H_PX);
-  const sponsorReserve =
-    (sponsorAbove ? sponsorH + 3 : 0) + (sponsorBelow ? sponsorH + 3 : 0);
+  const stubPadY = 6;
+  const sponsorMaxH = TICKET_SPONSOR_LOGO_MAX_H_PX;
+  const sponsorMaxW = Math.min(cInnerW, TICKET_SPONSOR_LOGO_MAX_W_PX);
 
-  if (sponsorAbove) {
+  // QR stays at current floor; logos use leftover air in above/below slots.
+  const qrMax = Math.min(
+    cInnerW - 2,
+    hasSponsor ? Math.max(TICKET_QR_MIN_PX, 118) : 128,
+  );
+  const quiet = 5;
+  const qrPlate = qrMax + quiet * 2;
+  const admitBlockH = 11;
+  const ticketNoH = 11;
+  const hintH = 10;
+  const coreGaps = 8;
+  const coreH = admitBlockH + qrPlate + ticketNoH + hintH + coreGaps;
+  const usableH = ticketH - stubPadY * 2;
+  const slotAir = Math.max(0, usableH - coreH);
+  // Prefer a generous slot for present logos; empty side keeps leftover for balance.
+  let aboveSlotH: number;
+  let belowSlotH: number;
+  if (sponsorAbove && sponsorBelow) {
+    aboveSlotH = belowSlotH = slotAir / 2;
+  } else if (sponsorAbove) {
+    aboveSlotH = Math.min(slotAir, sponsorMaxH + 14);
+    belowSlotH = slotAir - aboveSlotH;
+  } else if (sponsorBelow) {
+    belowSlotH = Math.min(slotAir, sponsorMaxH + 14);
+    aboveSlotH = slotAir - belowSlotH;
+  } else {
+    aboveSlotH = belowSlotH = slotAir / 2;
+  }
+
+  const drawSponsorInSlot = (
+    buf: Buffer,
+    slotTop: number,
+    slotHeight: number,
+  ) => {
+    const logoH = Math.min(sponsorMaxH, Math.max(16, slotHeight - 4));
+    const logoW = sponsorMaxW;
+    const imgY = slotTop + Math.max(0, (slotHeight - logoH) / 2);
+    const imgX = cx + (zoneC - logoW) / 2;
     try {
-      doc.image(sponsorAbove, cx + cPad, cy, {
-        fit: [cInnerW, sponsorH],
+      doc.image(buf, imgX, imgY, {
+        fit: [logoW, logoH],
         align: "center",
         valign: "center",
       });
     } catch {
       /* skip broken sponsor asset */
     }
-    cy += sponsorH + 3;
+  };
+
+  const aboveSlotTop = ticketY + stubPadY;
+  if (sponsorAbove) {
+    drawSponsorInSlot(sponsorAbove, aboveSlotTop, aboveSlotH);
   }
+
+  let cy = aboveSlotTop + aboveSlotH;
 
   doc
     .font("Helvetica-Bold")
@@ -533,13 +576,6 @@ async function drawTicketPage(
     });
   cy = doc.y + 3;
 
-  const qrMax = Math.min(
-    cInnerW - 2,
-    ticketH - 58 - sponsorReserve,
-    hasSponsor ? Math.max(TICKET_QR_MIN_PX, 118) : 128,
-  );
-  const quiet = 5;
-  const qrPlate = qrMax + quiet * 2;
   const qrPlateX = cx + (zoneC - qrPlate) / 2;
 
   doc.roundedRect(qrPlateX, cy, qrPlate, qrPlate, 4).fill("#FFFFFF");
@@ -593,18 +629,10 @@ async function drawTicketPage(
       width: cInnerW,
       align: "center",
     });
-  cy = doc.y + 2;
 
+  const belowSlotTop = ticketY + ticketH - stubPadY - belowSlotH;
   if (sponsorBelow) {
-    try {
-      doc.image(sponsorBelow, cx + cPad, cy, {
-        fit: [cInnerW, sponsorH],
-        align: "center",
-        valign: "center",
-      });
-    } catch {
-      /* skip broken sponsor asset */
-    }
+    drawSponsorInSlot(sponsorBelow, belowSlotTop, belowSlotH);
   }
 
   doc.restore(); // end clip

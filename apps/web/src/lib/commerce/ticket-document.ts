@@ -16,6 +16,7 @@ import {
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
+  TICKET_SPONSOR_LOGO_MAX_W_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -89,10 +90,10 @@ export function buildTicketHtmlDocument(
   const categoryHtml = `<p class="category">Kategorie ${vipBadge}${categoryLabel}</p>`;
 
   const sponsorAboveHtml = sponsorAbove
-    ? `<div class="sponsor-logo"><img src="${escapeAttr(sponsorAbove)}" alt="" /></div>`
+    ? `<img class="sponsor-logo" src="${escapeAttr(sponsorAbove)}" alt="" />`
     : "";
   const sponsorBelowHtml = sponsorBelow
-    ? `<div class="sponsor-logo"><img src="${escapeAttr(sponsorBelow)}" alt="" /></div>`
+    ? `<img class="sponsor-logo" src="${escapeAttr(sponsorBelow)}" alt="" />`
     : "";
 
   const doorsBeginHtml =
@@ -431,29 +432,41 @@ export function buildTicketHtmlDocument(
     .zone-c {
       background: ${TF_SOFT};
       border-left: 1px dashed ${TF_LINE};
-      padding: 5px 8px;
+      padding: 6px 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      gap: 3px;
+      justify-content: stretch;
+      gap: 0;
       text-align: center;
       min-width: 0;
       min-height: 0;
       position: relative;
     }
-    .sponsor-logo {
-      width: 88%;
-      max-width: 112px;
-      height: ${TICKET_SPONSOR_LOGO_MAX_H_PX}px;
-      flex-shrink: 0;
-      line-height: 0;
-    }
-    .sponsor-logo img {
+    .sponsor-slot {
+      flex: 1 1 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 0;
       width: 100%;
-      height: 100%;
-      object-fit: contain;
+      padding: 4px 2px;
+    }
+    .sponsor-logo {
       display: block;
+      max-width: min(90%, ${TICKET_SPONSOR_LOGO_MAX_W_PX}px);
+      max-height: ${TICKET_SPONSOR_LOGO_MAX_H_PX}px;
+      width: auto;
+      height: auto;
+      object-fit: contain;
+    }
+    .zone-c-core {
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      width: 100%;
     }
     .zone-c::before,
     .zone-c::after {
@@ -556,18 +569,20 @@ export function buildTicketHtmlDocument(
           ${footerBits ? `<div class="foot-meta">${footerBits}</div>` : ""}
         </div>
         <div class="zone-c">
-          ${sponsorAboveHtml}
-          <p class="admit">${escapeHtml(admitLabel)}</p>
-          <div class="qr-plate">
-            ${
-              qrDataUrlOrNull
-                ? `<img src="${qrDataUrlOrNull}" alt="QR-Code" />`
-                : `<p class="qr-hint">Kein gültiger QR-Code</p>`
-            }
+          <div class="sponsor-slot">${sponsorAboveHtml}</div>
+          <div class="zone-c-core">
+            <p class="admit">${escapeHtml(admitLabel)}</p>
+            <div class="qr-plate">
+              ${
+                qrDataUrlOrNull
+                  ? `<img src="${qrDataUrlOrNull}" alt="QR-Code" />`
+                  : `<p class="qr-hint">Kein gültiger QR-Code</p>`
+              }
+            </div>
+            <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
+            <p class="qr-hint">${escapeHtml(TF_QR_HINT)}</p>
           </div>
-          <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
-          <p class="qr-hint">${escapeHtml(TF_QR_HINT)}</p>
-          ${sponsorBelowHtml}
+          <div class="sponsor-slot">${sponsorBelowHtml}</div>
         </div>
       </article>
     </div>
