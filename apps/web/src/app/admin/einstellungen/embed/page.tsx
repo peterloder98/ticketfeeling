@@ -39,9 +39,9 @@ export default async function EmbedSettingsPage() {
           Website-Einbindung
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
-          Ticketshop als iframe einbinden. Breite und Höhe wählst du im Code-Dialog (Standard + Fest =
-          bisheriges Verhalten). Kompletter Kauf — Warenkorb, Kasse, Zahlung und Tickets — bleibt im
-          iframe.
+          Ticketshop per offiziellem Embed-Loader einbinden (empfohlen für Meta Ads). Breite und Höhe
+          wählst du im Code-Dialog. Kompletter Kauf — Warenkorb, Kasse, Zahlung und Tickets — bleibt
+          im iframe; Attribution (UTMs, fbclid, _fbp/_fbc) kommt von der Parent-Seite.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.einstellungen} />
@@ -75,6 +75,22 @@ export default async function EmbedSettingsPage() {
         <h2 className="font-semibold text-[var(--tf-navy)]">Hinweise für die Einbindung</h2>
         <ul className="mt-2 list-disc space-y-1.5 pl-5 text-[var(--tf-text-secondary)]">
           <li>
+            Empfohlen: Loader{" "}
+            <code className="text-[var(--tf-navy)]">{appUrl}/embed/ticketfeeling.js</code> — übergibt
+            Parent-UTMs, fbclid, <code>_fbp</code>/<code>_fbc</code> und Consent an den iframe und
+            feuert First-Party Meta-Pixel auf der Organizer-Domain.
+          </li>
+          <li>
+            Beispiel:{" "}
+            <code className="text-[var(--tf-navy)]">{`<script src="${appUrl}/embed/ticketfeeling.js" async></script>`}</code>
+            {" + "}
+            <code>{`<div data-ticketfeeling-embed data-src="${appUrl}/embed/shop" data-height="720"></div>`}</code>
+          </li>
+          <li>
+            Consent vom Parent:{" "}
+            <code>{`Ticketfeeling.setConsent({statistics:true,marketing:true})`}</code>
+          </li>
+          <li>
             Basis-URL im Code: <code className="text-[var(--tf-navy)]">{appUrl}</code>
           </li>
           <li>
@@ -88,12 +104,14 @@ export default async function EmbedSettingsPage() {
             Optional <code>TRACKING_LINKER_DOMAINS</code> für Cross-Domain-Tracking.
           </li>
           <li>
-            Parent kann Consent übergeben:{" "}
-            <code>{`iframe.contentWindow.postMessage({type:'tf:consent',statistics:true,marketing:true}, '*')`}</code>
+            Bei Höhe „Automatisch“ empfängt die Host-Seite Höhe via Message-Typ{" "}
+            <code>tf:embed-height</code> (im Snippet / Loader enthalten). „Fest“ braucht kein Script.
           </li>
           <li>
-            Bei Höhe „Automatisch“ empfängt die Host-Seite Höhe via Message-Typ{" "}
-            <code>tf:embed-height</code> (im Snippet enthalten). „Fest“ braucht kein Script.
+            Funnel-Check:{" "}
+            <Link href="/admin/einstellungen/tracking" className="underline">
+              Tracking-Debug
+            </Link>
           </li>
         </ul>
       </div>

@@ -37,18 +37,27 @@ function injectGa4(input: {
     `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(input.measurementId)}`,
   );
 
+  // Embed: disable automatic page_view — parent first-party + tf:track bridge own the PV.
+  // Avoids double hits + self-referral when organizer site also has GA4.
   const config: Record<string, unknown> = {
-    send_page_view: true,
+    send_page_view: !input.embedMode,
   };
   if (input.linkerDomains.length > 0) {
     config.linker = {
       domains: input.linkerDomains,
       accept_incoming: true,
     };
+  }
+  // Cross-site iframe cookies (embed) need SameSite=None;Secure
+  if (input.embedMode || input.linkerDomains.length > 0) {
     config.cookie_flags = "SameSite=None;Secure";
   }
   if (input.eventSlug) config.event_slug = input.eventSlug;
-  if (input.embedMode) config.tf_embed = "1";
+  if (input.embedMode) {
+    config.tf_embed = "1";
+    // Ignore iframe referrer as traffic source when possible
+    config.page_referrer = typeof document !== "undefined" ? document.referrer : undefined;
+  }
 
   const adsLine = input.googleAdsId
     ? `gtag('config', ${JSON.stringify(input.googleAdsId)});`

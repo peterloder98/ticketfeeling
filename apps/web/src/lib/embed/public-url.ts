@@ -151,6 +151,26 @@ function buildEmbedResizeScript(
 </script>`;
 }
 
+function buildLoaderSnippet(input: {
+  appUrl: string;
+  src: string;
+  title: string;
+  height: number;
+}) {
+  const loader = `${input.appUrl}/embed/ticketfeeling.js`;
+  return `<!-- Ticketfeeling Embed (Meta-Attribution + Auto-Höhe) -->
+<script src="${loader}" async></script>
+<div
+  data-ticketfeeling-embed
+  data-src="${input.src}"
+  data-title="${input.title.replace(/"/g, "&quot;")}"
+  data-height="${input.height}"
+  data-min-height="320"
+  data-max-height="1200"
+></div>
+<!-- Consent vom Parent (Cookie-Banner): Ticketfeeling.setConsent({statistics:true,marketing:true}) -->`;
+}
+
 function buildIframeSnippet(input: {
   src: string;
   title: string;
@@ -158,7 +178,19 @@ function buildIframeSnippet(input: {
   widthPreset?: EmbedWidthPreset;
   heightMode?: EmbedHeightMode;
   minHeight: number;
+  /** Prefer official loader (Meta parent cookies / UTMs). */
+  preferLoader?: boolean;
+  appUrl?: string;
 }) {
+  const preferLoader = input.preferLoader !== false;
+  if (preferLoader && input.appUrl) {
+    return buildLoaderSnippet({
+      appUrl: input.appUrl,
+      src: input.src,
+      title: input.title,
+      height: Math.max(input.minHeight, 320),
+    });
+  }
   const widthPreset = input.widthPreset ?? DEFAULT_EMBED_WIDTH;
   const heightMode = input.heightMode ?? DEFAULT_EMBED_HEIGHT;
   const minHeight = Math.max(input.minHeight, 320);
@@ -193,6 +225,7 @@ export function buildEventEmbedSnippet(input: {
   minHeight?: number;
   widthPreset?: EmbedWidthPreset;
   heightMode?: EmbedHeightMode;
+  preferLoader?: boolean;
 }) {
   const src = `${input.appUrl}/embed/event/${encodeURIComponent(input.slug)}`;
   const title = input.title?.trim() || "Tickets";
@@ -203,6 +236,8 @@ export function buildEventEmbedSnippet(input: {
     widthPreset: input.widthPreset,
     heightMode: input.heightMode,
     minHeight: input.minHeight ?? EMBED_FIXED_HEIGHT_EVENT,
+    preferLoader: input.preferLoader,
+    appUrl: input.appUrl,
   });
 }
 
@@ -211,6 +246,7 @@ export function buildShopEmbedSnippet(input: {
   minHeight?: number;
   widthPreset?: EmbedWidthPreset;
   heightMode?: EmbedHeightMode;
+  preferLoader?: boolean;
 }) {
   const src = `${input.appUrl}/embed/shop`;
   return buildIframeSnippet({
@@ -220,6 +256,8 @@ export function buildShopEmbedSnippet(input: {
     widthPreset: input.widthPreset,
     heightMode: input.heightMode,
     minHeight: input.minHeight ?? EMBED_FIXED_HEIGHT_SHOP,
+    preferLoader: input.preferLoader,
+    appUrl: input.appUrl,
   });
 }
 

@@ -18,6 +18,7 @@ import {
   streetContainsDigits,
 } from "@/lib/commerce/address";
 import { suggestEmailDomainFix } from "@/lib/email/typo-hint";
+import { trackTfEvent } from "@/lib/tracking/client";
 
 type Mode = "guest" | "register";
 
@@ -126,6 +127,8 @@ export function CheckoutForm({
   const router = useRouter();
   const { bump } = useCart();
   const formRef = useRef<HTMLFormElement>(null);
+  const checkoutTracked = useRef(false);
+  const paymentInfoTracked = useRef<string | null>(null);
   const [mode, setMode] = useState<Mode>("guest");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -157,6 +160,37 @@ export function CheckoutForm({
       return pickDefaultPaymentMethod(paymentOptions);
     });
   }, [paymentOptions]);
+
+  // Meta InitiateCheckout once when checkout form mounts
+  useEffect(() => {
+    if (checkoutTracked.current) return;
+    checkoutTracked.current = true;
+    void trackTfEvent("begin_checkout", {
+      embedMode: embed,
+      valueCents: customerTotalCents,
+      currency: "EUR",
+      payload: {
+        funnelStage: "initiate_checkout",
+        numItems: 1,
+      },
+    });
+  }, [embed, customerTotalCents]);
+
+  // Meta AddPaymentInfo when method chosen / changed
+  useEffect(() => {
+    if (!paymentMethod) return;
+    if (paymentInfoTracked.current === paymentMethod) return;
+    paymentInfoTracked.current = paymentMethod;
+    void trackTfEvent("add_payment_info", {
+      embedMode: embed,
+      valueCents: customerTotalCents,
+      currency: "EUR",
+      payload: {
+        funnelStage: "add_payment_info",
+        paymentMethod,
+      },
+    });
+  }, [paymentMethod, embed, customerTotalCents]);
 
   useEffect(() => {
     if (!invoiceRequested || postalCode.length !== 5) {
@@ -329,6 +363,13 @@ export function CheckoutForm({
 
       // Clear cart badge / reminder immediately — don't wait for the next poll.
       bump({ itemCount: 0, expiresAt: null, grossFormatted: null });
+      void trackTfEvent("payment_started", {
+        embedMode: embed,
+        orderId: typeof data.orderId === "string" ? data.orderId : null,
+        valueCents: customerTotalCents,
+        currency: "EUR",
+        payload: { funnelStage: "payment", paymentMethod },
+      });
       const payUrl =
         typeof data.payUrl === "string"
           ? data.payUrl

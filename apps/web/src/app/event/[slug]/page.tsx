@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { AddToCartPanel } from "@/components/add-to-cart";
 import { SeatBookingPanel } from "@/components/seat-booking-panel";
 import { MobilePurchaseBar } from "@/components/mobile-purchase-bar";
+import { FunnelViewTracker } from "@/components/funnel-view-tracker";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { formatEuroFromCents } from "@/lib/money";
 import {
@@ -271,6 +272,13 @@ export default async function EventPage({ params }: Props) {
 
   return (
     <div className="pb-28 md:pb-0">
+      <FunnelViewTracker
+        kind="event_page_view"
+        eventSlug={event.slug}
+        eventId={event.id}
+        eventTitle={event.name}
+        valueCents={categories[0]?.priceGrossCents ?? null}
+      />
       <section className="border-b border-[var(--tf-line)] bg-[var(--tf-navy)] text-white">
         <div className="tf-container grid items-center gap-8 py-8 md:grid-cols-[1.4fr_1fr] md:gap-10 md:py-10">
           <div>
@@ -460,6 +468,9 @@ export default async function EventPage({ params }: Props) {
                     categories={categories}
                     feeSurchargeNote={feeSurchargeNote || undefined}
                     showRemainingAvailability={event.showRemainingAvailability}
+                    eventSlug={event.slug}
+                    eventId={event.id}
+                    eventTitle={event.name}
                     accessibilityOffer={
                       accessibilityOffer.enabled
                         ? {

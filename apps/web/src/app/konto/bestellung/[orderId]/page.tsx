@@ -17,6 +17,7 @@ import {
   mergeSameCategoryLines,
 } from "@/lib/commerce/merge-category-lines";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { PurchaseTrackingBeacon } from "@/components/purchase-tracking-beacon";
 
 export const dynamic = "force-dynamic";
 
@@ -187,6 +188,9 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
 
   return (
     <div className="border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.85)]">
+      {paid ? (
+        <PurchaseTrackingBeacon orderId={order.id} accessToken={sp.t ?? null} />
+      ) : null}
       <div className="tf-container space-y-8 py-10 md:py-14">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div className="max-w-2xl">

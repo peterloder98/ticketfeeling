@@ -12,6 +12,7 @@ import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 import { mergeOrderTicketPositions } from "@/lib/commerce/merge-category-lines";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { PurchaseTrackingBeacon } from "@/components/purchase-tracking-beacon";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tickets" };
@@ -164,6 +165,13 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
 
   return (
     <div className="space-y-4 text-sm">
+      {paid ? (
+        <PurchaseTrackingBeacon
+          orderId={order.id}
+          accessToken={sp.t ?? null}
+          embedMode
+        />
+      ) : null}
       <div>
         <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
           {paid ? "Kauf bestätigt" : processing ? "Zahlung wird verarbeitet" : "Bestellung"}
