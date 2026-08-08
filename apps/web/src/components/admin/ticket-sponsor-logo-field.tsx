@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Check } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
-import {
-  SPONSOR_LOGO_MAX_HEIGHT,
-  SPONSOR_LOGO_MAX_WIDTH,
-} from "@/lib/uploads/optimize-sponsor-logo";
+
+/** Display hint — must match server SPONSOR_LOGO_MAX_* in optimize-sponsor-logo. */
+const SPONSOR_LOGO_MAX_WIDTH = 480;
+const SPONSOR_LOGO_MAX_HEIGHT = 160;
 
 type SponsorField = "ticketSponsorLogoAboveUrl" | "ticketSponsorLogoBelowUrl";
 
