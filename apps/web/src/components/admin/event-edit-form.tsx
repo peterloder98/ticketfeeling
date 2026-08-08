@@ -52,6 +52,12 @@ function humanizeEventSaveError(code: string): string {
       return "Event nicht gefunden.";
     case "SCHEDULE_CHANGE_CONFIRM_REQUIRED":
       return "Bitte die Terminänderung bestätigen.";
+    case "MISSING_EVENT_COVER":
+      return "Verkaufsstart nicht möglich. Bitte lade zuerst ein Eventcover hoch. Jedes veröffentlichte Event benötigt ein Eventcover.";
+    case "SALES_START_BLOCKED":
+      return "Verkaufsstart nicht möglich — Voraussetzungen fehlen (siehe Verkaufsbereitschaft).";
+    case "COVER_REQUIRED_FOR_SALE":
+      return "Verkaufsstart nicht möglich. Bitte lade zuerst ein Eventcover hoch.";
     default:
       return code || "Speichern fehlgeschlagen";
   }
@@ -196,6 +202,10 @@ export function EventEditForm({
               : null,
           ].filter(Boolean);
           setSaveHint(parts.join(" "));
+        } else if (result.coverMissing) {
+          setSaveHint(
+            "Event gespeichert. Eventcover fehlt. Das Event kann ohne Eventcover nicht in den Verkauf gehen.",
+          );
         }
         setConfirmOpen(false);
         setPendingFormData(null);
@@ -597,8 +607,21 @@ export function EventEditForm({
             {pending ? "Speichert…" : "Event speichern"}
           </button>
           {saved ? (
-            <p className="text-sm font-medium text-[var(--tf-teal-hover)]">
-              {saveHint ?? "Änderungen gespeichert."}
+            <p
+              className={`text-sm font-medium ${
+                saveHint?.includes("Eventcover fehlt")
+                  ? "text-[var(--tf-navy)]"
+                  : "text-[var(--tf-teal-hover)]"
+              }`}
+            >
+              {saveHint?.includes("Eventcover fehlt") ? (
+                <>
+                  <span aria-hidden>⚠ </span>
+                  {saveHint}
+                </>
+              ) : (
+                (saveHint ?? "Änderungen gespeichert.")
+              )}
             </p>
           ) : null}
           {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}

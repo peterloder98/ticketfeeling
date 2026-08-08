@@ -5,7 +5,6 @@ import {
   parseSeatHighlight,
   TF_PRINT_HINT,
   TF_QR_HINT,
-  TF_TAGLINE,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
   TICKET_COL_QR,
@@ -106,21 +105,21 @@ export function TicketFace({
                   className="absolute inset-[-14%] scale-110 bg-cover bg-center"
                   style={{
                     backgroundImage: `url(${cover})`,
-                    filter: "blur(26px) saturate(1.05)",
+                    filter: "blur(28px) saturate(0.95)",
                   }}
                   aria-hidden
                 />
                 <div
-                  className="absolute inset-0 bg-[rgba(15,39,71,0.42)]"
+                  className="absolute inset-0 bg-[rgba(15,39,71,0.52)]"
                   aria-hidden
                 />
-                <div className="absolute inset-[4%]">
+                <div className="absolute inset-[2%]">
                   <Image
                     src={cover}
                     alt=""
                     fill
                     sizes="(max-width: 900px) 30vw, 260px"
-                    className="object-contain"
+                    className="object-contain scale-[1.06]"
                     unoptimized
                     priority
                   />
@@ -137,19 +136,19 @@ export function TicketFace({
               compact ? "gap-0.5 px-3 py-1.5" : "gap-0.5 px-4 py-2 md:px-5 md:py-2.5"
             }`}
           >
-            <div className="flex min-w-0 items-center">
+            <div className="flex min-w-0 items-center justify-center">
               <BrandLogo
                 href={null}
                 variant="full"
                 className={
-                  compact ? "!h-9 !w-auto shrink-0" : "!h-10 !w-auto shrink-0 sm:!h-11"
+                  compact ? "!h-10 !w-auto shrink-0" : "!h-11 !w-auto shrink-0 sm:!h-12"
                 }
               />
             </div>
 
             <h1
               className={`line-clamp-2 font-bold leading-[1.1] tracking-tight text-[var(--tf-navy)] ${
-                compact ? "text-[15px]" : "text-lg md:text-xl"
+                compact ? "mt-4 text-[15px]" : "mt-5 text-lg md:text-xl"
               }`}
             >
               {data.eventName}
@@ -226,16 +225,23 @@ export function TicketFace({
             )}
 
             <p
-              className={`truncate ${compact ? "text-[10px]" : "text-xs"}`}
+              className={`flex flex-wrap items-center gap-1.5 truncate ${compact ? "text-[10px]" : "text-xs"}`}
             >
               <span className="text-[var(--tf-text-secondary)]">Kategorie </span>
-              <span
-                className={`font-semibold ${
-                  data.isVip ? "text-[var(--tf-gold)]" : "text-[var(--tf-navy)]"
-                }`}
-              >
-                {data.categoryName}
-              </span>
+              {data.isVip ? (
+                <span className="inline-flex items-center rounded border border-[var(--tf-gold)]/50 bg-[rgba(214,166,66,0.12)] px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.08em] text-[var(--tf-gold)]">
+                  VIP
+                </span>
+              ) : null}
+              {!data.isVip || !/^vip$/i.test(data.categoryName.trim()) ? (
+                <span
+                  className={`font-semibold ${
+                    data.isVip ? "text-[var(--tf-navy)]" : "text-[var(--tf-navy)]"
+                  }`}
+                >
+                  {data.categoryName}
+                </span>
+              ) : null}
             </p>
 
             {/* Seat highlight */}
@@ -277,7 +283,7 @@ export function TicketFace({
             {(data.holderName || data.priceLabel) && (
               <div
                 className={`flex flex-wrap gap-x-4 gap-y-0 text-[var(--tf-text-secondary)] ${
-                  compact ? "text-[10px]" : "text-[11px]"
+                  compact ? "mt-2.5 text-[10px]" : "mt-3 text-[11px]"
                 }`}
               >
                 {data.holderName ? (
@@ -380,25 +386,12 @@ export function TicketFace({
 }
 
 function TicketCoverFallback({ compact }: { compact: boolean }) {
+  // Defensive only — sold tickets should always have a cover after sales gate.
+  if (typeof console !== "undefined") {
+    console.warn("[ticket] missing cover on ticket face — using emergency fallback");
+  }
   return (
-    <div className="absolute inset-0 overflow-hidden">
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "linear-gradient(160deg, #0F2747 0%, #163A5F 48%, #0B1C33 100%)",
-        }}
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute -right-3 -top-4 opacity-[0.1]"
-        aria-hidden
-      >
-        {/* Soft white plate so mark stays brand-true (no recolor filters) */}
-        <div className="rounded-2xl bg-white/90 p-2">
-          <BrandLogo href={null} variant="mark" className="!h-24 !w-auto sm:!h-28" />
-        </div>
-      </div>
+    <div className="absolute inset-0 overflow-hidden bg-[var(--tf-navy)]">
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
         <div className="rounded-lg bg-white/95 px-2.5 py-1.5 shadow-sm">
           <BrandLogo
@@ -407,17 +400,6 @@ function TicketCoverFallback({ compact }: { compact: boolean }) {
             className={compact ? "!h-7 !w-auto" : "!h-9 !w-auto"}
           />
         </div>
-        <p
-          className={`font-medium tracking-wide text-white/80 ${
-            compact ? "text-[9px]" : "text-[10px]"
-          }`}
-        >
-          {TF_TAGLINE}
-        </p>
-        <span
-          className="h-0.5 w-8 rounded-full bg-[var(--tf-teal)]"
-          aria-hidden
-        />
       </div>
     </div>
   );

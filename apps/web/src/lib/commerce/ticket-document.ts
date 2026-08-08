@@ -75,13 +75,19 @@ export function buildTicketHtmlDocument(
        <div class="cover-shade"></div>
        <div class="cover-inset"><img src="${escapeAttr(cover)}" alt="" /></div>`
     : `<div class="fallback">
-         <div class="fallback-monogram" aria-hidden="true"></div>
          <div class="fallback-logo-plate">
            <img src="/brand/logo-email.png" alt="Ticketfeeling" />
          </div>
-         <p class="fallback-claim">${escapeHtml(TF_TAGLINE)}</p>
-         <span class="fallback-accent" aria-hidden="true"></span>
        </div>`;
+
+  const vipBadge = data.isVip
+    ? `<span class="vip-badge">VIP</span>`
+    : "";
+  const categoryLabel =
+    data.isVip && /^vip$/i.test(data.categoryName.trim())
+      ? ""
+      : `<strong>${escapeHtml(data.categoryName)}</strong>`;
+  const categoryHtml = `<p class="category">Kategorie ${vipBadge}${categoryLabel}</p>`;
 
   const sponsorAboveHtml = sponsorAbove
     ? `<div class="sponsor-logo"><img src="${escapeAttr(sponsorAbove)}" alt="" /></div>`
@@ -178,17 +184,17 @@ export function buildTicketHtmlDocument(
       inset: -18%;
       background-size: cover;
       background-position: center;
-      filter: blur(24px) saturate(1.05);
+      filter: blur(28px) saturate(0.95);
       transform: scale(1.1);
     }
     .cover-shade {
       position: absolute;
       inset: 0;
-      background: rgba(15, 39, 71, 0.42);
+      background: rgba(15, 39, 71, 0.52);
     }
     .cover-inset {
       position: absolute;
-      inset: 4%;
+      inset: 2%;
       overflow: hidden;
       background: transparent;
     }
@@ -197,6 +203,7 @@ export function buildTicketHtmlDocument(
       height: 100%;
       object-fit: contain;
       display: block;
+      transform: scale(1.06);
     }
     .zone-a .fallback {
       position: absolute;
@@ -264,12 +271,14 @@ export function buildTicketHtmlDocument(
     .brand-row {
       display: flex;
       align-items: center;
+      justify-content: center;
       min-width: 0;
+      margin-bottom: 18px;
     }
     .brand-row img {
-      height: 32px;
+      height: 36px;
       width: auto;
-      max-width: 148px;
+      max-width: 160px;
       object-fit: contain;
     }
     .event {
@@ -351,10 +360,25 @@ export function buildTicketHtmlDocument(
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
     .category strong {
       font-weight: 600;
-      color: ${data.isVip ? TF_GOLD : TF_NAVY};
+      color: ${TF_NAVY};
+    }
+    .vip-badge {
+      display: inline-block;
+      border: 1px solid rgba(214,166,66,0.55);
+      background: rgba(214,166,66,0.12);
+      color: ${TF_GOLD};
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 1px 5px;
+      border-radius: 3px;
     }
     .seat-boxes {
       display: flex;
@@ -394,7 +418,7 @@ export function buildTicketHtmlDocument(
       white-space: nowrap;
     }
     .foot-meta {
-      margin-top: 1px;
+      margin-top: 12px;
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
@@ -528,7 +552,7 @@ export function buildTicketHtmlDocument(
               : ""
           }
           ${doorsBeginHtml}
-          <p class="category">Kategorie <strong>${escapeHtml(data.categoryName)}</strong></p>
+          ${categoryHtml}
           ${seatHtml}
           ${footerBits ? `<div class="foot-meta">${footerBits}</div>` : ""}
         </div>

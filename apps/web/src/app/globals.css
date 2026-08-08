@@ -333,13 +333,27 @@ html.dark .tf-display {
   animation: tf-fade-up var(--tf-duration) var(--tf-ease) both;
 }
 
-/* Links accent */
+/* Links accent — obvious clickable (teal + underline) */
 .tf-link {
   color: var(--tf-teal);
   font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .tf-link:hover {
+  color: var(--tf-teal-hover);
+}
+
+/* Admin inline links — same as .tf-link, explicit for admin lists */
+.tf-admin-link {
+  color: var(--tf-teal);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tf-admin-link:hover {
   color: var(--tf-teal-hover);
 }
 

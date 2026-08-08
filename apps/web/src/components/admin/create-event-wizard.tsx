@@ -158,8 +158,10 @@ function humanizeCreateEventError(err: unknown): string {
   const code = err instanceof Error ? err.message : "";
   switch (code) {
     case "COVER_REQUIRED_FOR_SALE":
-      // Legacy — cover is no longer required for sale; keep message for old clients.
-      return "Cover fehlt noch — Verkauf ist trotzdem möglich. Dein Entwurf bleibt gespeichert.";
+    case "MISSING_EVENT_COVER":
+      return "Verkaufsstart nicht möglich. Bitte lade zuerst ein Eventcover hoch. Dein Entwurf bleibt gespeichert.";
+    case "SALES_START_BLOCKED":
+      return "Verkaufsstart nicht möglich — Voraussetzungen fehlen. Dein Entwurf bleibt gespeichert.";
     case "TRACKING_REVIEW_REQUIRED":
       return "Bitte Tracking prüfen (Org-Defaults oder eigene IDs). Dein Entwurf bleibt gespeichert.";
     case "CATEGORIES_REQUIRED":
@@ -958,7 +960,7 @@ export function CreateEventWizard({
         ? "Saalplan (Kategorien am Event)"
         : "Mindestens 1 Ticketkategorie",
     },
-    { ok: true, label: "Cover (empfohlen)", soft: true },
+    { ok: Boolean(coverImageUrl?.trim() || selectedTour?.coverImageUrl), label: "Eventcover", soft: false },
     {
       ok: lineup.some((a) => a.name.trim()),
       label: "Künstler (optional)",

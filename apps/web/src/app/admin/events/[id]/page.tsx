@@ -26,6 +26,10 @@ import {
 } from "@/components/admin/unassigned-seats-banner";
 import { canCreateEventCategories, effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release";
+import { EventSalesReadiness } from "@/components/admin/event-sales-readiness";
+import { BuyerHeatmap } from "@/components/admin/buyer-heatmap";
+import { loadBuyerHeatmapPoints } from "@/lib/admin/load-buyer-heatmap";
+import { Suspense } from "react";
 import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
@@ -45,7 +49,13 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ saved?: string }>;
+  searchParams: Promise<{
+    saved?: string;
+    coverMissing?: string;
+    hmPeriod?: string;
+    hmFrom?: string;
+    hmTo?: string;
+  }>;
 };
 
 function EventLoadError({ message }: { message?: string }) {
@@ -78,7 +88,7 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function AdminEventDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
-  const { saved } = await searchParams;
+  const { saved, coverMissing, hmPeriod, hmFrom, hmTo } = await searchParams;
 
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
@@ -124,7 +134,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       include: {
         // Never `location: true` — Decimal lat/lng breaks Client Component serialization.
         location: { select: { id: true, name: true, city: true } },
-        tour: { select: { id: true, name: true, coverImageUrl: true } },
+        tour: { select: { id: true, name: true, coverImageUrl: true, visibility: true } },
         venuePlan: { select: { id: true, name: true, locationId: true } },
         ticketCategories: {
           orderBy: { sortOrder: "asc" },
@@ -161,10 +171,27 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     organizationId: event.organizationId,
     status: event.status,
     presaleStartsAt: event.presaleStartsAt,
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories.map((c) => ({
+      priceGrossCents: c.priceGrossCents,
+      capacity: c.capacity,
+    })),
   });
   if (released.flipped) event.status = released.status;
 
-  const displayStatus = effectiveEventStatus(event);
+  const displayStatus = effectiveEventStatus({
+    status: event.status,
+    presaleStartsAt: event.presaleStartsAt,
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories.map((c) => ({
+      priceGrossCents: c.priceGrossCents,
+      capacity: c.capacity,
+    })),
+  });
   const categoriesCreateLocked = !(await canCreateEventCategories(event.id));
 
   // Plain props only — never pass the raw Prisma graph into Client Components.
@@ -328,14 +355,26 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     console.error("[admin/events/[id]] ticket count failed", event.id, err);
   }
 
+  const [heatmap, previewTicket] = await Promise.all([
+    loadBuyerHeatmapPoints({
+      organizationId: membership.organizationId,
+      eventId: event.id,
+      period: hmPeriod,
+      from: hmFrom,
+      to: hmTo,
+    }),
+    prisma.ticket.findFirst({
+      where: { eventId: event.id, status: { not: "voided" } },
+      select: { id: true },
+      orderBy: { createdAt: "desc" },
+    }),
+  ]);
+
   return (
     <UnassignedSeatsProvider initialCount={seatingEnabled ? unassignedSeatCount : 0}>
     <div className="space-y-6">
       <div>
-        <Link
-          href="/admin/events"
-          className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
-        >
+        <Link href="/admin/events" className="tf-admin-link text-sm">
           ← Alle Events
         </Link>
         <div className="mt-3">
@@ -367,7 +406,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
                     Tour:{" "}
                     <Link
                       href={`/admin/tours/${event.tour.id}`}
-                      className="font-medium text-[var(--tf-navy)] underline"
+                      className="tf-admin-link"
                     >
                       {event.tour.name}
                     </Link>
@@ -377,11 +416,25 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             }
           />
         </div>
-        {saved ? (
-          <p className="mt-3 rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-            {needsSeatAssignment
-              ? "Event gespeichert — als Nächstes Plätze den Ticketkategorien zuordnen."
-              : "Änderungen gespeichert."}
+        {saved || coverMissing ? (
+          <p
+            className={`mt-3 rounded-xl border px-3 py-2 text-sm text-[var(--tf-navy)] ${
+              coverMissing
+                ? "border-[rgba(214,166,66,0.45)] bg-[rgba(214,166,66,0.1)]"
+                : "border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)]"
+            }`}
+          >
+            {coverMissing ? (
+              <>
+                <span aria-hidden>⚠ </span>
+                Event gespeichert. Eventcover fehlt. Das Event kann ohne Eventcover nicht in den
+                Verkauf gehen. Bitte vor dem Verkaufsstart ein Eventcover hochladen.
+              </>
+            ) : needsSeatAssignment ? (
+              "Event gespeichert — als Nächstes Plätze den Ticketkategorien zuordnen."
+            ) : (
+              "Änderungen gespeichert."
+            )}
           </p>
         ) : null}
         {seatingEnabled ? (
@@ -390,7 +443,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       </div>
 
       {/* Cover preview + edit at top */}
-      <section className="tf-card !p-5">
+      <section className="tf-card !p-5" id="cover">
         <div>
           <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Cover-Bild</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
@@ -437,6 +490,23 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           ) : null}
         </div>
       </section>
+
+      <EventSalesReadiness
+        event={{
+          id: event.id,
+          status: event.status,
+          coverImageUrl: displayCover,
+          eventStartsAt: event.eventStartsAt,
+          doorsOpenAt: event.doorsOpenAt,
+          presaleStartsAt: event.presaleStartsAt,
+          tour: event.tour,
+          ticketCategories: event.ticketCategories.map((c) => ({
+            priceGrossCents: c.priceGrossCents,
+            capacity: c.capacity,
+          })),
+        }}
+        previewTicketId={previewTicket?.id ?? null}
+      />
 
       {/* Optional ticket-only cover override */}
       <section className="tf-card !p-5">
@@ -537,6 +607,18 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           </div>
         )}
       </section>
+
+      <Suspense fallback={null}>
+        <BuyerHeatmap
+          title="Käufer-Heatmap (dieses Event)"
+          points={heatmap.points}
+          orderCount={heatmap.orderCount}
+          withGeo={heatmap.withGeo}
+          periodKey={heatmap.periodKey}
+          periodLabel={heatmap.periodLabel}
+          paramPrefix="hm"
+        />
+      </Suspense>
 
       {/* KPIs */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

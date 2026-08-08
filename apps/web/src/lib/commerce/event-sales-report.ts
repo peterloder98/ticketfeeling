@@ -49,6 +49,8 @@ export async function getEventListSales(
       status: true,
       eventStartsAt: true,
       presaleStartsAt: true,
+      coverImageUrl: true,
+      tour: { select: { coverImageUrl: true } },
       location: { select: { name: true, city: true } },
       ticketCategories: {
         select: {

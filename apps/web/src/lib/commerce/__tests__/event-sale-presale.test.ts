@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  canStartSales,
   effectiveEventStatus,
+  hasValidEventCover,
   isEventSaleOpen,
+  isSalesActivationBlocked,
   resolvePersistedEventStatus,
   statusAfterPresaleStart,
 } from "@/lib/commerce/event-sale";
@@ -11,23 +14,40 @@ describe("presale status transitions", () => {
   const past = new Date("2026-08-06T08:17:00.000Z"); // 10:17 Berlin
   const future = new Date("2026-08-06T10:00:00.000Z"); // 12:00 Berlin
 
-  it("flips announcement to Im Verkauf when Vorverkaufsstart is reached", () => {
-    expect(statusAfterPresaleStart("announcement", past, now)).toBe("presale_active");
-    expect(effectiveEventStatus({ status: "announcement", presaleStartsAt: past }, now)).toBe(
-      "presale_active",
-    );
+  it("flips announcement to Im Verkauf when Vorverkaufsstart is reached and cover ok", () => {
+    expect(statusAfterPresaleStart("announcement", past, now, true)).toBe("presale_active");
+    expect(
+      effectiveEventStatus(
+        {
+          status: "announcement",
+          presaleStartsAt: past,
+          coverImageUrl: "/covers/x.jpg",
+          eventStartsAt: past,
+        },
+        now,
+      ),
+    ).toBe("presale_active");
   });
 
   it("flips draft to Im Verkauf when Vorverkaufsstart is reached (effective + persist)", () => {
-    expect(statusAfterPresaleStart("draft", past, now)).toBe("presale_active");
-    expect(effectiveEventStatus({ status: "draft", presaleStartsAt: past }, now)).toBe(
-      "presale_active",
-    );
+    expect(statusAfterPresaleStart("draft", past, now, true)).toBe("presale_active");
+    expect(
+      effectiveEventStatus(
+        {
+          status: "draft",
+          presaleStartsAt: past,
+          coverImageUrl: "/covers/x.jpg",
+          eventStartsAt: past,
+        },
+        now,
+      ),
+    ).toBe("presale_active");
     expect(
       resolvePersistedEventStatus({
         requestedStatus: "draft",
         presaleStartsAt: past,
         coverImageUrl: "/covers/x.jpg",
+        eventStartsAt: past,
         now,
       }),
     ).toBe("presale_active");
@@ -55,7 +75,7 @@ describe("presale status transitions", () => {
     ).toBe("draft");
   });
 
-  it("auto-flips to Im Verkauf without cover", () => {
+  it("does not auto-flip to Im Verkauf without cover", () => {
     expect(
       resolvePersistedEventStatus({
         requestedStatus: "announcement",
@@ -63,10 +83,16 @@ describe("presale status transitions", () => {
         coverImageUrl: null,
         now,
       }),
-    ).toBe("presale_active");
+    ).toBe("announcement");
+    expect(
+      effectiveEventStatus(
+        { status: "announcement", presaleStartsAt: past, coverImageUrl: null },
+        now,
+      ),
+    ).toBe("announcement");
   });
 
-  it("allows explicit Im Verkauf without cover", () => {
+  it("blocks explicit Im Verkauf without cover (persists as announcement if start set)", () => {
     expect(
       resolvePersistedEventStatus({
         requestedStatus: "presale_active",
@@ -74,7 +100,7 @@ describe("presale status transitions", () => {
         coverImageUrl: null,
         now,
       }),
-    ).toBe("presale_active");
+    ).toBe("announcement");
   });
 
   it("does not treat paused as on sale", () => {
@@ -83,11 +109,34 @@ describe("presale status transitions", () => {
   });
 });
 
-describe("isEventSaleOpen without cover", () => {
+describe("canStartSales / cover gate", () => {
   const now = new Date("2026-08-06T08:30:00.000Z");
   const past = new Date("2026-08-06T08:17:00.000Z");
 
-  it("opens sale when released even if cover is missing", () => {
+  it("requires cover", () => {
+    expect(hasValidEventCover({ coverImageUrl: null })).toBe(false);
+    expect(hasValidEventCover({ coverImageUrl: "/covers/x.jpg" })).toBe(true);
+    expect(
+      canStartSales({
+        coverImageUrl: null,
+        eventStartsAt: past,
+        categories: [{ priceGrossCents: 1000, capacity: 10 }],
+      }).reasons,
+    ).toContain("MISSING_EVENT_COVER");
+  });
+
+  it("accepts tour cover", () => {
+    expect(
+      canStartSales({
+        coverImageUrl: null,
+        tour: { coverImageUrl: "/covers/tour.jpg" },
+        eventStartsAt: past,
+        categories: [{ priceGrossCents: 1000, capacity: 10 }],
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("blocks sale open without cover", () => {
     expect(
       isEventSaleOpen(
         {
@@ -98,29 +147,39 @@ describe("isEventSaleOpen without cover", () => {
         },
         now,
       ),
-    ).toBe(true);
+    ).toBe(false);
   });
 
-  it("opens sale for effective Im Verkauf (announcement + reached start) without cover", () => {
+  it("opens sale when released with cover", () => {
     expect(
       isEventSaleOpen(
         {
-          status: "announcement",
+          status: "presale_active",
           presaleStartsAt: past,
-          coverImageUrl: null,
+          coverImageUrl: "/covers/x.jpg",
         },
         now,
       ),
     ).toBe(true);
   });
 
+  it("reports activation blocked when start due and cover missing", () => {
+    const blocked = isSalesActivationBlocked(
+      {
+        status: "announcement",
+        presaleStartsAt: past,
+        coverImageUrl: null,
+        eventStartsAt: past,
+        categories: [{ priceGrossCents: 1000, capacity: 10 }],
+      },
+      now,
+    );
+    expect(blocked?.reasons).toContain("MISSING_EVENT_COVER");
+  });
+
   it("closes sale when paused or cancelled", () => {
-    expect(
-      isEventSaleOpen({ status: "paused", presaleStartsAt: past }, now),
-    ).toBe(false);
-    expect(
-      isEventSaleOpen({ status: "cancelled", presaleStartsAt: past }, now),
-    ).toBe(false);
+    expect(isEventSaleOpen({ status: "paused", presaleStartsAt: past }, now)).toBe(false);
+    expect(isEventSaleOpen({ status: "cancelled", presaleStartsAt: past }, now)).toBe(false);
   });
 
   it("closes sale when saleClosedEarly is set", () => {
@@ -129,6 +188,7 @@ describe("isEventSaleOpen without cover", () => {
         {
           status: "presale_active",
           presaleStartsAt: past,
+          coverImageUrl: "/covers/x.jpg",
           saleClosedEarly: true,
         },
         now,

@@ -9,6 +9,7 @@ import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { AdminEventsList } from "@/components/admin/admin-events-list";
 import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
+import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Events" };
@@ -45,7 +46,7 @@ export default async function AdminEventsPage({ searchParams }: Props) {
           <h1 className="text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Events</h1>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             Einzeltermine und Tour-Termine. Mehrere Orte/Daten? Zuerst unter{" "}
-            <Link href="/admin/tours" className="font-medium text-[var(--tf-navy)] underline">
+            <Link href="/admin/tours" className="tf-admin-link">
               Touren
             </Link>{" "}
             das Projekt anlegen.
@@ -75,6 +76,10 @@ export default async function AdminEventsPage({ searchParams }: Props) {
           name: event.name,
           slug: event.slug,
           status: event.status,
+          coverUrl: resolveEventCoverUrl({
+            coverImageUrl: event.coverImageUrl,
+            tour: event.tour,
+          }),
           presaleStartsAt: event.presaleStartsAt?.toISOString() ?? null,
           eventStartsAt: event.eventStartsAt?.toISOString() ?? null,
           locationName: event.location?.name ?? null,

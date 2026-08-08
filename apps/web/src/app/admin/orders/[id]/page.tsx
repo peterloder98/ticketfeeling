@@ -28,6 +28,20 @@ function berlinDateTime(d: Date) {
   });
 }
 
+function formatAddress(parts: {
+  street?: string | null;
+  houseNumber?: string | null;
+  postalCode?: string | null;
+  city?: string | null;
+  country?: string | null;
+}) {
+  const line1 = [parts.street, parts.houseNumber].filter(Boolean).join(" ").trim();
+  const line2 = [parts.postalCode, parts.city].filter(Boolean).join(" ").trim();
+  const country = parts.country?.trim();
+  const lines = [line1, line2, country && country !== "DE" ? country : null].filter(Boolean);
+  return lines.length ? lines.join(", ") : null;
+}
+
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   const order = await prisma.order.findUnique({
@@ -100,13 +114,26 @@ export default async function AdminOrderDetailPage({ params }: Props) {
       ? primary.locationSnapshot.split(",").slice(1).join(",").trim() || null
       : null);
 
+  const customerAddress = formatAddress({
+    street: order.invoiceStreet || order.customer.street,
+    houseNumber: order.invoiceHouseNumber || order.customer.houseNumber,
+    postalCode: order.invoicePostalCode || order.customer.postalCode,
+    city: order.invoiceCity || order.customer.city,
+    country: order.invoiceCountry || order.customer.country,
+  });
+
+  const feeCents =
+    order.administrationFeeGrossCents || order.feeGrossCents || 0;
+  const ticketsSubtotal =
+    order.ticketSubtotalCents ||
+    order.ticketsGrossCents ||
+    order.items.reduce((s, i) => s + i.grossCents, 0);
+  const totalCents = order.customerTotalCents || order.grossCents;
+
   return (
     <div className="space-y-6">
       <div>
-        <Link
-          href="/admin/orders"
-          className="text-sm text-[var(--tf-text-secondary)] hover:text-[var(--tf-navy)]"
-        >
+        <Link href="/admin/orders" className="tf-admin-link text-sm">
           ← Alle Bestellungen
         </Link>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -119,7 +146,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
           </span>
         </div>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          {channelShortHint(order.channel)} · {formatEuroFromCents(order.grossCents)} ·{" "}
+          {channelShortHint(order.channel)} · {formatEuroFromCents(totalCents)} ·{" "}
           {order.tickets.length} Tickets
         </p>
       </div>
@@ -198,19 +225,21 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               E-Mail
             </dt>
             <dd className="mt-1 text-sm text-[var(--tf-text)]">
-              <a
-                href={`mailto:${order.customer.email}`}
-                className="text-[var(--tf-teal)] underline"
-              >
+              <a href={`mailto:${order.customer.email}`} className="tf-admin-link">
                 {order.customer.email}
               </a>
             </dd>
           </div>
+          <div className="sm:col-span-2">
+            <dt className="text-xs font-medium uppercase tracking-wide text-[var(--tf-text-secondary)]">
+              Adresse
+            </dt>
+            <dd className="mt-1 text-sm text-[var(--tf-text)]">
+              {customerAddress ?? "—"}
+            </dd>
+          </div>
         </dl>
-        <Link
-          href={`/admin/kunden/${order.customer.id}`}
-          className="inline-block text-sm font-medium text-[var(--tf-navy)] underline"
-        >
+        <Link href={`/admin/kunden/${order.customer.id}`} className="tf-admin-link text-sm">
           Kundenprofil öffnen
         </Link>
       </section>
@@ -228,7 +257,10 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                   {item.quantity}× {item.categorySnapshot}
                   <span className="text-[var(--tf-text-secondary)]">
                     {" "}
-                    · {item.eventNameSnapshot}
+                    · {formatEuroFromCents(item.unitPaidGrossCents)} / Stk.
+                  </span>
+                  <span className="block text-[var(--tf-text-secondary)]">
+                    {item.eventNameSnapshot}
                   </span>
                 </span>
                 <span className="font-medium text-[var(--tf-navy)]">
@@ -237,6 +269,26 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               </li>
             ))}
           </ul>
+          <dl className="space-y-1.5 border-t border-[var(--tf-line)] pt-3 text-sm">
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--tf-text-secondary)]">Tickets</dt>
+              <dd className="font-medium text-[var(--tf-navy)]">
+                {formatEuroFromCents(ticketsSubtotal)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
+              <dt className="text-[var(--tf-text-secondary)]">zzgl. Gebühr</dt>
+              <dd className="font-medium text-[var(--tf-navy)]">
+                {formatEuroFromCents(feeCents)}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3 text-base">
+              <dt className="font-semibold text-[var(--tf-navy)]">Gesamtpreis</dt>
+              <dd className="font-semibold text-[var(--tf-navy)]">
+                {formatEuroFromCents(totalCents)}
+              </dd>
+            </div>
+          </dl>
         </section>
       ) : null}
 
@@ -247,7 +299,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
             {order.tickets.some((t) => t.status !== "voided") ? (
               <a
                 href={`/api/v1/orders/${order.id}/pdf`}
-                className="text-sm font-semibold text-[var(--tf-teal)] hover:underline"
+                className="tf-admin-link text-sm"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -274,7 +326,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                   {t.status !== "voided" ? (
                     <a
                       href={`/api/v1/tickets/${t.id}/pdf`}
-                      className="font-semibold text-[var(--tf-teal)] hover:underline"
+                      className="tf-admin-link"
                       target="_blank"
                       rel="noreferrer"
                     >

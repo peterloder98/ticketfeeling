@@ -109,12 +109,8 @@ export default async function AdminDashboardPage() {
             {stats.recentOrders.map((order) => (
               <Link
                 key={order.id}
-                href={
-                  order.channel === "box_office"
-                    ? `/kasse/beleg/${order.id}`
-                    : `/konto/bestellung/${order.id}`
-                }
-                className="flex justify-between gap-2 hover:text-[var(--gold-soft)]"
+                href={`/admin/orders/${order.id}`}
+                className="tf-admin-link flex justify-between gap-2 no-underline hover:underline"
               >
                 <span className="flex flex-wrap items-center gap-2">
                   <span>{order.orderNumber}</span>

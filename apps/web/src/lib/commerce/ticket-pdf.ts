@@ -86,8 +86,8 @@ async function drawImageContainWithBlur(
   w: number,
   h: number,
 ) {
-  // Slightly larger inset so the sharp art fills more of the cover zone
-  const inset = Math.max(4, Math.round(Math.min(w, h) * 0.04));
+  // Slightly larger inset so the sharp art fills more of the cover zone (~6% larger art)
+  const inset = Math.max(2, Math.round(Math.min(w, h) * 0.02));
   const ix = x + inset;
   const iy = y + inset;
   const iw = w - inset * 2;
@@ -100,7 +100,7 @@ async function drawImageContainWithBlur(
     const srcW = meta.width || iw;
     const srcH = meta.height || ih;
 
-    // Soft blurred backdrop — larger overscan + stronger blur, lighter navy wash
+    // Soft blurred backdrop — calmer darker wash
     try {
       const blurScale = Math.max(w / srcW, h / srcH) * 1.35;
       const bw = Math.max(1, Math.round(srcW * blurScale));
@@ -108,7 +108,7 @@ async function drawImageContainWithBlur(
       const blurred = await sharp(buffer)
         .resize(bw, bh, { fit: "cover" })
         .blur(28)
-        .modulate({ brightness: 0.72, saturation: 1.05 })
+        .modulate({ brightness: 0.62, saturation: 0.95 })
         .png()
         .toBuffer();
       doc.save();
@@ -118,14 +118,14 @@ async function drawImageContainWithBlur(
         height: bh,
       });
       doc.restore();
-      doc.rect(x, y, w, h).fillOpacity(0.38).fill(TF_NAVY);
+      doc.rect(x, y, w, h).fillOpacity(0.48).fill(TF_NAVY);
       doc.fillOpacity(1);
     } catch {
       /* navy fill already applied */
     }
 
-    // Sharp square-safe contain — no rectangular frame/box
-    const containScale = Math.min(iw / srcW, ih / srcH);
+    // Sharp square-safe contain — ~6% larger within inset, no rectangular frame
+    const containScale = Math.min(iw / srcW, ih / srcH) * 1.06;
     const dw = srcW * containScale;
     const dh = srcH * containScale;
     const dx = ix + (iw - dw) / 2;
@@ -148,41 +148,24 @@ function drawCoverFallback(
   w: number,
   h: number,
 ) {
-  const grad = doc.linearGradient(x, y, x + w, y + h);
-  grad.stop(0, "#0F2747").stop(0.5, "#163A5F").stop(1, "#0B1C33");
-  doc.rect(x, y, w, h).fill(grad);
+  console.warn("[ticket-pdf] missing cover — emergency navy fallback");
+  doc.rect(x, y, w, h).fill(TF_NAVY);
 
   if (logo) {
     try {
       const plateW = Math.min(w - 24, 118);
       const plateH = 28;
       const px = x + (w - plateW) / 2;
-      const py = y + h / 2 - 22;
+      const py = y + h / 2 - 14;
       doc.roundedRect(px, py, plateW, plateH, 5).fill("#FFFFFF");
       doc.image(logo, px + 8, py + 5, {
         height: 18,
         fit: [plateW - 16, 18],
       });
     } catch {
-      /* text fallback below */
+      /* ignore */
     }
   }
-
-  doc
-    .font("Helvetica")
-    .fontSize(7)
-    .fillColor("#FFFFFF")
-    .fillOpacity(0.82)
-    .text(TF_TAGLINE, x + 8, y + h / 2 + 12, {
-      width: w - 16,
-      align: "center",
-    });
-  doc.fillOpacity(1);
-
-  const barW = 22;
-  doc
-    .roundedRect(x + (w - barW) / 2, y + h / 2 + 26, barW, 2, 1)
-    .fill(TF_TEAL);
 }
 
 async function drawTicketPage(
@@ -244,29 +227,33 @@ async function drawTicketPage(
   const bInnerW = zoneB - bPadX * 2;
   let by = ticketY + bPadY;
 
-  // Brand lockup only (no claim / tagline on the ticket middle)
+  // Brand lockup centered at top of middle zone (~12% larger), gap before title
   if (logo) {
     try {
-      doc.image(logo, bx + bPadX, by, { height: 22, fit: [118, 22] });
+      const logoH = 26;
+      const logoW = 132;
+      doc.image(logo, bx + (zoneB - logoW) / 2, by, { height: logoH, fit: [logoW, logoH] });
     } catch {
       doc
         .font("Helvetica-Bold")
-        .fontSize(9)
+        .fontSize(10)
         .fillColor(TF_NAVY)
         .text("Ticketfeeling", bx + bPadX, by + 4, {
           width: bInnerW,
+          align: "center",
         });
     }
   } else {
     doc
       .font("Helvetica-Bold")
-      .fontSize(9)
+      .fontSize(10)
       .fillColor(TF_NAVY)
       .text("Ticketfeeling", bx + bPadX, by + 4, {
         width: bInnerW,
+        align: "center",
       });
   }
-  by += 26;
+  by += 44;
 
   doc
     .fillColor(TF_NAVY)
@@ -397,11 +384,38 @@ async function drawTicketPage(
     .fontSize(7.5)
     .fillColor(TF_MUTED)
     .text("Kategorie  ", bx + bPadX, by, { continued: true });
-  doc
-    .font("Helvetica-Bold")
-    .fontSize(8)
-    .fillColor(data.isVip ? TF_GOLD : TF_NAVY)
-    .text(data.categoryName, { continued: false });
+  if (data.isVip) {
+    const badgeX = doc.x;
+    const badgeY = by - 1;
+    doc.roundedRect(badgeX, badgeY, 22, 11, 2).fillOpacity(0.12).fill(TF_GOLD);
+    doc.fillOpacity(1);
+    doc
+      .roundedRect(badgeX, badgeY, 22, 11, 2)
+      .strokeColor(TF_GOLD)
+      .lineWidth(0.6)
+      .stroke();
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(6.5)
+      .fillColor(TF_GOLD)
+      .text("VIP", badgeX, badgeY + 2.5, { width: 22, align: "center" });
+    doc.x = badgeX + 26;
+    if (!/^vip$/i.test(data.categoryName.trim())) {
+      doc
+        .font("Helvetica-Bold")
+        .fontSize(8)
+        .fillColor(TF_NAVY)
+        .text(data.categoryName, { continued: false });
+    } else {
+      doc.text("", { continued: false });
+    }
+  } else {
+    doc
+      .font("Helvetica-Bold")
+      .fontSize(8)
+      .fillColor(TF_NAVY)
+      .text(data.categoryName, { continued: false });
+  }
   by = doc.y + 3;
 
   // Seat highlight boxes / text
@@ -459,7 +473,8 @@ async function drawTicketPage(
     data.priceLabel ? { label: "Preis", value: data.priceLabel } : null,
   ].filter(Boolean) as { label: string; value: string }[];
 
-  // Inhaber | Preis follow seat in the info flow (no bottom pin / dead gap)
+  // Inhaber | Preis follow seat in the info flow (extra air above)
+  if (footerMeta.length > 0) by += 8;
   for (const row of footerMeta) {
     if (by > ticketY + ticketH - 10) break;
     doc

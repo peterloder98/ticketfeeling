@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { storeCoverAsset } from "@/lib/uploads/store-cover";
 import { syncTourCoverToEvents } from "@/lib/commerce/tour-cover-sync";
 import { optimizeCoverImage } from "@/lib/uploads/optimize-cover";
+import { tryActivateSalesAfterCover } from "@/lib/commerce/ensure-presale-release";
 
 export const runtime = "nodejs";
 
@@ -162,6 +163,10 @@ export async function POST(request: Request) {
         await prisma.event.update({
           where: { id: eventId },
           data: { coverImageUrl: stored.url },
+        });
+        // If Vorverkaufsstart already past and cover was the only blocker → go live.
+        await tryActivateSalesAfterCover(eventId).catch((err) => {
+          console.error("[cover upload] auto-activate failed", eventId, err);
         });
       }
       revalidatePath(`/admin/events/${eventId}`);

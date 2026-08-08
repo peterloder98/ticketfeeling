@@ -23,6 +23,7 @@ export type AdminEventListRow = {
   name: string;
   slug: string;
   status: string;
+  coverUrl: string | null;
   presaleStartsAt: string | null;
   eventStartsAt: string | null;
   locationName: string | null;
@@ -128,7 +129,22 @@ export function AdminEventsList({
               className="tf-card tf-card-hover block !p-5 transition"
             >
               <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-1 gap-3.5">
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.06)]">
+                    {event.coverUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={event.coverUrl}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[10px] font-medium uppercase tracking-wide text-[var(--tf-text-secondary)]">
+                        Cover
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="text-lg font-semibold text-[var(--tf-navy)]">{event.name}</h2>
                     <span className="rounded-full bg-[rgba(15,39,71,0.06)] px-2.5 py-0.5 text-xs font-medium text-[var(--tf-navy)]">
@@ -138,6 +154,8 @@ export function AdminEventsList({
                           presaleStartsAt: event.presaleStartsAt
                             ? new Date(event.presaleStartsAt)
                             : null,
+                          coverImageUrl: event.coverUrl,
+                          skipCategoryChecks: true,
                         }),
                       )}
                     </span>
@@ -147,6 +165,7 @@ export function AdminEventsList({
                     {place ? ` · ${place}` : ""}
                     {` · ${event.categoryCount} ${event.categoryCount === 1 ? "Kategorie" : "Kategorien"}`}
                   </p>
+                  </div>
                 </div>
                 <div className="w-full max-w-[220px] sm:w-56">
                   <TicketProgressBar sold={event.sold} capacity={event.capacity} />

@@ -19,7 +19,11 @@ import { syncEventArtistsInTx } from "@/lib/admin/artist-sync";
 import { allocateUniqueEventSlug } from "@/lib/admin/unique-event-slug";
 import { resolveCoverForTourEvent } from "@/lib/commerce/tour-cover-sync";
 import {
+  canStartSales,
+  hasValidEventCover,
   isEventSalesReleased,
+  logSalesActivated,
+  logSalesActivationBlocked,
   resolvePersistedEventStatus,
 } from "@/lib/commerce/event-sale";
 import {
@@ -224,11 +228,6 @@ async function createEventFromFormData(
     tourId,
     coverImageUrl,
   });
-  const status = resolvePersistedEventStatus({
-    requestedStatus,
-    presaleStartsAt,
-    coverImageUrl: persistedCoverUrl,
-  });
 
   const taxRate =
     (await prisma.taxRate.findFirst({
@@ -279,6 +278,39 @@ async function createEventFromFormData(
   if (locationMode !== "new" && !locationId) {
     throw new Error("LOCATION_REQUIRED");
   }
+
+  if (isEventSalesReleased(requestedStatus)) {
+    const ready = canStartSales({
+      coverImageUrl: persistedCoverUrl,
+      eventStartsAt,
+      categories: categories.map((c) => ({
+        priceGrossCents: c.priceGrossCents,
+        capacity: c.capacity,
+      })),
+    });
+    if (!ready.ok) {
+      logSalesActivationBlocked({
+        eventId: "pending-create",
+        reasons: ready.reasons,
+        presaleStartsAt,
+      });
+      if (ready.reasons.includes("MISSING_EVENT_COVER")) {
+        throw new Error("MISSING_EVENT_COVER");
+      }
+      throw new Error("SALES_START_BLOCKED");
+    }
+  }
+
+  const status = resolvePersistedEventStatus({
+    requestedStatus,
+    presaleStartsAt,
+    coverImageUrl: persistedCoverUrl,
+    eventStartsAt,
+    categories: categories.map((c) => ({
+      priceGrossCents: c.priceGrossCents,
+      capacity: c.capacity,
+    })),
+  });
 
   const event = await prisma.$transaction(async (tx) => {
     if (locationMode === "new") {
@@ -492,14 +524,22 @@ async function createEventFromFormData(
   if (tourId) {
     revalidatePath(`/admin/tours/${tourId}`);
     revalidatePath("/admin/tours");
-    return { ok: true, redirectTo: `/admin/tours/${tourId}?termin=1` };
+    return {
+      ok: true,
+      redirectTo: `/admin/tours/${tourId}?termin=1${
+        hasValidEventCover({ coverImageUrl: persistedCoverUrl }) ? "" : "&coverMissing=1"
+      }`,
+    };
   }
+  const coverQs = hasValidEventCover({ coverImageUrl: persistedCoverUrl })
+    ? ""
+    : "&coverMissing=1";
   return {
     ok: true,
     redirectTo:
       event.venuePlanId && event.seatingBookingMode !== "none"
-        ? `/admin/events/${event.id}?saved=1#zuordnung`
-        : `/admin/events/${event.id}?saved=1`,
+        ? `/admin/events/${event.id}?saved=1${coverQs}#zuordnung`
+        : `/admin/events/${event.id}?saved=1${coverQs}`,
   };
 }
 
@@ -512,7 +552,11 @@ export async function updateEventAction(formData: FormData) {
   const eventId = String(formData.get("eventId") ?? "");
   const event = await prisma.event.findFirst({
     where: { id: eventId, organizationId: membership.organizationId },
-    include: { location: { select: { name: true, city: true } } },
+    include: {
+      location: { select: { name: true, city: true } },
+      tour: { select: { coverImageUrl: true, visibility: true } },
+      ticketCategories: { select: { priceGrossCents: true, capacity: true } },
+    },
   });
   if (!event) throw new Error("NOT_FOUND");
 
@@ -664,11 +708,53 @@ export async function updateEventAction(formData: FormData) {
         : event.coverImageUrl;
     }
   }
+  const statusReadyInput = {
+    coverImageUrl: nextCoverUrl,
+    eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories,
+  };
+
+  if (becomingOnSale || isEventSalesReleased(requestedStatus)) {
+    // Hard block manual / persisted Im Verkauf without readiness (cover etc.)
+    if (
+      becomingOnSale ||
+      (isEventSalesReleased(requestedStatus) && !isEventSalesReleased(event.status))
+    ) {
+      const ready = canStartSales(statusReadyInput);
+      if (!ready.ok) {
+        logSalesActivationBlocked({
+          eventId: event.id,
+          reasons: ready.reasons,
+          presaleStartsAt,
+        });
+        if (ready.reasons.includes("MISSING_EVENT_COVER")) {
+          throw new Error("MISSING_EVENT_COVER");
+        }
+        throw new Error("SALES_START_BLOCKED");
+      }
+    }
+  }
+
   const status = resolvePersistedEventStatus({
     requestedStatus,
     presaleStartsAt,
     coverImageUrl: nextCoverUrl,
+    eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories,
   });
+
+  if (
+    isEventSalesReleased(status) &&
+    !isEventSalesReleased(event.status)
+  ) {
+    logSalesActivated({
+      eventId: event.id,
+      fromStatus: event.status,
+      trigger: becomingOnSale ? "manual" : "save",
+    });
+  }
 
   const { isEventPausable } = await import("@/lib/commerce/event-sale");
   const statusBeforePause =
@@ -834,6 +920,10 @@ export async function updateEventAction(formData: FormData) {
     scheduleChanged: Boolean(startChanged && scheduleChangeConfirmed),
     buyersEmailed,
     campaignsAdjusted,
+    coverMissing: !hasValidEventCover({
+      coverImageUrl: nextCoverUrl,
+      tour: event.tour,
+    }),
   };
 }
 
