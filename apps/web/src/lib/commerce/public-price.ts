@@ -29,7 +29,7 @@ export function formatFeePercentageLabel(percentageBasisPoints: number): string 
   return `${pct.toFixed(2).replace(".", ",").replace(/0+$/, "").replace(/,$/, "")} %`;
 }
 
-/** Small surcharge note for listing / ticket UIs (not cart totals). */
+/** Note when the main amount is ticket-only and fee is added at checkout. */
 export function formatFeeSurchargeNote(
   feeConfig: Pick<PlatformFeeConfig, "enabled" | "percentageBasisPoints" | "displayName">,
 ): string {
@@ -37,9 +37,17 @@ export function formatFeeSurchargeNote(
   return `zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`;
 }
 
+/** Note when the main amount already includes Verwaltungsgebühr. */
+export function formatFeeIncludedNote(
+  feeConfig: Pick<PlatformFeeConfig, "enabled" | "percentageBasisPoints" | "displayName">,
+): string {
+  if (!feeConfig.enabled || feeConfig.percentageBasisPoints <= 0) return "";
+  return `inkl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`;
+}
+
 /**
- * Public listing / event price: ticket amount without fee as main label,
- * plus small “zzgl. X % Verwaltungsgebühr”. Cart/checkout show the full total.
+ * Public listing / “ab”-price: customer total including Verwaltungsgebühr.
+ * Seat/category pickers that show ticket-only units keep using formatFeeSurchargeNote.
  */
 export function formatCustomerPriceLabel(input: {
   ticketGrossCents: number;
@@ -58,8 +66,8 @@ export function formatCustomerPriceLabel(input: {
   const feeCents = customerUnitFeeCents(ticketCents, input.feeConfig);
   const totalCents = ticketCents + feeCents;
   const prefix = input.prefix === "ab" ? "ab " : "";
-  const totalLabel = `${prefix}${input.formatEuro(ticketCents)}`;
-  const surchargeLabel = formatFeeSurchargeNote(input.feeConfig);
+  const totalLabel = `${prefix}${input.formatEuro(totalCents)}`;
+  const surchargeLabel = formatFeeIncludedNote(input.feeConfig);
 
   return {
     ticketCents,

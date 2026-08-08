@@ -42,7 +42,19 @@ export function ticketPdfDownloadHeaders(filename: string): HeadersInit {
   };
 }
 
-function loadLogoBuffer(): Buffer | null {
+/**
+ * PDFKit mishandles many formats (WebP/AVIF/RGBA soft-masks). Always embed
+ * flattened RGB PNG so covers/logos/QR never leave unrestored clips or invisible text.
+ */
+async function toPdfImageBuffer(input: Buffer): Promise<Buffer> {
+  return sharp(input)
+    .rotate()
+    .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .png()
+    .toBuffer();
+}
+
+async function loadLogoBuffer(): Promise<Buffer | null> {
   const candidates = [
     path.join(process.cwd(), "public/brand/logo-email.png"),
     path.join(process.cwd(), "public/brand/logo-lockup-1x.png"),
@@ -52,7 +64,7 @@ function loadLogoBuffer(): Buffer | null {
   for (const file of candidates) {
     if (existsSync(file)) {
       try {
-        return readFileSync(file);
+        return await toPdfImageBuffer(readFileSync(file));
       } catch {
         /* try next */
       }
@@ -80,33 +92,34 @@ async function loadUploadedAssetBuffer(url: string): Promise<Buffer | null> {
 async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
   if (!url) return null;
   try {
+    let raw: Buffer | null = null;
     if (url.startsWith("data:")) {
       const base64 = url.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
-      return Buffer.from(base64, "base64");
-    }
-
-    // DB-backed uploads (/api/assets/:id) — never look on the local filesystem.
-    const fromDb = await loadUploadedAssetBuffer(url);
-    if (fromDb) return fromDb;
-
-    if (/^https?:\/\//i.test(url)) {
-      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-      if (!res.ok) return null;
-      return Buffer.from(await res.arrayBuffer());
-    }
-
-    if (url.startsWith("/") || !/^https?:\/\//i.test(url)) {
-      const rel = url.replace(/^\//, "").split("?")[0]!;
-      const candidates = [
-        path.join(process.cwd(), "public", rel),
-        path.join(process.cwd(), "apps/web/public", rel),
-      ];
-      for (const file of candidates) {
-        if (existsSync(file)) return readFileSync(file);
+      raw = Buffer.from(base64, "base64");
+    } else {
+      // DB-backed uploads (/api/assets/:id) — never look on the local filesystem.
+      const fromDb = await loadUploadedAssetBuffer(url);
+      if (fromDb) raw = fromDb;
+      else if (/^https?:\/\//i.test(url)) {
+        const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+        if (!res.ok) return null;
+        raw = Buffer.from(await res.arrayBuffer());
+      } else if (url.startsWith("/") || !/^https?:\/\//i.test(url)) {
+        const rel = url.replace(/^\//, "").split("?")[0]!;
+        const candidates = [
+          path.join(process.cwd(), "public", rel),
+          path.join(process.cwd(), "apps/web/public", rel),
+        ];
+        for (const file of candidates) {
+          if (existsSync(file)) {
+            raw = readFileSync(file);
+            break;
+          }
+        }
       }
-      return null;
     }
-    return null;
+    if (!raw) return null;
+    return await toPdfImageBuffer(raw);
   } catch {
     return null;
   }
@@ -128,6 +141,27 @@ async function loadTicketImageBuffer(
   return null;
 }
 
+/**
+ * Draw clipped content and ALWAYS restore — a thrown doc.image() used to leave
+ * the cover clip active, wiping the entire info/QR stub (TF-T-2026-00000052).
+ */
+function withClip(
+  doc: PDFKit.PDFDocument,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  draw: () => void,
+) {
+  doc.save();
+  try {
+    doc.rect(x, y, w, h).clip();
+    draw();
+  } finally {
+    doc.restore();
+  }
+}
+
 async function drawImageContainWithBlur(
   doc: PDFKit.PDFDocument,
   buffer: Buffer,
@@ -145,8 +179,15 @@ async function drawImageContainWithBlur(
 
   doc.rect(x, y, w, h).fill(TF_NAVY);
 
+  let png: Buffer;
   try {
-    const meta = await sharp(buffer).metadata();
+    png = await toPdfImageBuffer(buffer);
+  } catch {
+    return;
+  }
+
+  try {
+    const meta = await sharp(png).metadata();
     const srcW = meta.width || iw;
     const srcH = meta.height || ih;
 
@@ -155,21 +196,25 @@ async function drawImageContainWithBlur(
       const blurScale = Math.max(w / srcW, h / srcH) * 1.35;
       const bw = Math.max(1, Math.round(srcW * blurScale));
       const bh = Math.max(1, Math.round(srcH * blurScale));
-      const blurred = await sharp(buffer)
+      const blurred = await sharp(png)
         .resize(bw, bh, { fit: "cover" })
         .blur(28)
         .modulate({ brightness: 0.62, saturation: 0.95 })
         .png()
         .toBuffer();
-      doc.save();
-      doc.rect(x, y, w, h).clip();
-      doc.image(blurred, x + (w - bw) / 2, y + (h - bh) / 2, {
-        width: bw,
-        height: bh,
+      withClip(doc, x, y, w, h, () => {
+        doc.image(blurred, x + (w - bw) / 2, y + (h - bh) / 2, {
+          width: bw,
+          height: bh,
+        });
       });
-      doc.restore();
-      doc.rect(x, y, w, h).fillOpacity(0.48).fill(TF_NAVY);
-      doc.fillOpacity(1);
+      doc.save();
+      try {
+        doc.rect(x, y, w, h).fillOpacity(0.48).fill(TF_NAVY);
+      } finally {
+        doc.fillOpacity(1);
+        doc.restore();
+      }
     } catch {
       /* navy fill already applied */
     }
@@ -181,10 +226,9 @@ async function drawImageContainWithBlur(
     const dx = ix + (iw - dw) / 2;
     const dy = iy + (ih - dh) / 2;
 
-    doc.save();
-    doc.rect(x, y, w, h).clip();
-    doc.image(buffer, dx, dy, { width: dw, height: dh });
-    doc.restore();
+    withClip(doc, x, y, w, h, () => {
+      doc.image(png, dx, dy, { width: dw, height: dh });
+    });
   } catch {
     doc.rect(x, y, w, h).fill(TF_NAVY);
   }
@@ -257,8 +301,15 @@ async function drawTicketPage(
   const zoneC = Math.round(ticketW * TICKET_COL_QR);
   const zoneB = ticketW - zoneA - zoneC;
 
+  // Paint ticket body WITHOUT a page-wide clip around text/images.
+  // PDFKit + unrestored nested clips previously wiped the info/QR stub.
   doc.save();
-  doc.roundedRect(ticketX, ticketY, ticketW, ticketH, 8).clip();
+  try {
+    doc.roundedRect(ticketX, ticketY, ticketW, ticketH, 8).clip();
+    doc.rect(ticketX, ticketY, ticketW, ticketH).fill("#FFFFFF");
+  } finally {
+    doc.restore();
+  }
 
   // ── Zone A: cover ────────────────────────────────────────────────
   const ax = ticketX;
@@ -436,18 +487,23 @@ async function drawTicketPage(
   }
 
   // Category (VIP gold accent only)
-  doc
-    .font("Helvetica")
-    .fontSize(7.5)
-    .fillColor(TF_MUTED)
-    .text("Kategorie  ", bx + bPadX, by, { continued: true });
+  const catY = by;
+  doc.font("Helvetica").fontSize(7.5);
+  const catLabelW = doc.widthOfString("Kategorie");
+  doc.fillColor(TF_MUTED).text("Kategorie", bx + bPadX, catY, { continued: false });
+  let catX = bx + bPadX + catLabelW + 6;
   if (data.isVip) {
-    const badgeX = doc.x;
-    const badgeY = by - 1;
-    doc.roundedRect(badgeX, badgeY, 22, 11, 2).fillOpacity(0.12).fill(TF_GOLD);
-    doc.fillOpacity(1);
+    const badgeW = 22;
+    const badgeH = 11;
+    doc.save();
+    try {
+      doc.roundedRect(catX, catY - 1, badgeW, badgeH, 2).fillOpacity(0.12).fill(TF_GOLD);
+    } finally {
+      doc.fillOpacity(1);
+      doc.restore();
+    }
     doc
-      .roundedRect(badgeX, badgeY, 22, 11, 2)
+      .roundedRect(catX, catY - 1, badgeW, badgeH, 2)
       .strokeColor(TF_GOLD)
       .lineWidth(0.6)
       .stroke();
@@ -455,25 +511,31 @@ async function drawTicketPage(
       .font("Helvetica-Bold")
       .fontSize(6.5)
       .fillColor(TF_GOLD)
-      .text("VIP", badgeX, badgeY + 2.5, { width: 22, align: "center" });
-    doc.x = badgeX + 26;
+      .text("VIP", catX, catY + 1.5, { width: badgeW, align: "center" });
+    catX += badgeW + 6;
     if (!/^vip$/i.test(data.categoryName.trim())) {
       doc
         .font("Helvetica-Bold")
         .fontSize(8)
         .fillColor(TF_NAVY)
-        .text(data.categoryName, { continued: false });
-    } else {
-      doc.text("", { continued: false });
+        .text(data.categoryName, catX, catY, {
+          width: Math.max(24, bx + bPadX + bInnerW - catX),
+          height: 12,
+          ellipsis: true,
+        });
     }
   } else {
     doc
       .font("Helvetica-Bold")
       .fontSize(8)
       .fillColor(TF_NAVY)
-      .text(data.categoryName, { continued: false });
+      .text(data.categoryName, catX, catY, {
+        width: Math.max(24, bx + bPadX + bInnerW - catX),
+        height: 12,
+        ellipsis: true,
+      });
   }
-  by = doc.y + 3;
+  by = catY + 14;
 
   // Seat highlight boxes / text
   if (seat.mode === "boxes" && seat.parts.length > 0) {
@@ -640,7 +702,9 @@ async function drawTicketPage(
 
   if (qr) {
     try {
-      const img = Buffer.from(qr.replace(/^data:image\/png;base64,/, ""), "base64");
+      const img = await toPdfImageBuffer(
+        Buffer.from(qr.replace(/^data:image\/png;base64,/, ""), "base64"),
+      );
       doc.image(img, qrPlateX + quiet, cy + quiet, {
         width: qrMax,
         height: qrMax,
@@ -693,9 +757,7 @@ async function drawTicketPage(
     drawSponsorInSlot(sponsorBelow, belowSlotTop, belowSlotH, belowBox);
   }
 
-  doc.restore(); // end clip
-
-  // Ticket notches on perforation (after clip — punch into white page)
+  // Ticket notches on perforation
   const notchR = 6;
   doc.circle(cx, ticketY, notchR).fill("#FFFFFF");
   doc.circle(cx, ticketY + ticketH, notchR).fill("#FFFFFF");
@@ -749,7 +811,7 @@ export async function renderTicketPdf(ticketId: string): Promise<{
     data.sponsorLogoBelowUrl,
     data.sponsorLogoBelowAbsoluteUrl,
   );
-  const logo = loadLogoBuffer();
+  const logo = await loadLogoBuffer();
 
   const doc = new PDFDocument({
     size: "A4",
@@ -806,7 +868,7 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
       return { data, qr, cover, sponsorAbove, sponsorBelow };
     }),
   );
-  const logo = loadLogoBuffer();
+  const logo = await loadLogoBuffer();
 
   const doc = new PDFDocument({ size: "A4", margin: 0, compress: true });
   const chunks: Buffer[] = [];

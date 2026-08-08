@@ -31,7 +31,7 @@ export type EventCardData = {
   campaignName?: string | null;
   /** ISO end of the ab-price Aktion (listing countdown priority) */
   campaignValidUntil?: string | null;
-  /** Small note under price, e.g. "zzgl. 4 % Verwaltungsgebühr" */
+  /** Small note under price, e.g. "inkl. 4 % Verwaltungsgebühr" */
   priceNote?: string | null;
   remainingTickets?: number | null;
   capacity?: number | null;

@@ -8,6 +8,7 @@ import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { formatEuroFromCents } from "@/lib/money";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { customerUnitPriceCents } from "@/lib/commerce/public-price";
 import {
   formatProminentPlaceLabel,
   isVipCategory,
@@ -138,10 +139,33 @@ export async function loadTicketPresentation(
   const categoryName = ticket.categorySnapshot;
   const categoryKind = ticket.category?.categoryKind ?? null;
   const isVip = isVipCategory(categoryName, categoryKind);
-  const unitCents = ticket.orderItem?.unitPaidGrossCents;
+  const unitTicketCents = ticket.orderItem?.unitPaidGrossCents;
+  const feeBps = ticket.order.administrationFeePercentageBasisPoints ?? 0;
+  const orderFeeGross =
+    ticket.order.administrationFeeGrossCents || ticket.order.feeGrossCents || 0;
+  /** Amount the buyer paid for this ticket (ticket + Verwaltungsgebühr share). */
+  let priceCents: number | null = null;
+  if (typeof unitTicketCents === "number" && unitTicketCents >= 0) {
+    if (feeBps > 0) {
+      priceCents = customerUnitPriceCents(unitTicketCents, {
+        enabled: true,
+        percentageBasisPoints: feeBps,
+      });
+    } else if (orderFeeGross > 0 && ticket.orderItem) {
+      // Legacy orders without bps snapshot: allocate fee by paid ticket share.
+      const linePaid = ticket.orderItem.grossCents;
+      const ticketsPaid = Math.max(1, ticket.order.ticketsGrossCents - ticket.order.discountCents);
+      const feeShare =
+        ticketsPaid > 0 ? Math.round((orderFeeGross * linePaid) / ticketsPaid) : 0;
+      const qty = Math.max(1, ticket.orderItem.quantity);
+      priceCents = unitTicketCents + Math.round(feeShare / qty);
+    } else {
+      priceCents = unitTicketCents;
+    }
+  }
   const priceLabel =
-    typeof unitCents === "number" && unitCents >= 0
-      ? formatEuroFromCents(unitCents, ticket.order.currency || "EUR")
+    priceCents != null
+      ? formatEuroFromCents(priceCents, ticket.order.currency || "EUR")
       : null;
   const placeLabel = resolvePlaceLabel({
     seatLabel: ticket.seatLabel,
