@@ -35,6 +35,13 @@ function scaleData(field: SponsorField, scale: number | null) {
     : { ticketSponsorLogoBelowScale: scale };
 }
 
+function revalidateSponsorPaths(eventId: string) {
+  revalidatePath(`/admin/events/${eventId}`);
+  // Ticketvorschau + PDF HTML share loadTicketPresentation scales.
+  revalidatePath("/ticket", "layout");
+  revalidatePath("/api/v1/tickets", "layout");
+}
+
 export async function POST(request: Request) {
   try {
     await ensureTicketSponsorLogoColumns();
@@ -82,7 +89,7 @@ export async function POST(request: Request) {
         where: { id: eventId },
         data: { ...urlData(field, null), ...scaleData(field, null) },
       });
-      revalidatePath(`/admin/events/${eventId}`);
+      revalidateSponsorPaths(eventId);
       return NextResponse.json({ ok: true, url: null, scale: null });
     }
 
@@ -98,7 +105,7 @@ export async function POST(request: Request) {
         where: { id: eventId },
         data: scaleData(field, scale),
       });
-      revalidatePath(`/admin/events/${eventId}`);
+      revalidateSponsorPaths(eventId);
       return NextResponse.json({ ok: true, scale });
     }
 
@@ -128,7 +135,7 @@ export async function POST(request: Request) {
       where: { id: eventId },
       data: { ...urlData(field, stored.url), ...scaleData(field, scale) },
     });
-    revalidatePath(`/admin/events/${eventId}`);
+    revalidateSponsorPaths(eventId);
 
     return NextResponse.json({
       ok: true,

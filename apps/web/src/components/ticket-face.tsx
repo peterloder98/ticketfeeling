@@ -38,6 +38,8 @@ function SponsorLogo({
   compact?: boolean;
 }) {
   const box = sponsorLogoBoxForScale(scale);
+  // Explicit box (not max-only): scale must change display size even when the
+  // source bitmap is smaller than the stub slot — same contract as PDF fit.
   const maxH = compact ? Math.min(36, box.maxH) : box.maxH;
   const maxW = compact ? Math.min(124, box.maxW) : box.maxW;
   return (
@@ -46,7 +48,7 @@ function SponsorLogo({
       src={src}
       alt=""
       className="object-contain"
-      style={{ maxHeight: maxH, maxWidth: maxW, width: "auto", height: "auto" }}
+      style={{ width: maxW, height: maxH, objectFit: "contain" }}
       loading="lazy"
       decoding="async"
     />

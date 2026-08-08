@@ -91,10 +91,10 @@ export function buildTicketHtmlDocument(
   const categoryHtml = `<p class="category">Kategorie ${vipBadge}${categoryLabel}</p>`;
 
   const sponsorAboveHtml = sponsorAbove
-    ? `<img class="sponsor-logo" style="max-width:min(90%,${aboveBox.maxW}px);max-height:${aboveBox.maxH}px" src="${escapeAttr(sponsorAbove)}" alt="" />`
+    ? `<img class="sponsor-logo" style="width:${aboveBox.maxW}px;height:${aboveBox.maxH}px;object-fit:contain" src="${escapeAttr(sponsorAbove)}" alt="" />`
     : "";
   const sponsorBelowHtml = sponsorBelow
-    ? `<img class="sponsor-logo" style="max-width:min(90%,${belowBox.maxW}px);max-height:${belowBox.maxH}px" src="${escapeAttr(sponsorBelow)}" alt="" />`
+    ? `<img class="sponsor-logo" style="width:${belowBox.maxW}px;height:${belowBox.maxH}px;object-fit:contain" src="${escapeAttr(sponsorBelow)}" alt="" />`
     : "";
 
   const doorsBeginHtml =
@@ -455,8 +455,7 @@ export function buildTicketHtmlDocument(
     }
     .sponsor-logo {
       display: block;
-      width: auto;
-      height: auto;
+      max-width: 100%;
       object-fit: contain;
     }
     .zone-c-core {

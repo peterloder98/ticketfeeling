@@ -111,7 +111,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
           Zurück zur Bestellung
         </Link>
 
-        <div className="mx-auto max-w-6xl space-y-4">
+        <div className="mx-auto grid max-w-6xl gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,260px)] lg:items-start lg:gap-5">
           <TicketFace
             data={data}
             showQr={showQr}
@@ -119,18 +119,18 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
             qrSize={150}
           />
 
-          <aside className="mx-auto w-full max-w-md space-y-2.5 lg:mx-0">
+          <aside className="mx-auto w-full max-w-sm space-y-2 lg:mx-0 lg:max-w-none lg:sticky lg:top-6">
             {canEntry ? (
               <a
                 href={pdfHref}
-                className="tf-btn tf-btn-primary flex w-full !min-h-11 justify-center"
+                className="tf-btn tf-btn-primary flex w-full !min-h-10 justify-center text-sm"
                 target="_blank"
                 rel="noreferrer"
               >
                 PDF speichern
               </a>
             ) : (
-              <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-3 text-sm text-[var(--tf-text-secondary)]">
+              <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5 text-sm text-[var(--tf-text-secondary)]">
                 PDF gesperrt — Ticket wurde weitergeleitet
                 {holder ? ` an ${holder}` : ""}.
               </p>
@@ -164,7 +164,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
               ) : null}
               <Link
                 href={orderHref}
-                className="tf-btn tf-btn-secondary flex !min-h-11 justify-center"
+                className="tf-btn tf-btn-secondary flex !min-h-10 justify-center text-sm"
               >
                 Zur Bestellung
               </Link>
@@ -176,8 +176,8 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
                 accessToken={accessToken}
                 appleEnabled={walletFlags.apple}
                 googleEnabled={walletFlags.google}
-                size="md"
-                className="justify-center gap-x-4 pt-0.5"
+                size="sm"
+                className="justify-center gap-x-3 pt-0.5"
               />
             ) : null}
 

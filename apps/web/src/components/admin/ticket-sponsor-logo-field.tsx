@@ -20,6 +20,8 @@ const SPONSOR_LOGO_MAX_HEIGHT = 160;
 /** Preview stub is ~55% of live ticket QR column proportions. */
 const PREVIEW_ZONE_H = 56;
 const PREVIEW_STUB_W = 118;
+/** Map live logo box → stub so scale=1 fills the preview width. */
+const PREVIEW_BOX_FACTOR = PREVIEW_STUB_W / TICKET_SPONSOR_LOGO_MAX_W_PX;
 
 type SponsorField = "ticketSponsorLogoAboveUrl" | "ticketSponsorLogoBelowUrl";
 
@@ -90,6 +92,10 @@ export function TicketSponsorLogoField({
   }, [url]);
 
   const box = sponsorLogoBoxForScale(scale);
+  const previewBox = {
+    maxW: Math.max(1, Math.round(box.maxW * PREVIEW_BOX_FACTOR)),
+    maxH: Math.max(1, Math.round(box.maxH * PREVIEW_BOX_FACTOR)),
+  };
   const blurry = natural
     ? qualityWarns(natural.w, natural.h, box.maxW, box.maxH)
     : false;
@@ -298,7 +304,7 @@ export function TicketSponsorLogoField({
                 <ResizableSponsorZone
                   zoneRef={zoneRef}
                   url={url}
-                  box={box}
+                  box={previewBox}
                   resizeActive={resizeActive}
                   onResizeStart={() => setResizeActive(true)}
                 />
@@ -326,7 +332,7 @@ export function TicketSponsorLogoField({
                 <ResizableSponsorZone
                   zoneRef={zoneRef}
                   url={url}
-                  box={box}
+                  box={previewBox}
                   resizeActive={resizeActive}
                   onResizeStart={() => setResizeActive(true)}
                 />
@@ -458,7 +464,7 @@ function ResizableSponsorZone({
         className={`relative flex items-center justify-center ${
           resizeActive ? "ring-2 ring-[var(--tf-teal)]" : ""
         }`}
-        style={{ maxWidth: box.maxW, maxHeight: box.maxH }}
+        style={{ width: box.maxW, height: box.maxH }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -466,10 +472,9 @@ function ResizableSponsorZone({
           alt=""
           className="object-contain select-none"
           style={{
-            maxWidth: box.maxW,
-            maxHeight: box.maxH,
-            width: "auto",
-            height: "auto",
+            width: box.maxW,
+            height: box.maxH,
+            objectFit: "contain",
           }}
           draggable={false}
         />
