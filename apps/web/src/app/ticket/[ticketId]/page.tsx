@@ -18,6 +18,7 @@ import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { TicketFace } from "@/components/ticket-face";
+import { TicketPdfSaveLink } from "@/components/ticket-pdf-save-link";
 
 export const dynamic = "force-dynamic";
 
@@ -121,14 +122,11 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
 
           <aside className="mx-auto w-full max-w-sm space-y-2 lg:mx-0 lg:max-w-none lg:sticky lg:top-6">
             {canEntry ? (
-              <a
+              <TicketPdfSaveLink
                 href={pdfHref}
                 className="tf-btn tf-btn-primary flex w-full !min-h-10 justify-center text-sm"
-                target="_blank"
-                rel="noreferrer"
-              >
-                PDF speichern
-              </a>
+                filename={`${data.ticketNumber}.pdf`}
+              />
             ) : (
               <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5 text-sm text-[var(--tf-text-secondary)]">
                 PDF gesperrt — Ticket wurde weitergeleitet

@@ -17,6 +17,7 @@ import { getWalletUiFlags } from "@/lib/wallet/config";
 import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { TicketFace } from "@/components/ticket-face";
+import { TicketPdfSaveLink } from "@/components/ticket-pdf-save-link";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Ticket" };
@@ -119,14 +120,11 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
 
       {showQr ? (
         <div className="space-y-3">
-          <a
+          <TicketPdfSaveLink
             href={pdfHref}
             className="tf-btn tf-btn-primary w-full !min-h-10 text-sm"
-            target="_blank"
-            rel="noreferrer"
-          >
-            PDF speichern
-          </a>
+            filename={`${data.ticketNumber}.pdf`}
+          />
           {ticket.event.eventStartsAt ? (
             <TicketCalendarMenu
               icsHref={calendarHref}

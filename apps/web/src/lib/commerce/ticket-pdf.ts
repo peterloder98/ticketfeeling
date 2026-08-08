@@ -23,6 +23,7 @@ import {
   TICKET_QR_MIN_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
+import { parseUploadedAssetId } from "@/lib/uploads/optimize-sponsor-logo";
 
 /** ~12 mm printer-safe margin on DIN A4 */
 const PAGE_MARGIN = 34;
@@ -30,6 +31,16 @@ const PAGE_MARGIN = 34;
 type DrawOptions = {
   pageIndexLabel?: string | null;
 };
+
+/** Headers that force a browser download (not inline PDF viewer). */
+export function ticketPdfDownloadHeaders(filename: string): HeadersInit {
+  const safe = filename.replace(/["\\\r\n]/g, "_");
+  return {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="${safe}"`,
+    "Cache-Control": "private, no-store",
+  };
+}
 
 function loadLogoBuffer(): Buffer | null {
   const candidates = [
@@ -50,6 +61,22 @@ function loadLogoBuffer(): Buffer | null {
   return null;
 }
 
+async function loadUploadedAssetBuffer(url: string): Promise<Buffer | null> {
+  const assetId = parseUploadedAssetId(url);
+  if (!assetId) return null;
+  try {
+    const asset = await prisma.uploadedAsset.findUnique({
+      where: { id: assetId },
+      select: { data: true, kind: true },
+    });
+    if (!asset?.data) return null;
+    if (asset.kind !== "cover" && asset.kind !== "image") return null;
+    return Buffer.from(asset.data);
+  } catch {
+    return null;
+  }
+}
+
 async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
   if (!url) return null;
   try {
@@ -57,6 +84,17 @@ async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
       const base64 = url.replace(/^data:image\/[a-zA-Z0-9+.-]+;base64,/, "");
       return Buffer.from(base64, "base64");
     }
+
+    // DB-backed uploads (/api/assets/:id) — never look on the local filesystem.
+    const fromDb = await loadUploadedAssetBuffer(url);
+    if (fromDb) return fromDb;
+
+    if (/^https?:\/\//i.test(url)) {
+      const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+      if (!res.ok) return null;
+      return Buffer.from(await res.arrayBuffer());
+    }
+
     if (url.startsWith("/") || !/^https?:\/\//i.test(url)) {
       const rel = url.replace(/^\//, "").split("?")[0]!;
       const candidates = [
@@ -68,13 +106,26 @@ async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
       }
       return null;
     }
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const arr = await res.arrayBuffer();
-    return Buffer.from(arr);
+    return null;
   } catch {
     return null;
   }
+}
+
+/** Prefer absolute URL when relative public/file load fails (covers + sponsors). */
+async function loadTicketImageBuffer(
+  relativeOrAbsolute: string | null,
+  absoluteFallback: string | null,
+): Promise<Buffer | null> {
+  const primary = await loadCoverBuffer(relativeOrAbsolute);
+  if (primary) return primary;
+  if (
+    absoluteFallback &&
+    absoluteFallback !== relativeOrAbsolute
+  ) {
+    return loadCoverBuffer(absoluteFallback);
+  }
+  return null;
 }
 
 async function drawImageContainWithBlur(
@@ -226,10 +277,10 @@ async function drawTicketPage(
   const bInnerW = zoneB - bPadX * 2;
   let by = ticketY + bPadY;
 
-  // Brand lockup centered at top of middle zone (~12% larger), gap before title
+  // Brand lockup centered at top of middle zone — match TicketFace air before title
+  const logoH = 26;
   if (logo) {
     try {
-      const logoH = 26;
       const logoW = 132;
       doc.image(logo, bx + (zoneB - logoW) / 2, by, { height: logoH, fit: [logoW, logoH] });
     } catch {
@@ -252,31 +303,38 @@ async function drawTicketPage(
         align: "center",
       });
   }
-  by += 44;
+  // logoH + ~18px gap (TicketFace mt-5)
+  by += logoH + 18;
 
-  doc
-    .fillColor(TF_NAVY)
-    .font("Helvetica-Bold")
-    .fontSize(13.5)
-    .text(data.eventName, bx + bPadX, by, {
-      width: bInnerW,
-      height: 30,
-      ellipsis: true,
-      lineGap: 0.5,
-    });
-  by = Math.min(doc.y + 1, ticketY + bPadY + 52);
+  // Title then date — advance by measured height so lines never overlap
+  const titleSize = 13.5;
+  doc.font("Helvetica-Bold").fontSize(titleSize);
+  const titleMaxH = 32;
+  const titleH = Math.min(
+    titleMaxH,
+    Math.ceil(doc.heightOfString(data.eventName, { width: bInnerW, lineGap: 0.5 })),
+  );
+  doc.fillColor(TF_NAVY).text(data.eventName, bx + bPadX, by, {
+    width: bInnerW,
+    height: titleH,
+    ellipsis: true,
+    lineGap: 0.5,
+  });
+  by += titleH + 3;
 
   if (data.dateLabel) {
-    doc
-      .font("Helvetica")
-      .fontSize(8.5)
-      .fillColor(TF_NAVY)
-      .text(data.dateLabel, bx + bPadX, by, {
-        width: bInnerW,
-        height: 11,
-        ellipsis: true,
-      });
-    by = doc.y + 1;
+    const dateSize = 8.5;
+    doc.font("Helvetica").fontSize(dateSize);
+    const dateH = Math.min(
+      12,
+      Math.ceil(doc.heightOfString(data.dateLabel, { width: bInnerW })),
+    );
+    doc.fillColor(TF_NAVY).text(data.dateLabel, bx + bPadX, by, {
+      width: bInnerW,
+      height: dateH,
+      ellipsis: true,
+    });
+    by += dateH + 2;
   }
 
   // Location: name + city/address
@@ -682,12 +740,14 @@ export async function renderTicketPdf(ticketId: string): Promise<{
 }> {
   const data = await loadTicketPresentation(ticketId);
   const qr = data.qrToken ? await qrDataUrl(data.qrToken, 320) : null;
-  const cover = await loadCoverBuffer(data.coverUrl ?? data.coverAbsoluteUrl);
-  const sponsorAbove = await loadCoverBuffer(
-    data.sponsorLogoAboveUrl ?? data.sponsorLogoAboveAbsoluteUrl,
+  const cover = await loadTicketImageBuffer(data.coverUrl, data.coverAbsoluteUrl);
+  const sponsorAbove = await loadTicketImageBuffer(
+    data.sponsorLogoAboveUrl,
+    data.sponsorLogoAboveAbsoluteUrl,
   );
-  const sponsorBelow = await loadCoverBuffer(
-    data.sponsorLogoBelowUrl ?? data.sponsorLogoBelowAbsoluteUrl,
+  const sponsorBelow = await loadTicketImageBuffer(
+    data.sponsorLogoBelowUrl,
+    data.sponsorLogoBelowAbsoluteUrl,
   );
   const logo = loadLogoBuffer();
 
@@ -734,12 +794,14 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
     tickets.map(async (t) => {
       const data = await loadTicketPresentation(t.id);
       const qr = data.qrToken ? await qrDataUrl(data.qrToken, 320) : null;
-      const cover = await loadCoverBuffer(data.coverUrl ?? data.coverAbsoluteUrl);
-      const sponsorAbove = await loadCoverBuffer(
-        data.sponsorLogoAboveUrl ?? data.sponsorLogoAboveAbsoluteUrl,
+      const cover = await loadTicketImageBuffer(data.coverUrl, data.coverAbsoluteUrl);
+      const sponsorAbove = await loadTicketImageBuffer(
+        data.sponsorLogoAboveUrl,
+        data.sponsorLogoAboveAbsoluteUrl,
       );
-      const sponsorBelow = await loadCoverBuffer(
-        data.sponsorLogoBelowUrl ?? data.sponsorLogoBelowAbsoluteUrl,
+      const sponsorBelow = await loadTicketImageBuffer(
+        data.sponsorLogoBelowUrl,
+        data.sponsorLogoBelowAbsoluteUrl,
       );
       return { data, qr, cover, sponsorAbove, sponsorBelow };
     }),

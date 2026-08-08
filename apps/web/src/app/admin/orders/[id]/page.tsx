@@ -300,8 +300,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
               <a
                 href={`/api/v1/orders/${order.id}/pdf`}
                 className="tf-admin-link text-sm"
-                target="_blank"
-                rel="noreferrer"
+                download
               >
                 Alle PDFs
               </a>
@@ -327,8 +326,7 @@ export default async function AdminOrderDetailPage({ params }: Props) {
                     <a
                       href={`/api/v1/tickets/${t.id}/pdf`}
                       className="tf-admin-link"
-                      target="_blank"
-                      rel="noreferrer"
+                      download={`${t.ticketNumber}.pdf`}
                     >
                       PDF
                     </a>

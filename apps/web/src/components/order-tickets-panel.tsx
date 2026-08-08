@@ -9,6 +9,7 @@ import {
   TicketCalendarMenu,
   type TicketCalendarEvent,
 } from "@/components/ticket-calendar-menu";
+import { TicketPdfSaveLink } from "@/components/ticket-pdf-save-link";
 
 export type OrderTicketView = {
   id: string;
@@ -449,18 +450,15 @@ export function OrderTicketsPanel({
                       <div className="space-y-5">
                         <div className="flex flex-wrap gap-2">
                           {showQr ? (
-                            <a
+                            <TicketPdfSaveLink
                               href={
                                 accessToken
                                   ? `/api/v1/tickets/${ticket.id}/pdf?t=${encodeURIComponent(accessToken)}`
                                   : `/api/v1/tickets/${ticket.id}/pdf`
                               }
                               className="tf-btn tf-btn-primary !min-h-10 text-sm"
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              PDF speichern
-                            </a>
+                              filename={`${ticket.ticketNumber}.pdf`}
+                            />
                           ) : null}
                           <Link
                             href={

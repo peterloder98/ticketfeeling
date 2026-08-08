@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { renderTicketPdf } from "@/lib/commerce/ticket-pdf";
+import { renderTicketPdf, ticketPdfDownloadHeaders } from "@/lib/commerce/ticket-pdf";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntry, isTicketParty } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
@@ -69,11 +69,7 @@ export async function GET(request: Request, { params }: Params) {
     const pdf = await renderTicketPdf(ticketId);
     return new NextResponse(new Uint8Array(pdf.buffer), {
       status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${pdf.filename}"`,
-        "Cache-Control": "private, no-store",
-      },
+      headers: ticketPdfDownloadHeaders(pdf.filename),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";
