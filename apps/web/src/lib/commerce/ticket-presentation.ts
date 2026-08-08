@@ -23,13 +23,16 @@ export const TF_PRINT_HINT =
   "Am Einlass auf dem Smartphone vorzeigen oder ausdrucken.";
 export const TF_QR_HINT = "Am Einlass vorzeigen.";
 /** Modest CSS height for QR-stub sponsor logos (keep QR large + quiet zone). */
-export const TICKET_SPONSOR_LOGO_MAX_H_PX = 28;
+export const TICKET_SPONSOR_LOGO_MAX_H_PX = 24;
+/** Floor for QR plate when sponsors are present — shrink logos, never the QR. */
+export const TICKET_QR_MIN_PX = 112;
 
 /**
- * Print@Home ticket BODY (not the A4 sheet): landscape ~2:1, e.g. 200×100 mm.
+ * Print@Home ticket BODY (not the A4 sheet): landscape ~2:1 strip.
+ * Slightly wider than 2.0 (~11% shorter) from denser middle spacing — not a uniform scale-down.
  * Lock this ratio in HTML/CSS and PDF — never let A4 height stretch the ticket.
  */
-export const TICKET_BODY_ASPECT = 2;
+export const TICKET_BODY_ASPECT = 2.22;
 /** Cover | info | QR column fractions (must sum ≤ 100). Cover ~28–30% for long titles. */
 export const TICKET_COL_COVER = 0.29;
 export const TICKET_COL_QR = 0.25;
@@ -64,12 +67,20 @@ export type TicketPresentation = {
   coverUrl: string | null;
   /** Absolute URL for print/PDF embedding */
   coverAbsoluteUrl: string | null;
-  /** Optional sponsor logo above QR (relative or absolute) */
+  /** Optional sponsor logo above admit label (relative or absolute) */
   sponsorLogoAboveUrl: string | null;
   sponsorLogoAboveAbsoluteUrl: string | null;
-  /** Optional sponsor logo below QR */
+  /** Optional sponsor logo below QR hint */
   sponsorLogoBelowUrl: string | null;
   sponsorLogoBelowAbsoluteUrl: string | null;
+  /**
+   * Optional sponsor metadata stubs (not rendered yet).
+   * Reserved so category-level name/URL can plug in without a layout rewrite.
+   */
+  sponsorAboveName: string | null;
+  sponsorAboveHref: string | null;
+  sponsorBelowName: string | null;
+  sponsorBelowHref: string | null;
   organizerDisplayName: string;
   organizerAddress: string;
   organizerContact: string | null;
@@ -201,6 +212,33 @@ function toAbsoluteAssetUrl(url: string | null): string | null {
   return url;
 }
 
+type SponsorLogoSource = {
+  ticketSponsorLogoAboveUrl?: string | null;
+  ticketSponsorLogoBelowUrl?: string | null;
+};
+
+/**
+ * Event-level sponsor logos today. Category overrides are reserved for later
+ * (pass category logos when that UI exists — category wins over event).
+ */
+export function resolveTicketSponsorLogos(
+  event: SponsorLogoSource,
+  category?: SponsorLogoSource | null,
+): {
+  aboveUrl: string | null;
+  belowUrl: string | null;
+} {
+  const above =
+    category?.ticketSponsorLogoAboveUrl?.trim() ||
+    event.ticketSponsorLogoAboveUrl?.trim() ||
+    null;
+  const below =
+    category?.ticketSponsorLogoBelowUrl?.trim() ||
+    event.ticketSponsorLogoBelowUrl?.trim() ||
+    null;
+  return { aboveUrl: above, belowUrl: below };
+}
+
 export async function loadTicketPresentation(
   ticketId: string,
 ): Promise<TicketPresentation> {
@@ -234,10 +272,9 @@ export async function loadTicketPresentation(
   );
   const doors = resolveTicketDoors(ticket.event, ticket.category);
   const coverUrl = resolveTicketCoverUrl(ticket.event);
-  const sponsorAbove =
-    ticket.event.ticketSponsorLogoAboveUrl?.trim() || null;
-  const sponsorBelow =
-    ticket.event.ticketSponsorLogoBelowUrl?.trim() || null;
+  const sponsors = resolveTicketSponsorLogos(ticket.event);
+  const sponsorAbove = sponsors.aboveUrl;
+  const sponsorBelow = sponsors.belowUrl;
   const lines = locationLines(ticket.event.location);
   const categoryName = ticket.categorySnapshot;
   const categoryKind = ticket.category?.categoryKind ?? null;
@@ -281,6 +318,10 @@ export async function loadTicketPresentation(
     sponsorLogoAboveAbsoluteUrl: toAbsoluteAssetUrl(sponsorAbove),
     sponsorLogoBelowUrl: sponsorBelow,
     sponsorLogoBelowAbsoluteUrl: toAbsoluteAssetUrl(sponsorBelow),
+    sponsorAboveName: null,
+    sponsorAboveHref: null,
+    sponsorBelowName: null,
+    sponsorBelowHref: null,
     organizerDisplayName: organizer.displayName,
     organizerAddress: formatSellerAddress(organizer),
     organizerContact: organizer.supportEmail ?? organizer.email ?? null,

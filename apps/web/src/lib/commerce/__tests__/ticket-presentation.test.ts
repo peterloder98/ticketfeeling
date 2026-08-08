@@ -83,8 +83,9 @@ describe("parseSeatHighlight", () => {
 });
 
 describe("TICKET_BODY_ASPECT", () => {
-  it("locks landscape ~2:1", () => {
-    expect(TICKET_BODY_ASPECT).toBe(2);
+  it("locks landscape ~2:1 (slightly shorter via denser middle)", () => {
+    expect(TICKET_BODY_ASPECT).toBeGreaterThanOrEqual(2);
+    expect(TICKET_BODY_ASPECT).toBeLessThanOrEqual(2.3);
   });
 
   it("gives middle column room (~29% cover)", () => {

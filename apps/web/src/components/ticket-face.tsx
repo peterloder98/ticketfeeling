@@ -5,9 +5,11 @@ import {
   parseSeatHighlight,
   TF_PRINT_HINT,
   TF_QR_HINT,
+  TF_TAGLINE,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_QR_MIN_PX,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -34,11 +36,11 @@ function SponsorLogo({
   compact?: boolean;
 }) {
   const h = compact
-    ? Math.min(22, TICKET_SPONSOR_LOGO_MAX_H_PX)
+    ? Math.min(20, TICKET_SPONSOR_LOGO_MAX_H_PX)
     : TICKET_SPONSOR_LOGO_MAX_H_PX;
   return (
     <div
-      className="relative mx-auto w-full max-w-[92%] shrink-0"
+      className="relative mx-auto w-full max-w-[88%] shrink-0"
       style={{ height: h }}
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -74,8 +76,8 @@ export function TicketFace({
   const hasSponsor =
     Boolean(data.sponsorLogoAboveUrl) || Boolean(data.sponsorLogoBelowUrl);
   const qrPx = compact
-    ? Math.min(qrSize, hasSponsor ? 112 : 128)
-    : Math.min(qrSize, hasSponsor ? 136 : 158);
+    ? Math.min(qrSize, hasSponsor ? TICKET_QR_MIN_PX : 124)
+    : Math.min(qrSize, hasSponsor ? Math.max(TICKET_QR_MIN_PX, 128) : 152);
 
   return (
     <div className="w-full min-w-0">
@@ -96,23 +98,23 @@ export function TicketFace({
             aria-hidden
           />
 
-          {/* LEFT — square cover contain + blur backdrop */}
+          {/* LEFT — square cover contain + blur backdrop (no frame box) */}
           <div className="relative min-h-0 min-w-0 overflow-hidden bg-[var(--tf-navy)]">
             {cover ? (
               <>
                 <div
-                  className="absolute inset-0 scale-110 bg-cover bg-center"
+                  className="absolute inset-[-14%] scale-110 bg-cover bg-center"
                   style={{
                     backgroundImage: `url(${cover})`,
-                    filter: "blur(18px)",
+                    filter: "blur(26px) saturate(1.05)",
                   }}
                   aria-hidden
                 />
                 <div
-                  className="absolute inset-0 bg-[rgba(15,39,71,0.55)]"
+                  className="absolute inset-0 bg-[rgba(15,39,71,0.42)]"
                   aria-hidden
                 />
-                <div className="absolute inset-[7%] overflow-hidden rounded-[10px] shadow-[0_6px_18px_rgba(0,0,0,0.28)] ring-1 ring-white/15">
+                <div className="absolute inset-[4%]">
                   <Image
                     src={cover}
                     alt=""
@@ -129,22 +131,24 @@ export function TicketFace({
             )}
           </div>
 
-          {/* MIDDLE — event info */}
+          {/* MIDDLE — denser info flow */}
           <div
-            className={`flex min-h-0 min-w-0 flex-col bg-white ${
-              compact ? "gap-0.5 px-3 py-2" : "gap-1 px-4 py-2.5 md:px-5 md:py-3"
+            className={`flex min-h-0 min-w-0 flex-col justify-center bg-white ${
+              compact ? "gap-0.5 px-3 py-1.5" : "gap-0.5 px-4 py-2 md:px-5 md:py-2.5"
             }`}
           >
             <div className="flex min-w-0 items-center">
               <BrandLogo
                 href={null}
                 variant="full"
-                className={compact ? "!h-8 !w-auto shrink-0" : "!h-9 !w-auto shrink-0 sm:!h-10"}
+                className={
+                  compact ? "!h-9 !w-auto shrink-0" : "!h-10 !w-auto shrink-0 sm:!h-11"
+                }
               />
             </div>
 
             <h1
-              className={`line-clamp-2 font-bold leading-[1.12] tracking-tight text-[var(--tf-navy)] ${
+              className={`line-clamp-2 font-bold leading-[1.1] tracking-tight text-[var(--tf-navy)] ${
                 compact ? "text-[15px]" : "text-lg md:text-xl"
               }`}
             >
@@ -180,8 +184,8 @@ export function TicketFace({
             {/* EINLASS | BEGINN compact */}
             {(data.doors.headline || data.startLabel) && (
               <div
-                className={`mt-0.5 grid grid-cols-2 gap-2 border-y border-[var(--tf-line)] ${
-                  compact ? "py-1" : "py-1.5"
+                className={`grid grid-cols-2 gap-2 border-y border-[var(--tf-line)] ${
+                  compact ? "py-1" : "py-1"
                 }`}
               >
                 <div className="min-w-0">
@@ -236,12 +240,12 @@ export function TicketFace({
 
             {/* Seat highlight */}
             {seat.mode === "boxes" ? (
-              <div className="mt-0.5 flex gap-1.5">
+              <div className="flex gap-1.5">
                 {seat.parts.map((part) => (
                   <div
                     key={`${part.label}-${part.value}`}
                     className={`min-w-0 flex-1 rounded-md border border-[var(--tf-line)] bg-[#f8fafc] text-center ${
-                      compact ? "px-1 py-1" : "px-1 py-1.5"
+                      compact ? "px-1 py-0.5" : "px-1 py-1"
                     }`}
                   >
                     {part.label ? (
@@ -261,7 +265,7 @@ export function TicketFace({
               </div>
             ) : (
               <p
-                className={`mt-0.5 font-bold tracking-wide text-[var(--tf-navy)] ${
+                className={`font-bold tracking-wide text-[var(--tf-navy)] ${
                   compact ? "text-sm" : "text-base"
                 }`}
               >
@@ -269,32 +273,35 @@ export function TicketFace({
               </p>
             )}
 
-            <div
-              className={`mt-auto flex flex-wrap gap-x-4 gap-y-0.5 pt-0.5 text-[var(--tf-text-secondary)] ${
-                compact ? "text-[10px]" : "text-[11px]"
-              }`}
-            >
-              {data.holderName ? (
-                <span>
-                  Inhaber{" "}
-                  <span className="font-semibold text-[var(--tf-navy)]">
-                    {data.holderName}
+            {/* Inhaber | Preis — part of info flow, not pinned with a dead gap */}
+            {(data.holderName || data.priceLabel) && (
+              <div
+                className={`flex flex-wrap gap-x-4 gap-y-0 text-[var(--tf-text-secondary)] ${
+                  compact ? "text-[10px]" : "text-[11px]"
+                }`}
+              >
+                {data.holderName ? (
+                  <span>
+                    Inhaber{" "}
+                    <span className="font-semibold text-[var(--tf-navy)]">
+                      {data.holderName}
+                    </span>
                   </span>
-                </span>
-              ) : null}
-              {data.priceLabel ? (
-                <span>
-                  Preis{" "}
-                  <span className="font-semibold text-[var(--tf-navy)]">
-                    {data.priceLabel}
+                ) : null}
+                {data.priceLabel ? (
+                  <span>
+                    Preis{" "}
+                    <span className="font-semibold text-[var(--tf-navy)]">
+                      {data.priceLabel}
+                    </span>
                   </span>
-                </span>
-              ) : null}
-            </div>
+                ) : null}
+              </div>
+            )}
           </div>
 
-          {/* RIGHT — QR stub */}
-          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center gap-1 border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1.5 text-center">
+          {/* RIGHT — QR stub: sponsor → admit → QR → # → hint → sponsor */}
+          <div className="relative flex min-h-0 min-w-0 flex-col items-center justify-center gap-0.5 border-l border-dashed border-[var(--tf-line)] bg-[#f8fafc] px-2 py-1 text-center">
             <span
               className="pointer-events-none absolute -left-1.5 top-0 h-3 w-3 -translate-y-1/2 rounded-full bg-[rgba(248,250,252,0.95)] ring-1 ring-[var(--tf-line)]"
               aria-hidden
@@ -304,16 +311,16 @@ export function TicketFace({
               aria-hidden
             />
 
+            {data.sponsorLogoAboveUrl ? (
+              <SponsorLogo src={data.sponsorLogoAboveUrl} compact={compact} />
+            ) : null}
+
             <p
               className="text-[9px] font-bold uppercase tracking-[0.14em]"
               style={{ color: accent }}
             >
               {admitLabel}
             </p>
-
-            {data.sponsorLogoAboveUrl ? (
-              <SponsorLogo src={data.sponsorLogoAboveUrl} compact={compact} />
-            ) : null}
 
             {showQr && data.qrToken ? (
               <>
@@ -324,12 +331,9 @@ export function TicketFace({
                     bare
                   />
                 </div>
-                {data.sponsorLogoBelowUrl ? (
-                  <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
-                ) : null}
                 <p
                   className={`max-w-full truncate font-bold tracking-wide text-[var(--tf-navy)] ${
-                    compact ? "text-[10px]" : "text-xs"
+                    compact ? "text-[9px]" : "text-[10px]"
                   }`}
                 >
                   {data.ticketNumber}
@@ -337,6 +341,9 @@ export function TicketFace({
                 <p className="text-[9px] text-[var(--tf-text-secondary)]">
                   {TF_QR_HINT}
                 </p>
+                {data.sponsorLogoBelowUrl ? (
+                  <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
+                ) : null}
               </>
             ) : (
               <div className="max-w-[11rem] px-1">
@@ -348,14 +355,14 @@ export function TicketFace({
                     {transferredMessage}
                   </p>
                 ) : null}
+                <p className="mt-1.5 text-[10px] font-medium text-[var(--tf-navy)]">
+                  {data.ticketNumber}
+                </p>
                 {data.sponsorLogoBelowUrl ? (
-                  <div className="mt-2">
+                  <div className="mt-1.5">
                     <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
                   </div>
                 ) : null}
-                <p className="mt-2 text-[11px] font-medium text-[var(--tf-navy)]">
-                  {data.ticketNumber}
-                </p>
               </div>
             )}
           </div>
@@ -392,7 +399,7 @@ function TicketCoverFallback({ compact }: { compact: boolean }) {
           <BrandLogo href={null} variant="mark" className="!h-24 !w-auto sm:!h-28" />
         </div>
       </div>
-      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-3 text-center">
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-3 text-center">
         <div className="rounded-lg bg-white/95 px-2.5 py-1.5 shadow-sm">
           <BrandLogo
             href={null}
@@ -400,8 +407,15 @@ function TicketCoverFallback({ compact }: { compact: boolean }) {
             className={compact ? "!h-7 !w-auto" : "!h-9 !w-auto"}
           />
         </div>
+        <p
+          className={`font-medium tracking-wide text-white/80 ${
+            compact ? "text-[9px]" : "text-[10px]"
+          }`}
+        >
+          {TF_TAGLINE}
+        </p>
         <span
-          className="mt-0.5 h-0.5 w-8 rounded-full bg-[var(--tf-teal)]"
+          className="h-0.5 w-8 rounded-full bg-[var(--tf-teal)]"
           aria-hidden
         />
       </div>

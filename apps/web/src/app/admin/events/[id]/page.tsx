@@ -479,25 +479,26 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             Sponsorenlogos auf dem Ticket
           </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-            Optional. Bis zu zwei Logos am QR-Stub — eines oberhalb, eines unterhalb des Codes.
-            Leer = wie bisher ohne Sponsoren.
+            Optional. Bis zu zwei Logos am QR-Stub — eines oberhalb des
+            Einlass-Labels, eines unterhalb von „Am Einlass vorzeigen.“ Leer =
+            ohne Sponsoren. Logos werden verkleinert, der QR bleibt groß.
           </p>
         </div>
         {canWrite ? (
           <div className="mt-4 grid gap-5 md:grid-cols-2">
             <TicketSponsorLogoField
               field="ticketSponsorLogoAboveUrl"
-              label="Logo oberhalb QR"
+              label="Logo oberhalb Einlass-Label"
               eventId={event.id}
               initialUrl={event.ticketSponsorLogoAboveUrl}
-              hint="Erscheint zwischen Einlass-Label und QR-Code."
+              hint="Erscheint über VIP-TICKET / EINLASSTICKET."
             />
             <TicketSponsorLogoField
               field="ticketSponsorLogoBelowUrl"
-              label="Logo unterhalb QR"
+              label="Logo unterhalb Hinweis"
               eventId={event.id}
               initialUrl={event.ticketSponsorLogoBelowUrl}
-              hint="Erscheint zwischen QR-Code und Ticketnummer."
+              hint="Erscheint unter „Am Einlass vorzeigen.“"
             />
           </div>
         ) : (
@@ -505,7 +506,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             {event.ticketSponsorLogoAboveUrl ? (
               <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-3">
                 <p className="text-xs font-medium text-[var(--tf-text-secondary)]">
-                  Oberhalb QR
+                  Oberhalb Einlass-Label
                 </p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -518,7 +519,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
             {event.ticketSponsorLogoBelowUrl ? (
               <div className="rounded-2xl border border-[var(--tf-line)] bg-white p-3">
                 <p className="text-xs font-medium text-[var(--tf-text-secondary)]">
-                  Unterhalb QR
+                  Unterhalb Hinweis
                 </p>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img

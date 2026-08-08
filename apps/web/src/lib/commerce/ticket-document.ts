@@ -10,10 +10,12 @@ import {
   TF_PRINT_HINT,
   TF_QR_HINT,
   TF_SOFT,
+  TF_TAGLINE,
   TF_TEAL,
   TICKET_BODY_ASPECT,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_QR_MIN_PX,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -66,6 +68,7 @@ export function buildTicketHtmlDocument(
   const sponsorBelow =
     data.sponsorLogoBelowAbsoluteUrl ?? data.sponsorLogoBelowUrl;
   const hasSponsor = Boolean(sponsorAbove || sponsorBelow);
+  const qrPx = hasSponsor ? Math.max(TICKET_QR_MIN_PX, 120) : 132;
 
   const coverHtml = cover
     ? `<div class="cover-blur" style="background-image:url('${escapeAttr(cover)}')"></div>
@@ -76,6 +79,7 @@ export function buildTicketHtmlDocument(
          <div class="fallback-logo-plate">
            <img src="/brand/logo-email.png" alt="Ticketfeeling" />
          </div>
+         <p class="fallback-claim">${escapeHtml(TF_TAGLINE)}</p>
          <span class="fallback-accent" aria-hidden="true"></span>
        </div>`;
 
@@ -171,25 +175,22 @@ export function buildTicketHtmlDocument(
     }
     .cover-blur {
       position: absolute;
-      inset: -12%;
+      inset: -18%;
       background-size: cover;
       background-position: center;
-      filter: blur(16px);
-      transform: scale(1.08);
+      filter: blur(24px) saturate(1.05);
+      transform: scale(1.1);
     }
     .cover-shade {
       position: absolute;
       inset: 0;
-      background: rgba(15, 39, 71, 0.55);
+      background: rgba(15, 39, 71, 0.42);
     }
     .cover-inset {
       position: absolute;
-      inset: 7%;
-      border-radius: 8px;
+      inset: 4%;
       overflow: hidden;
-      box-shadow: 0 6px 18px rgba(0,0,0,.28);
-      outline: 1px solid rgba(255,255,255,.15);
-      background: rgba(15, 39, 71, 0.35);
+      background: transparent;
     }
     .cover-inset img {
       width: 100%;
@@ -204,7 +205,7 @@ export function buildTicketHtmlDocument(
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
       padding: 12px;
       text-align: center;
       color: #fff;
@@ -237,6 +238,13 @@ export function buildTicketHtmlDocument(
       max-width: 120px;
       object-fit: contain;
     }
+    .fallback-claim {
+      margin: 0;
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: .02em;
+      color: rgba(255,255,255,.82);
+    }
     .fallback-accent {
       width: 28px;
       height: 2px;
@@ -244,10 +252,11 @@ export function buildTicketHtmlDocument(
       background: ${TF_TEAL};
     }
     .zone-b {
-      padding: 8px 14px 8px;
+      padding: 7px 14px;
       display: flex;
       flex-direction: column;
-      gap: 3px;
+      justify-content: center;
+      gap: 2px;
       min-width: 0;
       min-height: 0;
       background: #fff;
@@ -258,15 +267,15 @@ export function buildTicketHtmlDocument(
       min-width: 0;
     }
     .brand-row img {
-      height: 28px;
+      height: 32px;
       width: auto;
-      max-width: 130px;
+      max-width: 148px;
       object-fit: contain;
     }
     .event {
       margin: 0;
-      font-size: 16px;
-      line-height: 1.12;
+      font-size: 15px;
+      line-height: 1.1;
       font-weight: 700;
       color: ${TF_NAVY};
       display: -webkit-box;
@@ -304,8 +313,8 @@ export function buildTicketHtmlDocument(
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 8px;
-      margin: 2px 0 0;
-      padding: 5px 0;
+      margin: 1px 0 0;
+      padding: 4px 0;
       border-top: 1px solid ${TF_LINE};
       border-bottom: 1px solid ${TF_LINE};
     }
@@ -336,7 +345,7 @@ export function buildTicketHtmlDocument(
       text-overflow: ellipsis;
     }
     .category {
-      margin: 1px 0 0;
+      margin: 0;
       font-size: 10px;
       color: ${TF_MUTED};
       white-space: nowrap;
@@ -350,7 +359,7 @@ export function buildTicketHtmlDocument(
     .seat-boxes {
       display: flex;
       gap: 6px;
-      margin-top: 3px;
+      margin-top: 1px;
     }
     .seat-box {
       flex: 1;
@@ -359,7 +368,7 @@ export function buildTicketHtmlDocument(
       border: 1px solid ${TF_LINE};
       background: ${TF_SOFT};
       border-radius: 5px;
-      padding: 4px 2px;
+      padding: 3px 2px;
     }
     .seat-label {
       display: block;
@@ -375,7 +384,7 @@ export function buildTicketHtmlDocument(
       color: ${TF_NAVY};
     }
     .place {
-      margin: 3px 0 0;
+      margin: 1px 0 0;
       font-size: 13px;
       font-weight: 700;
       letter-spacing: .02em;
@@ -385,8 +394,7 @@ export function buildTicketHtmlDocument(
       white-space: nowrap;
     }
     .foot-meta {
-      margin-top: auto;
-      padding-top: 3px;
+      margin-top: 1px;
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
@@ -400,20 +408,20 @@ export function buildTicketHtmlDocument(
     .zone-c {
       background: ${TF_SOFT};
       border-left: 1px dashed ${TF_LINE};
-      padding: 6px 8px;
+      padding: 5px 8px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 4px;
+      gap: 3px;
       text-align: center;
       min-width: 0;
       min-height: 0;
       position: relative;
     }
     .sponsor-logo {
-      width: 92%;
-      max-width: 120px;
+      width: 88%;
+      max-width: 112px;
       height: ${TICKET_SPONSOR_LOGO_MAX_H_PX}px;
       flex-shrink: 0;
       line-height: 0;
@@ -452,14 +460,14 @@ export function buildTicketHtmlDocument(
       flex-shrink: 0;
     }
     .qr-plate img {
-      width: min(${hasSponsor ? 112 : 128}px, 20vw);
+      width: min(${qrPx}px, 20vw);
       height: auto;
       aspect-ratio: 1;
       display: block;
     }
     .ticket-no {
       margin: 0;
-      font-size: 10px;
+      font-size: 9px;
       font-weight: 700;
       color: ${TF_NAVY};
       letter-spacing: .02em;
@@ -525,8 +533,8 @@ export function buildTicketHtmlDocument(
           ${footerBits ? `<div class="foot-meta">${footerBits}</div>` : ""}
         </div>
         <div class="zone-c">
-          <p class="admit">${escapeHtml(admitLabel)}</p>
           ${sponsorAboveHtml}
+          <p class="admit">${escapeHtml(admitLabel)}</p>
           <div class="qr-plate">
             ${
               qrDataUrlOrNull
@@ -534,9 +542,9 @@ export function buildTicketHtmlDocument(
                 : `<p class="qr-hint">Kein gültiger QR-Code</p>`
             }
           </div>
-          ${sponsorBelowHtml}
           <p class="ticket-no">${escapeHtml(data.ticketNumber)}</p>
           <p class="qr-hint">${escapeHtml(TF_QR_HINT)}</p>
+          ${sponsorBelowHtml}
         </div>
       </article>
     </div>
