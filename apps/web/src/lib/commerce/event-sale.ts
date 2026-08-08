@@ -341,16 +341,13 @@ export function isSalesActivationBlocked(event: {
   if (!event.presaleStartsAt || event.presaleStartsAt.getTime() > now.getTime()) {
     return null;
   }
-  const result = canStartSales(
-    {
-      coverImageUrl: event.coverImageUrl,
-      eventStartsAt: event.eventStartsAt,
-      tour: event.tour,
-      categories: event.categories,
-      skipCategoryChecks: event.categories == null,
-    },
-    now,
-  );
+  const result = canStartSales({
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.categories,
+    skipCategoryChecks: event.categories == null,
+  });
   return result.ok ? null : result;
 }
 
