@@ -33,6 +33,7 @@ import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
 import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
 import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
+import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,7 @@ type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
+  await ensureTicketSponsorLogoColumns();
   const event = await prisma.event.findFirst({ where: { slug } });
   return { title: event?.name ?? "Event" };
 }
@@ -62,6 +64,7 @@ export default async function EventPage({ params }: Props) {
   );
   await ensureEventPricingSchema(prisma);
   await ensureScheduleChangedAtColumn();
+  await ensureTicketSponsorLogoColumns();
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {

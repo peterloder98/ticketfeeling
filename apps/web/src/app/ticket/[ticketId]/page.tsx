@@ -16,6 +16,7 @@ import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
+import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { TicketFace } from "@/components/ticket-face";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,7 @@ type Props = {
 };
 
 export default async function TicketViewPage({ params, searchParams }: Props) {
-  await ensureTicketHeroImageColumn();
+  await Promise.all([ensureTicketHeroImageColumn(), ensureTicketSponsorLogoColumns()]);
   const session = await getServerSession(authOptions);
   const { ticketId } = await params;
   const sp = await searchParams;

@@ -16,6 +16,10 @@ const FALLBACK_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_hero_image_url" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_sponsor_logo_above_url" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_sponsor_logo_below_url" TEXT`,
+  // Sponsor logo display scales (migration 20260808140000) — missing from fallback
+  // caused digest 534969071 Application errors on /admin and event pages.
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_sponsor_logo_above_scale" DOUBLE PRECISION`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_sponsor_logo_below_scale" DOUBLE PRECISION`,
   `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "stripe_payment_method_id" TEXT`,
   `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "stripe_mandate_id" TEXT`,
   `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "iban_last4" TEXT`,

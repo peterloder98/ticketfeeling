@@ -4,6 +4,7 @@ import {
   sharedCommittedQuantity,
   sharedRemainingQuantity,
 } from "@/lib/commerce/inventory-availability";
+import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 
 function startOfDay(d = new Date()) {
   const x = new Date(d);
@@ -103,6 +104,9 @@ export async function getSalesStats(organizationId: string) {
     },
     {},
   );
+
+  // Self-heal missing sponsor-logo scale columns before Event includes (P2022 / digest 534969071).
+  await ensureTicketSponsorLogoColumns();
 
   const pools = await prisma.inventoryPool.findMany({
     where: { event: { organizationId } },
