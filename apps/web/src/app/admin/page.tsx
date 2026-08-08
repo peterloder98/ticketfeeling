@@ -5,10 +5,22 @@ import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac
 import { getSalesStats } from "@/lib/commerce/stats";
 import { formatEuroFromCents } from "@/lib/money";
 import { ChannelBadge } from "@/components/channel-badge";
-import { channelLabel } from "@/lib/commerce/channels";
+import {
+  channelLabel,
+  isOrderCancelled,
+  orderCancelledStrikeClass,
+  orderStatusLabel,
+  orderStatusToneClass,
+  paymentMethodLabel,
+} from "@/lib/commerce/channels";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin" };
+
+function purchaseAt(order: { paidAt: Date | null; createdAt: Date }) {
+  return order.paidAt ?? order.createdAt;
+}
 
 export default async function AdminDashboardPage() {
   const session = await getServerSession(authOptions);
@@ -32,7 +44,11 @@ export default async function AdminDashboardPage() {
     { label: "Umsatz Monat", value: formatEuroFromCents(stats.month.grossCents) },
     { label: "Umsatz gesamt", value: formatEuroFromCents(stats.all.grossCents) },
     { label: "Ø Bestellwert", value: formatEuroFromCents(stats.all.avgOrderCents) },
-    { label: "Offen/fehlgeschlagen", value: String(stats.openOrFailedPayments) },
+    {
+      label: "Zahlung offen oder fehlgeschlagen",
+      value: String(stats.openOrFailedPayments),
+      hint: "Bestellungen mit ausstehender oder fehlgeschlagener Zahlung",
+    },
     {
       label: "Gestern",
       value: `${stats.yesterday.orders} / ${formatEuroFromCents(stats.yesterday.grossCents)}`,
@@ -67,63 +83,92 @@ export default async function AdminDashboardPage() {
           <div key={card.label} className="tf-card">
             <p className="text-sm text-[var(--muted)]">{card.label}</p>
             <p className="mt-2 font-[family-name:var(--font-display)] text-2xl">{card.value}</p>
+            {"hint" in card && card.hint ? (
+              <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">{card.hint}</p>
+            ) : null}
           </div>
         ))}
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <section className="tf-card">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Restkontingente</h2>
-            <Link href="/admin/events" className="text-sm font-medium text-[var(--tf-teal-hover)]">
-              Alle Events →
-            </Link>
-          </div>
-          <div className="mt-3 space-y-2 text-sm">
-            {stats.inventory.map((row) => (
-              <Link
-                key={`${row.eventId}-${row.categoryName}`}
-                href={`/admin/events/${row.eventId}`}
-                className="flex justify-between gap-2 rounded-lg px-1 py-1 hover:bg-[var(--tf-overlay)]"
-              >
-                <span className="text-[var(--tf-text-secondary)]">
-                  {row.eventName} · {row.categoryName}
-                  <span className="mt-0.5 block text-xs">
-                    Online {row.onlineSold} · Tageskasse {row.boxOfficeSold} verkauft
-                  </span>
-                </span>
-                <span className="shrink-0 tabular-nums font-medium text-[var(--tf-navy)]">
-                  {row.available}/{row.capacity}
-                </span>
-              </Link>
-            ))}
-            {stats.inventory.length === 0 ? (
-              <p className="text-[var(--tf-text-secondary)]">Keine Kontingente.</p>
-            ) : null}
-          </div>
-        </section>
+      <section className="space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Letzte Bestellungen</h2>
+          <Link href="/admin/orders" className="text-sm font-medium text-[var(--tf-teal-hover)]">
+            Alle Bestellungen →
+          </Link>
+        </div>
 
-        <section className="tf-card">
-          <h2 className="font-[family-name:var(--font-display)] text-xl">Letzte Bestellungen</h2>
-          <div className="mt-3 space-y-2 text-sm">
-            {stats.recentOrders.map((order) => (
-              <Link
-                key={order.id}
-                href={`/admin/orders/${order.id}`}
-                className="tf-admin-link flex justify-between gap-2 no-underline hover:underline"
-              >
-                <span className="flex flex-wrap items-center gap-2">
-                  <span>{order.orderNumber}</span>
+        {stats.recentOrders.map((order) => {
+          const payment = order.payments[0];
+          const cancelled = isOrderCancelled({
+            status: order.status,
+            voidedAt: order.voidedAt,
+          });
+          const strike = orderCancelledStrikeClass(cancelled);
+          const item = order.items[0];
+          const when = purchaseAt(order);
+          const kaufdatum = formatDeDateTime(when, {
+            dateStyle: "medium",
+            timeStyle: "short",
+          });
+
+          return (
+            <div
+              key={order.id}
+              className={`tf-card !p-5 ${cancelled ? "border-[var(--danger)]/40" : ""}`}
+            >
+              <p className="text-xs font-medium uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
+                Kaufdatum
+              </p>
+              <p className={`mt-0.5 text-base font-semibold text-[var(--tf-navy)] ${strike}`}>
+                {kaufdatum}
+              </p>
+
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className={`text-sm font-medium text-[var(--tf-navy)] ${strike}`}>
+                    {order.orderNumber}
+                  </p>
                   <ChannelBadge channel={order.channel} />
+                </div>
+                <p className={orderStatusToneClass(cancelled)}>
+                  {cancelled ? "Storniert" : orderStatusLabel(order.status)}
+                </p>
+              </div>
+
+              <p className={`mt-2 text-sm text-[var(--tf-text)] ${strike}`}>
+                {item?.eventNameSnapshot ?? "—"}
+              </p>
+              <p className={`mt-1 text-sm text-[var(--tf-text-secondary)] ${strike}`}>
+                {order.customer.firstName} {order.customer.lastName}
+                <span className="text-[var(--tf-text-secondary)]"> · </span>
+                {order.customer.email}
+              </p>
+              <p className={`mt-1 text-sm text-[var(--tf-navy)] ${strike}`}>
+                {formatEuroFromCents(order.grossCents)}
+                <span className="font-normal text-[var(--tf-text-secondary)]">
+                  {" "}
+                  · {order.tickets.length}{" "}
+                  {order.tickets.length === 1 ? "Ticket" : "Tickets"}
+                  {order.channel === "box_office"
+                    ? ` · ${paymentMethodLabel(payment?.method)}`
+                    : ""}
                 </span>
-                <span>
-                  {order.tickets.length} T. · {formatEuroFromCents(order.grossCents)}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      </div>
+              </p>
+
+              <div className="mt-4">
+                <Link href={`/admin/orders/${order.id}`} className="tf-admin-link text-sm">
+                  Details
+                </Link>
+              </div>
+            </div>
+          );
+        })}
+
+        {stats.recentOrders.length === 0 ? (
+          <p className="text-sm text-[var(--tf-text-secondary)]">Noch keine Bestellungen.</p>
+        ) : null}
+      </section>
 
       <div className="tf-card">
         <h2 className="font-[family-name:var(--font-display)] text-xl">Kanäle</h2>

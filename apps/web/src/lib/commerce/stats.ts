@@ -1,10 +1,4 @@
 import { prisma } from "@/lib/db";
-import {
-  categoryInventoryCapacity,
-  sharedCommittedQuantity,
-  sharedRemainingQuantity,
-} from "@/lib/commerce/inventory-availability";
-import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 
 function startOfDay(d = new Date()) {
   const x = new Date(d);
@@ -68,9 +62,14 @@ export async function getSalesStats(organizationId: string) {
       }),
       prisma.order.findMany({
         where: { organizationId },
-        orderBy: { createdAt: "desc" },
-        take: 8,
-        include: { customer: true, tickets: true },
+        orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+        take: 12,
+        include: {
+          customer: true,
+          tickets: true,
+          items: true,
+          payments: { orderBy: { createdAt: "desc" }, take: 1 },
+        },
       }),
     ]);
 
@@ -105,52 +104,6 @@ export async function getSalesStats(organizationId: string) {
     {},
   );
 
-  // Self-heal missing sponsor-logo scale columns before Event includes (P2022 / digest 534969071).
-  await ensureTicketSponsorLogoColumns();
-
-  const pools = await prisma.inventoryPool.findMany({
-    where: { event: { organizationId } },
-    include: { category: true, event: true },
-  });
-
-  // Aggregate by category — Online and Tageskasse share one physical Kontingent.
-  // Showing each pool separately looked like 2× capacity (e.g. 50/50 + 50/50).
-  const byCategory = new Map<
-    string,
-    {
-      eventId: string;
-      eventName: string;
-      categoryName: string;
-      categoryCapacity: number;
-      pools: {
-        channel: string;
-        capacity: number;
-        soldQuantity: number;
-        heldQuantity: number;
-      }[];
-    }
-  >();
-  for (const pool of pools) {
-    const key = pool.categoryId;
-    let row = byCategory.get(key);
-    if (!row) {
-      row = {
-        eventId: pool.eventId,
-        eventName: pool.event.name,
-        categoryName: pool.category.name,
-        categoryCapacity: pool.category.capacity,
-        pools: [],
-      };
-      byCategory.set(key, row);
-    }
-    row.pools.push({
-      channel: pool.channel,
-      capacity: pool.capacity,
-      soldQuantity: pool.soldQuantity,
-      heldQuantity: pool.heldQuantity,
-    });
-  }
-
   return {
     today: {
       orders: todayOrders.length,
@@ -174,6 +127,7 @@ export async function getSalesStats(organizationId: string) {
       grossCents: sum(allPaid),
       avgOrderCents: allPaid.length ? Math.round(sum(allPaid) / allPaid.length) : 0,
     },
+    /** Orders still waiting for payment or with a failed payment attempt. */
     openOrFailedPayments: openFailed,
     byChannel,
     ticketsByEvent: ticketCounts.map((row) => ({
@@ -181,32 +135,6 @@ export async function getSalesStats(organizationId: string) {
       eventName: eventName[row.eventId] ?? row.eventId,
       tickets: row._count._all,
     })),
-    inventory: [...byCategory.values()].map((row) => {
-      const capacity = categoryInventoryCapacity(row.categoryCapacity);
-      const sold = row.pools.reduce((s, p) => s + p.soldQuantity, 0);
-      const held = Math.max(
-        0,
-        row.pools.reduce((s, p) => s + Math.max(0, p.heldQuantity), 0),
-      );
-      const onlineSold =
-        row.pools.find((p) => p.channel === "online")?.soldQuantity ?? 0;
-      const boxOfficeSold =
-        row.pools.find((p) => p.channel === "box_office")?.soldQuantity ?? 0;
-      return {
-        eventId: row.eventId,
-        eventName: row.eventName,
-        categoryName: row.categoryName,
-        /** Shared across channels — not a single channel pool. */
-        channel: "shared" as const,
-        capacity,
-        sold,
-        held,
-        available: sharedRemainingQuantity(row.pools, row.categoryCapacity),
-        onlineSold,
-        boxOfficeSold,
-        committed: sharedCommittedQuantity(row.pools),
-      };
-    }),
     recentOrders: recent,
   };
 }
