@@ -170,7 +170,7 @@ export function AdminEventsList({
                 <div className="w-full max-w-[220px] sm:w-56">
                   <TicketProgressBar sold={event.sold} capacity={event.capacity} />
                   <p className="mt-1.5 text-xs text-[var(--tf-text-secondary)]">
-                    {formatEuroFromCents(event.revenueCents)} Umsatz
+                    {formatEuroFromCents(event.revenueCents)} Umsatz inkl. Gebühr
                     {event.sold > 0
                       ? ` · Shop ${event.onlineSold} · Kasse ${event.boxOfficeSold}`
                       : null}

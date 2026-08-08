@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
+import { orderItemCustomerPaidCents } from "@/lib/commerce/public-price";
 
 const PAID = ["paid", "fulfilled"] as const;
 
@@ -12,6 +13,7 @@ export type CategorySalesRow = {
   boxOfficeSold: number;
   totalSold: number;
   remaining: number;
+  /** Customer-paid revenue (ticket + Verwaltungsgebühr share). */
   revenueCents: number;
 };
 
@@ -20,6 +22,7 @@ export type EventSalesReport = {
   capacity: number;
   sold: number;
   remaining: number;
+  /** Customer-paid revenue (ticket + Verwaltungsgebühr share). */
   revenueCents: number;
   onlineSold: number;
   boxOfficeSold: number;
@@ -66,7 +69,7 @@ export async function getEventListSales(
   const eventIds = events.map((e) => e.id);
   if (eventIds.length === 0) return [];
 
-  // Aggregate in SQL instead of pulling every order line into Node.
+  // Revenue = ticket lines + proportional Verwaltungsgebühr (what the customer paid).
   // Cast params to uuid — Postgres rejects uuid = text (Prisma binds strings as text).
   const sales = await prisma.$queryRaw<
     Array<{
@@ -79,7 +82,29 @@ export async function getEventListSales(
   >`
     SELECT oi.event_id,
            COALESCE(SUM(oi.quantity), 0) AS sold,
-           COALESCE(SUM(oi.gross_cents), 0) AS revenue_cents,
+           COALESCE(SUM(
+             oi.gross_cents
+             + CASE
+                 WHEN GREATEST(
+                   COALESCE(o.tickets_gross_cents, 0) - COALESCE(o.discount_cents, 0),
+                   0
+                 ) > 0
+                 THEN ROUND(
+                   (
+                     GREATEST(
+                       COALESCE(NULLIF(o.admin_fee_gross_cents, 0), o.fee_gross_cents, 0),
+                       0
+                     )::numeric
+                     * oi.gross_cents::numeric
+                   )
+                   / GREATEST(
+                     o.tickets_gross_cents - o.discount_cents,
+                     1
+                   )::numeric
+                 )::bigint
+                 ELSE 0
+               END
+           ), 0) AS revenue_cents,
            COALESCE(SUM(CASE WHEN o.channel = 'box_office' THEN 0 ELSE oi.quantity END), 0) AS online_sold,
            COALESCE(SUM(CASE WHEN o.channel = 'box_office' THEN oi.quantity ELSE 0 END), 0) AS box_office_sold
     FROM order_items oi
@@ -154,7 +179,17 @@ export async function getEventSalesReport(eventId: string): Promise<EventSalesRe
       categorySnapshot: true,
       quantity: true,
       grossCents: true,
-      order: { select: { channel: true, paidAt: true, createdAt: true } },
+      order: {
+        select: {
+          channel: true,
+          paidAt: true,
+          createdAt: true,
+          feeGrossCents: true,
+          administrationFeeGrossCents: true,
+          ticketsGrossCents: true,
+          discountCents: true,
+        },
+      },
     },
   });
 
@@ -184,14 +219,15 @@ export async function getEventSalesReport(eventId: string): Promise<EventSalesRe
     };
     if (item.order.channel === "box_office") existing.boxOfficeSold += item.quantity;
     else existing.onlineSold += item.quantity;
-    existing.revenueCents += item.grossCents;
+    const paid = orderItemCustomerPaidCents(item.grossCents, item.order);
+    existing.revenueCents += paid;
     catMap.set(key, existing);
 
     const when = item.order.paidAt ?? item.order.createdAt;
     const day = berlinDayKey(when);
     const d = dayMap.get(day) ?? { tickets: 0, revenueCents: 0 };
     d.tickets += item.quantity;
-    d.revenueCents += item.grossCents;
+    d.revenueCents += paid;
     dayMap.set(day, d);
   }
 

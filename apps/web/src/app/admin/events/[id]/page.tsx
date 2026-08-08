@@ -652,7 +652,9 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           <p className="mt-2 text-2xl font-semibold tabular-nums text-[var(--tf-navy)]">
             {formatEuroFromCents(report.revenueCents)}
           </p>
-          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">Tickets brutto</p>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            inkl. Verwaltungsgebühr (Kaufpreis)
+          </p>
         </div>
         <div className="tf-card !p-4">
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">

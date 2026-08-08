@@ -24,7 +24,12 @@ export function CategorySalesTable({ rows }: { rows: CategorySalesRow[] }) {
             <th className="px-4 py-3 text-right font-semibold">Shop</th>
             <th className="px-4 py-3 text-right font-semibold">Tageskasse</th>
             <th className="px-4 py-3 text-right font-semibold">Gesamt</th>
-            <th className="px-4 py-3 text-right font-semibold">Umsatz</th>
+            <th className="px-4 py-3 text-right font-semibold">
+              Umsatz
+              <span className="mt-0.5 block text-[10px] font-normal text-[var(--tf-text-secondary)]">
+                inkl. Verwaltungsgebühr
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>

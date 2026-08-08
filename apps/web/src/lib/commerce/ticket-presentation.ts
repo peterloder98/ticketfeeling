@@ -8,7 +8,10 @@ import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { formatEuroFromCents } from "@/lib/money";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
-import { customerUnitPriceCents } from "@/lib/commerce/public-price";
+import {
+  customerUnitPriceCents,
+  orderItemCustomerPaidCents,
+} from "@/lib/commerce/public-price";
 import {
   formatProminentPlaceLabel,
   isVipCategory,
@@ -145,8 +148,6 @@ export async function loadTicketPresentation(
   const isVip = isVipCategory(categoryName, categoryKind);
   const unitTicketCents = ticket.orderItem?.unitPaidGrossCents;
   const feeBps = ticket.order.administrationFeePercentageBasisPoints ?? 0;
-  const orderFeeGross =
-    ticket.order.administrationFeeGrossCents || ticket.order.feeGrossCents || 0;
   /** Amount the buyer paid for this ticket (ticket + Verwaltungsgebühr share). */
   let priceCents: number | null = null;
   if (typeof unitTicketCents === "number" && unitTicketCents >= 0) {
@@ -155,14 +156,11 @@ export async function loadTicketPresentation(
         enabled: true,
         percentageBasisPoints: feeBps,
       });
-    } else if (orderFeeGross > 0 && ticket.orderItem) {
+    } else if (ticket.orderItem) {
       // Legacy orders without bps snapshot: allocate fee by paid ticket share.
-      const linePaid = ticket.orderItem.grossCents;
-      const ticketsPaid = Math.max(1, ticket.order.ticketsGrossCents - ticket.order.discountCents);
-      const feeShare =
-        ticketsPaid > 0 ? Math.round((orderFeeGross * linePaid) / ticketsPaid) : 0;
       const qty = Math.max(1, ticket.orderItem.quantity);
-      priceCents = unitTicketCents + Math.round(feeShare / qty);
+      const linePaid = orderItemCustomerPaidCents(ticket.orderItem.grossCents, ticket.order);
+      priceCents = Math.round(linePaid / qty);
     } else {
       priceCents = unitTicketCents;
     }

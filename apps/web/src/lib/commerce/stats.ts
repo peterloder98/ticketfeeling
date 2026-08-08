@@ -36,23 +36,28 @@ export async function getSalesStats(organizationId: string) {
     await Promise.all([
       prisma.order.findMany({
         where: { ...paidWhere, paidAt: { gte: today } },
-        select: { grossCents: true, id: true },
+        select: { grossCents: true, customerTotalCents: true, id: true },
       }),
       prisma.order.findMany({
         where: { ...paidWhere, paidAt: { gte: yesterday, lt: today } },
-        select: { grossCents: true, id: true },
+        select: { grossCents: true, customerTotalCents: true, id: true },
       }),
       prisma.order.findMany({
         where: { ...paidWhere, paidAt: { gte: week } },
-        select: { grossCents: true },
+        select: { grossCents: true, customerTotalCents: true },
       }),
       prisma.order.findMany({
         where: { ...paidWhere, paidAt: { gte: month } },
-        select: { grossCents: true },
+        select: { grossCents: true, customerTotalCents: true },
       }),
       prisma.order.findMany({
         where: paidWhere,
-        select: { id: true, grossCents: true, channel: true },
+        select: {
+          id: true,
+          grossCents: true,
+          customerTotalCents: true,
+          channel: true,
+        },
       }),
       prisma.order.count({
         where: {
@@ -73,8 +78,15 @@ export async function getSalesStats(organizationId: string) {
       }),
     ]);
 
-  const sum = (rows: { grossCents: number }[]) =>
-    rows.reduce((s, r) => s + r.grossCents, 0);
+  /** What the customer paid (tickets + Verwaltungsgebühr − gift card). */
+  const paidCents = (row: {
+    grossCents: number;
+    customerTotalCents?: number | null;
+  }) => row.customerTotalCents || row.grossCents;
+
+  const sum = (
+    rows: { grossCents: number; customerTotalCents?: number | null }[],
+  ) => rows.reduce((s, r) => s + paidCents(r), 0);
 
   const ticketCounts = await prisma.ticket.groupBy({
     by: ["eventId"],
@@ -98,7 +110,7 @@ export async function getSalesStats(organizationId: string) {
       const key = order.channel || "online";
       acc[key] ??= { orders: 0, grossCents: 0 };
       acc[key].orders += 1;
-      acc[key].grossCents += order.grossCents;
+      acc[key].grossCents += paidCents(order);
       return acc;
     },
     {},

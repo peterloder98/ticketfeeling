@@ -145,7 +145,7 @@ export default async function AdminDashboardPage() {
                 {order.customer.email}
               </p>
               <p className={`mt-1 text-sm text-[var(--tf-navy)] ${strike}`}>
-                {formatEuroFromCents(order.grossCents)}
+                {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
                 <span className="font-normal text-[var(--tf-text-secondary)]">
                   {" "}
                   · {order.tickets.length}{" "}

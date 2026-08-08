@@ -13,6 +13,32 @@ export function customerUnitPriceCents(
   return ticket + computePlatformFeeGrossCents(ticket, feeConfig.percentageBasisPoints);
 }
 
+/**
+ * Customer-paid amount for one order line (ticket line + allocated Verwaltungsgebühr).
+ * Use for Umsatz / sales reports — never report OrderItem.grossCents alone as revenue.
+ */
+export function orderItemCustomerPaidCents(
+  itemGrossCents: number,
+  order: {
+    feeGrossCents?: number | null;
+    administrationFeeGrossCents?: number | null;
+    ticketsGrossCents?: number | null;
+    discountCents?: number | null;
+  },
+): number {
+  const ticket = Math.max(0, itemGrossCents);
+  const feeGross = Math.max(
+    0,
+    order.administrationFeeGrossCents || order.feeGrossCents || 0,
+  );
+  const ticketsPaid = Math.max(
+    0,
+    (order.ticketsGrossCents || 0) - (order.discountCents || 0),
+  );
+  if (feeGross <= 0 || ticketsPaid <= 0 || ticket <= 0) return ticket;
+  return ticket + Math.round((feeGross * ticket) / ticketsPaid);
+}
+
 export function customerUnitFeeCents(
   ticketGrossCents: number,
   feeConfig: Pick<PlatformFeeConfig, "enabled" | "percentageBasisPoints">,
