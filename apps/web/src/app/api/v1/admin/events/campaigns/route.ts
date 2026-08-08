@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
+import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
 
 async function requireWrite() {
   const session = await getServerSession(authOptions);
@@ -70,6 +71,8 @@ export async function GET(request: Request) {
     where: { id: eventId, organizationId: membership.organizationId },
     select: {
       id: true,
+      eventEndsAt: true,
+      eventStartsAt: true,
       accessibilityDiscountEnabled: true,
       accessibilityDiscountLabel: true,
       accessibilityDiscountDescription: true,
@@ -90,6 +93,8 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json({
+    eventEndsAt: event.eventEndsAt?.toISOString() ?? null,
+    eventStartsAt: event.eventStartsAt?.toISOString() ?? null,
     accessibility: {
       enabled: event.accessibilityDiscountEnabled,
       label: event.accessibilityDiscountLabel,
@@ -183,7 +188,7 @@ export async function PUT(request: Request) {
     const body = campaignSchema.parse(await request.json());
     const event = await prisma.event.findFirst({
       where: { id: body.eventId, organizationId: membership.organizationId },
-      select: { id: true },
+      select: { id: true, eventEndsAt: true, eventStartsAt: true },
     });
     if (!event) {
       return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
@@ -197,10 +202,37 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: { code: "CATEGORY_MISMATCH" } }, { status: 400 });
     }
 
-    const validFrom = new Date(body.validFrom);
-    const validUntil = new Date(body.validUntil);
-    if (!(validFrom < validUntil)) {
+    let validFrom = new Date(body.validFrom);
+    let validUntil = new Date(body.validUntil);
+    if (Number.isNaN(validFrom.getTime()) || Number.isNaN(validUntil.getTime())) {
       return NextResponse.json({ error: { code: "INVALID_WINDOW" } }, { status: 400 });
+    }
+
+    const eventBound = event.eventEndsAt ?? event.eventStartsAt;
+    let clampedToEventEnd = false;
+    if (eventBound) {
+      const clamped = clampCampaignToEventEnd({
+        validFrom,
+        validUntil,
+        eventEndsAt: eventBound,
+      });
+      if (clamped.changed) {
+        validFrom = clamped.validFrom;
+        validUntil = clamped.validUntil;
+        clampedToEventEnd = true;
+      }
+    }
+
+    if (!(validFrom < validUntil)) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "INVALID_WINDOW",
+            message: "Aktionsende muss nach dem Aktionsbeginn liegen.",
+          },
+        },
+        { status: 400 },
+      );
     }
 
     const value = toStoredValue(body.type, body.valueDisplay);
@@ -251,10 +283,18 @@ export async function PUT(request: Request) {
       action: "event.price_campaign.upsert",
       entityType: "event_price_campaign",
       entityId: campaignId,
-      after: { ...data, categoryIds: body.categoryIds },
+      after: { ...data, categoryIds: body.categoryIds, clampedToEventEnd },
     });
 
-    return NextResponse.json({ ok: true, campaignId });
+    return NextResponse.json({
+      ok: true,
+      campaignId,
+      clampedToEventEnd,
+      validUntil: validUntil.toISOString(),
+      message: clampedToEventEnd
+        ? "Aktionsende lag nach dem Eventende und wurde auf das Eventende gesetzt."
+        : undefined,
+    });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json({ error: { code: "VALIDATION", details: err.flatten() } }, { status: 400 });

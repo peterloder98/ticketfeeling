@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
 import { parseDatetimeLocalBerlin, toDatetimeLocalValue } from "@/lib/admin/event-form";
+import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
 import { formatEuroFromCents } from "@/lib/money";
 
 type CategoryOpt = { id: string; name: string; priceGrossCents: number };
@@ -27,6 +28,9 @@ type AccessibilityState = {
   valueDisplay: number;
 };
 
+const CAMPAIGN_END_CLAMP_MSG =
+  "Aktionsende lag nach dem Eventende und wurde auf das Eventende gesetzt.";
+
 function toLocalInput(iso: string) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -42,16 +46,21 @@ function fromLocalInput(local: string) {
 export function EventDiscountsPanel({
   eventId,
   canWrite,
+  eventEndsAt: eventEndsAtProp,
 }: {
   eventId: string;
   canWrite: boolean;
+  /** ISO or null — preferred from server; API also returns it on load. */
+  eventEndsAt?: string | null;
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
+  const [warnMsg, setWarnMsg] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryOpt[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [eventEndsAt, setEventEndsAt] = useState<string | null>(eventEndsAtProp ?? null);
   const [access, setAccess] = useState<AccessibilityState>({
     enabled: false,
     label: "Rollstuhl / Ermäßigt",
@@ -72,6 +81,65 @@ export function EventDiscountsPanel({
     categoryIds: string[];
   } | null>(null);
 
+  const eventBoundDate = (() => {
+    if (!eventEndsAt) return null;
+    const d = new Date(eventEndsAt);
+    return Number.isNaN(d.getTime()) ? null : d;
+  })();
+
+  function clampDraftDates(
+    validFromLocal: string,
+    validUntilLocal: string,
+  ): { validFrom: string; validUntil: string; clamped: boolean } {
+    if (!eventBoundDate) {
+      return { validFrom: validFromLocal, validUntil: validUntilLocal, clamped: false };
+    }
+    try {
+      const from = parseDatetimeLocalBerlin(validFromLocal);
+      const until = parseDatetimeLocalBerlin(validUntilLocal);
+      if (!from || !until) {
+        return { validFrom: validFromLocal, validUntil: validUntilLocal, clamped: false };
+      }
+      const next = clampCampaignToEventEnd({
+        validFrom: from,
+        validUntil: until,
+        eventEndsAt: eventBoundDate,
+      });
+      if (!next.changed) {
+        return { validFrom: validFromLocal, validUntil: validUntilLocal, clamped: false };
+      }
+      return {
+        validFrom: toLocalInput(next.validFrom.toISOString()),
+        validUntil: toLocalInput(next.validUntil.toISOString()),
+        clamped: true,
+      };
+    } catch {
+      return { validFrom: validFromLocal, validUntil: validUntilLocal, clamped: false };
+    }
+  }
+
+  function updateDraftUntil(validUntil: string) {
+    if (!draft) return;
+    const clamped = clampDraftDates(draft.validFrom, validUntil);
+    setDraft({
+      ...draft,
+      validFrom: clamped.validFrom,
+      validUntil: clamped.validUntil,
+    });
+    setWarnMsg(clamped.clamped ? CAMPAIGN_END_CLAMP_MSG : null);
+  }
+
+  function updateDraftFrom(validFrom: string) {
+    if (!draft) return;
+    const clamped = clampDraftDates(validFrom, draft.validUntil);
+    setDraft({
+      ...draft,
+      validFrom: clamped.validFrom,
+      validUntil: clamped.validUntil,
+    });
+    setWarnMsg(clamped.clamped ? CAMPAIGN_END_CLAMP_MSG : null);
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -86,6 +154,11 @@ export function EventDiscountsPanel({
           type: c.type === "fixed" ? "fixed" : "percent",
         })),
       );
+      if (data.eventEndsAt || data.eventStartsAt) {
+        setEventEndsAt(data.eventEndsAt ?? data.eventStartsAt ?? null);
+      } else if (eventEndsAtProp) {
+        setEventEndsAt(eventEndsAtProp);
+      }
       setAccess({
         enabled: Boolean(data.accessibility?.enabled),
         label: data.accessibility?.label || "Rollstuhl / Ermäßigt",
@@ -98,7 +171,7 @@ export function EventDiscountsPanel({
     } finally {
       setLoading(false);
     }
-  }, [eventId]);
+  }, [eventId, eventEndsAtProp]);
 
   useEffect(() => {
     void load();
@@ -109,6 +182,7 @@ export function EventDiscountsPanel({
     setSaving(true);
     setError(null);
     setOkMsg(null);
+    setWarnMsg(null);
     try {
       const res = await fetch("/api/v1/admin/events/campaigns", {
         method: "PATCH",
@@ -142,27 +216,48 @@ export function EventDiscountsPanel({
     setSaving(true);
     setError(null);
     setOkMsg(null);
+    setWarnMsg(null);
     try {
+      const clamped = clampDraftDates(draft.validFrom, draft.validUntil);
+      const nextDraft = {
+        ...draft,
+        validFrom: clamped.validFrom,
+        validUntil: clamped.validUntil,
+      };
+      if (clamped.clamped) {
+        setDraft(nextDraft);
+        setWarnMsg(CAMPAIGN_END_CLAMP_MSG);
+      }
+
       const res = await fetch("/api/v1/admin/events/campaigns", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId,
-          campaignId: draft.campaignId,
-          name: draft.name,
-          active: draft.active,
-          validFrom: fromLocalInput(draft.validFrom),
-          validUntil: fromLocalInput(draft.validUntil),
-          type: draft.type,
-          valueDisplay: draft.valueDisplay,
-          channels: draft.channels,
-          categoryIds: draft.categoryIds,
+          campaignId: nextDraft.campaignId,
+          name: nextDraft.name,
+          active: nextDraft.active,
+          validFrom: fromLocalInput(nextDraft.validFrom),
+          validUntil: fromLocalInput(nextDraft.validUntil),
+          type: nextDraft.type,
+          valueDisplay: nextDraft.valueDisplay,
+          channels: nextDraft.channels,
+          categoryIds: nextDraft.categoryIds,
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.code ?? "SAVE_FAILED");
+      if (!res.ok) {
+        throw new Error(
+          data?.error?.message || data?.error?.code || data?.message || "SAVE_FAILED",
+        );
+      }
       setDraft(null);
-      setOkMsg("Preisaktion gespeichert.");
+      if (data.clampedToEventEnd || clamped.clamped) {
+        setWarnMsg(data.message || CAMPAIGN_END_CLAMP_MSG);
+        setOkMsg("Preisaktion gespeichert.");
+      } else {
+        setOkMsg("Preisaktion gespeichert.");
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
@@ -176,6 +271,7 @@ export function EventDiscountsPanel({
     if (!window.confirm("Diese Preisaktion wirklich löschen?")) return;
     setSaving(true);
     setError(null);
+    setWarnMsg(null);
     try {
       const res = await fetch(
         `/api/v1/admin/events/campaigns?eventId=${eventId}&campaignId=${campaignId}`,
@@ -194,7 +290,13 @@ export function EventDiscountsPanel({
 
   function startNewCampaign() {
     const from = new Date();
-    const until = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    let until = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+    let warn: string | null = null;
+    if (eventBoundDate && until.getTime() > eventBoundDate.getTime()) {
+      until = new Date(eventBoundDate.getTime());
+      warn = CAMPAIGN_END_CLAMP_MSG;
+    }
+    setWarnMsg(warn);
     setDraft({
       name: "Frühbucher",
       active: true,
@@ -208,6 +310,7 @@ export function EventDiscountsPanel({
   }
 
   function editCampaign(c: CampaignRow) {
+    setWarnMsg(null);
     setDraft({
       campaignId: c.id,
       name: c.name,
@@ -237,11 +340,16 @@ export function EventDiscountsPanel({
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
           Preisaktionen ohne Gutscheincode (Frühbucher, Black Week, …). Mehrere möglich — nicht
           kombinierbar; bei Überlappung gilt der höhere Nachlass. Ermäßigung/Rollstuhl ist optional
-          und kommt danach zusätzlich.
+          und kommt danach zusätzlich. Das Aktionsende darf nicht nach dem Eventende liegen.
         </p>
       </div>
 
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+      {warnMsg ? (
+        <p className="text-sm text-[var(--tf-navy)]">
+          <span className="font-medium">Hinweis:</span> {warnMsg}
+        </p>
+      ) : null}
       {okMsg ? <p className="text-sm text-[var(--tf-teal)]">{okMsg}</p> : null}
 
       <div className="space-y-3 rounded-xl border border-[var(--tf-border)] p-4">
@@ -411,14 +519,14 @@ export function EventDiscountsPanel({
                 <SmartDateTimeInput
                   label="Von"
                   value={draft.validFrom}
-                  onChange={(validFrom) => setDraft({ ...draft, validFrom })}
+                  onChange={updateDraftFrom}
                 />
               </div>
               <div className="sm:col-span-1">
                 <SmartDateTimeInput
                   label="Bis"
                   value={draft.validUntil}
-                  onChange={(validUntil) => setDraft({ ...draft, validUntil })}
+                  onChange={updateDraftUntil}
                 />
               </div>
               <label className="block text-sm">
@@ -525,7 +633,10 @@ export function EventDiscountsPanel({
               <button
                 type="button"
                 className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-                onClick={() => setDraft(null)}
+                onClick={() => {
+                  setDraft(null);
+                  setWarnMsg(null);
+                }}
               >
                 Abbrechen
               </button>

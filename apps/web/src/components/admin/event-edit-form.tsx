@@ -202,6 +202,10 @@ export function EventEditForm({
               : null,
           ].filter(Boolean);
           setSaveHint(parts.join(" "));
+        } else if (result.campaignsAdjusted > 0) {
+          setSaveHint(
+            `Event gespeichert. ${result.campaignsAdjusted} Preisaktion(en) an das neue Eventende angepasst.`,
+          );
         } else if (result.coverMissing) {
           setSaveHint(
             "Event gespeichert. Eventcover fehlt. Das Event kann ohne Eventcover nicht in den Verkauf gehen.",

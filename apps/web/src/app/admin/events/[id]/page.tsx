@@ -788,7 +788,11 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         seatingEnabled={seatingEnabled}
       />
 
-      <EventDiscountsPanel eventId={event.id} canWrite={canWrite} />
+      <EventDiscountsPanel
+        eventId={event.id}
+        canWrite={canWrite}
+        eventEndsAt={event.eventEndsAt?.toISOString() ?? event.eventStartsAt?.toISOString() ?? null}
+      />
 
       <section className="tf-card !p-5">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Auf meine Website</h2>

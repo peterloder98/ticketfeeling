@@ -1,6 +1,6 @@
 /**
  * Schedule-change helpers: detect start moves, preserve end/doors offsets,
- * and clamp price campaigns so they don't outlive the new event start.
+ * and clamp price campaigns so they don't outlive the new event start/end.
  */
 
 import type { PrismaClient } from "@prisma/client";
@@ -18,6 +18,13 @@ export function sameInstantMs(
 }
 
 export function scheduleStartChanged(
+  previous: Date | null | undefined,
+  next: Date | null | undefined,
+): boolean {
+  return !sameInstantMs(previous, next);
+}
+
+export function scheduleEndChanged(
   previous: Date | null | undefined,
   next: Date | null | undefined,
 ): boolean {
@@ -127,6 +134,29 @@ export function shouldShowEventStartCountdown(opts: {
 }
 
 /**
+ * Clamp campaign end to the event end when it would otherwise outlive the event.
+ * Preserves validFrom when still before the new end.
+ */
+export function clampCampaignToEventEnd(input: {
+  validFrom: Date;
+  validUntil: Date;
+  eventEndsAt: Date;
+}): { validFrom: Date; validUntil: Date; changed: boolean } {
+  const { validFrom, validUntil, eventEndsAt } = input;
+  if (validUntil.getTime() <= eventEndsAt.getTime()) {
+    return { validFrom, validUntil, changed: false };
+  }
+
+  const nextUntil = new Date(eventEndsAt.getTime());
+  let nextFrom = validFrom;
+  if (nextFrom.getTime() >= nextUntil.getTime()) {
+    nextFrom = new Date(nextUntil.getTime() - 60_000);
+  }
+
+  return { validFrom: nextFrom, validUntil: nextUntil, changed: true };
+}
+
+/**
  * Adjust active/upcoming campaigns whose validUntil is after the new event start.
  */
 export async function clampEventCampaignsToNewStart(
@@ -149,6 +179,43 @@ export async function clampEventCampaignsToNewStart(
       validFrom: row.validFrom,
       validUntil: row.validUntil,
       newEventStartsAt,
+    });
+    if (!next.changed) continue;
+    await db.eventPriceCampaign.update({
+      where: { id: row.id },
+      data: {
+        validFrom: next.validFrom,
+        validUntil: next.validUntil,
+      },
+    });
+    adjusted += 1;
+  }
+  return { adjusted };
+}
+
+/**
+ * Adjust campaigns whose validUntil is after the new event end.
+ * Applies to active and inactive rows so saved windows stay consistent.
+ */
+export async function clampEventCampaignsToNewEnd(
+  db: PrismaClient,
+  eventId: string,
+  newEventEndsAt: Date,
+): Promise<{ adjusted: number }> {
+  const campaigns = await db.eventPriceCampaign.findMany({
+    where: {
+      eventId,
+      validUntil: { gt: newEventEndsAt },
+    },
+    select: { id: true, validFrom: true, validUntil: true },
+  });
+
+  let adjusted = 0;
+  for (const row of campaigns) {
+    const next = clampCampaignToEventEnd({
+      validFrom: row.validFrom,
+      validUntil: row.validUntil,
+      eventEndsAt: newEventEndsAt,
     });
     if (!next.changed) continue;
     await db.eventPriceCampaign.update({

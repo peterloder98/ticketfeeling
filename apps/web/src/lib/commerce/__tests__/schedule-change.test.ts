@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  clampCampaignToEventEnd,
   clampCampaignToEventStart,
+  scheduleEndChanged,
   scheduleStartChanged,
   shiftRelativeToStart,
   shouldShowEventStartCountdown,
@@ -44,6 +46,37 @@ describe("schedule-change", () => {
     expect(result.changed).toBe(true);
     expect(result.validUntil.getTime()).toBe(newStart.getTime() - 60_000);
     expect(result.validFrom.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("detects end changes at minute precision", () => {
+    const a = new Date("2026-08-20T21:00:00.000Z");
+    const b = new Date("2026-08-20T21:00:30.000Z");
+    const c = new Date("2026-08-20T22:00:00.000Z");
+    expect(scheduleEndChanged(a, b)).toBe(false);
+    expect(scheduleEndChanged(a, c)).toBe(true);
+  });
+
+  it("clamps campaign validUntil to new event end", () => {
+    const eventEndsAt = new Date("2026-08-13T21:00:00.000Z");
+    const result = clampCampaignToEventEnd({
+      validFrom: new Date("2026-07-01T00:00:00.000Z"),
+      validUntil: new Date("2026-08-20T23:59:00.000Z"),
+      eventEndsAt,
+    });
+    expect(result.changed).toBe(true);
+    expect(result.validUntil.toISOString()).toBe(eventEndsAt.toISOString());
+    expect(result.validFrom.toISOString()).toBe("2026-07-01T00:00:00.000Z");
+  });
+
+  it("leaves campaign unchanged when already before event end", () => {
+    const eventEndsAt = new Date("2026-08-13T21:00:00.000Z");
+    const result = clampCampaignToEventEnd({
+      validFrom: new Date("2026-07-01T00:00:00.000Z"),
+      validUntil: new Date("2026-08-13T20:00:00.000Z"),
+      eventEndsAt,
+    });
+    expect(result.changed).toBe(false);
+    expect(result.validUntil.toISOString()).toBe("2026-08-13T20:00:00.000Z");
   });
 
   it("prefers campaign countdown over event countdown", () => {

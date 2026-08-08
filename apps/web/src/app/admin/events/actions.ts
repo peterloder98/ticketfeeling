@@ -35,8 +35,10 @@ import {
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 import {
+  clampEventCampaignsToNewEnd,
   clampEventCampaignsToNewStart,
   requiresStrictScheduleConfirm,
+  scheduleEndChanged,
   scheduleStartChanged,
   shiftRelativeToStart,
   shouldConfirmScheduleChange,
@@ -814,7 +816,12 @@ export async function updateEventAction(formData: FormData) {
   let campaignsAdjusted = 0;
   if (startChanged && eventStartsAt) {
     const clamp = await clampEventCampaignsToNewStart(prisma, event.id, eventStartsAt);
-    campaignsAdjusted = clamp.adjusted;
+    campaignsAdjusted += clamp.adjusted;
+  }
+  const endChanged = scheduleEndChanged(oldEndsAt, eventEndsAt);
+  if (endChanged && eventEndsAt) {
+    const clamp = await clampEventCampaignsToNewEnd(prisma, event.id, eventEndsAt);
+    campaignsAdjusted += clamp.adjusted;
   }
 
   let buyersEmailed = 0;
