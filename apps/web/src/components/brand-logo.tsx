@@ -1,11 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
+import type { CSSProperties } from "react";
 
 type BrandLogoProps = {
   href?: string | null;
   variant?: "full" | "mark" | "app";
   className?: string;
   priority?: boolean;
+  /** When set (e.g. ticket face), overrides default responsive height classes. */
+  style?: CSSProperties;
 };
 
 /** Cache-bust so browsers pick up the latest artwork. */
@@ -55,8 +58,10 @@ export function BrandLogo({
   variant = "full",
   className = "",
   priority = false,
+  style,
 }: BrandLogoProps) {
   const asset = variant === "full" ? FULL : variant === "app" ? APP : MARK;
+  const sizedByStyle = style?.height != null || style?.width != null;
 
   const graphic = (
     <Image
@@ -67,7 +72,8 @@ export function BrandLogo({
       priority={priority}
       quality={100}
       unoptimized
-      className={`object-contain ${asset.className} ${className}`}
+      style={style}
+      className={`object-contain ${sizedByStyle ? "w-auto" : asset.className} ${className}`}
     />
   );
 

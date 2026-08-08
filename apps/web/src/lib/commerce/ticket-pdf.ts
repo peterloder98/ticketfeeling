@@ -17,9 +17,13 @@ import {
   TF_QR_HINT,
   TF_SOFT,
   TF_TEAL,
+  TICKET_ACCENT_H_PX,
   TICKET_BODY_ASPECT,
+  TICKET_BRAND_LOGO_GAP_PX,
+  TICKET_BRAND_LOGO_H_PX,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_CORNER_RADIUS_PX,
   TICKET_QR_MIN_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -27,10 +31,32 @@ import { parseUploadedAssetId } from "@/lib/uploads/optimize-sponsor-logo";
 
 /** ~12 mm printer-safe margin on DIN A4 */
 const PAGE_MARGIN = 34;
-/** Match TicketFace `rounded-[16px]` at ~900px ticket width. */
-const TICKET_CORNER_R = 14;
-/** Brand lockup display height (TicketFace ~h-11 / 44px). */
-const BRAND_LOGO_H = 42;
+
+const FONT_REGULAR = "TF-Inter";
+const FONT_BOLD = "TF-Inter-Bold";
+
+function resolveFontPath(file: string): string | null {
+  const candidates = [
+    path.join(process.cwd(), "assets/fonts", file),
+    path.join(process.cwd(), "apps/web/assets/fonts", file),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
+function registerTicketFonts(doc: PDFKit.PDFDocument) {
+  const regular = resolveFontPath("Inter-Regular.ttf");
+  const bold = resolveFontPath("Inter-Bold.ttf");
+  if (regular) doc.registerFont(FONT_REGULAR, regular);
+  if (bold) doc.registerFont(FONT_BOLD, bold);
+  // Fallback names stay Helvetica if Inter files are missing in the runtime image.
+  return {
+    regular: regular ? FONT_REGULAR : "Helvetica",
+    bold: bold ? FONT_BOLD : "Helvetica-Bold",
+  };
+}
 
 type DrawOptions = {
   pageIndexLabel?: string | null;
@@ -82,7 +108,7 @@ async function loadLogoBuffer(): Promise<Buffer | null> {
 }
 
 /**
- * Pre-rasterize brand lockup at 2× display size so PDFKit embeds crisp pixels,
+ * Pre-rasterize brand lockup at 3× display size so PDFKit embeds crisp pixels,
  * then place at true aspect (avoids wide fit-box left-bias).
  */
 async function prepareBrandLogo(
@@ -96,13 +122,15 @@ async function prepareBrandLogo(
     const srcH = meta.height || 381;
     const h = displayH;
     const w = Math.max(1, Math.round(h * (srcW / srcH)));
+    const scale = 3;
     const buf = await sharp(logo)
-      .resize(w * 2, h * 2, {
+      .resize(w * scale, h * scale, {
         fit: "contain",
+        kernel: sharp.kernel.lanczos3,
         background: { r: 255, g: 255, b: 255, alpha: 1 },
       })
       .flatten({ background: { r: 255, g: 255, b: 255 } })
-      .png()
+      .png({ compressionLevel: 9, adaptiveFiltering: true })
       .toBuffer();
     return { buf, w, h };
   } catch {
@@ -338,6 +366,7 @@ async function drawTicketPage(
   const sponsorAbove = options?.sponsorAbove ?? null;
   const sponsorBelow = options?.sponsorBelow ?? null;
   const hasSponsor = Boolean(sponsorAbove || sponsorBelow);
+  const fonts = registerTicketFonts(doc);
 
   doc.rect(0, 0, pageW, pageH).fill("#FFFFFF");
 
@@ -368,7 +397,7 @@ async function drawTicketPage(
     ticketY,
     ticketW,
     ticketH,
-    TICKET_CORNER_R,
+    TICKET_CORNER_RADIUS_PX,
     async () => {
       doc.rect(ticketX, ticketY, ticketW, ticketH).fill("#FFFFFF");
       if (cover) {
@@ -378,7 +407,7 @@ async function drawTicketPage(
       }
       doc.rect(bx, ticketY, zoneB, ticketH).fill("#FFFFFF");
       doc.rect(cx, ticketY, zoneC, ticketH).fill(TF_SOFT);
-      doc.rect(ticketX, ticketY, ticketW, 3).fill(accent);
+      // Accent painted last (after content) so it stays continuous over cover.
     },
   );
 
@@ -389,8 +418,8 @@ async function drawTicketPage(
   let by = ticketY + bPadY;
 
   // Brand lockup centered at top of middle zone — match TicketFace air before title
-  const brandLogo = await prepareBrandLogo(logo, BRAND_LOGO_H);
-  const logoH = brandLogo?.h ?? BRAND_LOGO_H;
+  const brandLogo = await prepareBrandLogo(logo, TICKET_BRAND_LOGO_H_PX);
+  const logoH = brandLogo?.h ?? TICKET_BRAND_LOGO_H_PX;
   if (brandLogo) {
     try {
       doc.image(brandLogo.buf, bx + (zoneB - brandLogo.w) / 2, by, {
@@ -399,7 +428,7 @@ async function drawTicketPage(
       });
     } catch {
       doc
-        .font("Helvetica-Bold")
+        .font(fonts.bold)
         .fontSize(10)
         .fillColor(TF_NAVY)
         .text("Ticketfeeling", bx + bPadX, by + 4, {
@@ -409,7 +438,7 @@ async function drawTicketPage(
     }
   } else {
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(10)
       .fillColor(TF_NAVY)
       .text("Ticketfeeling", bx + bPadX, by + 4, {
@@ -417,12 +446,11 @@ async function drawTicketPage(
         align: "center",
       });
   }
-  // logoH + ~18px gap (TicketFace mt-5)
-  by += logoH + 18;
+  by += logoH + TICKET_BRAND_LOGO_GAP_PX;
 
   // Title then date — advance by measured height so lines never overlap
   const titleSize = 13.5;
-  doc.font("Helvetica-Bold").fontSize(titleSize);
+  doc.font(fonts.bold).fontSize(titleSize);
   const titleMaxH = 32;
   const titleH = Math.min(
     titleMaxH,
@@ -438,7 +466,7 @@ async function drawTicketPage(
 
   if (data.dateLabel) {
     const dateSize = 8.5;
-    doc.font("Helvetica").fontSize(dateSize);
+    doc.font(fonts.regular).fontSize(dateSize);
     const dateH = Math.min(
       12,
       Math.ceil(doc.heightOfString(data.dateLabel, { width: bInnerW })),
@@ -453,7 +481,7 @@ async function drawTicketPage(
 
   // Location: name + city/address
   doc
-    .font("Helvetica-Bold")
+    .font(fonts.bold)
     .fontSize(8.5)
     .fillColor(TF_NAVY)
     .text(data.locationName, bx + bPadX, by, {
@@ -464,7 +492,7 @@ async function drawTicketPage(
   by = doc.y + 0.5;
   if (data.locationDetail) {
     doc
-      .font("Helvetica")
+      .font(fonts.regular)
       .fontSize(7)
       .fillColor(TF_MUTED)
       .text(data.locationDetail, bx + bPadX, by, {
@@ -491,7 +519,7 @@ async function drawTicketPage(
     const doorsColor =
       data.isVip || data.doors.isCategoryOverride ? accent : TF_NAVY;
     doc
-      .font("Helvetica")
+      .font(fonts.regular)
       .fontSize(6)
       .fillColor(TF_MUTED)
       .text((data.doors.headlineLabel || "Einlass").toUpperCase(), bx + bPadX, by, {
@@ -499,7 +527,7 @@ async function drawTicketPage(
         characterSpacing: 0.6,
       });
     doc
-      .font("Helvetica")
+      .font(fonts.regular)
       .fontSize(6)
       .fillColor(TF_MUTED)
       .text("BEGINN", bx + bPadX + colW + 8, by, {
@@ -509,7 +537,7 @@ async function drawTicketPage(
     by += 8;
 
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(10)
       .fillColor(data.doors.timeLabel ? doorsColor : TF_MUTED)
       .text(
@@ -519,7 +547,7 @@ async function drawTicketPage(
         { width: colW, height: 12, ellipsis: true },
       );
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(10)
       .fillColor(TF_NAVY)
       .text(data.startLabel ?? "—", bx + bPadX + colW + 8, by, {
@@ -530,7 +558,7 @@ async function drawTicketPage(
     by += 12;
     if (data.doors.doorsNote) {
       doc
-        .font("Helvetica")
+        .font(fonts.regular)
         .fontSize(6.5)
         .fillColor(TF_MUTED)
         .text(data.doors.doorsNote, bx + bPadX, by, {
@@ -551,7 +579,7 @@ async function drawTicketPage(
 
   // Category (VIP gold accent only)
   const catY = by;
-  doc.font("Helvetica").fontSize(7.5);
+  doc.font(fonts.regular).fontSize(7.5);
   const catLabelW = doc.widthOfString("Kategorie");
   doc.fillColor(TF_MUTED).text("Kategorie", bx + bPadX, catY, { continued: false });
   let catX = bx + bPadX + catLabelW + 6;
@@ -571,14 +599,14 @@ async function drawTicketPage(
       .lineWidth(0.6)
       .stroke();
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(6.5)
       .fillColor(TF_GOLD)
       .text("VIP", catX, catY + 1.5, { width: badgeW, align: "center" });
     catX += badgeW + 6;
     if (!/^vip$/i.test(data.categoryName.trim())) {
       doc
-        .font("Helvetica-Bold")
+        .font(fonts.bold)
         .fontSize(8)
         .fillColor(TF_NAVY)
         .text(data.categoryName, catX, catY, {
@@ -589,7 +617,7 @@ async function drawTicketPage(
     }
   } else {
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(8)
       .fillColor(TF_NAVY)
       .text(data.categoryName, catX, catY, {
@@ -617,7 +645,7 @@ async function drawTicketPage(
         .stroke();
       if (part.label) {
         doc
-          .font("Helvetica")
+          .font(fonts.regular)
           .fontSize(6)
           .fillColor(TF_MUTED)
           .text(part.label, ox + 2, by + 2, {
@@ -626,7 +654,7 @@ async function drawTicketPage(
           });
       }
       doc
-        .font("Helvetica-Bold")
+        .font(fonts.bold)
         .fontSize(10)
         .fillColor(TF_NAVY)
         .text(part.value, ox + 2, by + (part.label ? 11 : 6), {
@@ -639,7 +667,7 @@ async function drawTicketPage(
     by += boxH + 3;
   } else {
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(11)
       .fillColor(TF_NAVY)
       .text(seat.text, bx + bPadX, by, {
@@ -660,12 +688,12 @@ async function drawTicketPage(
   for (const row of footerMeta) {
     if (by > ticketY + ticketH - 10) break;
     doc
-      .font("Helvetica")
+      .font(fonts.regular)
       .fontSize(7)
       .fillColor(TF_MUTED)
       .text(`${row.label}  `, bx + bPadX, by, { continued: true });
     doc
-      .font("Helvetica-Bold")
+      .font(fonts.bold)
       .fontSize(7.5)
       .fillColor(TF_INK)
       .text(row.value, { continued: false });
@@ -746,7 +774,7 @@ async function drawTicketPage(
   let cy = aboveSlotTop + aboveSlotH;
 
   doc
-    .font("Helvetica-Bold")
+    .font(fonts.bold)
     .fontSize(7.5)
     .fillColor(accent)
     .text(admitLabel, cx + cPad, cy, {
@@ -771,7 +799,7 @@ async function drawTicketPage(
       });
     } catch {
       doc
-        .font("Helvetica")
+        .font(fonts.regular)
         .fontSize(8)
         .fillColor("#B91C1C")
         .text("Kein QR", cx + cPad, cy + qrPlate / 2, {
@@ -781,7 +809,7 @@ async function drawTicketPage(
     }
   } else {
     doc
-      .font("Helvetica")
+      .font(fonts.regular)
       .fontSize(8)
       .fillColor("#B91C1C")
       .text("Kein gültiger QR-Code", cx + cPad, cy + qrPlate / 2, {
@@ -792,7 +820,7 @@ async function drawTicketPage(
   cy += qrPlate + 3;
 
   doc
-    .font("Helvetica-Bold")
+    .font(fonts.bold)
     .fontSize(6.5)
     .fillColor(TF_NAVY)
     .text(data.ticketNumber, cx + cPad, cy, {
@@ -804,7 +832,7 @@ async function drawTicketPage(
   cy = doc.y + 1;
 
   doc
-    .font("Helvetica")
+    .font(fonts.regular)
     .fontSize(6.5)
     .fillColor(TF_MUTED)
     .text(TF_QR_HINT, cx + cPad, cy, {
@@ -822,9 +850,24 @@ async function drawTicketPage(
   doc.circle(cx, ticketY, notchR).fill("#FFFFFF");
   doc.circle(cx, ticketY + ticketH, notchR).fill("#FFFFFF");
 
-  // Outer stroke — accent already painted inside the rounded body clip
+  // Continuous accent on top — last paint inside rounded clip (matches TicketFace z-20)
+  await withRoundedClipAsync(
+    doc,
+    ticketX,
+    ticketY,
+    ticketW,
+    ticketH,
+    TICKET_CORNER_RADIUS_PX,
+    () => {
+      doc
+        .rect(ticketX, ticketY, ticketW, TICKET_ACCENT_H_PX)
+        .fill(accent);
+    },
+  );
+
+  // Outer stroke
   doc
-    .roundedRect(ticketX, ticketY, ticketW, ticketH, TICKET_CORNER_R)
+    .roundedRect(ticketX, ticketY, ticketW, ticketH, TICKET_CORNER_RADIUS_PX)
     .strokeColor(TF_LINE)
     .lineWidth(1.25)
     .stroke();
@@ -832,7 +875,7 @@ async function drawTicketPage(
   // Notes below strip (organizer name only — never street address)
   let notesY = ticketY + ticketH + 22;
   doc
-    .font("Helvetica")
+    .font(fonts.regular)
     .fontSize(9)
     .fillColor(TF_MUTED)
     .text(TF_PRINT_HINT, margin, notesY, {
@@ -843,7 +886,7 @@ async function drawTicketPage(
 
   if (data.organizerDisplayName) {
     doc
-      .font("Helvetica")
+      .font(fonts.regular)
       .fontSize(8)
       .fillColor(TF_MUTED)
       .text(`Veranstalter: ${data.organizerDisplayName}`, margin, notesY, {

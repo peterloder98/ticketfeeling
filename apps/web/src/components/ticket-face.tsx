@@ -6,9 +6,13 @@ import {
   parseSeatHighlight,
   TF_PRINT_HINT,
   TF_QR_HINT,
+  TICKET_ACCENT_H_PX,
   TICKET_BODY_ASPECT,
+  TICKET_BRAND_LOGO_GAP_PX,
+  TICKET_BRAND_LOGO_H_PX,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_CORNER_RADIUS_PX,
   TICKET_QR_MIN_PX,
   sponsorLogoBoxForScale,
   type TicketPresentation,
@@ -97,17 +101,18 @@ export function TicketFace({
       <div className="w-full overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <article
           className={`relative mx-auto grid w-full overflow-hidden border border-[var(--tf-line)] bg-white shadow-[0_12px_40px_rgba(15,39,71,0.08)] ${
-            compact ? "min-w-[560px] max-w-[720px] rounded-[14px]" : "min-w-[640px] max-w-[900px] rounded-[16px]"
+            compact ? "min-w-[560px] max-w-[720px]" : "min-w-[640px] max-w-[900px]"
           }`}
           style={{
             aspectRatio: `${TICKET_BODY_ASPECT} / 1`,
             gridTemplateColumns: `${coverPct}% minmax(0,${infoPct}%) ${qrPct}%`,
+            borderRadius: TICKET_CORNER_RADIUS_PX,
           }}
         >
-          {/* Accent edge */}
+          {/* Accent edge — continuous across cover | info | stub */}
           <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[3px]"
-            style={{ background: accent }}
+            className="pointer-events-none absolute inset-x-0 top-0 z-20"
+            style={{ height: TICKET_ACCENT_H_PX, background: accent }}
             aria-hidden
           />
 
@@ -154,16 +159,25 @@ export function TicketFace({
               <BrandLogo
                 href={null}
                 variant="full"
-                className={
-                  compact ? "!h-10 !w-auto shrink-0" : "!h-11 !w-auto shrink-0 sm:!h-12"
-                }
+                className="!w-auto shrink-0 !max-w-none"
+                style={{
+                  height: compact
+                    ? Math.round(TICKET_BRAND_LOGO_H_PX * 0.92)
+                    : TICKET_BRAND_LOGO_H_PX,
+                  width: "auto",
+                }}
               />
             </div>
 
             <h1
               className={`line-clamp-2 font-bold leading-[1.1] tracking-tight text-[var(--tf-navy)] ${
-                compact ? "mt-4 text-[15px]" : "mt-5 text-lg md:text-xl"
+                compact ? "text-[15px]" : "text-lg md:text-xl"
               }`}
+              style={{
+                marginTop: compact
+                  ? Math.round(TICKET_BRAND_LOGO_GAP_PX * 0.9)
+                  : TICKET_BRAND_LOGO_GAP_PX,
+              }}
             >
               {data.eventName}
             </h1>

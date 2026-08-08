@@ -4,9 +4,12 @@ import {
   isVipCategory,
   parseSeatHighlight,
   resolvePlaceLabel,
+  TICKET_ACCENT_H_PX,
   TICKET_BODY_ASPECT,
+  TICKET_BRAND_LOGO_H_PX,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_CORNER_RADIUS_PX,
 } from "@/lib/commerce/ticket-presentation";
 import {
   resolveEventCoverUrl,
@@ -92,6 +95,12 @@ describe("TICKET_BODY_ASPECT", () => {
     expect(TICKET_COL_COVER).toBeGreaterThanOrEqual(0.28);
     expect(TICKET_COL_COVER).toBeLessThanOrEqual(0.3);
     expect(TICKET_COL_COVER + TICKET_COL_QR).toBeLessThan(1);
+  });
+
+  it("shares face geometry for HTML and PDF", () => {
+    expect(TICKET_CORNER_RADIUS_PX).toBe(14);
+    expect(TICKET_BRAND_LOGO_H_PX).toBe(36);
+    expect(TICKET_ACCENT_H_PX).toBe(3);
   });
 });
 

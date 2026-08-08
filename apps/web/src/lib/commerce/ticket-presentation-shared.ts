@@ -60,6 +60,19 @@ export const TICKET_BODY_ASPECT = 2.22;
 export const TICKET_COL_COVER = 0.29;
 export const TICKET_COL_QR = 0.25;
 
+/**
+ * Shared TicketFace geometry — HTML, print HTML, and PDFKit must use these
+ * so online preview and Print@Home stay 1:1 for every event.
+ */
+/** Outer corner radius (CSS px / PDF pt at ~900px ticket width). */
+export const TICKET_CORNER_RADIUS_PX = 14;
+/** Brand lockup display height in the info column (centered, not oversized). */
+export const TICKET_BRAND_LOGO_H_PX = 36;
+/** Gap below brand lockup before event title (TicketFace `mt-5` ≈ 20px; PDF uses 18). */
+export const TICKET_BRAND_LOGO_GAP_PX = 18;
+/** Continuous accent bar along the top edge. */
+export const TICKET_ACCENT_H_PX = 3;
+
 export type TicketPresentation = {
   ticketId: string;
   ticketNumber: string;

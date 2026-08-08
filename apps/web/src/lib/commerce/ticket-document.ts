@@ -12,9 +12,13 @@ import {
   TF_QR_HINT,
   TF_SOFT,
   TF_TEAL,
+  TICKET_ACCENT_H_PX,
   TICKET_BODY_ASPECT,
+  TICKET_BRAND_LOGO_GAP_PX,
+  TICKET_BRAND_LOGO_H_PX,
   TICKET_COL_COVER,
   TICKET_COL_QR,
+  TICKET_CORNER_RADIUS_PX,
   TICKET_QR_MIN_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -77,7 +81,7 @@ export function buildTicketHtmlDocument(
        <div class="cover-inset"><img src="${escapeAttr(cover)}" alt="" /></div>`
     : `<div class="fallback">
          <div class="fallback-logo-plate">
-           <img src="/brand/logo-email.png" alt="Ticketfeeling" />
+           <img src="/brand/logo-ticketfeeling.png" alt="Ticketfeeling" />
          </div>
        </div>`;
 
@@ -160,7 +164,7 @@ export function buildTicketHtmlDocument(
       min-width: 140mm;
       margin: 0 auto;
       border: 1px solid ${TF_LINE};
-      border-radius: 8px;
+      border-radius: ${TICKET_CORNER_RADIUS_PX}px;
       overflow: hidden;
       position: relative;
       background: #fff;
@@ -169,9 +173,9 @@ export function buildTicketHtmlDocument(
       content: "";
       position: absolute;
       left: 0; right: 0; top: 0;
-      height: 3px;
+      height: ${TICKET_ACCENT_H_PX}px;
       background: ${accent};
-      z-index: 2;
+      z-index: 20;
     }
     .zone-a {
       position: relative;
@@ -274,10 +278,10 @@ export function buildTicketHtmlDocument(
       align-items: center;
       justify-content: center;
       min-width: 0;
-      margin-bottom: 18px;
+      margin-bottom: ${TICKET_BRAND_LOGO_GAP_PX}px;
     }
     .brand-row img {
-      height: 36px;
+      height: ${TICKET_BRAND_LOGO_H_PX}px;
       width: auto;
       max-width: 160px;
       object-fit: contain;
@@ -551,7 +555,7 @@ export function buildTicketHtmlDocument(
         <div class="zone-a">${coverHtml}</div>
         <div class="zone-b">
           <div class="brand-row">
-            <img src="/brand/logo-email.png" alt="Ticketfeeling" />
+            <img src="/brand/logo-ticketfeeling.png" alt="Ticketfeeling" />
           </div>
           <h1 class="event">${escapeHtml(data.eventName)}</h1>
           ${data.dateLabel ? `<p class="date">${escapeHtml(data.dateLabel)}</p>` : ""}
