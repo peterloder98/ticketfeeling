@@ -21,7 +21,6 @@ import {
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
-  TF_TAGLINE,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 

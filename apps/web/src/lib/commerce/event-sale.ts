@@ -85,7 +85,6 @@ export function hasValidEventCover(input: {
  */
 export function canStartSales(
   event: CanStartSalesInput,
-  _now: Date = new Date(),
 ): CanStartSalesResult {
   const reasons: SalesBlockReason[] = [];
 
@@ -156,17 +155,14 @@ export function effectiveEventStatus(
     event.presaleStartsAt &&
     event.presaleStartsAt.getTime() <= now.getTime()
   ) {
-    const ready = canStartSales(
-      {
-        coverImageUrl: event.coverImageUrl,
-        eventStartsAt: event.eventStartsAt,
-        tour: event.tour,
-        categories: event.categories,
-        // Listings often lack categories — cover is the hard gate for effective flip.
-        skipCategoryChecks: event.skipCategoryChecks ?? event.categories == null,
-      },
-      now,
-    );
+    const ready = canStartSales({
+      coverImageUrl: event.coverImageUrl,
+      eventStartsAt: event.eventStartsAt,
+      tour: event.tour,
+      categories: event.categories,
+      // Listings often lack categories — cover is the hard gate for effective flip.
+      skipCategoryChecks: event.skipCategoryChecks ?? event.categories == null,
+    });
     if (ready.ok) return "presale_active";
     // Cover (or other blockers) → stay announcement/draft for public/effective status
     return event.status === "draft" ? "draft" : "announcement";
@@ -311,12 +307,12 @@ export function resolvePersistedEventStatus(opts: {
 
   const coverInput = {
     coverImageUrl: opts.coverImageUrl,
-    eventStartsAt: opts.eventStartsAt ?? new Date(0),
+    eventStartsAt: opts.eventStartsAt,
     tour: opts.tour,
     categories: opts.categories,
     skipCategoryChecks: opts.categories == null,
   };
-  const ready = canStartSales(coverInput, now);
+  const ready = canStartSales(coverInput);
 
   // Manual / requested on-sale without readiness: do not persist released status.
   if (isEventSalesReleased(status) && !ready.ok) {
