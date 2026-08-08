@@ -450,7 +450,12 @@ export function SeatBookingPanel({
             setError(
               available != null
                 ? cartErrorMessage(code, { available })
-                : cartErrorMessage(code) || "Sitzplätze konnten nicht hinzugefügt werden.",
+                : cartErrorMessage(code, {
+                    unavailableCount:
+                      typeof data?.error?.unavailableCount === "number"
+                        ? data.error.unavailableCount
+                        : null,
+                  }) || "Sitzplätze konnten nicht hinzugefügt werden.",
             );
             void loadMap();
             return;
@@ -487,10 +492,50 @@ export function SeatBookingPanel({
             });
             const data = await response.json();
             if (!response.ok) {
-              setError(
-                cartErrorMessage(String(data?.error?.code ?? "")) ||
-                  "Saalplan-Plätze konnten nicht hinzugefügt werden.",
-              );
+              const code = String(data?.error?.code ?? "");
+              const unavailableSeatIds = Array.isArray(data?.error?.unavailableSeatIds)
+                ? (data.error.unavailableSeatIds as string[]).filter(
+                    (id): id is string => typeof id === "string",
+                  )
+                : [];
+              const availableSeatIds = Array.isArray(data?.error?.availableSeatIds)
+                ? (data.error.availableSeatIds as string[]).filter(
+                    (id): id is string => typeof id === "string",
+                  )
+                : [];
+
+              // Self-heal selection: drop unavailable, keep remaining valid seats.
+              if (code === "SEATS_UNAVAILABLE" && unavailableSeatIds.length > 0) {
+                const drop = new Set(unavailableSeatIds);
+                setSelectedByCategory((prev) => {
+                  const next: Record<string, string[]> = {};
+                  for (const [catId, ids] of Object.entries(prev)) {
+                    const kept = ids.filter((id) => !drop.has(id));
+                    // Prefer server-known available ids when present.
+                    if (catId === line.category.id && availableSeatIds.length > 0) {
+                      next[catId] = availableSeatIds.filter((id) => !drop.has(id));
+                    } else if (kept.length > 0) {
+                      next[catId] = kept;
+                    }
+                  }
+                  return next;
+                });
+                setError(
+                  cartErrorMessage(code, {
+                    unavailableCount: unavailableSeatIds.length,
+                    selectionUpdated: true,
+                  }),
+                );
+              } else {
+                setError(
+                  cartErrorMessage(code, {
+                    unavailableCount:
+                      typeof data?.error?.unavailableCount === "number"
+                        ? data.error.unavailableCount
+                        : unavailableSeatIds.length || null,
+                  }) || "Saalplan-Plätze konnten nicht hinzugefügt werden.",
+                );
+              }
               void loadMap();
               return;
             }

@@ -33,6 +33,7 @@ type CartItem = {
 type CartPayload = {
   expiresAt: string | null;
   sessionKey: string | null;
+  seatScrubHint?: string | null;
   summary: {
     itemCount: number;
     ticketsGrossCents?: number;
@@ -131,6 +132,15 @@ export function EmbedCartView() {
 
       {items.length > 0 && data?.expiresAt ? (
         <CartCountdownDisplay expiresAt={data.expiresAt} />
+      ) : null}
+
+      {data?.seatScrubHint ? (
+        <p
+          className="rounded-xl border border-[var(--tf-line)] bg-[var(--tf-surface)] px-3 py-2.5 text-xs text-[var(--tf-navy)]"
+          role="status"
+        >
+          {data.seatScrubHint}
+        </p>
       ) : null}
 
       <div className="space-y-2">

@@ -75,6 +75,7 @@ export async function POST(request: Request) {
     response.headers.append("Set-Cookie", cartCookieHeader(cart.sessionKey));
     return response;
   } catch (error) {
+    const { isCartSeatError } = await import("@/lib/commerce/cart-seat-error");
     const message = error instanceof Error ? error.message : "ERROR";
     const available =
       error &&
@@ -83,13 +84,21 @@ export async function POST(request: Request) {
       typeof (error as { available: unknown }).available === "number"
         ? (error as { available: number }).available
         : undefined;
+    const seatMeta = isCartSeatError(error)
+      ? {
+          unavailableSeatIds: error.unavailableSeatIds,
+          availableSeatIds: error.availableSeatIds,
+          unavailableCount: error.unavailableSeatIds?.length,
+        }
+      : {};
     const status =
       message === "SOLD_OUT" ||
       message === "INSUFFICIENT_STOCK" ||
       message === "QUANTITY_LIMIT" ||
       message === "SEATS_UNAVAILABLE" ||
       message === "COMPANION_SEAT_UNAVAILABLE" ||
-      message === "SEATS_REQUIRED"
+      message === "SEATS_REQUIRED" ||
+      message === "CREATES_SINGLETON_GAP"
         ? 409
         : 400;
     return NextResponse.json(
@@ -97,6 +106,7 @@ export async function POST(request: Request) {
         error: {
           code: message,
           ...(available !== undefined ? { available } : {}),
+          ...seatMeta,
         },
       },
       { status },

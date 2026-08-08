@@ -528,19 +528,19 @@ export async function fulfillPaidOrder(orderId: string) {
         });
       }
 
+      const { markSeatsSoldFromHeld } = await import("@/lib/seating/claim-seats");
       for (const p of planned) {
         if (!p.seat) continue;
         const ticket = ticketByNumber.get(p.ticketNumber);
         if (!ticket) throw new Error("TICKET_CREATE_MISMATCH");
-        await tx.eventSeat.update({
-          where: { id: p.seat.id },
-          data: {
-            status: "sold",
-            ticketId: ticket.id,
-            holdExpiresAt: null,
-            cartItemId: null,
-          },
-        });
+        const { sold } = await markSeatsSoldFromHeld(
+          tx,
+          [{ seatId: p.seat.id, ticketId: ticket.id }],
+          { eventId: p.item.eventId, orderId: fulfilledOrderId },
+        );
+        if (sold !== 1) {
+          throw new Error("SEAT_SOLD_CONFLICT");
+        }
       }
 
       // Same transaction as ticket mint. On promo/gift exhaustion after payment,

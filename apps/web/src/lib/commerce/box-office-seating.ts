@@ -1,5 +1,13 @@
 import type { Prisma } from "@prisma/client";
 import { categoryNeedsSeats, seatsPerTicket } from "@/lib/seating/types";
+import {
+  isSeatBookable,
+  sellableSeatPrismaWhere,
+} from "@/lib/seating/is-seat-bookable";
+import {
+  claimSeatsAtomically,
+  reclaimExpiredSeatsForClaim,
+} from "@/lib/seating/claim-seats";
 
 export type BoxOfficeSeatingMode = "best_available" | "seat_map" | "free";
 
@@ -23,6 +31,8 @@ const seatSelect = {
   segmentIndex: true,
   positionInSegment: true,
   seatType: true,
+  holdExpiresAt: true,
+  cartItemId: true,
 } as const;
 
 type Tx = Prisma.TransactionClient;
@@ -30,6 +40,7 @@ type Tx = Prisma.TransactionClient;
 /**
  * Resolve + atomically claim EventSeats for a Tageskasse sale.
  * Returns assignments stored on order.contractSnapshot for fulfillPaidOrder.
+ * Uses the same hard-constraint policy as online cart.
  */
 export async function claimBoxOfficeSeats(
   tx: Tx,
@@ -67,6 +78,7 @@ export async function claimBoxOfficeSeats(
   const seatOptSettings = parseSeatOptimizationSettings(input.seatOpt);
 
   const assignments: BoxOfficeSeatAssignment[] = [];
+  const claimNow = new Date();
 
   for (const item of input.items) {
     const needsSeats = categoryNeedsSeats({
@@ -96,13 +108,13 @@ export async function claimBoxOfficeSeats(
       assignedCount > 0
         ? { categoryId: item.categoryId }
         : ({} as { categoryId?: string });
+    const claimCategoryId = assignedCount > 0 ? item.categoryId : null;
 
-    const sellableWhere = {
+    const sellableWhere = sellableSeatPrismaWhere({
       eventId: input.eventId,
-      status: "available" as const,
-      locked: false,
-      ...categoryFilter,
-    };
+      categoryId: categoryFilter.categoryId,
+      now: claimNow,
+    });
 
     const occupancyPool = await tx.eventSeat.findMany({
       where: {
@@ -118,20 +130,37 @@ export async function claimBoxOfficeSeats(
       occupancyPercent: computeOccupancyPercent(occupancyPool),
     };
 
+    const bookableCtx = {
+      now: claimNow,
+      expectedCategoryId: claimCategoryId,
+      requireCategoryMatch: Boolean(claimCategoryId),
+      allowExpiredHoldReclaim: true,
+      allowStanding: item.categoryKind === "standing",
+      allowedSeatTypes:
+        item.categoryKind === "wheelchair"
+          ? (["wheelchair", "standard"] as const)
+          : null,
+    };
+
     let seatIdsToHold: string[] = [];
 
     if (mode === "seat_map") {
       if (!item.seatIds?.length || item.seatIds.length !== item.quantity) {
         throw new Error("SEATS_REQUIRED");
       }
-      const requested = await tx.eventSeat.findMany({
+      const requestedAll = await tx.eventSeat.findMany({
         where: {
           id: { in: item.seatIds },
-          ...sellableWhere,
+          eventId: input.eventId,
         },
         select: seatSelect,
       });
-      if (requested.length !== item.quantity) throw new Error("SEATS_UNAVAILABLE");
+      const byId = new Map(requestedAll.map((s) => [s.id, s]));
+      for (const id of item.seatIds) {
+        const check = isSeatBookable(byId.get(id), bookableCtx);
+        if (!check.ok) throw new Error("SEATS_UNAVAILABLE");
+      }
+      const requested = item.seatIds.map((id) => byId.get(id)!);
 
       const poolForValidation = await tx.eventSeat.findMany({
         where: {
@@ -142,8 +171,14 @@ export async function claimBoxOfficeSeats(
         },
         select: seatSelect,
       });
+      const poolNormalized = poolForValidation.map((s) => {
+        if (s.status === "held" && s.holdExpiresAt && s.holdExpiresAt < claimNow) {
+          return { ...s, status: "available" as const };
+        }
+        return s;
+      });
       const validation = validateSeatSelection(
-        poolForValidation,
+        poolNormalized,
         requested.map((s) => s.id),
         optCtx,
       );
@@ -154,7 +189,10 @@ export async function claimBoxOfficeSeats(
           where: sellableWhere,
           select: seatSelect,
         });
-        const withCompanions = assignCompanionSeats(requested, poolSeats);
+        const poolNorm = poolSeats.map((s) =>
+          s.status === "held" ? { ...s, status: "available" as const } : s,
+        );
+        const withCompanions = assignCompanionSeats(requested, poolNorm);
         if (!withCompanions || withCompanions.length !== seatSlots) {
           throw new Error("COMPANION_SEAT_UNAVAILABLE");
         }
@@ -167,30 +205,33 @@ export async function claimBoxOfficeSeats(
         where: sellableWhere,
         select: seatSelect,
       });
+      const allNorm = all.map((s) =>
+        s.status === "held" ? { ...s, status: "available" as const } : s,
+      );
       if (companionFree) {
-        const picked = pickBestAvailablePairs(all, item.quantity);
+        const picked = pickBestAvailablePairs(allNorm, item.quantity);
         if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
         seatIdsToHold = picked.map((s) => s.id);
       } else {
-        const picked = pickBestAvailableSeats(all, item.quantity, optCtx);
+        const picked = pickBestAvailableSeats(allNorm, item.quantity, optCtx);
         if (picked.length !== item.quantity) throw new Error("SEATS_UNAVAILABLE");
         seatIdsToHold = picked.map((s) => s.id);
       }
     }
 
-    const claimed = await tx.eventSeat.updateMany({
-      where: {
-        id: { in: seatIdsToHold },
-        status: "available",
-        locked: false,
-      },
-      data: {
-        status: "held",
-        holdExpiresAt: input.holdExpiresAt,
-        cartItemId: null,
-      },
+    await reclaimExpiredSeatsForClaim(tx, seatIdsToHold, claimNow, {
+      eventId: input.eventId,
+      channel: "box_office",
     });
-    if (claimed.count !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
+    const { claimed } = await claimSeatsAtomically(tx, {
+      seatIds: seatIdsToHold,
+      cartItemId: null,
+      holdExpiresAt: input.holdExpiresAt,
+      categoryId: claimCategoryId,
+      eventId: input.eventId,
+      channel: "box_office",
+    });
+    if (claimed !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
 
     assignments.push({ categoryId: item.categoryId, seatIds: seatIdsToHold });
   }

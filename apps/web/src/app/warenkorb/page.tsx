@@ -21,6 +21,12 @@ export default async function CartPage() {
     : null;
   const items = cart?.items ?? [];
   const summary = cart ? await priceCart(cart) : null;
+  const scrubHint =
+    cart &&
+    typeof (cart as unknown as { seatScrubHint?: unknown }).seatScrubHint ===
+      "string"
+      ? (cart as unknown as { seatScrubHint: string }).seatScrubHint
+      : null;
 
   return (
     <div className="tf-container py-12">
@@ -30,6 +36,14 @@ export default async function CartPage() {
       <p className="mt-2 text-sm text-[var(--muted)]">
         Tickets sind 10 Minuten für dich reserviert.
       </p>
+      {scrubHint ? (
+        <p
+          className="mt-4 rounded-xl border border-[var(--tf-border)] bg-[var(--tf-surface)] px-4 py-3 text-sm text-[var(--tf-navy)]"
+          role="status"
+        >
+          {scrubHint}
+        </p>
+      ) : null}
       {items.length > 0 && cart ? (
         <div className="mt-5">
           <CartCountdownDisplay

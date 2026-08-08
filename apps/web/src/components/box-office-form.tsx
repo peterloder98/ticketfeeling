@@ -356,7 +356,7 @@ export function BoxOfficeForm({
               : code === "SOLD_OUT"
                 ? "Nicht genug Tickets verfügbar."
                 : code === "SEATS_UNAVAILABLE" || code === "SEATS_REQUIRED"
-                  ? "Plätze nicht mehr verfügbar — bitte erneut wählen."
+                  ? "Ein ausgewählter Platz ist leider gerade nicht mehr verfügbar."
                   : code === "COMPANION_SEAT_UNAVAILABLE"
                     ? "Kein freier Begleitplatz neben dem Rollstuhlplatz."
                     : code || "Tap to Pay konnte nicht gestartet werden",
@@ -412,7 +412,7 @@ export function BoxOfficeForm({
           code === "SOLD_OUT"
             ? "Nicht genug Tickets verfügbar."
             : code === "SEATS_UNAVAILABLE" || code === "SEATS_REQUIRED"
-              ? "Plätze nicht mehr verfügbar — bitte erneut wählen."
+              ? "Ein ausgewählter Platz ist leider gerade nicht mehr verfügbar."
               : code === "COMPANION_SEAT_UNAVAILABLE"
                 ? "Kein freier Begleitplatz neben dem Rollstuhlplatz."
                 : code || "Verkauf fehlgeschlagen",

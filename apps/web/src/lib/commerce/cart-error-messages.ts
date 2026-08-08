@@ -1,11 +1,21 @@
 /** Map cart / add-to-cart API error codes to clear German UI copy. */
 export function cartErrorMessage(
   code: string,
-  opts?: { available?: number | null },
+  opts?: {
+    available?: number | null;
+    /** How many seats were unavailable (for plural UX). */
+    unavailableCount?: number | null;
+    /** When selection was partially healed. */
+    selectionUpdated?: boolean;
+  },
 ): string {
   const available =
     typeof opts?.available === "number" && Number.isFinite(opts.available)
       ? Math.max(0, Math.floor(opts.available))
+      : null;
+  const unavailableCount =
+    typeof opts?.unavailableCount === "number" && Number.isFinite(opts.unavailableCount)
+      ? Math.max(0, Math.floor(opts.unavailableCount))
       : null;
 
   switch (code) {
@@ -17,7 +27,16 @@ export function cartErrorMessage(
       }
       return "Leider nicht mehr so viele Tickets frei.";
     case "SEATS_UNAVAILABLE":
-      return "Diese Plätze sind gerade nicht mehr frei — bitte neu wählen.";
+      if (opts?.selectionUpdated) {
+        if (unavailableCount != null && unavailableCount > 1) {
+          return "Mehrere ausgewählte Plätze sind leider gerade nicht mehr verfügbar. Wir haben deine Auswahl aktualisiert.";
+        }
+        return "Ein ausgewählter Platz ist leider gerade nicht mehr verfügbar. Wir haben deine Auswahl aktualisiert.";
+      }
+      if (unavailableCount != null && unavailableCount > 1) {
+        return "Mehrere ausgewählte Plätze sind leider gerade nicht mehr verfügbar.";
+      }
+      return "Ein ausgewählter Platz ist leider gerade nicht mehr verfügbar.";
     case "CREATES_SINGLETON_GAP":
       return "Deine Auswahl würde einen einzelnen freien Platz hinterlassen. Bitte wähle nach Möglichkeit direkt angrenzende Plätze.";
     case "COMPANION_SEAT_UNAVAILABLE":
@@ -38,6 +57,8 @@ export function cartErrorMessage(
       return "Reservierung abgelaufen — bitte erneut in den Warenkorb legen.";
     case "HOLD_EXPIRED":
       return "Deine Platzreservierung ist abgelaufen — bitte die Tickets erneut wählen.";
+    case "CART_SEATS_UPDATED":
+      return "Wir haben deine Auswahl aktualisiert, weil Plätze nicht mehr verfügbar waren.";
     case "EVENT_NOT_FOUND":
       return "Event nicht gefunden.";
     case "INVALID_QUANTITY":

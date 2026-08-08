@@ -103,10 +103,16 @@ export async function createOrderFromCart(input: {
   if (cart.items.length === 0) throw new Error("CART_EMPTY");
   if (cart.expiresAt < new Date()) throw new Error("CART_EXPIRED");
 
+  // Revalidate holds before payment — drop seats that are no longer ours.
+  const { scrubCartSeatHolds } = await import("@/lib/commerce/scrub-cart-seats");
+  await scrubCartSeatHolds(cart.id);
+
   const { repriceOpenCart } = await import("@/lib/commerce/cart");
   await repriceOpenCart(cart.id);
   cart = await getOpenCart({ userId: input.userId, sessionKey });
   if (cart.items.length === 0) throw new Error("CART_EMPTY");
+  // After scrub, empty seated cart means holds evaporated.
+  if (cart.expiresAt < new Date()) throw new Error("CART_EXPIRED");
 
   const emailNormalized = normalizeEmail(input.customer.email);
   const mode = input.customer.checkoutMode;
@@ -309,10 +315,43 @@ export async function createOrderFromCart(input: {
             categoryKind: item.category.categoryKind,
             companionFree: item.category.companionFree,
           });
-        const heldSeatCount = await tx.eventSeat.count({
+        const heldSeats = await tx.eventSeat.findMany({
           where: { cartItemId: item.id, status: "held" },
+          select: {
+            id: true,
+            status: true,
+            locked: true,
+            cartItemId: true,
+            holdExpiresAt: true,
+            categoryId: true,
+          },
         });
-        if (heldSeatCount < expectedSeats) {
+        const { isSeatHeldByOwner } = await import("@/lib/seating/is-seat-bookable");
+        const { logSeatConflict } = await import("@/lib/seating/seat-conflict-log");
+        const stillHeld = heldSeats.filter((s) =>
+          isSeatHeldByOwner(s, item.id, new Date()),
+        );
+        if (stillHeld.length < expectedSeats) {
+          logSeatConflict({
+            type: "checkout_seat_mismatch",
+            cartItemId: item.id,
+            seatIds: heldSeats.map((s) => s.id),
+            detail: {
+              expected: expectedSeats,
+              held: stillHeld.length,
+              rawHeld: heldSeats.length,
+            },
+          });
+          throw new Error("HOLD_EXPIRED");
+        }
+        // Detect impossible: locked while held
+        if (heldSeats.some((s) => s.locked)) {
+          logSeatConflict({
+            type: "impossible_state",
+            cartItemId: item.id,
+            seatIds: heldSeats.filter((s) => s.locked).map((s) => s.id),
+            detail: { reason: "held_and_locked" },
+          });
           throw new Error("HOLD_EXPIRED");
         }
       }

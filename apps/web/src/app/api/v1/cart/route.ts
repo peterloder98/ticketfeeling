@@ -78,10 +78,16 @@ export async function GET(request: Request) {
 
     const priced = await priceCart(cart);
     const itemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+    const seatScrubHint =
+      typeof (cart as unknown as { seatScrubHint?: unknown }).seatScrubHint ===
+      "string"
+        ? (cart as unknown as { seatScrubHint: string }).seatScrubHint
+        : null;
     const response = NextResponse.json({
       id: cart.id,
       expiresAt: cart.expiresAt,
       sessionKey: cart.sessionKey,
+      seatScrubHint,
       summary: {
         ...priced,
         itemCount,

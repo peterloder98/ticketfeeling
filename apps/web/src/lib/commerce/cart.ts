@@ -196,6 +196,8 @@ export async function peekCartItemCount(opts?: {
 export async function findOpenCart(opts?: {
   userId?: string | null;
   sessionKey?: string | null;
+  /** When false, skip self-heal scrub (internal reloads after add). */
+  scrubSeats?: boolean;
 }): Promise<OpenCart | null> {
   scheduleExpireHolds();
   // EventSeat include selects category_id — patch DB before Prisma queries seats.
@@ -210,7 +212,7 @@ export async function findOpenCart(opts?: {
   if (!sessionKey) return null;
 
   const now = new Date();
-  const cart = await prisma.cart.findUnique({
+  let cart = await prisma.cart.findUnique({
     where: {
       organizationId_sessionKey: {
         organizationId: org.id,
@@ -222,6 +224,26 @@ export async function findOpenCart(opts?: {
 
   if (!cart || cart.status !== "open" || cart.expiresAt < now) {
     return null;
+  }
+
+  if (opts?.scrubSeats !== false) {
+    const { scrubCartSeatHolds } = await import("@/lib/commerce/scrub-cart-seats");
+    const scrub = await scrubCartSeatHolds(cart.id, { now });
+    if (scrub.changed) {
+      cart = await prisma.cart.findUnique({
+        where: { id: cart.id },
+        include: cartInclude,
+      });
+      if (!cart || cart.status !== "open" || cart.expiresAt < now) {
+        return null;
+      }
+      // Attach hint for SSR pages (non-enumerable to avoid leaking into JSON dumps).
+      Object.defineProperty(cart, "seatScrubHint", {
+        value: scrub.hint,
+        enumerable: false,
+        configurable: true,
+      });
+    }
   }
 
   if (opts?.userId && !cart.userId) {
@@ -492,6 +514,8 @@ export async function addToCart(input: {
     segmentIndex: true,
     positionInSegment: true,
     seatType: true,
+    holdExpiresAt: true,
+    cartItemId: true,
   } as const;
 
   const seatOptSettings = parseSeatOptimizationSettings(
@@ -543,7 +567,14 @@ export async function addToCart(input: {
     assertSufficientStock(available, input.quantity);
 
     let seatIdsToHold: string[] = [];
+    let claimCategoryId: string | null = null;
     if (needsSeats) {
+      const {
+        isSeatBookable,
+        sellableSeatPrismaWhere,
+      } = await import("@/lib/seating/is-seat-bookable");
+      const { CartSeatError } = await import("@/lib/commerce/cart-seat-error");
+
       // Once any seat is category-assigned, only that category's unlocked seats sell.
       const assignedCount = await tx.eventSeat.count({
         where: { eventId: category.eventId, categoryId: { not: null } },
@@ -552,13 +583,14 @@ export async function addToCart(input: {
         assignedCount > 0
           ? { categoryId: category.id }
           : ({} as { categoryId?: string });
+      claimCategoryId = assignedCount > 0 ? category.id : null;
 
-      const sellableWhere = {
+      const claimNow = new Date();
+      const sellableWhere = sellableSeatPrismaWhere({
         eventId: category.eventId,
-        status: "available" as const,
-        locked: false,
-        ...categoryFilter,
-      };
+        categoryId: categoryFilter.categoryId,
+        now: claimNow,
+      });
 
       // Occupancy over all unlocked seats for this event (or category when assigned).
       const occupancyPool = await tx.eventSeat.findMany({
@@ -573,17 +605,52 @@ export async function addToCart(input: {
       const occupancyPercent = computeOccupancyPercent(occupancyPool);
       const optCtx = { settings: seatOptSettings, occupancyPercent };
 
+      const bookableCtx = {
+        now: claimNow,
+        expectedCategoryId: claimCategoryId,
+        requireCategoryMatch: Boolean(claimCategoryId),
+        allowExpiredHoldReclaim: true,
+        allowStanding: category.categoryKind === "standing",
+        allowedSeatTypes:
+          category.categoryKind === "wheelchair"
+            ? (["wheelchair", "standard"] as const)
+            : null,
+      };
+
       if (seatingMode === "seat_map") {
-        const requested = await tx.eventSeat.findMany({
+        // Load all requested seats (no sellable filter) then apply hard policy.
+        const requestedAll = await tx.eventSeat.findMany({
           where: {
             id: { in: input.seatIds! },
-            ...sellableWhere,
+            eventId: category.eventId,
           },
           select: seatSelect,
         });
-        if (requested.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
+        const byId = new Map(requestedAll.map((s) => [s.id, s]));
+        const unavailableSeatIds: string[] = [];
+        const availableSeatIds: string[] = [];
+        const reasons: Record<string, string> = {};
+        for (const id of input.seatIds!) {
+          const seat = byId.get(id);
+          const check = isSeatBookable(seat, bookableCtx);
+          if (!check.ok) {
+            unavailableSeatIds.push(id);
+            reasons[id] = check.reason;
+          } else {
+            availableSeatIds.push(id);
+          }
+        }
+        if (unavailableSeatIds.length > 0) {
+          throw new CartSeatError("SEATS_UNAVAILABLE", {
+            unavailableSeatIds,
+            availableSeatIds,
+            reasons,
+          });
+        }
+        const requested = input.seatIds!.map((id) => byId.get(id)!);
 
         // Validate gap rule against the full category pool (including requested).
+        // Treat soft-expired holds as available for gap math.
         const poolForValidation = await tx.eventSeat.findMany({
           where: {
             eventId: category.eventId,
@@ -593,8 +660,18 @@ export async function addToCart(input: {
           },
           select: seatSelect,
         });
+        const poolNormalized = poolForValidation.map((s) => {
+          if (
+            s.status === "held" &&
+            s.holdExpiresAt &&
+            s.holdExpiresAt < claimNow
+          ) {
+            return { ...s, status: "available" as const };
+          }
+          return s;
+        });
         const validation = validateSeatSelection(
-          poolForValidation,
+          poolNormalized,
           requested.map((s) => s.id),
           optCtx,
         );
@@ -607,7 +684,10 @@ export async function addToCart(input: {
             where: sellableWhere,
             select: seatSelect,
           });
-          const withCompanions = assignCompanionSeats(requested, poolSeats);
+          const poolNorm = poolSeats.map((s) =>
+            s.status === "held" ? { ...s, status: "available" as const } : s,
+          );
+          const withCompanions = assignCompanionSeats(requested, poolNorm);
           if (!withCompanions || withCompanions.length !== seatSlots) {
             throw new Error("COMPANION_SEAT_UNAVAILABLE");
           }
@@ -620,12 +700,16 @@ export async function addToCart(input: {
           where: sellableWhere,
           select: seatSelect,
         });
+        // Soft-expired held rows look available to Bestplatz pickers.
+        const allNorm = all.map((s) =>
+          s.status === "held" ? { ...s, status: "available" as const } : s,
+        );
         if (companionFree) {
-          const picked = pickBestAvailablePairs(all, input.quantity);
+          const picked = pickBestAvailablePairs(allNorm, input.quantity);
           if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");
           seatIdsToHold = picked.map((s) => s.id);
         } else {
-          const picked = pickBestAvailableSeats(all, input.quantity, optCtx);
+          const picked = pickBestAvailableSeats(allNorm, input.quantity, optCtx);
           if (picked.length !== input.quantity) throw new Error("SEATS_UNAVAILABLE");
           seatIdsToHold = picked.map((s) => s.id);
         }
@@ -709,20 +793,30 @@ export async function addToCart(input: {
     }
 
     if (seatIdsToHold.length > 0) {
-      // Atomic claim — require still-available + unlocked so concurrent carts cannot steal.
-      const claimed = await tx.eventSeat.updateMany({
-        where: {
-          id: { in: seatIdsToHold },
-          status: "available",
-          locked: false,
-        },
-        data: {
-          status: "held",
-          holdExpiresAt: expiresAt,
-          cartItemId: itemId,
-        },
+      const {
+        reclaimExpiredSeatsForClaim,
+        claimSeatsAtomically,
+      } = await import("@/lib/seating/claim-seats");
+      const claimNow = new Date();
+      await reclaimExpiredSeatsForClaim(tx, seatIdsToHold, claimNow, {
+        eventId: category.eventId,
+        channel: "online",
       });
-      if (claimed.count !== seatIdsToHold.length) throw new Error("SEATS_UNAVAILABLE");
+      // Atomic claim — require still-available + unlocked (+ category when assigned).
+      const { claimed } = await claimSeatsAtomically(tx, {
+        seatIds: seatIdsToHold,
+        cartItemId: itemId,
+        holdExpiresAt: expiresAt,
+        categoryId: claimCategoryId,
+        eventId: category.eventId,
+        channel: "online",
+      });
+      if (claimed !== seatIdsToHold.length) {
+        const { CartSeatError } = await import("@/lib/commerce/cart-seat-error");
+        throw new CartSeatError("SEATS_UNAVAILABLE", {
+          unavailableSeatIds: seatIdsToHold,
+        });
+      }
     }
 
     await tx.cart.update({
@@ -748,9 +842,11 @@ export async function addToCart(input: {
 
   // Prefer read-only reload — never mint a second empty cart after a successful add.
   // Skip seating schema ensure on reload: transaction already touched seats if needed.
+  // Skip scrub — we just claimed seats ourselves.
   const reloaded = await findOpenCart({
     userId: input.userId,
     sessionKey: cart.sessionKey,
+    scrubSeats: false,
   });
   if (reloaded) return reloaded;
   return getOpenCart({ userId: input.userId, sessionKey: cart.sessionKey });
