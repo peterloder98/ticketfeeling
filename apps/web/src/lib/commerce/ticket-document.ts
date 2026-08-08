@@ -19,6 +19,7 @@ import {
   TICKET_COL_COVER,
   TICKET_COL_QR,
   TICKET_CORNER_RADIUS_PX,
+  TICKET_FACE_TYPE,
   TICKET_QR_MIN_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -288,7 +289,7 @@ export function buildTicketHtmlDocument(
     }
     .event {
       margin: 0;
-      font-size: 15px;
+      font-size: ${TICKET_FACE_TYPE.titleSize}px;
       line-height: 1.1;
       font-weight: 700;
       color: ${TF_NAVY};
@@ -299,8 +300,8 @@ export function buildTicketHtmlDocument(
     }
     .date {
       margin: 0;
-      font-size: 11px;
-      font-weight: 500;
+      font-size: ${TICKET_FACE_TYPE.dateSize}px;
+      font-weight: 700;
       color: ${TF_NAVY};
       white-space: nowrap;
       overflow: hidden;
@@ -308,8 +309,8 @@ export function buildTicketHtmlDocument(
     }
     .loc-name {
       margin: 0;
-      font-size: 11px;
-      font-weight: 600;
+      font-size: ${TICKET_FACE_TYPE.locSize}px;
+      font-weight: 700;
       color: ${TF_NAVY};
       white-space: nowrap;
       overflow: hidden;

@@ -64,14 +64,44 @@ export const TICKET_COL_QR = 0.25;
  * Shared TicketFace geometry — HTML, print HTML, and PDFKit must use these
  * so online preview and Print@Home stay 1:1 for every event.
  */
+/** TicketFace CSS `max-w-[900px]` — PDF scales type/spacing from this width. */
+export const TICKET_FACE_REF_W_PX = 900;
 /** Outer corner radius (CSS px / PDF pt at ~900px ticket width). */
 export const TICKET_CORNER_RADIUS_PX = 14;
 /** Brand lockup display height in the info column (centered, not oversized). */
 export const TICKET_BRAND_LOGO_H_PX = 36;
-/** Gap below brand lockup before event title (TicketFace `mt-5` ≈ 20px; PDF uses 18). */
-export const TICKET_BRAND_LOGO_GAP_PX = 18;
+/** Gap below brand lockup before event title (TicketFace `mt-5` = 20px). */
+export const TICKET_BRAND_LOGO_GAP_PX = 20;
 /** Continuous accent bar along the top edge. */
 export const TICKET_ACCENT_H_PX = 3;
+/**
+ * Non-compact TicketFace type scale (CSS px at TICKET_FACE_REF_W_PX).
+ * PDF multiplies by ticketW / TICKET_FACE_REF_W_PX for 1:1 proportions.
+ */
+export const TICKET_FACE_TYPE = {
+  padX: 20,
+  padY: 10,
+  gap: 2,
+  titleSize: 20,
+  dateSize: 14,
+  locSize: 14,
+  locDetailSize: 10,
+  doorsLabelSize: 8,
+  doorsTimeSize: 14,
+  categorySize: 12,
+  vipBadgeSize: 9,
+  seatTextSize: 16,
+  seatBoxValueSize: 14,
+  footerSize: 11,
+  admitSize: 9,
+  qrNoSponsor: 152,
+  qrWithSponsor: 128,
+  ticketNoSize: 10,
+  hintSize: 9,
+  stubPadX: 8,
+  stubPadY: 6,
+  qrPlatePad: 4,
+} as const;
 
 export type TicketPresentation = {
   ticketId: string;

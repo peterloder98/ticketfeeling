@@ -9,7 +9,6 @@ import {
   parseSeatHighlight,
   sponsorLogoBoxForScale,
   TF_GOLD,
-  TF_INK,
   TF_LINE,
   TF_MUTED,
   TF_NAVY,
@@ -24,6 +23,8 @@ import {
   TICKET_COL_COVER,
   TICKET_COL_QR,
   TICKET_CORNER_RADIUS_PX,
+  TICKET_FACE_REF_W_PX,
+  TICKET_FACE_TYPE,
   TICKET_QR_MIN_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
@@ -411,25 +412,78 @@ async function drawTicketPage(
     },
   );
 
-  // ── Zone B: info ─────────────────────────────────────────────────
-  const bPadX = 12;
-  const bPadY = 8;
+  // Scale CSS TicketFace px → PDF pts so proportions match the online strip.
+  const u = ticketW / TICKET_FACE_REF_W_PX;
+  const T = TICKET_FACE_TYPE;
+  const sz = (n: number) => Math.max(5, n * u);
+  const bPadX = sz(T.padX);
+  const bPadY = sz(T.padY);
+  const gap = sz(T.gap);
   const bInnerW = zoneB - bPadX * 2;
-  let by = ticketY + bPadY;
+  const logoDisplayH = sz(TICKET_BRAND_LOGO_H_PX);
+  const logoGap = sz(TICKET_BRAND_LOGO_GAP_PX);
 
-  // Brand lockup centered at top of middle zone — match TicketFace air before title
-  const brandLogo = await prepareBrandLogo(logo, TICKET_BRAND_LOGO_H_PX);
-  const logoH = brandLogo?.h ?? TICKET_BRAND_LOGO_H_PX;
+  const brandLogo = await prepareBrandLogo(logo, Math.round(logoDisplayH));
+  const logoH = brandLogo?.h ?? logoDisplayH;
+  const logoW = brandLogo?.w ?? Math.round(logoDisplayH * (544 / 381));
+
+  // Measure info-column height (TicketFace `justify-center`) then draw.
+  const titleSize = sz(T.titleSize);
+  doc.font(fonts.bold).fontSize(titleSize);
+  const titleH = Math.min(
+    titleSize * 2.3,
+    Math.ceil(
+      doc.heightOfString(data.eventName, { width: bInnerW, lineGap: 1 }),
+    ),
+  );
+  const dateSize = sz(T.dateSize);
+  const dateH = data.dateLabel ? dateSize + 2 : 0;
+  const locSize = sz(T.locSize);
+  const locDetailSize = sz(T.locDetailSize);
+  const locH =
+    locSize + 2 + (data.locationDetail ? locDetailSize + 2 : 0);
+  const doorsLabelSize = sz(T.doorsLabelSize);
+  const doorsTimeSize = sz(T.doorsTimeSize);
+  const hasDoors = Boolean(data.doors.headline || data.startLabel);
+  const doorsH = hasDoors
+    ? 8 + doorsLabelSize + 2 + doorsTimeSize + (data.doors.doorsNote ? 10 : 0) + 8
+    : 0;
+  const categorySize = sz(T.categorySize);
+  const catH = categorySize + 6;
+  const seatTextSize = sz(T.seatTextSize);
+  const seatBoxH = sz(28);
+  const seatH =
+    seat.mode === "boxes" && seat.parts.length > 0 ? seatBoxH + gap : seatTextSize + 4;
+  const footerSize = sz(T.footerSize);
+  const hasFooter = Boolean(data.holderName || data.priceLabel);
+  const footerH = hasFooter ? sz(T.footerSize) + sz(12) : 0;
+
+  const contentH =
+    logoH +
+    logoGap +
+    titleH +
+    gap +
+    dateH +
+    locH +
+    doorsH +
+    catH +
+    seatH +
+    footerH;
+  let by =
+    ticketY +
+    Math.max(bPadY, (ticketH - contentH) / 2);
+
+  // Brand lockup — same asset + height as TicketFace BrandLogo
   if (brandLogo) {
     try {
-      doc.image(brandLogo.buf, bx + (zoneB - brandLogo.w) / 2, by, {
-        width: brandLogo.w,
-        height: brandLogo.h,
+      doc.image(brandLogo.buf, bx + (zoneB - logoW) / 2, by, {
+        width: logoW,
+        height: logoH,
       });
     } catch {
       doc
         .font(fonts.bold)
-        .fontSize(10)
+        .fontSize(sz(10))
         .fillColor(TF_NAVY)
         .text("Ticketfeeling", bx + bPadX, by + 4, {
           width: bInnerW,
@@ -439,204 +493,211 @@ async function drawTicketPage(
   } else {
     doc
       .font(fonts.bold)
-      .fontSize(10)
+      .fontSize(sz(10))
       .fillColor(TF_NAVY)
       .text("Ticketfeeling", bx + bPadX, by + 4, {
         width: bInnerW,
         align: "center",
       });
   }
-  by += logoH + TICKET_BRAND_LOGO_GAP_PX;
+  by += logoH + logoGap;
 
-  // Title then date — advance by measured height so lines never overlap
-  const titleSize = 13.5;
-  doc.font(fonts.bold).fontSize(titleSize);
-  const titleMaxH = 32;
-  const titleH = Math.min(
-    titleMaxH,
-    Math.ceil(doc.heightOfString(data.eventName, { width: bInnerW, lineGap: 0.5 })),
-  );
-  doc.fillColor(TF_NAVY).text(data.eventName, bx + bPadX, by, {
+  doc.font(fonts.bold).fontSize(titleSize).fillColor(TF_NAVY);
+  doc.text(data.eventName, bx + bPadX, by, {
     width: bInnerW,
     height: titleH,
     ellipsis: true,
-    lineGap: 0.5,
+    lineGap: 1,
   });
-  by += titleH + 3;
+  by += titleH + gap;
 
   if (data.dateLabel) {
-    const dateSize = 8.5;
-    doc.font(fonts.regular).fontSize(dateSize);
-    const dateH = Math.min(
-      12,
-      Math.ceil(doc.heightOfString(data.dateLabel, { width: bInnerW })),
-    );
-    doc.fillColor(TF_NAVY).text(data.dateLabel, bx + bPadX, by, {
-      width: bInnerW,
-      height: dateH,
-      ellipsis: true,
-    });
-    by += dateH + 2;
+    doc
+      .font(fonts.bold)
+      .fontSize(dateSize)
+      .fillColor(TF_NAVY)
+      .text(data.dateLabel, bx + bPadX, by, {
+        width: bInnerW,
+        height: dateSize + 2,
+        ellipsis: true,
+      });
+    by += dateH;
   }
 
-  // Location: name + city/address
   doc
     .font(fonts.bold)
-    .fontSize(8.5)
+    .fontSize(locSize)
     .fillColor(TF_NAVY)
     .text(data.locationName, bx + bPadX, by, {
       width: bInnerW,
-      height: 11,
+      height: locSize + 2,
       ellipsis: true,
     });
-  by = doc.y + 0.5;
+  by += locSize + 2;
   if (data.locationDetail) {
     doc
       .font(fonts.regular)
-      .fontSize(7)
+      .fontSize(locDetailSize)
       .fillColor(TF_MUTED)
       .text(data.locationDetail, bx + bPadX, by, {
         width: bInnerW,
-        height: 9,
+        height: locDetailSize + 2,
         ellipsis: true,
       });
-    by = doc.y + 2;
-  } else {
-    by += 2;
+    by += locDetailSize + 2;
   }
 
-  // EINLASS | BEGINN side by side
-  if (data.doors.headline || data.startLabel) {
-    const colW = (bInnerW - 8) / 2;
+  if (hasDoors) {
     doc
       .moveTo(bx + bPadX, by)
       .lineTo(bx + bPadX + bInnerW, by)
       .strokeColor(TF_LINE)
-      .lineWidth(0.6)
+      .lineWidth(0.7)
       .stroke();
-    by += 3;
+    by += 4;
 
+    const colGap = sz(8);
+    const colW = (bInnerW - colGap) / 2;
     const doorsColor =
       data.isVip || data.doors.isCategoryOverride ? accent : TF_NAVY;
-    doc
-      .font(fonts.regular)
-      .fontSize(6)
-      .fillColor(TF_MUTED)
-      .text((data.doors.headlineLabel || "Einlass").toUpperCase(), bx + bPadX, by, {
-        width: colW,
-        characterSpacing: 0.6,
-      });
-    doc
-      .font(fonts.regular)
-      .fontSize(6)
-      .fillColor(TF_MUTED)
-      .text("BEGINN", bx + bPadX + colW + 8, by, {
-        width: colW,
-        characterSpacing: 0.6,
-      });
-    by += 8;
+    const labelTracking = doorsLabelSize * 0.12;
 
     doc
       .font(fonts.bold)
-      .fontSize(10)
+      .fontSize(doorsLabelSize)
+      .fillColor(TF_MUTED)
+      .text((data.doors.headlineLabel || "Einlass").toUpperCase(), bx + bPadX, by, {
+        width: colW,
+        characterSpacing: labelTracking,
+      });
+    doc
+      .font(fonts.bold)
+      .fontSize(doorsLabelSize)
+      .fillColor(TF_MUTED)
+      .text("BEGINN", bx + bPadX + colW + colGap, by, {
+        width: colW,
+        characterSpacing: labelTracking,
+      });
+    by += doorsLabelSize + 2;
+
+    // Vertical divider between EINLASS | BEGINN (TicketFace border-l)
+    doc
+      .moveTo(bx + bPadX + colW + colGap / 2, by - doorsLabelSize)
+      .lineTo(
+        bx + bPadX + colW + colGap / 2,
+        by + doorsTimeSize + (data.doors.doorsNote ? 8 : 0),
+      )
+      .strokeColor(TF_LINE)
+      .lineWidth(0.7)
+      .stroke();
+
+    doc
+      .font(fonts.bold)
+      .fontSize(doorsTimeSize)
       .fillColor(data.doors.timeLabel ? doorsColor : TF_MUTED)
       .text(
         data.doors.timeLabel ? `${data.doors.timeLabel} Uhr` : "—",
         bx + bPadX,
         by,
-        { width: colW, height: 12, ellipsis: true },
+        { width: colW, height: doorsTimeSize + 2, ellipsis: true },
       );
     doc
       .font(fonts.bold)
-      .fontSize(10)
+      .fontSize(doorsTimeSize)
       .fillColor(TF_NAVY)
-      .text(data.startLabel ?? "—", bx + bPadX + colW + 8, by, {
+      .text(data.startLabel ?? "—", bx + bPadX + colW + colGap, by, {
         width: colW,
-        height: 12,
+        height: doorsTimeSize + 2,
         ellipsis: true,
       });
-    by += 12;
+    by += doorsTimeSize + 2;
     if (data.doors.doorsNote) {
       doc
         .font(fonts.regular)
-        .fontSize(6.5)
+        .fontSize(sz(9))
         .fillColor(TF_MUTED)
         .text(data.doors.doorsNote, bx + bPadX, by, {
           width: bInnerW,
-          height: 9,
+          height: 10,
           ellipsis: true,
         });
-      by = doc.y + 1;
+      by += 10;
     }
     doc
       .moveTo(bx + bPadX, by)
       .lineTo(bx + bPadX + bInnerW, by)
       .strokeColor(TF_LINE)
-      .lineWidth(0.6)
+      .lineWidth(0.7)
       .stroke();
-    by += 3;
+    by += 4;
   }
 
-  // Category (VIP gold accent only)
+  // Kategorie + optional VIP badge
   const catY = by;
-  doc.font(fonts.regular).fontSize(7.5);
-  const catLabelW = doc.widthOfString("Kategorie");
-  doc.fillColor(TF_MUTED).text("Kategorie", bx + bPadX, catY, { continued: false });
-  let catX = bx + bPadX + catLabelW + 6;
+  doc.font(fonts.regular).fontSize(categorySize);
+  const catLabelW = doc.widthOfString("Kategorie ");
+  doc.fillColor(TF_MUTED).text("Kategorie ", bx + bPadX, catY, { continued: false });
+  let catX = bx + bPadX + catLabelW;
   if (data.isVip) {
-    const badgeW = 22;
-    const badgeH = 11;
+    const badgeH = sz(16);
+    const badgeW = sz(28);
+    const badgeY = catY + (categorySize - badgeH) / 2;
     doc.save();
     try {
-      doc.roundedRect(catX, catY - 1, badgeW, badgeH, 2).fillOpacity(0.12).fill(TF_GOLD);
+      doc
+        .roundedRect(catX, badgeY, badgeW, badgeH, 3)
+        .fillOpacity(0.12)
+        .fill(TF_GOLD);
     } finally {
       doc.fillOpacity(1);
       doc.restore();
     }
     doc
-      .roundedRect(catX, catY - 1, badgeW, badgeH, 2)
+      .roundedRect(catX, badgeY, badgeW, badgeH, 3)
       .strokeColor(TF_GOLD)
-      .lineWidth(0.6)
+      .lineWidth(0.7)
       .stroke();
     doc
       .font(fonts.bold)
-      .fontSize(6.5)
+      .fontSize(sz(T.vipBadgeSize))
       .fillColor(TF_GOLD)
-      .text("VIP", catX, catY + 1.5, { width: badgeW, align: "center" });
-    catX += badgeW + 6;
+      .text("VIP", catX, badgeY + (badgeH - sz(T.vipBadgeSize)) / 2, {
+        width: badgeW,
+        align: "center",
+      });
+    catX += badgeW + sz(6);
     if (!/^vip$/i.test(data.categoryName.trim())) {
       doc
         .font(fonts.bold)
-        .fontSize(8)
+        .fontSize(categorySize)
         .fillColor(TF_NAVY)
         .text(data.categoryName, catX, catY, {
           width: Math.max(24, bx + bPadX + bInnerW - catX),
-          height: 12,
+          height: categorySize + 2,
           ellipsis: true,
         });
     }
   } else {
     doc
       .font(fonts.bold)
-      .fontSize(8)
+      .fontSize(categorySize)
       .fillColor(TF_NAVY)
       .text(data.categoryName, catX, catY, {
         width: Math.max(24, bx + bPadX + bInnerW - catX),
-        height: 12,
+        height: categorySize + 2,
         ellipsis: true,
       });
   }
-  by = catY + 14;
+  by = catY + catH;
 
-  // Seat highlight boxes / text
   if (seat.mode === "boxes" && seat.parts.length > 0) {
-    const gap = 5;
+    const boxGap = sz(6);
     const n = seat.parts.length;
-    const boxW = (bInnerW - gap * (n - 1)) / n;
-    const boxH = 24;
+    const boxW = (bInnerW - boxGap * (n - 1)) / n;
+    const boxH = seatBoxH;
     for (let i = 0; i < n; i += 1) {
       const part = seat.parts[i]!;
-      const ox = bx + bPadX + i * (boxW + gap);
+      const ox = bx + bPadX + i * (boxW + boxGap);
       doc.roundedRect(ox, by, boxW, boxH, 4).fill(TF_SOFT);
       doc
         .roundedRect(ox, by, boxW, boxH, 4)
@@ -645,103 +706,107 @@ async function drawTicketPage(
         .stroke();
       if (part.label) {
         doc
-          .font(fonts.regular)
-          .fontSize(6)
+          .font(fonts.bold)
+          .fontSize(sz(8))
           .fillColor(TF_MUTED)
-          .text(part.label, ox + 2, by + 2, {
+          .text(part.label, ox + 2, by + 3, {
             width: boxW - 4,
             align: "center",
+            characterSpacing: 0.8,
           });
       }
       doc
         .font(fonts.bold)
-        .fontSize(10)
+        .fontSize(sz(T.seatBoxValueSize))
         .fillColor(TF_NAVY)
-        .text(part.value, ox + 2, by + (part.label ? 11 : 6), {
+        .text(part.value, ox + 2, by + (part.label ? boxH * 0.42 : boxH * 0.28), {
           width: boxW - 4,
           align: "center",
-          height: 12,
+          height: sz(T.seatBoxValueSize) + 2,
           ellipsis: true,
         });
     }
-    by += boxH + 3;
+    by += boxH + gap;
   } else {
     doc
       .font(fonts.bold)
-      .fontSize(11)
+      .fontSize(seatTextSize)
       .fillColor(TF_NAVY)
       .text(seat.text, bx + bPadX, by, {
         width: bInnerW,
-        height: 13,
+        height: seatTextSize + 2,
         ellipsis: true,
+        characterSpacing: 0.4,
       });
-    by = doc.y + 3;
+    by += seatTextSize + 4;
   }
 
-  const footerMeta: { label: string; value: string }[] = [
-    data.holderName ? { label: "Inhaber", value: data.holderName } : null,
-    data.priceLabel ? { label: "Preis", value: data.priceLabel } : null,
-  ].filter(Boolean) as { label: string; value: string }[];
-
-  // Inhaber | Preis follow seat in the info flow (extra air above)
-  if (footerMeta.length > 0) by += 8;
-  for (const row of footerMeta) {
-    if (by > ticketY + ticketH - 10) break;
-    doc
-      .font(fonts.regular)
-      .fontSize(7)
-      .fillColor(TF_MUTED)
-      .text(`${row.label}  `, bx + bPadX, by, { continued: true });
-    doc
-      .font(fonts.bold)
-      .fontSize(7.5)
-      .fillColor(TF_INK)
-      .text(row.value, { continued: false });
-    by = doc.y + 1;
+  if (hasFooter) {
+    by += sz(10);
+    // One line: Inhaber …   Preis … (TicketFace flex-wrap gap-x-4)
+    doc.font(fonts.regular).fontSize(footerSize).fillColor(TF_MUTED);
+    if (data.holderName) {
+      doc.text("Inhaber ", bx + bPadX, by, { continued: true });
+      doc.font(fonts.bold).fillColor(TF_NAVY).text(data.holderName, {
+        continued: Boolean(data.priceLabel),
+      });
+    }
+    if (data.priceLabel) {
+      doc
+        .font(fonts.regular)
+        .fillColor(TF_MUTED)
+        .text(data.holderName ? "    Preis " : "Preis ", {
+          continued: true,
+        });
+      doc.font(fonts.bold).fillColor(TF_NAVY).text(data.priceLabel);
+    }
   }
 
-  // ── Zone C: QR stub (soft fill already painted under rounded clip) ──
+  // ── Zone C: QR stub — same flex air + sizes as TicketFace ──────────
   doc
-    .moveTo(cx, ticketY + 12)
-    .lineTo(cx, ticketY + ticketH - 12)
+    .moveTo(cx, ticketY + sz(12))
+    .lineTo(cx, ticketY + ticketH - sz(12))
     .strokeColor(TF_LINE)
     .lineWidth(0.8)
     .dash(3, { space: 3 })
     .stroke()
     .undash();
 
-  const cPad = 8;
+  const cPad = sz(T.stubPadX);
   const cInnerW = zoneC - cPad * 2;
-  const stubPadY = 6;
+  const stubPadY = sz(T.stubPadY);
   const aboveBox = sponsorLogoBoxForScale(data.sponsorLogoAboveScale);
   const belowBox = sponsorLogoBoxForScale(data.sponsorLogoBelowScale);
 
-  // QR stays at current floor; logos use leftover air in above/below slots.
-  const qrMax = Math.min(
-    cInnerW - 2,
-    hasSponsor ? Math.max(TICKET_QR_MIN_PX, 118) : 128,
-  );
-  const quiet = 5;
+  const qrTarget = hasSponsor
+    ? Math.max(TICKET_QR_MIN_PX, T.qrWithSponsor)
+    : T.qrNoSponsor;
+  const quiet = sz(T.qrPlatePad);
+  const qrMax = Math.min(cInnerW - quiet * 2, sz(qrTarget));
   const qrPlate = qrMax + quiet * 2;
-  const admitBlockH = 11;
-  const ticketNoH = 11;
-  const hintH = 10;
-  const coreGaps = 8;
-  const coreH = admitBlockH + qrPlate + ticketNoH + hintH + coreGaps;
+  const admitSize = sz(T.admitSize);
+  const ticketNoSize = sz(T.ticketNoSize);
+  const hintSize = sz(T.hintSize);
+  const coreGap = sz(2); // gap-0.5 between stub core items
+  const admitBlockH = admitSize + 4;
+  const ticketNoH = ticketNoSize + 2;
+  const hintH = hintSize + 2;
+  const coreH = admitBlockH + qrPlate + ticketNoH + hintH + coreGap * 3;
   const usableH = ticketH - stubPadY * 2;
   const slotAir = Math.max(0, usableH - coreH);
-  // Prefer a generous slot for present logos; empty side keeps leftover for balance.
+
   let aboveSlotH: number;
   let belowSlotH: number;
   if (sponsorAbove && sponsorBelow) {
     aboveSlotH = belowSlotH = slotAir / 2;
   } else if (sponsorAbove) {
-    aboveSlotH = Math.min(slotAir, aboveBox.maxH + 14);
+    aboveSlotH = Math.min(slotAir, sz(aboveBox.maxH + 14));
     belowSlotH = slotAir - aboveSlotH;
   } else if (sponsorBelow) {
-    belowSlotH = Math.min(slotAir, belowBox.maxH + 14);
+    belowSlotH = Math.min(slotAir, sz(belowBox.maxH + 14));
     aboveSlotH = slotAir - belowSlotH;
   } else {
+    // Empty flex-1 slots — center QR block like TicketFace
     aboveSlotH = belowSlotH = slotAir / 2;
   }
 
@@ -751,13 +816,13 @@ async function drawTicketPage(
     slotHeight: number,
     box: { maxW: number; maxH: number },
   ) => {
-    const logoH = Math.min(box.maxH, Math.max(16, slotHeight - 4));
-    const logoW = Math.min(cInnerW, box.maxW);
-    const imgY = slotTop + Math.max(0, (slotHeight - logoH) / 2);
-    const imgX = cx + (zoneC - logoW) / 2;
+    const sH = Math.min(sz(box.maxH), Math.max(sz(16), slotHeight - 4));
+    const sW = Math.min(cInnerW, sz(box.maxW));
+    const imgY = slotTop + Math.max(0, (slotHeight - sH) / 2);
+    const imgX = cx + (zoneC - sW) / 2;
     try {
       doc.image(buf, imgX, imgY, {
-        fit: [logoW, logoH],
+        fit: [sW, sH],
         align: "center",
         valign: "center",
       });
@@ -775,18 +840,23 @@ async function drawTicketPage(
 
   doc
     .font(fonts.bold)
-    .fontSize(7.5)
+    .fontSize(admitSize)
     .fillColor(accent)
     .text(admitLabel, cx + cPad, cy, {
       width: cInnerW,
       align: "center",
-      characterSpacing: 1.1,
+      characterSpacing: admitSize * 0.14,
     });
-  cy = doc.y + 3;
+  cy += admitBlockH;
 
   const qrPlateX = cx + (zoneC - qrPlate) / 2;
-
   doc.roundedRect(qrPlateX, cy, qrPlate, qrPlate, 4).fill("#FFFFFF");
+  // Soft plate edge like TicketFace shadow-sm plate
+  doc
+    .roundedRect(qrPlateX, cy, qrPlate, qrPlate, 4)
+    .strokeColor(TF_LINE)
+    .lineWidth(0.5)
+    .stroke();
 
   if (qr) {
     try {
@@ -800,7 +870,7 @@ async function drawTicketPage(
     } catch {
       doc
         .font(fonts.regular)
-        .fontSize(8)
+        .fontSize(sz(8))
         .fillColor("#B91C1C")
         .text("Kein QR", cx + cPad, cy + qrPlate / 2, {
           width: cInnerW,
@@ -810,30 +880,31 @@ async function drawTicketPage(
   } else {
     doc
       .font(fonts.regular)
-      .fontSize(8)
+      .fontSize(sz(8))
       .fillColor("#B91C1C")
       .text("Kein gültiger QR-Code", cx + cPad, cy + qrPlate / 2, {
         width: cInnerW,
         align: "center",
       });
   }
-  cy += qrPlate + 3;
+  cy += qrPlate + coreGap;
 
   doc
     .font(fonts.bold)
-    .fontSize(6.5)
+    .fontSize(ticketNoSize)
     .fillColor(TF_NAVY)
     .text(data.ticketNumber, cx + cPad, cy, {
       width: cInnerW,
       align: "center",
-      height: 10,
+      height: ticketNoH,
       ellipsis: true,
+      characterSpacing: 0.3,
     });
-  cy = doc.y + 1;
+  cy += ticketNoH;
 
   doc
     .font(fonts.regular)
-    .fontSize(6.5)
+    .fontSize(hintSize)
     .fillColor(TF_MUTED)
     .text(TF_QR_HINT, cx + cPad, cy, {
       width: cInnerW,
@@ -846,7 +917,7 @@ async function drawTicketPage(
   }
 
   // Ticket notches on perforation
-  const notchR = 6;
+  const notchR = sz(6);
   doc.circle(cx, ticketY, notchR).fill("#FFFFFF");
   doc.circle(cx, ticketY + ticketH, notchR).fill("#FFFFFF");
 
@@ -869,32 +940,23 @@ async function drawTicketPage(
   doc
     .roundedRect(ticketX, ticketY, ticketW, ticketH, TICKET_CORNER_RADIUS_PX)
     .strokeColor(TF_LINE)
-    .lineWidth(1.25)
+    .lineWidth(1.1)
     .stroke();
 
-  // Notes below strip (organizer name only — never street address)
-  let notesY = ticketY + ticketH + 22;
+  // Notes below strip — one line like TicketFace
+  const notesY = ticketY + ticketH + sz(14);
+  const notes =
+    data.organizerDisplayName
+      ? `${TF_PRINT_HINT} · Veranstalter: ${data.organizerDisplayName}`
+      : TF_PRINT_HINT;
   doc
     .font(fonts.regular)
-    .fontSize(9)
+    .fontSize(sz(12))
     .fillColor(TF_MUTED)
-    .text(TF_PRINT_HINT, margin, notesY, {
+    .text(notes, margin, notesY, {
       width: ticketW,
       align: "left",
     });
-  notesY = doc.y + 8;
-
-  if (data.organizerDisplayName) {
-    doc
-      .font(fonts.regular)
-      .fontSize(8)
-      .fillColor(TF_MUTED)
-      .text(`Veranstalter: ${data.organizerDisplayName}`, margin, notesY, {
-        width: ticketW,
-        height: 12,
-        ellipsis: true,
-      });
-  }
 }
 
 export async function renderTicketPdf(ticketId: string): Promise<{

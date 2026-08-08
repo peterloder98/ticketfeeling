@@ -6,6 +6,7 @@ import {
   resolvePlaceLabel,
   TICKET_ACCENT_H_PX,
   TICKET_BODY_ASPECT,
+  TICKET_BRAND_LOGO_GAP_PX,
   TICKET_BRAND_LOGO_H_PX,
   TICKET_COL_COVER,
   TICKET_COL_QR,
@@ -101,6 +102,7 @@ describe("TICKET_BODY_ASPECT", () => {
     expect(TICKET_CORNER_RADIUS_PX).toBe(14);
     expect(TICKET_BRAND_LOGO_H_PX).toBe(36);
     expect(TICKET_ACCENT_H_PX).toBe(3);
+    expect(TICKET_BRAND_LOGO_GAP_PX).toBe(20);
   });
 });
 

@@ -47,6 +47,8 @@ export {
   TICKET_BRAND_LOGO_H_PX,
   TICKET_BRAND_LOGO_GAP_PX,
   TICKET_ACCENT_H_PX,
+  TICKET_FACE_REF_W_PX,
+  TICKET_FACE_TYPE,
   isVipCategory,
   resolvePlaceLabel,
   formatProminentPlaceLabel,
