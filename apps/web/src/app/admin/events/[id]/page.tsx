@@ -499,8 +499,9 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           </h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             Optional. Bis zu zwei Logos am QR-Stub — eines oberhalb des
-            Einlass-Labels, eines unterhalb von „Am Einlass vorzeigen.“ Leer =
-            ohne Sponsoren. Logos werden verkleinert, der QR bleibt groß.
+            Einlass-Labels, eines unterhalb von „Am Einlass vorzeigen.“ In der
+            Vorschau Größe per Ziehen oder Schieberegler anpassen; Logos bleiben
+            zentriert. Der QR wird nie verkleinert.
           </p>
         </div>
         {canWrite ? (
@@ -510,14 +511,16 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
               label="Logo oberhalb Einlass-Label"
               eventId={event.id}
               initialUrl={event.ticketSponsorLogoAboveUrl}
-              hint="Erscheint über VIP-TICKET / EINLASSTICKET."
+              initialScale={event.ticketSponsorLogoAboveScale}
+              hint="Erscheint über VIP-TICKET / EINLASSTICKET. In der Vorschau Größe anpassen — bleibt zentriert."
             />
             <TicketSponsorLogoField
               field="ticketSponsorLogoBelowUrl"
               label="Logo unterhalb Hinweis"
               eventId={event.id}
               initialUrl={event.ticketSponsorLogoBelowUrl}
-              hint="Erscheint unter „Am Einlass vorzeigen.“"
+              initialScale={event.ticketSponsorLogoBelowScale}
+              hint="Erscheint unter „Am Einlass vorzeigen.“ In der Vorschau Größe anpassen — bleibt zentriert."
             />
           </div>
         ) : (

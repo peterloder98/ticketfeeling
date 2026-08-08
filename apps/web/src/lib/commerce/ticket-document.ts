@@ -2,6 +2,7 @@ import { qrDataUrl } from "@/lib/qr-server";
 import {
   loadTicketPresentation,
   parseSeatHighlight,
+  sponsorLogoBoxForScale,
   TF_GOLD,
   TF_INK,
   TF_LINE,
@@ -15,8 +16,6 @@ import {
   TICKET_COL_COVER,
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
-  TICKET_SPONSOR_LOGO_MAX_H_PX,
-  TICKET_SPONSOR_LOGO_MAX_W_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -69,6 +68,8 @@ export function buildTicketHtmlDocument(
     data.sponsorLogoBelowAbsoluteUrl ?? data.sponsorLogoBelowUrl;
   const hasSponsor = Boolean(sponsorAbove || sponsorBelow);
   const qrPx = hasSponsor ? Math.max(TICKET_QR_MIN_PX, 120) : 132;
+  const aboveBox = sponsorLogoBoxForScale(data.sponsorLogoAboveScale);
+  const belowBox = sponsorLogoBoxForScale(data.sponsorLogoBelowScale);
 
   const coverHtml = cover
     ? `<div class="cover-blur" style="background-image:url('${escapeAttr(cover)}')"></div>
@@ -90,10 +91,10 @@ export function buildTicketHtmlDocument(
   const categoryHtml = `<p class="category">Kategorie ${vipBadge}${categoryLabel}</p>`;
 
   const sponsorAboveHtml = sponsorAbove
-    ? `<img class="sponsor-logo" src="${escapeAttr(sponsorAbove)}" alt="" />`
+    ? `<img class="sponsor-logo" style="max-width:min(90%,${aboveBox.maxW}px);max-height:${aboveBox.maxH}px" src="${escapeAttr(sponsorAbove)}" alt="" />`
     : "";
   const sponsorBelowHtml = sponsorBelow
-    ? `<img class="sponsor-logo" src="${escapeAttr(sponsorBelow)}" alt="" />`
+    ? `<img class="sponsor-logo" style="max-width:min(90%,${belowBox.maxW}px);max-height:${belowBox.maxH}px" src="${escapeAttr(sponsorBelow)}" alt="" />`
     : "";
 
   const doorsBeginHtml =
@@ -454,8 +455,6 @@ export function buildTicketHtmlDocument(
     }
     .sponsor-logo {
       display: block;
-      max-width: min(90%, ${TICKET_SPONSOR_LOGO_MAX_W_PX}px);
-      max-height: ${TICKET_SPONSOR_LOGO_MAX_H_PX}px;
       width: auto;
       height: auto;
       object-fit: contain;

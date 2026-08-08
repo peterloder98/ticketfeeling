@@ -198,7 +198,7 @@ export function TicketCalendarMenu({
         ref={buttonRef}
         type="button"
         className={`tf-btn tf-btn-secondary !min-h-10 items-center gap-2 text-sm ${
-          fullWidth ? "flex w-full !min-h-12 justify-center" : ""
+          fullWidth ? "flex w-full !min-h-11 justify-center" : ""
         }`}
         aria-expanded={open}
         aria-haspopup="menu"

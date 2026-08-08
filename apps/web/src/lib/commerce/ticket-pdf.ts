@@ -7,6 +7,7 @@ import { qrDataUrl } from "@/lib/qr-server";
 import {
   loadTicketPresentation,
   parseSeatHighlight,
+  sponsorLogoBoxForScale,
   TF_GOLD,
   TF_INK,
   TF_LINE,
@@ -20,8 +21,6 @@ import {
   TICKET_COL_COVER,
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
-  TICKET_SPONSOR_LOGO_MAX_H_PX,
-  TICKET_SPONSOR_LOGO_MAX_W_PX,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -506,8 +505,8 @@ async function drawTicketPage(
   const cPad = 8;
   const cInnerW = zoneC - cPad * 2;
   const stubPadY = 6;
-  const sponsorMaxH = TICKET_SPONSOR_LOGO_MAX_H_PX;
-  const sponsorMaxW = Math.min(cInnerW, TICKET_SPONSOR_LOGO_MAX_W_PX);
+  const aboveBox = sponsorLogoBoxForScale(data.sponsorLogoAboveScale);
+  const belowBox = sponsorLogoBoxForScale(data.sponsorLogoBelowScale);
 
   // QR stays at current floor; logos use leftover air in above/below slots.
   const qrMax = Math.min(
@@ -529,10 +528,10 @@ async function drawTicketPage(
   if (sponsorAbove && sponsorBelow) {
     aboveSlotH = belowSlotH = slotAir / 2;
   } else if (sponsorAbove) {
-    aboveSlotH = Math.min(slotAir, sponsorMaxH + 14);
+    aboveSlotH = Math.min(slotAir, aboveBox.maxH + 14);
     belowSlotH = slotAir - aboveSlotH;
   } else if (sponsorBelow) {
-    belowSlotH = Math.min(slotAir, sponsorMaxH + 14);
+    belowSlotH = Math.min(slotAir, belowBox.maxH + 14);
     aboveSlotH = slotAir - belowSlotH;
   } else {
     aboveSlotH = belowSlotH = slotAir / 2;
@@ -542,9 +541,10 @@ async function drawTicketPage(
     buf: Buffer,
     slotTop: number,
     slotHeight: number,
+    box: { maxW: number; maxH: number },
   ) => {
-    const logoH = Math.min(sponsorMaxH, Math.max(16, slotHeight - 4));
-    const logoW = sponsorMaxW;
+    const logoH = Math.min(box.maxH, Math.max(16, slotHeight - 4));
+    const logoW = Math.min(cInnerW, box.maxW);
     const imgY = slotTop + Math.max(0, (slotHeight - logoH) / 2);
     const imgX = cx + (zoneC - logoW) / 2;
     try {
@@ -560,7 +560,7 @@ async function drawTicketPage(
 
   const aboveSlotTop = ticketY + stubPadY;
   if (sponsorAbove) {
-    drawSponsorInSlot(sponsorAbove, aboveSlotTop, aboveSlotH);
+    drawSponsorInSlot(sponsorAbove, aboveSlotTop, aboveSlotH, aboveBox);
   }
 
   let cy = aboveSlotTop + aboveSlotH;
@@ -632,7 +632,7 @@ async function drawTicketPage(
 
   const belowSlotTop = ticketY + ticketH - stubPadY - belowSlotH;
   if (sponsorBelow) {
-    drawSponsorInSlot(sponsorBelow, belowSlotTop, belowSlotH);
+    drawSponsorInSlot(sponsorBelow, belowSlotTop, belowSlotH, belowBox);
   }
 
   doc.restore(); // end clip

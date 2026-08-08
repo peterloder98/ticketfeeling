@@ -10,8 +10,7 @@ import {
   TICKET_COL_COVER,
   TICKET_COL_QR,
   TICKET_QR_MIN_PX,
-  TICKET_SPONSOR_LOGO_MAX_H_PX,
-  TICKET_SPONSOR_LOGO_MAX_W_PX,
+  sponsorLogoBoxForScale,
   type TicketPresentation,
 } from "@/lib/commerce/ticket-presentation";
 
@@ -31,17 +30,16 @@ const infoPct = 100 - coverPct - qrPct;
 
 function SponsorLogo({
   src,
+  scale,
   compact,
 }: {
   src: string;
+  scale: number;
   compact?: boolean;
 }) {
-  const maxH = compact
-    ? Math.min(34, TICKET_SPONSOR_LOGO_MAX_H_PX)
-    : TICKET_SPONSOR_LOGO_MAX_H_PX;
-  const maxW = compact
-    ? Math.min(118, TICKET_SPONSOR_LOGO_MAX_W_PX)
-    : TICKET_SPONSOR_LOGO_MAX_W_PX;
+  const box = sponsorLogoBoxForScale(scale);
+  const maxH = compact ? Math.min(36, box.maxH) : box.maxH;
+  const maxW = compact ? Math.min(124, box.maxW) : box.maxW;
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
@@ -333,7 +331,11 @@ export function TicketFace({
 
             <SponsorSlot>
               {data.sponsorLogoAboveUrl ? (
-                <SponsorLogo src={data.sponsorLogoAboveUrl} compact={compact} />
+                <SponsorLogo
+                  src={data.sponsorLogoAboveUrl}
+                  scale={data.sponsorLogoAboveScale}
+                  compact={compact}
+                />
               ) : null}
             </SponsorSlot>
 
@@ -384,7 +386,11 @@ export function TicketFace({
 
             <SponsorSlot>
               {data.sponsorLogoBelowUrl ? (
-                <SponsorLogo src={data.sponsorLogoBelowUrl} compact={compact} />
+                <SponsorLogo
+                  src={data.sponsorLogoBelowUrl}
+                  scale={data.sponsorLogoBelowScale}
+                  compact={compact}
+                />
               ) : null}
             </SponsorSlot>
           </div>

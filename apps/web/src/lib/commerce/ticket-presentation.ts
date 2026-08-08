@@ -23,13 +23,36 @@ export const TF_PRINT_HINT =
   "Am Einlass auf dem Smartphone vorzeigen oder ausdrucken.";
 export const TF_QR_HINT = "Am Einlass vorzeigen.";
 /**
- * Max CSS box for QR-stub sponsor logos.
+ * Max CSS box for QR-stub sponsor logos (scale=1).
  * Logos use leftover air above/below the QR block; never shrink the QR below its floor.
  */
-export const TICKET_SPONSOR_LOGO_MAX_H_PX = 42;
-export const TICKET_SPONSOR_LOGO_MAX_W_PX = 140;
+export const TICKET_SPONSOR_LOGO_MAX_H_PX = 52;
+export const TICKET_SPONSOR_LOGO_MAX_W_PX = 156;
+/** Admin resize range — relative to the max box above. */
+export const SPONSOR_LOGO_SCALE_MIN = 0.45;
+export const SPONSOR_LOGO_SCALE_MAX = 1;
 /** Floor for QR plate when sponsors are present — shrink logos, never the QR. */
 export const TICKET_QR_MIN_PX = 112;
+
+export function clampSponsorLogoScale(raw: unknown): number {
+  const n = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(
+    SPONSOR_LOGO_SCALE_MAX,
+    Math.max(SPONSOR_LOGO_SCALE_MIN, Math.round(n * 100) / 100),
+  );
+}
+
+export function sponsorLogoBoxForScale(scale: number | null | undefined): {
+  maxW: number;
+  maxH: number;
+} {
+  const s = clampSponsorLogoScale(scale ?? 1);
+  return {
+    maxW: Math.round(TICKET_SPONSOR_LOGO_MAX_W_PX * s),
+    maxH: Math.round(TICKET_SPONSOR_LOGO_MAX_H_PX * s),
+  };
+}
 
 /**
  * Print@Home ticket BODY (not the A4 sheet): landscape ~2:1 strip.
@@ -74,9 +97,12 @@ export type TicketPresentation = {
   /** Optional sponsor logo above admit label (relative or absolute) */
   sponsorLogoAboveUrl: string | null;
   sponsorLogoAboveAbsoluteUrl: string | null;
+  /** Display scale 0.45–1 relative to max stub box */
+  sponsorLogoAboveScale: number;
   /** Optional sponsor logo below QR hint */
   sponsorLogoBelowUrl: string | null;
   sponsorLogoBelowAbsoluteUrl: string | null;
+  sponsorLogoBelowScale: number;
   /**
    * Optional sponsor metadata stubs (not rendered yet).
    * Reserved so category-level name/URL can plug in without a layout rewrite.
@@ -219,6 +245,8 @@ function toAbsoluteAssetUrl(url: string | null): string | null {
 type SponsorLogoSource = {
   ticketSponsorLogoAboveUrl?: string | null;
   ticketSponsorLogoBelowUrl?: string | null;
+  ticketSponsorLogoAboveScale?: number | null;
+  ticketSponsorLogoBelowScale?: number | null;
 };
 
 /**
@@ -231,6 +259,8 @@ export function resolveTicketSponsorLogos(
 ): {
   aboveUrl: string | null;
   belowUrl: string | null;
+  aboveScale: number;
+  belowScale: number;
 } {
   const above =
     category?.ticketSponsorLogoAboveUrl?.trim() ||
@@ -240,7 +270,13 @@ export function resolveTicketSponsorLogos(
     category?.ticketSponsorLogoBelowUrl?.trim() ||
     event.ticketSponsorLogoBelowUrl?.trim() ||
     null;
-  return { aboveUrl: above, belowUrl: below };
+  const aboveScale = clampSponsorLogoScale(
+    category?.ticketSponsorLogoAboveScale ?? event.ticketSponsorLogoAboveScale ?? 1,
+  );
+  const belowScale = clampSponsorLogoScale(
+    category?.ticketSponsorLogoBelowScale ?? event.ticketSponsorLogoBelowScale ?? 1,
+  );
+  return { aboveUrl: above, belowUrl: below, aboveScale, belowScale };
 }
 
 export async function loadTicketPresentation(
@@ -279,6 +315,8 @@ export async function loadTicketPresentation(
   const sponsors = resolveTicketSponsorLogos(ticket.event);
   const sponsorAbove = sponsors.aboveUrl;
   const sponsorBelow = sponsors.belowUrl;
+  const sponsorAboveScale = sponsors.aboveScale;
+  const sponsorBelowScale = sponsors.belowScale;
   const lines = locationLines(ticket.event.location);
   const categoryName = ticket.categorySnapshot;
   const categoryKind = ticket.category?.categoryKind ?? null;
@@ -320,8 +358,10 @@ export async function loadTicketPresentation(
     coverAbsoluteUrl: toAbsoluteAssetUrl(coverUrl),
     sponsorLogoAboveUrl: sponsorAbove,
     sponsorLogoAboveAbsoluteUrl: toAbsoluteAssetUrl(sponsorAbove),
+    sponsorLogoAboveScale: sponsorAboveScale,
     sponsorLogoBelowUrl: sponsorBelow,
     sponsorLogoBelowAbsoluteUrl: toAbsoluteAssetUrl(sponsorBelow),
+    sponsorLogoBelowScale: sponsorBelowScale,
     sponsorAboveName: null,
     sponsorAboveHref: null,
     sponsorBelowName: null,

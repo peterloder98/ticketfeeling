@@ -191,170 +191,172 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
       {paid ? (
         <PurchaseTrackingBeacon orderId={order.id} accessToken={sp.t ?? null} />
       ) : null}
-      <div className="tf-container space-y-8 py-10 md:py-14">
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div className="max-w-2xl">
-            <BrandLogo href="/" variant="mark" />
-            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-teal)]">
-              {paid ? "Kauf bestätigt" : processing ? "Zahlung wird verarbeitet" : "Bestellung"}
-            </p>
-            <h1 className="mt-2 text-3xl font-bold tracking-tight text-[var(--tf-navy)] md:text-4xl lg:text-5xl">
-              {paid
-                ? `${greeting},`
-                : processing
-                  ? "Deine Zahlung wird verarbeitet"
-                  : `Bestellung ${order.orderNumber}`}
-            </h1>
-            <p className="mt-3 text-base text-[var(--tf-text-secondary)] md:text-lg">
-              {paid
-                ? `vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei ${eventName} dabei sind. Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass${
-                    emailSent
-                      ? " — die Bestätigungs-E-Mail mit Links zu PDF, Wallet und Kalender ist unterwegs."
-                      : hasRealEmail
-                        ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (bitte SMTP unter Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
-                        : "."
-                  }`
-                : processing
-                  ? "Vielen Dank für Ihre Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald die Zahlung bestätigt wurde, erhalten Sie Ihre Tickets per E-Mail."
-                  : "Sobald die Zahlung durch ist, erscheinen hier Ihre Tickets."}
-            </p>
-            {paid ? (
-              <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-                Bestellnummer {order.orderNumber} ·{" "}
-                {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
-              </p>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/events" className="tf-btn tf-btn-secondary !min-h-11">
-              Weitere Events
-            </Link>
-            <Link href="/konto" className="tf-btn tf-btn-primary !min-h-11">
-              Zum Konto
-            </Link>
-          </div>
-        </div>
-
+      <div className="tf-container py-10 md:py-14">
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.65fr)] lg:items-start">
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Positionen & Tickets</h2>
-            {paid ? (
-              <OrderTicketsPanel
-                positions={positions}
-                canForward={Boolean(isOwner || isStaff)}
-                accessToken={hasAccessToken ? sp.t! : null}
-                appleWalletEnabled={getWalletUiFlags().apple}
-                googleWalletEnabled={getWalletUiFlags().google}
-              />
-            ) : (
-              <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5">
-                <ul className="space-y-3 text-sm">
-                  {mergeSameCategoryLines(
-                    order.items.map((item) => ({
-                      quantity: item.quantity,
-                      categoryLabel: item.categorySnapshot,
-                      unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
-                      lineGrossCents: item.grossCents,
-                      eventKey: item.eventId,
-                      eventNameSnapshot: item.eventNameSnapshot,
-                    })),
-                  ).map((line, idx) => (
-                    <li key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}>
-                      <p className="font-medium text-[var(--tf-navy)]">
-                        {line.quantity}× {line.categoryLabel}
-                      </p>
-                      <p className="text-[var(--tf-text-secondary)]">{line.eventNameSnapshot}</p>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-4 text-sm text-[var(--tf-text-secondary)]">
-                  {processing
-                    ? "Noch keine Tickets — die Lastschrift wird verarbeitet."
-                    : "Noch keine Tickets — Zahlung ausstehend."}
+          <div className="space-y-8">
+            <div className="max-w-2xl">
+              <BrandLogo href="/" variant="mark" />
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--tf-teal)]">
+                {paid ? "Kauf bestätigt" : processing ? "Zahlung wird verarbeitet" : "Bestellung"}
+              </p>
+              <h1 className="mt-2 text-3xl font-bold tracking-tight text-[var(--tf-navy)] md:text-4xl lg:text-5xl">
+                {paid
+                  ? `${greeting},`
+                  : processing
+                    ? "Deine Zahlung wird verarbeitet"
+                    : `Bestellung ${order.orderNumber}`}
+              </h1>
+              <p className="mt-3 text-base text-[var(--tf-text-secondary)] md:text-lg">
+                {paid
+                  ? `vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei ${eventName} dabei sind. Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass${
+                      emailSent
+                        ? " — die Bestätigungs-E-Mail mit Links zu PDF, Wallet und Kalender ist unterwegs."
+                        : hasRealEmail
+                          ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (bitte SMTP unter Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
+                          : "."
+                    }`
+                  : processing
+                    ? "Vielen Dank für Ihre Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald die Zahlung bestätigt wurde, erhalten Sie Ihre Tickets per E-Mail."
+                    : "Sobald die Zahlung durch ist, erscheinen hier Ihre Tickets."}
+              </p>
+              {paid ? (
+                <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+                  Bestellnummer {order.orderNumber} ·{" "}
+                  {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
                 </p>
-              </div>
-            )}
+              ) : null}
+            </div>
+
+            <div className="space-y-3">
+              <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Positionen & Tickets</h2>
+              {paid ? (
+                <OrderTicketsPanel
+                  positions={positions}
+                  canForward={Boolean(isOwner || isStaff)}
+                  accessToken={hasAccessToken ? sp.t! : null}
+                  appleWalletEnabled={getWalletUiFlags().apple}
+                  googleWalletEnabled={getWalletUiFlags().google}
+                />
+              ) : (
+                <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5">
+                  <ul className="space-y-3 text-sm">
+                    {mergeSameCategoryLines(
+                      order.items.map((item) => ({
+                        quantity: item.quantity,
+                        categoryLabel: item.categorySnapshot,
+                        unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+                        lineGrossCents: item.grossCents,
+                        eventKey: item.eventId,
+                        eventNameSnapshot: item.eventNameSnapshot,
+                      })),
+                    ).map((line, idx) => (
+                      <li key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}>
+                        <p className="font-medium text-[var(--tf-navy)]">
+                          {line.quantity}× {line.categoryLabel}
+                        </p>
+                        <p className="text-[var(--tf-text-secondary)]">{line.eventNameSnapshot}</p>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-4 text-sm text-[var(--tf-text-secondary)]">
+                    {processing
+                      ? "Noch keine Tickets — die Lastschrift wird verarbeitet."
+                      : "Noch keine Tickets — Zahlung ausstehend."}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
-          <aside className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.05)] md:p-6 lg:sticky lg:top-6">
-            <h2 className="text-base font-semibold text-[var(--tf-navy)]">Zusammenfassung</h2>
-            <ul className="mt-3 space-y-3 text-sm">
-              {mergeSameCategoryLines(
-                order.items.map((item) => ({
-                  quantity: item.quantity,
-                  categoryLabel: item.categorySnapshot,
-                  unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
-                  lineGrossCents: item.grossCents,
-                  eventKey: item.eventId,
-                })),
-              ).map((line, idx) => (
-                <li
-                  key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
-                  className="flex justify-between gap-3"
-                >
-                  <span className="text-[var(--tf-text-secondary)]">
-                    {line.quantity}× {line.categoryLabel}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-[var(--tf-navy)]">
-                    {formatEuroFromCents(line.lineGrossCents)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 space-y-1 border-t border-[var(--tf-line)] pt-3 text-sm">
-              <div className="flex justify-between">
-                <span className="font-semibold text-[var(--tf-navy)]">Gesamt</span>
-                <span className="font-semibold tabular-nums text-[var(--tf-navy)]">
-                  {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
-                </span>
-              </div>
-              <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
-                inkl. gesetzlicher USt von {taxPercentLabel}&nbsp;%
-                <br />
-                {order.feeGrossCents > 0
-                  ? `inkl. Verwaltungsgebühr ${formatEuroFromCents(order.feeGrossCents)}`
-                  : "keine Verwaltungsgebühr"}
-              </p>
+          <aside className="space-y-3 lg:sticky lg:top-6">
+            <div className="flex flex-wrap gap-2">
+              <Link href="/events" className="tf-btn tf-btn-secondary !min-h-11">
+                Weitere Events
+              </Link>
+              <Link href="/konto" className="tf-btn tf-btn-primary !min-h-11">
+                Zum Konto
+              </Link>
             </div>
-            {order.invoices[0] && (order.invoiceRequested || isStaff) ? (
-              <div className="mt-3 space-y-2">
-                <p className="text-xs text-[var(--tf-text-secondary)]">
-                  Rechnung {order.invoices[0].invoiceNumber}
-                  {order.invoiceRequested ? " · angefordert" : ""}
-                </p>
-                {(isOwner || isStaff || hasAccessToken) && paid ? (
-                  <a
-                    href={
-                      hasAccessToken && sp.t
-                        ? `/api/v1/invoices/${order.invoices[0].id}/pdf?t=${encodeURIComponent(sp.t)}`
-                        : `/api/v1/invoices/${order.invoices[0].id}/pdf`
-                    }
-                    className="tf-btn tf-btn-secondary inline-flex !py-2 text-xs"
+            <div className="rounded-[20px] border border-[var(--tf-line)] bg-white p-5 shadow-[0_8px_28px_rgba(15,39,71,0.05)] md:p-6">
+              <h2 className="text-base font-semibold text-[var(--tf-navy)]">Zusammenfassung</h2>
+              <ul className="mt-3 space-y-3 text-sm">
+                {mergeSameCategoryLines(
+                  order.items.map((item) => ({
+                    quantity: item.quantity,
+                    categoryLabel: item.categorySnapshot,
+                    unitPriceCents: item.unitPaidGrossCents || item.unitListGrossCents,
+                    lineGrossCents: item.grossCents,
+                    eventKey: item.eventId,
+                  })),
+                ).map((line, idx) => (
+                  <li
+                    key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
+                    className="flex justify-between gap-3"
                   >
-                    Rechnung als PDF herunterladen
-                  </a>
-                ) : null}
+                    <span className="text-[var(--tf-text-secondary)]">
+                      {line.quantity}× {line.categoryLabel}
+                    </span>
+                    <span className="shrink-0 tabular-nums text-[var(--tf-navy)]">
+                      {formatEuroFromCents(line.lineGrossCents)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-4 space-y-1 border-t border-[var(--tf-line)] pt-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="font-semibold text-[var(--tf-navy)]">Gesamt</span>
+                  <span className="font-semibold tabular-nums text-[var(--tf-navy)]">
+                    {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+                  inkl. gesetzlicher USt von {taxPercentLabel}&nbsp;%
+                  <br />
+                  {order.feeGrossCents > 0
+                    ? `inkl. Verwaltungsgebühr ${formatEuroFromCents(order.feeGrossCents)}`
+                    : "keine Verwaltungsgebühr"}
+                </p>
               </div>
-            ) : null}
-            {paid &&
-            !order.invoiceRequested &&
-            !isStaff &&
-            (isOwner || hasAccessToken) ? (
-              <RequestInvoiceForm
-                orderId={order.id}
-                accessToken={hasAccessToken ? sp.t : null}
-                defaultStreet={order.invoiceStreet || billingText("street")}
-                defaultHouseNumber={order.invoiceHouseNumber || billingText("houseNumber")}
-                defaultPostalCode={order.invoicePostalCode || billingText("postalCode")}
-                defaultCity={order.invoiceCity || billingText("city")}
-              />
-            ) : null}
-            {paid && (isOwner || isStaff) ? (
-              <p className="mt-4 rounded-xl bg-[rgba(20,184,166,0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--tf-navy)]">
-                Tipp: Einzelne Tickets kannst du an Begleitung weiterleiten. Nach der ersten
-                Weiterleitung kannst du nur noch erneut an dieselbe Person senden.
-              </p>
-            ) : null}
+              {order.invoices[0] && (order.invoiceRequested || isStaff) ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-[var(--tf-text-secondary)]">
+                    Rechnung {order.invoices[0].invoiceNumber}
+                    {order.invoiceRequested ? " · angefordert" : ""}
+                  </p>
+                  {(isOwner || isStaff || hasAccessToken) && paid ? (
+                    <a
+                      href={
+                        hasAccessToken && sp.t
+                          ? `/api/v1/invoices/${order.invoices[0].id}/pdf?t=${encodeURIComponent(sp.t)}`
+                          : `/api/v1/invoices/${order.invoices[0].id}/pdf`
+                      }
+                      className="tf-btn tf-btn-secondary inline-flex !py-2 text-xs"
+                    >
+                      Rechnung als PDF herunterladen
+                    </a>
+                  ) : null}
+                </div>
+              ) : null}
+              {paid &&
+              !order.invoiceRequested &&
+              !isStaff &&
+              (isOwner || hasAccessToken) ? (
+                <RequestInvoiceForm
+                  orderId={order.id}
+                  accessToken={hasAccessToken ? sp.t : null}
+                  defaultStreet={order.invoiceStreet || billingText("street")}
+                  defaultHouseNumber={order.invoiceHouseNumber || billingText("houseNumber")}
+                  defaultPostalCode={order.invoicePostalCode || billingText("postalCode")}
+                  defaultCity={order.invoiceCity || billingText("city")}
+                />
+              ) : null}
+              {paid && (isOwner || isStaff) ? (
+                <p className="mt-4 rounded-xl bg-[rgba(20,184,166,0.08)] px-3 py-2 text-xs leading-relaxed text-[var(--tf-navy)]">
+                  Tipp: Einzelne Tickets kannst du an Begleitung weiterleiten. Nach der ersten
+                  Weiterleitung kannst du nur noch erneut an dieselbe Person senden.
+                </p>
+              ) : null}
+            </div>
           </aside>
         </div>
       </div>

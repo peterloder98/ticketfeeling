@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { storeCoverAsset } from "@/lib/uploads/store-cover";
 import { optimizeSponsorLogo } from "@/lib/uploads/optimize-sponsor-logo";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
+import { clampSponsorLogoScale } from "@/lib/commerce/ticket-presentation";
 
 export const runtime = "nodejs";
 
@@ -22,10 +23,16 @@ function parseField(raw: FormDataEntryValue | null): SponsorField | null {
   return FIELDS.includes(value as SponsorField) ? (value as SponsorField) : null;
 }
 
-function prismaData(field: SponsorField, url: string | null) {
+function urlData(field: SponsorField, url: string | null) {
   return field === "ticketSponsorLogoAboveUrl"
     ? { ticketSponsorLogoAboveUrl: url }
     : { ticketSponsorLogoBelowUrl: url };
+}
+
+function scaleData(field: SponsorField, scale: number | null) {
+  return field === "ticketSponsorLogoAboveUrl"
+    ? { ticketSponsorLogoAboveScale: scale }
+    : { ticketSponsorLogoBelowScale: scale };
 }
 
 export async function POST(request: Request) {
@@ -73,10 +80,26 @@ export async function POST(request: Request) {
     if (clear) {
       await prisma.event.update({
         where: { id: eventId },
-        data: prismaData(field, null),
+        data: { ...urlData(field, null), ...scaleData(field, null) },
       });
       revalidatePath(`/admin/events/${eventId}`);
-      return NextResponse.json({ ok: true, url: null });
+      return NextResponse.json({ ok: true, url: null, scale: null });
+    }
+
+    const scaleRaw = form.get("scale");
+    const hasScaleOnly =
+      scaleRaw != null &&
+      String(scaleRaw).trim() !== "" &&
+      !(form.get("file") instanceof File);
+
+    if (hasScaleOnly) {
+      const scale = clampSponsorLogoScale(scaleRaw);
+      await prisma.event.update({
+        where: { id: eventId },
+        data: scaleData(field, scale),
+      });
+      revalidatePath(`/admin/events/${eventId}`);
+      return NextResponse.json({ ok: true, scale });
     }
 
     const file = form.get("file");
@@ -96,15 +119,21 @@ export async function POST(request: Request) {
       kind: "image",
     });
 
+    const scale =
+      scaleRaw != null && String(scaleRaw).trim() !== ""
+        ? clampSponsorLogoScale(scaleRaw)
+        : 1;
+
     await prisma.event.update({
       where: { id: eventId },
-      data: prismaData(field, stored.url),
+      data: { ...urlData(field, stored.url), ...scaleData(field, scale) },
     });
     revalidatePath(`/admin/events/${eventId}`);
 
     return NextResponse.json({
       ok: true,
       url: stored.url,
+      scale,
       width: optimized.width,
       height: optimized.height,
       bytes: stored.byteSize,
