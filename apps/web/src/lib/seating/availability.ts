@@ -4,7 +4,17 @@ type SeatLike = {
   status: string;
   locked: boolean;
   categoryId: string | null;
+  holdExpiresAt?: Date | string | null;
 };
+
+function isTemporarilyHeld(s: SeatLike, now: Date): boolean {
+  if (s.status !== "held") return false;
+  if (!s.holdExpiresAt) return true;
+  const expires =
+    s.holdExpiresAt instanceof Date ? s.holdExpiresAt : new Date(s.holdExpiresAt);
+  if (Number.isNaN(expires.getTime())) return true;
+  return expires >= now;
+}
 
 /**
  * Free seats on the saalplan that are actually sellable.
@@ -13,14 +23,20 @@ type SeatLike = {
  */
 export function countSellableAvailableSeats(
   seats: SeatLike[],
-  opts?: { categoryId?: string | null; assignedCategoryIds?: Iterable<string> },
+  opts?: { categoryId?: string | null; assignedCategoryIds?: Iterable<string>; now?: Date },
 ): number {
+  const now = opts?.now ?? new Date();
   const hasAssignments = seats.some((s) => s.categoryId);
   const assigned =
     opts?.assignedCategoryIds != null ? new Set(opts.assignedCategoryIds) : null;
   let n = 0;
   for (const s of seats) {
-    if (s.status !== "available" || s.locked) continue;
+    if (s.locked) continue;
+    const free =
+      s.status === "available" ||
+      // Public map status already normalized, or raw DB row with expired hold.
+      (s.status === "held" && !isTemporarilyHeld(s, now));
+    if (!free) continue;
     if (opts?.categoryId) {
       if (hasAssignments && s.categoryId !== opts.categoryId) continue;
     } else if (hasAssignments) {

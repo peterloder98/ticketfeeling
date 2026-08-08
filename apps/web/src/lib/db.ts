@@ -1,7 +1,8 @@
 import { PrismaClient } from "@prisma/client";
+import { resolvePrismaDatabaseUrl } from "@/lib/db/database-url";
 
 /** Bump after Prisma schema changes so HMR drops a stale global client. */
-const PRISMA_CLIENT_EPOCH = 12;
+const PRISMA_CLIENT_EPOCH = 13;
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;
@@ -9,7 +10,9 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 function createPrisma() {
+  const url = resolvePrismaDatabaseUrl();
   return new PrismaClient({
+    datasources: { db: { url } },
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"],
   });
 }

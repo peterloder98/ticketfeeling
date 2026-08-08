@@ -20,25 +20,28 @@ async function viewerCartItemIdsForEvent(
   if (!org) return { itemIds: [], sessionKey: null };
   const now = new Date();
 
+  // One query for all session candidates — avoids N sequential round-trips on the map path.
+  const carts = await prisma.cart.findMany({
+    where: {
+      organizationId: org.id,
+      sessionKey: { in: sessionKeys },
+      status: "open",
+      expiresAt: { gt: now },
+    },
+    select: {
+      sessionKey: true,
+      items: {
+        where: { eventId },
+        select: { id: true },
+      },
+    },
+  });
+  const byKey = new Map(carts.map((c) => [c.sessionKey, c]));
+
   let fallbackEmptyKey: string | null = null;
   for (const sessionKey of sessionKeys) {
-    const cart = await prisma.cart.findUnique({
-      where: {
-        organizationId_sessionKey: {
-          organizationId: org.id,
-          sessionKey,
-        },
-      },
-      select: {
-        status: true,
-        expiresAt: true,
-        items: {
-          where: { eventId },
-          select: { id: true },
-        },
-      },
-    });
-    if (!cart || cart.status !== "open" || cart.expiresAt < now) continue;
+    const cart = byKey.get(sessionKey);
+    if (!cart) continue;
     const itemIds = cart.items.map((item) => item.id);
     if (itemIds.length > 0) {
       return { itemIds, sessionKey };

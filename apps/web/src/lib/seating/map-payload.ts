@@ -27,6 +27,7 @@ function toPublicSeat(
     seatNumber: string;
     status: string;
     cartItemId: string | null;
+    holdExpiresAt?: Date | null;
     categoryId: string | null;
     locked: boolean;
     segmentIndex?: number | null;
@@ -61,8 +62,9 @@ export async function getSeatMapPayload(
   opts?: { viewerCartItemIds?: string[]; categoryId?: string | null },
 ): Promise<SeatMapPayload | null> {
   await ensureSeatingAssignmentSchema(prisma);
-  // Free expired holds before we read seats so the map never shows stale greys.
-  await expireSeatHolds(new Date(), { force: true }).catch(() => undefined);
+  // Never force-expire on the hot map path — that held pool connections under load
+  // (Prisma pool timeout). Throttled background cleanup; display treats expired holds as free.
+  void expireSeatHolds(new Date()).catch(() => undefined);
 
   const event = await prisma.event.findUnique({
     where: { id: eventId },
@@ -99,6 +101,7 @@ export async function getSeatMapPayload(
       seatNumber: true,
       status: true,
       cartItemId: true,
+      holdExpiresAt: true,
       categoryId: true,
       locked: true,
       segmentIndex: true,

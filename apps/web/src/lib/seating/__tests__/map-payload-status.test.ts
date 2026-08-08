@@ -28,15 +28,35 @@ describe("toPublicSeatStatus", () => {
     ).toBe("held");
   });
 
-  it("keeps available / sold / locked", () => {
+  it("treats expired holds as available without waiting for expire jobs", () => {
+    const now = new Date("2026-08-08T10:00:00.000Z");
     expect(
-      toPublicSeatStatus({ status: "available", cartItemId: null, locked: false }, viewer),
+      toPublicSeatStatus(
+        {
+          status: "held",
+          cartItemId: "other-item",
+          locked: false,
+          holdExpiresAt: new Date("2026-08-08T09:59:00.000Z"),
+        },
+        viewer,
+        now,
+      ),
     ).toBe("available");
+  });
+
+  it("keeps unexpired holds as held", () => {
+    const now = new Date("2026-08-08T10:00:00.000Z");
     expect(
-      toPublicSeatStatus({ status: "sold", cartItemId: null, locked: false }, viewer),
-    ).toBe("taken");
-    expect(
-      toPublicSeatStatus({ status: "available", cartItemId: null, locked: true }, viewer),
-    ).toBe("locked");
+      toPublicSeatStatus(
+        {
+          status: "held",
+          cartItemId: "other-item",
+          locked: false,
+          holdExpiresAt: new Date("2026-08-08T10:05:00.000Z"),
+        },
+        viewer,
+        now,
+      ),
+    ).toBe("held");
   });
 });
