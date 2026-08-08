@@ -130,6 +130,9 @@ model Organization {
   stripePayoutReconcileRuns StripePayoutReconcileRun[]
   backgroundJobs BackgroundJob[]
   emailDeliveries EmailDelivery[]
+  trackingSessions TrackingSession[]
+  trackingEvents TrackingEvent[]
+  trackingDeliveries TrackingDelivery[]
 
   @@map("organizations")
 }
@@ -1955,5 +1958,106 @@ model EmailDelivery {
   @@index([orderId])
   @@index([toEmail, status])
   @@map("email_deliveries")
+}
+
+/// Anonymous tracking session (first/last touch, UTMs, embed host). No PII.
+model TrackingSession {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  /// Client-generated UUID (cookie / localStorage)
+  clientSessionId  String   @map("client_session_id") @db.Uuid
+  visitorId        String?  @map("visitor_id")
+  embedMode        Boolean  @default(false) @map("embed_mode")
+  embedHost        String?  @map("embed_host")
+  parentUrl        String?  @map("parent_url") @db.Text
+  landingPath      String?  @map("landing_path")
+  referrer         String?  @db.Text
+  utmSource        String?  @map("utm_source")
+  utmMedium        String?  @map("utm_medium")
+  utmCampaign      String?  @map("utm_campaign")
+  utmTerm          String?  @map("utm_term")
+  utmContent       String?  @map("utm_content")
+  gclid            String?
+  fbclid           String?
+  msclkid          String?
+  ttclid           String?
+  gaClientId       String?  @map("ga_client_id")
+  gaSessionId      String?  @map("ga_session_id")
+  fbp              String?
+  fbc              String?
+  consentStatistics Boolean @default(false) @map("consent_statistics")
+  consentMarketing  Boolean @default(false) @map("consent_marketing")
+  firstTouch       Json     @default("{}") @map("first_touch")
+  lastTouch        Json     @default("{}") @map("last_touch")
+  userAgent        String?  @map("user_agent") @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  lastSeenAt       DateTime @default(now()) @map("last_seen_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  events       TrackingEvent[]
+
+  @@unique([organizationId, clientSessionId])
+  @@index([organizationId, lastSeenAt])
+  @@index([clientSessionId])
+  @@map("tracking_sessions")
+}
+
+/// Internal funnel event — source of truth independent of GA4/Meta/adblock.
+model TrackingEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  trackingSessionId String? @map("tracking_session_id") @db.Uuid
+  /// Client or server UUID — shared with GA4/Meta for dedupe
+  eventId          String   @unique @map("event_id") @db.Uuid
+  /// TF canonical name (see lib/tracking/events.ts)
+  name             String
+  source           String   @default("client") // client|server|embed_parent
+  category         String   @default("funnel") // funnel|ops|commerce
+  orderId          String?  @map("order_id") @db.Uuid
+  eventSlug        String?  @map("event_slug")
+  transactionId    String?  @map("transaction_id")
+  valueCents       Int?     @map("value_cents")
+  currency         String?
+  consentRequired  Boolean  @default(true) @map("consent_required")
+  consentOk        Boolean  @default(true) @map("consent_ok")
+  payload          Json     @default("{}")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  session      TrackingSession?   @relation(fields: [trackingSessionId], references: [id], onDelete: SetNull)
+  deliveries   TrackingDelivery[]
+
+  @@index([organizationId, name, createdAt])
+  @@index([orderId])
+  @@index([transactionId])
+  @@index([trackingSessionId, createdAt])
+  @@map("tracking_events")
+}
+
+/// Outbound delivery to GA4 MP / Meta CAPI (and optional client mirror).
+model TrackingDelivery {
+  id              String    @id @default(uuid()) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  trackingEventId String    @map("tracking_event_id") @db.Uuid
+  /// ga4_mp | meta_capi | ga4_client | meta_pixel
+  channel         String
+  /// Dedup: channel + eventName + transactionId (or eventId)
+  dedupeKey       String    @unique @map("dedupe_key")
+  status          String    @default("pending") // pending|sent|failed|retry
+  attemptCount    Int       @default(0) @map("attempt_count")
+  lastError       String?   @map("last_error") @db.Text
+  providerResponse Json?    @map("provider_response")
+  sentAt          DateTime? @map("sent_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  organization  Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  trackingEvent TrackingEvent @relation(fields: [trackingEventId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, status, createdAt])
+  @@index([channel, status])
+  @@index([trackingEventId])
+  @@map("tracking_deliveries")
 }
 

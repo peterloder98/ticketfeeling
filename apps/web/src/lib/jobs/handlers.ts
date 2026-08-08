@@ -122,6 +122,15 @@ async function runPostFulfillSideEffects(orderId: string) {
   if (order.invoices[0]?.id) {
     await runAccountingStub(orderId, order.invoices[0].id);
   }
+
+  // Authoritative purchase conversion (GA4 MP + Meta CAPI) — not thank-you-page only.
+  // Soft-fail: never block ticket email / accounting on tracking outages.
+  try {
+    const { recordServerPurchaseConversion } = await import("@/lib/tracking/purchase");
+    await recordServerPurchaseConversion(orderId);
+  } catch (error) {
+    console.error("[tracking] purchase conversion failed", orderId, error);
+  }
 }
 
 async function sendBuyerTicketEmail(orderId: string) {

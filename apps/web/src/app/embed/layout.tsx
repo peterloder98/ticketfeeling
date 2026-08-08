@@ -4,6 +4,7 @@ import { EmbedResizeNotifier } from "@/components/embed/embed-resize";
 import { EmbedCartBar } from "@/components/embed/embed-cart-bar";
 import { EmbedHistoryTracker } from "@/components/embed/embed-back-link";
 import { EmbedStayInFrame } from "@/components/embed/embed-stay-in-frame";
+import { EmbedTrackingBridge } from "@/components/embed/embed-tracking-bridge";
 
 export default function EmbedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -44,6 +45,7 @@ export default function EmbedLayout({ children }: { children: React.ReactNode })
             {children}
           </div>
         </div>
+        <EmbedTrackingBridge />
         <EmbedHistoryTracker />
         <EmbedStayInFrame />
         <EmbedResizeNotifier />

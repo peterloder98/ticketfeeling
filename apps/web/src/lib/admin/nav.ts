@@ -116,6 +116,11 @@ export const ADMIN_SUBNAV = {
       description: "iframe Shop & Event",
     },
     {
+      href: "/admin/einstellungen/tracking",
+      label: "Tracking-Debug",
+      description: "Meta-Funnel & Deliveries",
+    },
+    {
       href: "/admin/einstellungen/recht",
       label: "Rechtstexte",
       description: "AGB, Datenschutz, Versionen",

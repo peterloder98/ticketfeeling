@@ -9,6 +9,7 @@ import { cartFetch } from "@/lib/commerce/cart-client";
 import { cartErrorMessage } from "@/lib/commerce/cart-error-messages";
 import { applyDiscountOff } from "@/lib/commerce/event-pricing";
 import { CampaignPriceDisplay } from "@/components/campaign-price-display";
+import { trackTfEvent } from "@/lib/tracking/client";
 
 type Category = {
   id: string;
@@ -36,6 +37,9 @@ export function AddToCartPanel({
   cartHref = "/warenkorb",
   checkoutHref = "/checkout",
   accessibilityOffer = null,
+  eventSlug = null,
+  eventId = null,
+  eventTitle = null,
 }: {
   categories: Category[];
   feeSurchargeNote?: string;
@@ -45,6 +49,10 @@ export function AddToCartPanel({
   cartHref?: string;
   checkoutHref?: string;
   accessibilityOffer?: AccessibilityOfferProp | null;
+  /** Meta AddToCart content ids / ViewContent continuity */
+  eventSlug?: string | null;
+  eventId?: string | null;
+  eventTitle?: string | null;
 }) {
   const { bump } = useCart();
   const [qty, setQty] = useState<Record<string, number>>(
@@ -109,6 +117,28 @@ export function AddToCartPanel({
       } catch {
         /* ignore */
       }
+      const cat = categories.find((c) => c.id === categoryId);
+      const quantity = qty[categoryId] ?? 1;
+      const unit = cat ? displayPrice(cat).unit : 0;
+      void trackTfEvent("add_to_cart", {
+        eventSlug,
+        valueCents: unit * quantity,
+        currency: "EUR",
+        payload: {
+          contentIds: eventId ? [eventId] : cat ? [cat.id] : [],
+          contentName: eventTitle || cat?.name || null,
+          numItems: quantity,
+          quantity,
+          contents: [
+            {
+              id: eventId || categoryId,
+              quantity,
+              item_price: unit / 100,
+            },
+          ],
+          funnelStage: "add_to_cart",
+        },
+      });
       bump({
         itemCount: data?.summary?.itemCount,
         sessionKey: typeof data?.sessionKey === "string" ? data.sessionKey : undefined,

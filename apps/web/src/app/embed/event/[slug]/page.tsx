@@ -10,6 +10,7 @@ import {
   formatFeeSurchargeNote,
 } from "@/lib/commerce/public-price";
 import { OrgTracking } from "@/components/org-tracking";
+import { FunnelViewTracker } from "@/components/funnel-view-tracker";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -211,6 +212,14 @@ export default async function EmbedEventShopPage({ params }: Props) {
   return (
     <>
       <OrgTracking embedMode eventSlug={event.slug} eventTracking={event} />
+      <FunnelViewTracker
+        kind="event_page_view"
+        eventSlug={event.slug}
+        eventId={event.id}
+        eventTitle={event.name}
+        valueCents={categories[0]?.priceGrossCents ?? null}
+        embedMode
+      />
 
       <article className="space-y-3">
         {event.tour?.slug ? (
@@ -309,6 +318,9 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   cartHref="/embed/warenkorb"
                   checkoutHref="/embed/checkout"
                   compact
+                  eventSlug={event.slug}
+                  eventId={event.id}
+                  eventTitle={event.name}
                   accessibilityOffer={
                     accessibilityOffer.enabled
                       ? {

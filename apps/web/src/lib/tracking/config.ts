@@ -9,8 +9,17 @@ export type TrackingConfig = {
   source: "organization" | "event";
 };
 
+type OrgTrackingFields = Pick<
+  OrganizationSettings,
+  | "trackingEnabled"
+  | "trackingGa4MeasurementId"
+  | "trackingGtmContainerId"
+  | "trackingMetaPixelId"
+  | "trackingGoogleAdsId"
+>;
+
 export function resolveTrackingConfig(
-  settings: OrganizationSettings | null | undefined,
+  settings: OrgTrackingFields | null | undefined,
   event?: Pick<
     Event,
     | "trackingUseOrgDefaults"
