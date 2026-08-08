@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { Upload, Check } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
+import { SponsorLogoCropModal } from "@/components/admin/sponsor-logo-crop-modal";
 import {
   clampSponsorLogoScale,
   SPONSOR_LOGO_SCALE_MAX,
@@ -62,6 +63,8 @@ export function TicketSponsorLogoField({
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [savingScale, setSavingScale] = useState(false);
+  const [cropping, setCropping] = useState(false);
+  const [showCropModal, setShowCropModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [resizeActive, setResizeActive] = useState(false);
@@ -207,6 +210,81 @@ export function TicketSponsorLogoField({
     }
   }
 
+  async function applyTrimWhitespace() {
+    setError(null);
+    setCropping(true);
+    try {
+      const body = new FormData();
+      body.append("field", field);
+      body.append("eventId", eventId);
+      body.append("trim", "1");
+      const res = await fetch("/api/v1/admin/uploads/ticket-sponsor", {
+        method: "POST",
+        body,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.code ?? "TRIM_FAILED");
+      const nextUrl = String(data.url ?? "");
+      if (!nextUrl) throw new Error("TRIM_FAILED");
+      setUrl(nextUrl);
+      if (typeof data.width === "number" && typeof data.height === "number") {
+        setNatural({ w: data.width, h: data.height });
+      }
+      if (data.scale != null) {
+        const nextScale = clampSponsorLogoScale(data.scale);
+        setScale(nextScale);
+        setSavedScale(nextScale);
+      }
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Weißraum trimmen fehlgeschlagen");
+    } finally {
+      setCropping(false);
+    }
+  }
+
+  async function applyManualCrop(crop: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }) {
+    setShowCropModal(false);
+    setError(null);
+    setCropping(true);
+    try {
+      const body = new FormData();
+      body.append("field", field);
+      body.append("eventId", eventId);
+      body.append("cropLeft", String(crop.left));
+      body.append("cropTop", String(crop.top));
+      body.append("cropWidth", String(crop.width));
+      body.append("cropHeight", String(crop.height));
+      const res = await fetch("/api/v1/admin/uploads/ticket-sponsor", {
+        method: "POST",
+        body,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.code ?? "CROP_FAILED");
+      const nextUrl = String(data.url ?? "");
+      if (!nextUrl) throw new Error("CROP_FAILED");
+      setUrl(nextUrl);
+      if (typeof data.width === "number" && typeof data.height === "number") {
+        setNatural({ w: data.width, h: data.height });
+      }
+      if (data.scale != null) {
+        const nextScale = clampSponsorLogoScale(data.scale);
+        setScale(nextScale);
+        setSavedScale(nextScale);
+      }
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Zuschneiden fehlgeschlagen");
+    } finally {
+      setCropping(false);
+    }
+  }
+
   useEffect(() => {
     if (!resizeActive) return;
 
@@ -274,15 +352,31 @@ export function TicketSponsorLogoField({
                 <button
                   type="button"
                   className="text-xs font-medium text-[var(--tf-teal)] underline"
-                  disabled={uploading}
+                  disabled={uploading || cropping}
                   onClick={() => fileRef.current?.click()}
                 >
                   Anderes Bild wählen
                 </button>
                 <button
                   type="button"
+                  className="text-xs font-medium text-[var(--tf-teal)] underline"
+                  disabled={uploading || cropping}
+                  onClick={() => void applyTrimWhitespace()}
+                >
+                  {cropping ? "Bearbeitet…" : "Weißraum trimmen"}
+                </button>
+                <button
+                  type="button"
+                  className="text-xs font-medium text-[var(--tf-teal)] underline"
+                  disabled={uploading || cropping}
+                  onClick={() => setShowCropModal(true)}
+                >
+                  Zuschneiden
+                </button>
+                <button
+                  type="button"
                   className="text-xs font-medium text-[var(--tf-text-secondary)] underline"
-                  disabled={uploading}
+                  disabled={uploading || cropping}
                   onClick={() => void clearLogo()}
                 >
                   Entfernen
@@ -354,7 +448,7 @@ export function TicketSponsorLogoField({
                   max={SPONSOR_LOGO_SCALE_MAX}
                   step={0.01}
                   value={scale}
-                  disabled={uploading || savingScale}
+                  disabled={uploading || savingScale || cropping}
                   onChange={(e) => setScale(clampSponsorLogoScale(Number(e.target.value)))}
                   onPointerUp={() => {
                     if (scaleDirty) void saveScale(scale);
@@ -365,15 +459,16 @@ export function TicketSponsorLogoField({
               <button
                 type="button"
                 className="tf-btn tf-btn-secondary !min-h-9 !px-3 text-xs"
-                disabled={!scaleDirty || uploading || savingScale}
+                disabled={!scaleDirty || uploading || savingScale || cropping}
                 onClick={() => void saveScale(scale)}
               >
                 {savingScale ? "Speichert…" : "Größe speichern"}
               </button>
             </div>
             <p className="mt-1.5 text-[11px] text-[var(--tf-text-secondary)]">
-              Logo bleibt horizontal und vertikal zentriert. An der Ecke ziehen oder
-              Schieberegler nutzen.
+              Logo bleibt horizontal und vertikal zentriert. Weißraum trimmen oder
+              zuschneiden, damit das Motiv die Box besser ausfüllt — Größe weiter
+              über Ecke oder Schieberegler.
             </p>
             {blurry ? (
               <p
@@ -429,7 +524,7 @@ export function TicketSponsorLogoField({
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
         className="hidden"
-        disabled={uploading}
+        disabled={uploading || cropping}
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) void uploadFile(file);
@@ -437,6 +532,13 @@ export function TicketSponsorLogoField({
         }}
       />
       {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}
+      {showCropModal && url ? (
+        <SponsorLogoCropModal
+          imageUrl={url}
+          onConfirm={(crop) => void applyManualCrop(crop)}
+          onCancel={() => setShowCropModal(false)}
+        />
+      ) : null}
     </div>
   );
 }

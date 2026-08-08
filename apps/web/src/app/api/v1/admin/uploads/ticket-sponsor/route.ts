@@ -5,7 +5,11 @@ import { authOptions } from "@/lib/auth";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { prisma } from "@/lib/db";
 import { storeCoverAsset } from "@/lib/uploads/store-cover";
-import { optimizeSponsorLogo } from "@/lib/uploads/optimize-sponsor-logo";
+import {
+  optimizeSponsorLogo,
+  parseUploadedAssetId,
+  type SponsorLogoCropPx,
+} from "@/lib/uploads/optimize-sponsor-logo";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { clampSponsorLogoScale } from "@/lib/commerce/ticket-presentation-shared";
 
@@ -35,11 +39,64 @@ function scaleData(field: SponsorField, scale: number | null) {
     : { ticketSponsorLogoBelowScale: scale };
 }
 
+function urlSelect(field: SponsorField) {
+  return field === "ticketSponsorLogoAboveUrl"
+    ? ({ ticketSponsorLogoAboveUrl: true } as const)
+    : ({ ticketSponsorLogoBelowUrl: true } as const);
+}
+
+function currentUrl(field: SponsorField, event: {
+  ticketSponsorLogoAboveUrl?: string | null;
+  ticketSponsorLogoBelowUrl?: string | null;
+}): string | null {
+  return field === "ticketSponsorLogoAboveUrl"
+    ? event.ticketSponsorLogoAboveUrl ?? null
+    : event.ticketSponsorLogoBelowUrl ?? null;
+}
+
 function revalidateSponsorPaths(eventId: string) {
   revalidatePath(`/admin/events/${eventId}`);
   // Ticketvorschau + PDF HTML share loadTicketPresentation scales.
   revalidatePath("/ticket", "layout");
   revalidatePath("/api/v1/tickets", "layout");
+}
+
+function parseCropFromForm(form: FormData): SponsorLogoCropPx | null {
+  const left = Number(form.get("cropLeft"));
+  const top = Number(form.get("cropTop"));
+  const width = Number(form.get("cropWidth"));
+  const height = Number(form.get("cropHeight"));
+  if (
+    ![left, top, width, height].every((n) => Number.isFinite(n)) ||
+    width < 1 ||
+    height < 1
+  ) {
+    return null;
+  }
+  return { left, top, width, height };
+}
+
+async function loadSourceBuffer(url: string, organizationId: string): Promise<Buffer | null> {
+  const assetId = parseUploadedAssetId(url);
+  if (assetId) {
+    const asset = await prisma.uploadedAsset.findFirst({
+      where: {
+        id: assetId,
+        organizationId,
+        kind: { in: ["cover", "image"] },
+      },
+      select: { data: true },
+    });
+    if (asset?.data) return Buffer.from(asset.data);
+  }
+
+  // Fallback for absolute/public URLs (rare).
+  if (/^https?:\/\//i.test(url)) {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return Buffer.from(await res.arrayBuffer());
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -77,7 +134,10 @@ export async function POST(request: Request) {
 
     const event = await prisma.event.findFirst({
       where: { id: eventId, organizationId: membership.organizationId },
-      select: { id: true },
+      select: {
+        id: true,
+        ...urlSelect(field),
+      },
     });
     if (!event) {
       return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
@@ -94,10 +154,16 @@ export async function POST(request: Request) {
     }
 
     const scaleRaw = form.get("scale");
+    const trim = String(form.get("trim") ?? "") === "1";
+    const crop = parseCropFromForm(form);
+    const file = form.get("file");
+    const hasFile = file instanceof File;
     const hasScaleOnly =
+      !hasFile &&
+      !trim &&
+      !crop &&
       scaleRaw != null &&
-      String(scaleRaw).trim() !== "" &&
-      !(form.get("file") instanceof File);
+      String(scaleRaw).trim() !== "";
 
     if (hasScaleOnly) {
       const scale = clampSponsorLogoScale(scaleRaw);
@@ -109,16 +175,30 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, scale });
     }
 
-    const file = form.get("file");
-    if (!(file instanceof File)) {
+    let buffer: Buffer;
+    if (hasFile) {
+      if (file.size > 8 * 1024 * 1024) {
+        return NextResponse.json({ error: { code: "FILE_TOO_LARGE" } }, { status: 400 });
+      }
+      buffer = Buffer.from(await file.arrayBuffer());
+    } else if (trim || crop) {
+      const existing = currentUrl(field, event);
+      if (!existing) {
+        return NextResponse.json({ error: { code: "NO_LOGO" } }, { status: 400 });
+      }
+      const loaded = await loadSourceBuffer(existing, membership.organizationId);
+      if (!loaded) {
+        return NextResponse.json({ error: { code: "SOURCE_UNAVAILABLE" } }, { status: 400 });
+      }
+      buffer = loaded;
+    } else {
       return NextResponse.json({ error: { code: "FILE_REQUIRED" } }, { status: 400 });
     }
-    if (file.size > 8 * 1024 * 1024) {
-      return NextResponse.json({ error: { code: "FILE_TOO_LARGE" } }, { status: 400 });
-    }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const optimized = await optimizeSponsorLogo(buffer);
+    const optimized = await optimizeSponsorLogo(buffer, {
+      trim: trim || undefined,
+      crop: crop ?? undefined,
+    });
     const stored = await storeCoverAsset({
       organizationId: membership.organizationId,
       buffer: optimized.buffer,
@@ -131,19 +211,49 @@ export async function POST(request: Request) {
         ? clampSponsorLogoScale(scaleRaw)
         : 1;
 
+    // Keep existing scale when re-processing (trim/crop) unless client sent one.
+    const preserveScale =
+      !hasFile &&
+      (trim || crop) &&
+      (scaleRaw == null || String(scaleRaw).trim() === "");
+
+    const updateData = {
+      ...urlData(field, stored.url),
+      ...(preserveScale ? {} : scaleData(field, scale)),
+    };
+
     await prisma.event.update({
       where: { id: eventId },
-      data: { ...urlData(field, stored.url), ...scaleData(field, scale) },
+      data: updateData,
     });
     revalidateSponsorPaths(eventId);
+
+    const eventAfter = preserveScale
+      ? await prisma.event.findUnique({
+          where: { id: eventId },
+          select: {
+            ticketSponsorLogoAboveScale: true,
+            ticketSponsorLogoBelowScale: true,
+          },
+        })
+      : null;
+    const returnedScale = preserveScale
+      ? clampSponsorLogoScale(
+          field === "ticketSponsorLogoAboveUrl"
+            ? eventAfter?.ticketSponsorLogoAboveScale
+            : eventAfter?.ticketSponsorLogoBelowScale,
+        )
+      : scale;
 
     return NextResponse.json({
       ok: true,
       url: stored.url,
-      scale,
+      scale: returnedScale,
       width: optimized.width,
       height: optimized.height,
       bytes: stored.byteSize,
+      trimmed: trim,
+      cropped: Boolean(crop),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "ERROR";

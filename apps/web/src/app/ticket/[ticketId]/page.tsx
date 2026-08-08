@@ -136,39 +136,27 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
               </p>
             )}
 
-            <div
-              className={`grid gap-2 ${
-                canEntry && ticket.event.eventStartsAt ? "grid-cols-2" : "grid-cols-1"
-              }`}
-            >
-              {canEntry && ticket.event.eventStartsAt ? (
-                <TicketCalendarMenu
-                  icsHref={calendarHref}
-                  fullWidth
-                  buttonLabel="Kalender"
-                  event={{
-                    title: data.eventName || ticket.event.name,
-                    startsAtIso: ticket.event.eventStartsAt.toISOString(),
-                    endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
-                    locationLabel: placeFull || null,
-                    description: [
-                      `Ticket ${data.ticketNumber} · ${data.placeLabel} · ${data.categoryName}`,
-                      data.doors.headline
-                        ? `${data.doors.headline}${data.doors.timeLabel ? " Uhr" : ""}`
-                        : null,
-                    ]
-                      .filter(Boolean)
-                      .join("\n"),
-                  }}
-                />
-              ) : null}
-              <Link
-                href={orderHref}
-                className="tf-btn tf-btn-secondary flex !min-h-10 justify-center text-sm"
-              >
-                Zur Bestellung
-              </Link>
-            </div>
+            {canEntry && ticket.event.eventStartsAt ? (
+              <TicketCalendarMenu
+                icsHref={calendarHref}
+                fullWidth
+                buttonLabel="Kalender"
+                event={{
+                  title: data.eventName || ticket.event.name,
+                  startsAtIso: ticket.event.eventStartsAt.toISOString(),
+                  endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
+                  locationLabel: placeFull || null,
+                  description: [
+                    `Ticket ${data.ticketNumber} · ${data.placeLabel} · ${data.categoryName}`,
+                    data.doors.headline
+                      ? `${data.doors.headline}${data.doors.timeLabel ? " Uhr" : ""}`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join("\n"),
+                }}
+              />
+            ) : null}
 
             {showQr ? (
               <TicketWalletButtons
