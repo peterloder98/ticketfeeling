@@ -10,7 +10,6 @@
  * listings and closes sales until resumed.
  */
 
-import { prisma } from "@/lib/db";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 /** Organizer has released the event for ticket sales (or it sold out). */
@@ -168,41 +167,6 @@ export function effectiveEventStatus(
     return event.status === "draft" ? "draft" : "announcement";
   }
   return event.status;
-}
-
-/**
- * True when the event already has committed inventory: sold/held pool qty,
- * sold/held seats, or issued tickets. Used to lock creating new price categories.
- */
-export async function eventHasSoldOrHeldInventory(eventId: string): Promise<boolean> {
-  const pool = await prisma.inventoryPool.findFirst({
-    where: {
-      eventId,
-      OR: [{ soldQuantity: { gt: 0 } }, { heldQuantity: { gt: 0 } }],
-    },
-    select: { id: true },
-  });
-  if (pool) return true;
-
-  const seat = await prisma.eventSeat.findFirst({
-    where: { eventId, status: { in: ["held", "sold"] } },
-    select: { id: true },
-  });
-  if (seat) return true;
-
-  const ticket = await prisma.ticket.findFirst({
-    where: { eventId },
-    select: { id: true },
-  });
-  return Boolean(ticket);
-}
-
-/**
- * New price categories are allowed until the first real sold/held ticket (or seat).
- * Editing existing categories stays allowed separately — this only gates create.
- */
-export async function canCreateEventCategories(eventId: string): Promise<boolean> {
-  return !(await eventHasSoldOrHeldInventory(eventId));
 }
 
 export function isEventSaleOpen(

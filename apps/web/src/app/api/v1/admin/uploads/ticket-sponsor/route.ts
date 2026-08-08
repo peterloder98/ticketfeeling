@@ -7,7 +7,7 @@ import { prisma } from "@/lib/db";
 import { storeCoverAsset } from "@/lib/uploads/store-cover";
 import { optimizeSponsorLogo } from "@/lib/uploads/optimize-sponsor-logo";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
-import { clampSponsorLogoScale } from "@/lib/commerce/ticket-presentation";
+import { clampSponsorLogoScale } from "@/lib/commerce/ticket-presentation-shared";
 
 export const runtime = "nodejs";
 

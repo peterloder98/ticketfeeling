@@ -5,7 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
-import { canCreateEventCategories } from "@/lib/commerce/event-sale";
+import { canCreateEventCategories } from "@/lib/commerce/event-sale-inventory";
 import {
   adjustStandingCategoryCapacity,
   StandingCapacityError,

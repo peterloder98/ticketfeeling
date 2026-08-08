@@ -12,7 +12,7 @@ import {
   TICKET_QR_MIN_PX,
   sponsorLogoBoxForScale,
   type TicketPresentation,
-} from "@/lib/commerce/ticket-presentation";
+} from "@/lib/commerce/ticket-presentation-shared";
 
 type Props = {
   data: TicketPresentation;

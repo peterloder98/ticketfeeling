@@ -24,7 +24,8 @@ import {
   UnassignedSeatsBanner,
   UnassignedSeatsProvider,
 } from "@/components/admin/unassigned-seats-banner";
-import { canCreateEventCategories, effectiveEventStatus } from "@/lib/commerce/event-sale";
+import { effectiveEventStatus } from "@/lib/commerce/event-sale";
+import { canCreateEventCategories } from "@/lib/commerce/event-sale-inventory";
 import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release";
 import { EventSalesReadiness } from "@/components/admin/event-sales-readiness";
 import { BuyerHeatmap } from "@/components/admin/buyer-heatmap";

@@ -11,7 +11,7 @@ import {
   sponsorLogoBoxForScale,
   TICKET_SPONSOR_LOGO_MAX_H_PX,
   TICKET_SPONSOR_LOGO_MAX_W_PX,
-} from "@/lib/commerce/ticket-presentation";
+} from "@/lib/commerce/ticket-presentation-shared";
 
 /** Display hint — must match server SPONSOR_LOGO_MAX_* in optimize-sponsor-logo. */
 const SPONSOR_LOGO_MAX_WIDTH = 480;
