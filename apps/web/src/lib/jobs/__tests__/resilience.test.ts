@@ -6,7 +6,11 @@ import {
   JobNeedsAttentionError,
 } from "@/lib/jobs/queue";
 import { suggestEmailDomainFix } from "@/lib/email/typo-hint";
-import { FORGOTTEN_TICKET_GENERIC_MESSAGE } from "@/lib/support/forgotten-ticket";
+import {
+  evaluateForgottenTicketMatch,
+  FORGOTTEN_TICKET_GENERIC_MESSAGE,
+  normalizeOrderNumber,
+} from "@/lib/support/forgotten-ticket";
 import { technicalScanErrorResult } from "@/lib/commerce/checkin";
 
 describe("job queue retry classification", () => {
@@ -105,6 +109,56 @@ describe("forgotten ticket recovery", () => {
   it("exposes a single neutral message", () => {
     expect(FORGOTTEN_TICKET_GENERIC_MESSAGE.toLowerCase()).toContain("falls");
     expect(FORGOTTEN_TICKET_GENERIC_MESSAGE.toLowerCase()).not.toContain("nicht gefunden");
+  });
+});
+
+describe("forgotten ticket second-factor match", () => {
+  it("rejects email-only requests", () => {
+    expect(
+      evaluateForgottenTicketMatch({
+        hasCustomer: true,
+        matchedOrderCount: 2,
+        customerLastName: "Müller",
+      }),
+    ).toBe(false);
+  });
+
+  it("accepts email + order number without last name", () => {
+    expect(
+      evaluateForgottenTicketMatch({
+        hasCustomer: true,
+        matchedOrderCount: 1,
+        customerLastName: "Müller",
+        orderNumberHint: "TF-B-2026-0001",
+      }),
+    ).toBe(true);
+  });
+
+  it("accepts email + matching last name", () => {
+    expect(
+      evaluateForgottenTicketMatch({
+        hasCustomer: true,
+        matchedOrderCount: 1,
+        customerLastName: "Müller",
+        lastNameHint: "müller",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects mismatched last name even with orders", () => {
+    expect(
+      evaluateForgottenTicketMatch({
+        hasCustomer: true,
+        matchedOrderCount: 1,
+        customerLastName: "Müller",
+        lastNameHint: "Schmidt",
+        orderNumberHint: "TF-B-2026-0001",
+      }),
+    ).toBe(false);
+  });
+
+  it("normalizes order numbers", () => {
+    expect(normalizeOrderNumber(" tf-b-2026-0001 ")).toBe("TF-B-2026-0001");
   });
 });
 

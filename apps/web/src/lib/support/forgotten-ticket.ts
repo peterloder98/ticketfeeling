@@ -8,7 +8,7 @@ import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { signOrderAccessToken } from "@/lib/commerce/order-access";
 
 export const FORGOTTEN_TICKET_GENERIC_MESSAGE =
-  "Falls zu dieser E-Mail-Adresse eine passende bezahlte Bestellung existiert, senden wir dir in Kürze einen sicheren Link. Bitte prüfe auch deinen Spam-Ordner.";
+  "Falls deine Angaben zu einer bezahlten Bestellung passen, senden wir dir in Kürze einen sicheren Link. Bitte prüfe auch deinen Spam-Ordner.";
 
 function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
@@ -18,8 +18,39 @@ function normalizeLastName(value: string) {
   return value.trim().toLocaleLowerCase("de-DE");
 }
 
+/** Bestellnummern are allocated as TF-B-… — tolerate spaces / casing from users. */
+export function normalizeOrderNumber(value: string) {
+  return value.trim().replace(/\s+/g, "").toUpperCase();
+}
+
 function hashValue(value: string) {
   return createHash("sha256").update(value).digest("hex");
+}
+
+/**
+ * Email alone is never enough. Require Bestellnummer and/or Nachname
+ * (both collected / emailed at purchase). When Nachname is provided it must match;
+ * Bestellnummer is applied as an order filter by the caller.
+ */
+export function evaluateForgottenTicketMatch(input: {
+  hasCustomer: boolean;
+  matchedOrderCount: number;
+  customerLastName: string | null | undefined;
+  orderNumberHint?: string | null;
+  lastNameHint?: string | null;
+}): boolean {
+  const orderHint = input.orderNumberHint?.trim() ?? "";
+  const lastHint = input.lastNameHint?.trim() ?? "";
+  if (!orderHint && !lastHint) return false;
+  if (!input.hasCustomer || input.matchedOrderCount <= 0) return false;
+
+  if (lastHint) {
+    const wanted = normalizeLastName(lastHint);
+    const customerLast = normalizeLastName(input.customerLastName ?? "");
+    if (!customerLast || customerLast !== wanted) return false;
+  }
+
+  return true;
 }
 
 async function findDefaultOrganizationId() {
@@ -44,8 +75,12 @@ export async function requestForgottenTicket(input: {
   }
 
   const emailNormalized = normalizeEmail(input.email);
+  const orderNumberHint = input.orderNumberHint?.trim()
+    ? normalizeOrderNumber(input.orderNumberHint)
+    : undefined;
   const lastNameHint = input.lastName?.trim() ? input.lastName.trim() : undefined;
   const ipHash = hashValue(input.ip ?? "unknown");
+  const hasSecondFactor = Boolean(orderNumberHint || lastNameHint);
 
   const since = new Date(Date.now() - 60 * 60 * 1000);
   const recent = await prisma.forgottenTicketRequest.count({
@@ -61,7 +96,7 @@ export async function requestForgottenTicket(input: {
       data: {
         organizationId,
         emailNormalized,
-        orderNumberHint: input.orderNumberHint,
+        orderNumberHint: orderNumberHint ?? null,
         lastNameHint: lastNameHint ?? null,
         ipHash,
         status: "rate_limited",
@@ -74,7 +109,7 @@ export async function requestForgottenTicket(input: {
       entityId: emailNormalized,
       after: {
         emailHash: hashValue(emailNormalized),
-        hasOrderHint: Boolean(input.orderNumberHint),
+        hasOrderHint: Boolean(orderNumberHint),
         hasLastName: Boolean(lastNameHint),
         ipHash,
       },
@@ -82,31 +117,33 @@ export async function requestForgottenTicket(input: {
     return { message: FORGOTTEN_TICKET_GENERIC_MESSAGE, rateLimited: true };
   }
 
-  const customer = await prisma.customer.findUnique({
-    where: {
-      organizationId_emailNormalized: { organizationId, emailNormalized },
-    },
-    include: {
-      orders: {
-        where: {
-          status: { in: ["paid", "fulfilled"] },
-          ...(input.orderNumberHint
-            ? { orderNumber: input.orderNumberHint.trim() }
-            : {}),
-        },
-        take: 10,
-        orderBy: { createdAt: "desc" },
-      },
-    },
-  });
+  // Without a second factor we still log the attempt but never send a link.
+  const customer =
+    hasSecondFactor
+      ? await prisma.customer.findUnique({
+          where: {
+            organizationId_emailNormalized: { organizationId, emailNormalized },
+          },
+          include: {
+            orders: {
+              where: {
+                status: { in: ["paid", "fulfilled"] },
+                ...(orderNumberHint ? { orderNumber: orderNumberHint } : {}),
+              },
+              take: 10,
+              orderBy: { createdAt: "desc" },
+            },
+          },
+        })
+      : null;
 
-  let matched = Boolean(customer && customer.orders.length > 0);
-  // Optional last-name gate — must match when provided (no existence leak either way).
-  if (matched && customer && lastNameHint) {
-    const wanted = normalizeLastName(lastNameHint);
-    const customerLast = normalizeLastName(customer.lastName ?? "");
-    matched = customerLast === wanted && customerLast.length > 0;
-  }
+  const matched = evaluateForgottenTicketMatch({
+    hasCustomer: Boolean(customer),
+    matchedOrderCount: customer?.orders.length ?? 0,
+    customerLastName: customer?.lastName,
+    orderNumberHint,
+    lastNameHint,
+  });
 
   let recoveryPath: string | undefined;
 
@@ -114,7 +151,7 @@ export async function requestForgottenTicket(input: {
     data: {
       organizationId,
       emailNormalized,
-      orderNumberHint: input.orderNumberHint,
+      orderNumberHint: orderNumberHint ?? null,
       lastNameHint: lastNameHint ?? null,
       ipHash,
       status: matched ? "matched" : "received",
@@ -161,7 +198,7 @@ export async function requestForgottenTicket(input: {
     entityId: request.id,
     after: {
       emailHash: hashValue(emailNormalized),
-      hasOrderHint: Boolean(input.orderNumberHint),
+      hasOrderHint: Boolean(orderNumberHint),
       hasLastName: Boolean(lastNameHint),
       matched,
       nonce: randomBytes(8).toString("hex"),

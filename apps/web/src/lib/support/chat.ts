@@ -396,7 +396,7 @@ export async function handleSupportChat(input: {
 
   if (intent === "forgotten_ticket") {
     answer =
-      "Über „Ticket vergessen“ kannst du einen sicheren Link anfordern. Wir sagen aus Sicherheitsgründen nicht, ob eine E-Mail bekannt ist — bei passender bezahlter Bestellung kommt eine Mail (auch Spam prüfen).";
+      "Über „Ticket vergessen“ kannst du einen sicheren Link anfordern. Dafür brauchst du deine Bestell-E-Mail plus Bestellnummer oder Nachname — nur die E-Mail reicht aus Sicherheitsgründen nicht. Ob eine Bestellung bekannt ist, sagen wir nicht; bei Treffer kommt eine Mail (auch Spam prüfen).";
     suggestedActions.push({ label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" });
   } else if (intent === "handoff_human") {
     answer =

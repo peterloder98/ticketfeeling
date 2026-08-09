@@ -6,11 +6,17 @@ import {
 } from "@/lib/support/forgotten-ticket";
 import { clientIpFromRequest, takeRateLimit } from "@/lib/security/rate-limit";
 
-const bodySchema = z.object({
-  email: z.string().email(),
-  orderNumberHint: z.string().max(64).optional(),
-  lastName: z.string().max(80).optional(),
-});
+const bodySchema = z
+  .object({
+    email: z.string().email(),
+    orderNumberHint: z.string().max(64).optional(),
+    lastName: z.string().max(80).optional(),
+  })
+  .refine(
+    (data) =>
+      Boolean(data.orderNumberHint?.trim()) || Boolean(data.lastName?.trim()),
+    { message: "SECOND_FACTOR_REQUIRED" },
+  );
 
 export async function POST(request: Request) {
   try {

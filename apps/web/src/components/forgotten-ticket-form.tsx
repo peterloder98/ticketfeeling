@@ -7,30 +7,43 @@ export function ForgottenTicketForm() {
   const [orderNumberHint, setOrderNumberHint] = useState("");
   const [lastName, setLastName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setLoading(true);
     setMessage(null);
+    setFormError(null);
+
+    const orderTrimmed = orderNumberHint.trim();
+    const lastTrimmed = lastName.trim();
+    if (!orderTrimmed && !lastTrimmed) {
+      setFormError(
+        "Bitte Bestellnummer oder Nachname angeben — so stellen wir sicher, dass nur du an deine Tickets kommst.",
+      );
+      setLoading(false);
+      return;
+    }
+
     try {
       const response = await fetch("/api/v1/support/forgotten-ticket", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email,
-          orderNumberHint: orderNumberHint || undefined,
-          lastName: lastName || undefined,
+          orderNumberHint: orderTrimmed || undefined,
+          lastName: lastTrimmed || undefined,
         }),
       });
       const data = await response.json();
       setMessage(
         data.message ??
-          "Falls zu dieser E-Mail-Adresse eine passende bezahlte Bestellung existiert, senden wir dir in Kürze einen sicheren Link.",
+          "Falls deine Angaben zu einer bezahlten Bestellung passen, senden wir dir in Kürze einen sicheren Link.",
       );
     } catch {
       setMessage(
-        "Falls zu dieser E-Mail-Adresse eine passende bezahlte Bestellung existiert, senden wir dir in Kürze einen sicheren Link.",
+        "Falls deine Angaben zu einer bezahlten Bestellung passen, senden wir dir in Kürze einen sicheren Link.",
       );
     } finally {
       setLoading(false);
@@ -47,6 +60,7 @@ export function ForgottenTicketForm() {
           id="email"
           type="email"
           required
+          autoComplete="email"
           className="tf-input"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -54,34 +68,54 @@ export function ForgottenTicketForm() {
       </div>
       <div>
         <label className="tf-label" htmlFor="order">
-          Bestellnummer (optional)
+          Bestellnummer
         </label>
         <input
           id="order"
           className="tf-input"
+          autoComplete="off"
+          placeholder="z. B. TF-B-2026-…"
           value={orderNumberHint}
-          onChange={(event) => setOrderNumberHint(event.target.value)}
+          onChange={(event) => {
+            setOrderNumberHint(event.target.value);
+            if (formError) setFormError(null);
+          }}
         />
+        <p className="mt-1.5 text-xs text-[var(--tf-text-secondary)]">
+          Steht in deiner Bestätigungsmail — am sichersten zusammen mit dem Nachnamen.
+        </p>
       </div>
       <div>
         <label className="tf-label" htmlFor="lastName">
-          Nachname (optional)
+          Nachname
         </label>
         <input
           id="lastName"
           className="tf-input"
           autoComplete="family-name"
           value={lastName}
-          onChange={(event) => setLastName(event.target.value)}
+          onChange={(event) => {
+            setLastName(event.target.value);
+            if (formError) setFormError(null);
+          }}
         />
+        <p className="mt-1.5 text-xs text-[var(--tf-text-secondary)]">
+          Wie bei der Bestellung. Reicht auch ohne Bestellnummer, wenn du sie nicht mehr hast.
+        </p>
       </div>
+      {formError ? (
+        <p className="text-sm text-[var(--tf-sale)]" role="alert">
+          {formError}
+        </p>
+      ) : null}
       <button type="submit" className="tf-btn tf-btn-primary" disabled={loading}>
         {loading ? "Wird geprüft…" : "Sicheren Link anfordern"}
       </button>
       {message ? <p className="text-sm text-[var(--tf-text-secondary)]">{message}</p> : null}
       <p className="text-xs text-[var(--tf-text-secondary)]">
-        Aus Sicherheitsgründen teilen wir nicht mit, ob eine Bestellung bekannt ist. Der Link ist
-        nur kurz gültig und einmalig nutzbar.
+        Mindestens Bestellnummer oder Nachname ist nötig. Aus Sicherheitsgründen teilen wir
+        nicht mit, ob eine Bestellung bekannt ist. Der Link ist nur kurz gültig und einmalig
+        nutzbar.
       </p>
     </form>
   );
