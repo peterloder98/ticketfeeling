@@ -74,13 +74,27 @@ export function ticketPdfDownloadHeaders(filename: string): HeadersInit {
 }
 
 /**
- * PDFKit mishandles many formats (WebP/AVIF/RGBA soft-masks). Always embed
- * flattened RGB PNG so covers/logos/QR never leave unrestored clips or invisible text.
+ * PDFKit mishandles many formats (WebP/AVIF/RGBA soft-masks) for large covers.
+ * Default: flatten to white RGB PNG (covers, QR).
  */
 async function toPdfImageBuffer(input: Buffer): Promise<Buffer> {
   return sharp(input)
     .rotate()
     .flatten({ background: { r: 255, g: 255, b: 255 } })
+    .png()
+    .toBuffer();
+}
+
+/**
+ * Sponsor logos on the soft QR stub — composite onto stub paper (#F8FAFC) so
+ * freigestellte assets don't become a white rectangle (TicketFace uses alpha;
+ * PDFKit soft-masks are unreliable here, so we bake the stub colour instead).
+ */
+async function toPdfSponsorLogoBuffer(input: Buffer): Promise<Buffer> {
+  return sharp(input)
+    .rotate()
+    .ensureAlpha()
+    .flatten({ background: { r: 248, g: 250, b: 252 } })
     .png()
     .toBuffer();
 }
@@ -155,7 +169,10 @@ async function loadUploadedAssetBuffer(url: string): Promise<Buffer | null> {
   }
 }
 
-async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
+async function loadCoverBuffer(
+  url: string | null,
+  opts?: { kind?: "cover" | "sponsor" },
+): Promise<Buffer | null> {
   if (!url) return null;
   try {
     let raw: Buffer | null = null;
@@ -185,7 +202,9 @@ async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
       }
     }
     if (!raw) return null;
-    return await toPdfImageBuffer(raw);
+    return opts?.kind === "sponsor"
+      ? await toPdfSponsorLogoBuffer(raw)
+      : await toPdfImageBuffer(raw);
   } catch {
     return null;
   }
@@ -195,14 +214,15 @@ async function loadCoverBuffer(url: string | null): Promise<Buffer | null> {
 async function loadTicketImageBuffer(
   relativeOrAbsolute: string | null,
   absoluteFallback: string | null,
+  opts?: { kind?: "cover" | "sponsor" },
 ): Promise<Buffer | null> {
-  const primary = await loadCoverBuffer(relativeOrAbsolute);
+  const primary = await loadCoverBuffer(relativeOrAbsolute, opts);
   if (primary) return primary;
   if (
     absoluteFallback &&
     absoluteFallback !== relativeOrAbsolute
   ) {
-    return loadCoverBuffer(absoluteFallback);
+    return loadCoverBuffer(absoluteFallback, opts);
   }
   return null;
 }
@@ -970,10 +990,12 @@ export async function renderTicketPdf(ticketId: string): Promise<{
   const sponsorAbove = await loadTicketImageBuffer(
     data.sponsorLogoAboveUrl,
     data.sponsorLogoAboveAbsoluteUrl,
+    { kind: "sponsor" },
   );
   const sponsorBelow = await loadTicketImageBuffer(
     data.sponsorLogoBelowUrl,
     data.sponsorLogoBelowAbsoluteUrl,
+    { kind: "sponsor" },
   );
   const logo = await loadLogoBuffer();
 
@@ -1024,10 +1046,12 @@ export async function renderOrderTicketsPdf(orderId: string): Promise<{
       const sponsorAbove = await loadTicketImageBuffer(
         data.sponsorLogoAboveUrl,
         data.sponsorLogoAboveAbsoluteUrl,
+        { kind: "sponsor" },
       );
       const sponsorBelow = await loadTicketImageBuffer(
         data.sponsorLogoBelowUrl,
         data.sponsorLogoBelowAbsoluteUrl,
+        { kind: "sponsor" },
       );
       return { data, qr, cover, sponsorAbove, sponsorBelow };
     }),
