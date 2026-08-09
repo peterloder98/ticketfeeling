@@ -14,7 +14,7 @@ import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/ord
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
-import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
+import { loadTicketFaceEmbed } from "@/lib/commerce/ticket-document";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { TicketFace } from "@/components/ticket-face";
 import { TicketPdfSaveLink } from "@/components/ticket-pdf-save-link";
@@ -91,10 +91,20 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
     transferred,
   });
 
-  const data = await loadTicketPresentation(ticket.id);
+  const holderHint = [ticket.holder?.firstName, ticket.holder?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const face = await loadTicketFaceEmbed(ticket.id, {
+    compact: true,
+    showQr: canEntry,
+    qrUnavailableMessage: transferred
+      ? `Ticket weitergeleitet${holderHint ? ` an ${holderHint}` : ""} — QR nur für Empfänger.`
+      : null,
+  });
+  const data = face.data;
   const showQr = Boolean(data.qrToken && canEntry);
   const walletFlags = getWalletUiFlags();
-  const holder = data.holderName;
 
   return (
     <div className="space-y-4 text-sm">
@@ -106,53 +116,39 @@ export default async function EmbedTicketPage({ params, searchParams }: Props) {
         Zurück zur Bestellung
       </Link>
 
-      <TicketFace
-        data={data}
-        showQr={showQr}
-        compact
-        qrSize={120}
-        transferredMessage={
-          transferred
-            ? `Ticket weitergeleitet${holder ? ` an ${holder}` : ""} — QR nur für Empfänger.`
-            : null
-        }
-      />
+      <TicketFace face={face} />
 
-      {showQr ? (
-        <div className="space-y-3">
+      <div className="flex flex-wrap gap-2">
+        {canEntry ? (
           <TicketPdfSaveLink
             href={pdfHref}
-            className="tf-btn tf-btn-primary w-full !min-h-10 text-sm"
+            className="tf-btn tf-btn-primary !min-h-9 text-xs"
             filename={`${data.ticketNumber}.pdf`}
           />
-          {ticket.event.eventStartsAt ? (
-            <TicketCalendarMenu
-              icsHref={calendarHref}
-              fullWidth
-              event={{
-                title: data.eventName || ticket.event.name,
-                startsAtIso: ticket.event.eventStartsAt.toISOString(),
-                endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
-                locationLabel: data.locationShort,
-                description: [
-                  `Ticket ${data.ticketNumber} · ${data.placeLabel} · ${data.categoryName}`,
-                  data.doors.headline
-                    ? `${data.doors.headline}${data.doors.timeLabel ? " Uhr" : ""}`
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join("\n"),
-              }}
-            />
-          ) : null}
+        ) : null}
+        {canEntry && ticket.event.eventStartsAt ? (
+          <TicketCalendarMenu
+            icsHref={calendarHref}
+            buttonLabel="Kalender"
+            event={{
+              title: data.eventName || ticket.event.name,
+              startsAtIso: ticket.event.eventStartsAt.toISOString(),
+              endsAtIso: ticket.event.eventEndsAt?.toISOString() ?? null,
+              locationLabel: data.locationTicket || null,
+              description: `Ticket ${data.ticketNumber}`,
+            }}
+          />
+        ) : null}
+        {showQr ? (
           <TicketWalletButtons
             ticketId={ticket.id}
             accessToken={accessToken}
             appleEnabled={walletFlags.apple}
             googleEnabled={walletFlags.google}
+            size="sm"
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,7 @@
   "dependencies": {
     "@auth/prisma-adapter": "^2.9.1",
     "@prisma/client": "^6.11.1",
+    "@sparticuz/chromium": "^147.0.0",
     "@stripe/react-stripe-js": "^3.10.0",
     "@stripe/stripe-js": "^7.9.0",
     "@tailwindcss/postcss": "^4",
@@ -37,6 +38,7 @@
     "nodemailer": "^7.0.13",
     "passkit-generator": "^3.5.7",
     "pdfkit": "^0.19.1",
+    "puppeteer-core": "^25.5.0",
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

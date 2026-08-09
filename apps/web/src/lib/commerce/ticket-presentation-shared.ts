@@ -61,12 +61,12 @@ export const TICKET_COL_COVER = 0.29;
 export const TICKET_COL_QR = 0.25;
 
 /**
- * Shared TicketFace geometry — HTML, print HTML, and PDFKit must use these
- * so online preview and Print@Home stay 1:1 for every event.
+ * Shared TicketFace geometry — online HTML and Print@Home (Chromium print of
+ * the same markup) must use these so every event stays 1:1.
  */
-/** TicketFace CSS `max-w-[900px]` — PDF scales type/spacing from this width. */
+/** TicketFace CSS `max-w-[900px]`. */
 export const TICKET_FACE_REF_W_PX = 900;
-/** Outer corner radius (CSS px / PDF pt at ~900px ticket width). */
+/** Outer corner radius (CSS px at ~900px ticket width). */
 export const TICKET_CORNER_RADIUS_PX = 14;
 /** Brand lockup display height in the info column (centered, not oversized). */
 export const TICKET_BRAND_LOGO_H_PX = 36;
@@ -76,7 +76,6 @@ export const TICKET_BRAND_LOGO_GAP_PX = 20;
 export const TICKET_ACCENT_H_PX = 3;
 /**
  * Non-compact TicketFace type scale (CSS px at TICKET_FACE_REF_W_PX).
- * PDF multiplies by ticketW / TICKET_FACE_REF_W_PX for 1:1 proportions.
  */
 export const TICKET_FACE_TYPE = {
   padX: 20,

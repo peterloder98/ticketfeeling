@@ -14,7 +14,7 @@ import { verifyOrderAccessToken, withOrderAccessQuery } from "@/lib/commerce/ord
 import { TicketWalletButtons } from "@/components/ticket-wallet-buttons";
 import { TicketCalendarMenu } from "@/components/ticket-calendar-menu";
 import { getWalletUiFlags } from "@/lib/wallet/config";
-import { loadTicketPresentation } from "@/lib/commerce/ticket-presentation";
+import { loadTicketFaceEmbed } from "@/lib/commerce/ticket-document";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { TicketFace } from "@/components/ticket-face";
@@ -88,16 +88,24 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
     transferred,
   });
 
-  const data = await loadTicketPresentation(ticket.id);
+  const holderHint = [ticket.holder?.firstName, ticket.holder?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const transferredMessage = !canEntry
+    ? holderHint
+      ? `Dieses Ticket gehört jetzt ${holderHint}. QR-Code und PDF sind nur noch für die Empfängerin / den Empfänger verfügbar.`
+      : "QR-Code und PDF sind nach der Weiterleitung nur noch für die Empfängerin / den Empfänger verfügbar."
+    : null;
+
+  const face = await loadTicketFaceEmbed(ticket.id, {
+    showQr: canEntry,
+    qrUnavailableMessage: transferredMessage,
+  });
+  const data = face.data;
   const showQr = Boolean(data.qrToken && canEntry);
   const walletFlags = getWalletUiFlags();
   const holder = data.holderName;
-
-  const transferredMessage = !showQr
-    ? holder
-      ? `Dieses Ticket gehört jetzt ${holder}. QR-Code und PDF sind nur noch für die Empfängerin / den Empfänger verfügbar.`
-      : "QR-Code und PDF sind nach der Weiterleitung nur noch für die Empfängerin / den Empfänger verfügbar."
-    : null;
 
   const placeFull = data.locationLines.join(", ");
 
@@ -113,12 +121,7 @@ export default async function TicketViewPage({ params, searchParams }: Props) {
         </Link>
 
         <div className="mx-auto grid max-w-6xl gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,260px)] lg:items-start lg:gap-5">
-          <TicketFace
-            data={data}
-            showQr={showQr}
-            transferredMessage={transferredMessage}
-            qrSize={150}
-          />
+          <TicketFace face={face} />
 
           <aside className="mx-auto w-full max-w-sm space-y-2 lg:mx-0 lg:max-w-none lg:sticky lg:top-6">
             {canEntry ? (
