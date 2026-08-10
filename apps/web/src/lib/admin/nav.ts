@@ -151,6 +151,11 @@ export const ADMIN_SUBNAV = {
       description: "Dead-Letter, needs_review, Queue",
     },
     {
+      href: "/admin/system/speicher",
+      label: "Speicher",
+      description: "Belegung, Freiraum & Warnung",
+    },
+    {
       href: "/admin/benutzer",
       label: "Benutzerverwaltung",
       description: "Admin, Vorverkauf, Scanner",
