@@ -15,8 +15,8 @@ import {
  * Triggers (any one is enough — must not fail silently):
  * 1. Save — resolvePersistedEventStatus() / statusAfterPresaleStart() in create/update
  * 2. Page open — ensurePresaleAutoRelease() on admin event detail + public/embed event pages
- * 3. Public + admin listings — releaseDuePresales() on homepage, /events, embed shop, admin, Kasse
- * 4. Cron — GET /api/v1/cron/release-presale (daily on Hobby; releaseDuePresales under the hood)
+ * 3. Public + admin listings — scheduleReleaseDuePresales() (throttled F&F; effectiveEventStatus for UI)
+ * 4. Cron — GET /api/v1/cron/release-presale (daily on Hobby; awaits releaseDuePresales)
  * 5. Cover upload — tryActivateSalesAfterCover() when start already due
  *
  * Reads also use effectiveEventStatus() so shop/listings treat due announcements as on sale
@@ -177,4 +177,26 @@ export async function releaseDuePresales(opts?: {
   }
 
   return { checked: due.length, flipped, blocked, at: now.toISOString() };
+}
+
+/** Avoid running batch release on every homepage/admin soft-nav. */
+const lastReleaseAt = new Map<string, number>();
+const RELEASE_THROTTLE_MS = 30_000;
+
+/**
+ * Fire-and-forget + throttled. Listings/Kasse use effectiveEventStatus for UI
+ * correctness; cron still awaits releaseDuePresales for durable flips.
+ */
+export function scheduleReleaseDuePresales(opts?: {
+  organizationId?: string;
+  take?: number;
+}) {
+  const key = opts?.organizationId ?? "*";
+  const t = Date.now();
+  const last = lastReleaseAt.get(key) ?? 0;
+  if (t - last < RELEASE_THROTTLE_MS) return;
+  lastReleaseAt.set(key, t);
+  void releaseDuePresales(opts).catch((error) => {
+    console.error("[presale] background releaseDuePresales failed", error);
+  });
 }

@@ -15,10 +15,11 @@ import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const org = await getDefaultOrganization();
+  const [org, events] = await Promise.all([
+    getDefaultOrganization(),
+    loadPublicListingEvents({ take: 48 }),
+  ]);
   const feeConfig = resolveActivePlatformFeeConfig(org?.settings?.platformFeeConfig);
-
-  const events = await loadPublicListingEvents({ take: 48 });
 
   // Tours collapse to one card — hero + grid never list each tour date separately.
   const listings = buildPublicListingCards(events);

@@ -1,12 +1,11 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { getEventCheckinStats } from "@/lib/commerce/checkin";
 import { isProductionCheckinOpen, evaluateCheckinGate } from "@/lib/commerce/checkin-gate";
 import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-early";
 import { ScannerClient } from "@/components/scanner-client";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { isScannerOnlyUser } from "@/lib/admin/staff-access";
 import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
@@ -31,21 +30,22 @@ export default async function ScannerPage({
 }: {
   searchParams: Promise<{ event?: string }>;
 }) {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login?callbackUrl=/scanner");
 
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) redirect("/login");
 
   const orgId = membership.organizationId;
-  const scannerOnly = await isScannerOnlyUser(session.user.id, orgId);
+  const [scannerOnly, keys, sp] = await Promise.all([
+    isScannerOnlyUser(session.user.id, orgId),
+    getUserPermissionKeys(session.user.id, orgId),
+    searchParams,
+  ]);
 
   const canScan =
-    (await userHasPermission(session.user.id, orgId, "checkin:scan")) ||
-    (await userHasPermission(session.user.id, orgId, "events:write")) ||
-    (await userHasPermission(session.user.id, orgId, "org:write"));
-  const canRead =
-    canScan || (await userHasPermission(session.user.id, orgId, "events:read"));
+    keys.has("checkin:scan") || keys.has("events:write") || keys.has("org:write");
+  const canRead = canScan || keys.has("events:read");
 
   if (!canRead) {
     return (
@@ -60,24 +60,26 @@ export default async function ScannerPage({
     );
   }
 
-  const sp = await searchParams;
-  await ensureSaleClosedEarlyColumn();
-  const events = await prisma.event.findMany({
-    where: {
-      organizationId: orgId,
-      status: { in: ["presale_active", "published", "announcement", "sold_out", "completed"] },
-    },
-    orderBy: { eventStartsAt: "asc" },
-    select: {
-      id: true,
-      name: true,
-      eventStartsAt: true,
-      doorsOpenAt: true,
-      saleClosedEarly: true,
-      status: true,
-      location: { select: { name: true, city: true } },
-    },
-  });
+  // Prod skips DDL; non-prod patches once — never serialize ahead of events query.
+  const [, events] = await Promise.all([
+    ensureSaleClosedEarlyColumn(),
+    prisma.event.findMany({
+      where: {
+        organizationId: orgId,
+        status: { in: ["presale_active", "published", "announcement", "sold_out", "completed"] },
+      },
+      orderBy: { eventStartsAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        eventStartsAt: true,
+        doorsOpenAt: true,
+        saleClosedEarly: true,
+        status: true,
+        location: { select: { name: true, city: true } },
+      },
+    }),
+  ]);
 
   const eventId = sp.event && events.some((e) => e.id === sp.event) ? sp.event : null;
   const selected = events.find((e) => e.id === eventId) ?? null;

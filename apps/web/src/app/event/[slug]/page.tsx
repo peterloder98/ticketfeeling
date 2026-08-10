@@ -62,16 +62,16 @@ function formatEventDate(date: Date) {
 
 export default async function EventPage({ params }: Props) {
   const { slug } = await params;
+  // Schema ensures are no-ops in production (migrate-deploy). Non-prod runs in parallel with load.
   const { ensureEventPricingSchema } = await import(
     "@/lib/commerce/ensure-event-pricing-schema"
   );
-  // Parallel schema probes (memoized / prod-noop) — never serialize three DDL waits.
-  await Promise.all([
+  const schemaReady = Promise.all([
     ensureEventPricingSchema(prisma),
     ensureScheduleChangedAtColumn(),
     ensureTicketSponsorLogoColumns(),
   ]);
-  const event = await prisma.event.findFirst({
+  const eventPromise = prisma.event.findFirst({
     where: { slug },
     include: {
       location: true,
@@ -86,17 +86,31 @@ export default async function EventPage({ params }: Props) {
       },
     },
   });
+  const [, event] = await Promise.all([schemaReady, eventPromise]);
 
   if (!event) notFound();
 
+  // UI uses effective status; durable DB flip runs in background (cron + throttled batch).
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
-  const released = await ensurePresaleAutoRelease({
+  const { effectiveEventStatus } = await import("@/lib/commerce/event-sale");
+  void ensurePresaleAutoRelease({
     id: event.id,
     organizationId: event.organizationId,
     status: event.status,
     presaleStartsAt: event.presaleStartsAt,
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories,
+  }).catch((err) => console.error("[event] presale release failed", err));
+  event.status = effectiveEventStatus({
+    status: event.status,
+    presaleStartsAt: event.presaleStartsAt,
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories,
   });
-  if (released.flipped) event.status = released.status;
 
   // Draft / paused events are not a public shop surface; cancelled shows a soft page.
   if (event.status === "draft" || event.status === "paused" || event.tour?.visibility === "draft") {

@@ -1,7 +1,9 @@
 /**
- * Runtime ensure*Schema helpers must not ALTER TABLE on production/Vercel
- * request paths — migrations run at build via migrate-deploy.cjs.
- * Local/dev may still patch schema when migrate lags.
+ * Runtime ensure*Schema helpers must not ALTER TABLE — or probe
+ * information_schema — on production/Vercel request paths. Migrations run at
+ * build via migrate-deploy.cjs. Local/dev may still patch when migrate lags.
+ *
+ * Callers should treat a true result as “schema is ready” (no RTT).
  */
 export function shouldSkipRuntimeDdl(): boolean {
   if (process.env.ALLOW_RUNTIME_DDL === "1") return false;

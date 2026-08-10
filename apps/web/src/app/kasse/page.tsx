@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { BoxOfficeNewSaleButton } from "@/components/box-office-new-sale-button";
 import { BoxOfficeSessionPanel } from "@/components/box-office-session-panel";
 import { formatEuroFromCents } from "@/lib/money";
@@ -27,7 +26,8 @@ import { resolveSellableCategoryCapacity } from "@/lib/seating/sync-category-cap
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { BoxOfficeVoidButton } from "@/components/box-office-sale-row-actions";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
-import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
+import { scheduleReleaseDuePresales } from "@/lib/commerce/ensure-presale-release";
+import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { countBoxOfficeSaleTickets } from "@/lib/commerce/box-office-ticket-count";
 import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
@@ -35,7 +35,8 @@ import { fulfillPaidOrder } from "@/lib/commerce/fulfillment";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tageskasse" };
 
-const SALES_LIMIT = 500;
+/** Default list stays lean — filter by day/event for deeper history. */
+const SALES_LIMIT = 120;
 
 type Props = {
   searchParams: Promise<{ from?: string; to?: string; eventId?: string; day?: string }>;
@@ -58,20 +59,20 @@ function parseDayKey(value: string | undefined): string | null {
 }
 
 export default async function BoxOfficePage({ searchParams }: Props) {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) redirect("/login");
 
+  const orgId = membership.organizationId;
+  const keys = await getUserPermissionKeys(session.user.id, orgId);
   const canSell =
-    (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "org:write"));
+    keys.has("box_office:sell") || keys.has("events:write") || keys.has("org:write");
   const canView =
     canSell ||
-    (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "events:read")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "reports:read"));
+    keys.has("org:read") ||
+    keys.has("events:read") ||
+    keys.has("reports:read");
 
   if (!canView) {
     return (
@@ -81,19 +82,15 @@ export default async function BoxOfficePage({ searchParams }: Props) {
     );
   }
 
-  // Due Vorverkaufsstart → Im Verkauf so Kasse query (presale_active/published) sees them.
-  await releaseDuePresales({ organizationId: membership.organizationId });
+  // Background flip — sellable list uses effectiveEventStatus so due announcements appear now.
+  scheduleReleaseDuePresales({ organizationId: orgId });
 
-  const sellableIds = canSell
-    ? await getBoxOfficeSellableEventIds(session.user.id, membership.organizationId)
-    : null;
+  const [sellableIds, fullAccess, sp] = await Promise.all([
+    canSell ? getBoxOfficeSellableEventIds(session.user.id, orgId) : Promise.resolve(null),
+    canSellAllBoxOfficeEvents(session.user.id, orgId),
+    searchParams,
+  ]);
   const isPartner = canSell && sellableIds !== null;
-  const fullAccess = await canSellAllBoxOfficeEvents(
-    session.user.id,
-    membership.organizationId,
-  );
-
-  const sp = await searchParams;
   // Legacy ?day= from /kasse/verkaeufe → treat as from=to
   const legacyDay = parseDayKey(sp.day);
   const fromKey = parseDayKey(sp.from) ?? legacyDay;
@@ -106,22 +103,24 @@ export default async function BoxOfficePage({ searchParams }: Props) {
 
   const partnerSaleFilter = fullAccess ? {} : { soldByUserId: session.user.id };
 
-  const [orgSettings, events, filterEvents, orders] = await Promise.all([
+  const [orgSettings, eventsRaw, filterEvents, orders] = await Promise.all([
     canSell
       ? prisma.organizationSettings.findUnique({
-          where: { organizationId: membership.organizationId },
+          where: { organizationId: orgId },
           select: { platformFeeConfig: true },
         })
       : Promise.resolve(null),
     canSell
       ? prisma.event.findMany({
           where: {
-            organizationId: membership.organizationId,
-            status: { in: ["presale_active", "published"] },
+            organizationId: orgId,
+            // Include announcement — effectiveEventStatus opens due Vorverkauf without awaiting DDL flip.
+            status: { in: ["presale_active", "published", "announcement"] },
             ...(sellableIds ? { id: { in: sellableIds } } : {}),
           },
           include: {
             location: { select: { name: true, city: true } },
+            tour: { select: { coverImageUrl: true, visibility: true } },
             ticketCategories: {
               where: { status: "active", boxOfficeBookable: true },
               include: { pools: true },
@@ -132,14 +131,14 @@ export default async function BoxOfficePage({ searchParams }: Props) {
         })
       : Promise.resolve([]),
     prisma.event.findMany({
-      where: { organizationId: membership.organizationId },
+      where: { organizationId: orgId },
       select: { id: true, name: true },
       orderBy: { eventStartsAt: "desc" },
       take: 80,
     }),
     prisma.order.findMany({
       where: {
-        organizationId: membership.organizationId,
+        organizationId: orgId,
         channel: "box_office",
         ...(Object.keys(createdAtFilter).length > 0 ? { createdAt: createdAtFilter } : {}),
         ...(eventId ? { items: { some: { eventId } } } : {}),
@@ -147,9 +146,31 @@ export default async function BoxOfficePage({ searchParams }: Props) {
       },
       orderBy: { createdAt: "desc" },
       take: SALES_LIMIT + 1,
-      include: {
-        customer: true,
-        items: true,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        voidedAt: true,
+        createdAt: true,
+        deliveryStatus: true,
+        paymentMethod: true,
+        customerTotalCents: true,
+        grossCents: true,
+        customer: {
+          select: { firstName: true, lastName: true, email: true },
+        },
+        items: {
+          select: {
+            quantity: true,
+            categorySnapshot: true,
+            unitPaidGrossCents: true,
+            unitListGrossCents: true,
+            grossCents: true,
+            eventId: true,
+            eventNameSnapshot: true,
+            eventStartsAtSnapshot: true,
+          },
+        },
         tickets: {
           select: {
             id: true,
@@ -163,10 +184,26 @@ export default async function BoxOfficePage({ searchParams }: Props) {
             blockLabel: true,
           },
         },
-        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+        payments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { method: true, status: true },
+        },
       },
     }),
   ]);
+
+  const events = eventsRaw.filter((event) => {
+    const status = effectiveEventStatus({
+      status: event.status,
+      presaleStartsAt: event.presaleStartsAt,
+      coverImageUrl: event.coverImageUrl,
+      eventStartsAt: event.eventStartsAt,
+      tour: event.tour,
+      categories: event.ticketCategories,
+    });
+    return status === "presale_active" || status === "published";
+  });
 
   const hasMoreSales = orders.length > SALES_LIMIT;
   const salesList = hasMoreSales ? orders.slice(0, SALES_LIMIT) : orders;
@@ -231,9 +268,15 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           event.seatingBookingMode === "seat_map_and_best"),
     )
     .map((e) => e.id);
-  const assignedSeats =
+
+  const { loadPriceCampaignsForEvents, accessibilityOfferFromEvent } = await import(
+    "@/lib/commerce/load-event-pricing"
+  );
+  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+
+  const [assignedSeats, campaignsByEvent] = await Promise.all([
     seatingEventIds.length > 0
-      ? await prisma.eventSeat.findMany({
+      ? prisma.eventSeat.findMany({
           where: {
             eventId: { in: seatingEventIds },
             locked: false,
@@ -241,32 +284,15 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           },
           select: { eventId: true, categoryId: true },
         })
-      : [];
+      : Promise.resolve([] as Array<{ eventId: string; categoryId: string | null }>),
+    loadPriceCampaignsForEvents(events.map((e) => e.id)),
+  ]);
   const seatCountByEventCategory = new Map<string, number>();
   for (const seat of assignedSeats) {
     if (!seat.categoryId) continue;
     const key = `${seat.eventId}:${seat.categoryId}`;
     seatCountByEventCategory.set(key, (seatCountByEventCategory.get(key) ?? 0) + 1);
   }
-
-  const { ensureEventPricingSchema } = await import(
-    "@/lib/commerce/ensure-event-pricing-schema"
-  );
-  const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
-    "@/lib/commerce/load-event-pricing"
-  );
-  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
-  await ensureEventPricingSchema(prisma);
-
-  const campaignsByEvent = new Map<
-    string,
-    Awaited<ReturnType<typeof loadEventPriceCampaigns>>
-  >();
-  await Promise.all(
-    events.map(async (event) => {
-      campaignsByEvent.set(event.id, await loadEventPriceCampaigns(event.id));
-    }),
-  );
   const priceNow = new Date();
 
   const payload = events.map((event) => {

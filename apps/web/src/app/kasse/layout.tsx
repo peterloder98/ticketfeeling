@@ -12,15 +12,14 @@ export default async function KasseLayout({ children }: { children: React.ReactN
   }
 
   const membership = await getDefaultOrganizationForUser(session.user.id);
-  if (membership) {
-    if (await isScannerOnlyUser(session.user.id, membership.organizationId)) {
-      redirect("/scanner");
-    }
-  }
-
-  const boxOfficeOnly = membership
-    ? await isBoxOfficeOnlyUser(session.user.id, membership.organizationId)
-    : false;
+  const orgId = membership?.organizationId;
+  const [scannerOnly, boxOfficeOnly] = orgId
+    ? await Promise.all([
+        isScannerOnlyUser(session.user.id, orgId),
+        isBoxOfficeOnlyUser(session.user.id, orgId),
+      ])
+    : [false, false];
+  if (scannerOnly) redirect("/scanner");
 
   return (
     <AdminShell email={session.user.email ?? ""} boxOfficeOnly={boxOfficeOnly}>

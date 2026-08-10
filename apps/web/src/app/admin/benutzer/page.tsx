@@ -24,15 +24,13 @@ export default async function AdminBenutzerPage() {
   if (!membership) return <p>Keine Organisation.</p>;
 
   // Sync role permissions first so organizer_admin gains users:write if missing.
-  // Fast-path + TTL inside ensure — fail soft so soft-nav is not aborted.
-  try {
-    await ensureStaffManageableRoles(membership.organizationId);
-  } catch (err) {
+  // Fire-and-forget — TTL/fast-path inside ensure; list load does not wait on upserts.
+  void ensureStaffManageableRoles(membership.organizationId).catch((err) => {
     console.error(
       "[admin/benutzer] role sync failed:",
       err instanceof Error ? err.message : String(err),
     );
-  }
+  });
 
   const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {

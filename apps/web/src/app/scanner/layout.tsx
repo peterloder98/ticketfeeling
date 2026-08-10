@@ -15,10 +15,12 @@ export default async function ScannerLayout({ children }: { children: React.Reac
   let scannerOnly = false;
   if (membership) {
     const orgId = membership.organizationId;
-    if (await isBoxOfficeOnlyUser(session.user.id, orgId)) {
-      redirect("/kasse");
-    }
-    scannerOnly = await isScannerOnlyUser(session.user.id, orgId);
+    const [boxOnly, scanOnly] = await Promise.all([
+      isBoxOfficeOnlyUser(session.user.id, orgId),
+      isScannerOnlyUser(session.user.id, orgId),
+    ]);
+    if (boxOnly) redirect("/kasse");
+    scannerOnly = scanOnly;
   }
 
   return (

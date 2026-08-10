@@ -7,7 +7,7 @@ import { parseEventListFilters } from "@/lib/admin/event-list-filters";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { AdminEventsList } from "@/components/admin/admin-events-list";
-import { releaseDuePresales } from "@/lib/commerce/ensure-presale-release";
+import { scheduleReleaseDuePresales } from "@/lib/commerce/ensure-presale-release";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +27,9 @@ export default async function AdminEventsPage({ searchParams }: Props) {
 
   const canWrite = keys.has("events:write");
 
-  // Persist due Vorverkaufsstart → Im Verkauf before listing (closes cron lag).
-  const [sp] = await Promise.all([
-    searchParams,
-    releaseDuePresales({ organizationId: membership.organizationId }),
-  ]);
+  // Do not block list paint on batch status flips (throttled background).
+  scheduleReleaseDuePresales({ organizationId: membership.organizationId });
+  const sp = await searchParams;
   const activeFilters = parseEventListFilters(sp.f);
   // Load all statuses once — chips filter client-side for instant response.
   const events = await getEventListSales(membership.organizationId);

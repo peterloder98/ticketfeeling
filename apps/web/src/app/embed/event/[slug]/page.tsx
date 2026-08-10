@@ -41,11 +41,11 @@ export default async function EmbedEventShopPage({ params }: Props) {
   const { ensureEventPricingSchema } = await import(
     "@/lib/commerce/ensure-event-pricing-schema"
   );
-  await Promise.all([
+  const schemaReady = Promise.all([
     ensureEventPricingSchema(prisma),
     ensureScheduleChangedAtColumn(),
   ]);
-  const event = await prisma.event.findFirst({
+  const eventPromise = prisma.event.findFirst({
     where: { slug },
     include: {
       location: true,
@@ -58,6 +58,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
       },
     },
   });
+  const [, event] = await Promise.all([schemaReady, eventPromise]);
   if (!event) {
     return (
       <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-10 text-center">
@@ -72,13 +73,25 @@ export default async function EmbedEventShopPage({ params }: Props) {
   }
 
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
-  const released = await ensurePresaleAutoRelease({
+  const { effectiveEventStatus } = await import("@/lib/commerce/event-sale");
+  void ensurePresaleAutoRelease({
     id: event.id,
     organizationId: event.organizationId,
     status: event.status,
     presaleStartsAt: event.presaleStartsAt,
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories,
+  }).catch((err) => console.error("[embed/event] presale release failed", err));
+  event.status = effectiveEventStatus({
+    status: event.status,
+    presaleStartsAt: event.presaleStartsAt,
+    coverImageUrl: event.coverImageUrl,
+    eventStartsAt: event.eventStartsAt,
+    tour: event.tour,
+    categories: event.ticketCategories,
   });
-  if (released.flipped) event.status = released.status;
 
   if (
     event.status === "draft" ||

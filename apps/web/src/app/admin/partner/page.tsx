@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { ensureVorverkaufRole } from "@/lib/commerce/box-office-access";
 import { listBoxOfficeConsignments } from "@/lib/commerce/box-office-consignment";
 import { PartnerInvitePanel } from "@/components/admin/partner-invite-panel";
@@ -15,21 +14,22 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Vorverkaufs-Partner" };
 
 export default async function AdminPartnersPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
+  const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
   const allowed =
-    (await userHasPermission(session.user.id, membership.organizationId, "users:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "org:write"));
+    keys.has("users:write") || keys.has("events:write") || keys.has("org:write");
   if (!allowed) {
     return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
   }
 
-  // Keep Rolle „Vorverkaufsstelle“ (key: box_office) synced — Tageskasse only.
-  await ensureVorverkaufRole(membership.organizationId);
+  // Role sync is TTL'd — never block partner list paint (invite actions re-ensure).
+  void ensureVorverkaufRole(membership.organizationId).catch((err) => {
+    console.error("[admin/partner] role sync failed", err);
+  });
 
   const eventSelect = {
     id: true,

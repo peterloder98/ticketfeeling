@@ -45,6 +45,11 @@ const LEGAL_PROBE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 /** Best-effort schema patch when migrate deploy has not run yet. Memoized per process. */
 export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
   if (legalSchemaReady) return;
+  // Production/Vercel: migrate-deploy owns schema — zero information_schema RTTs on clicks.
+  if (shouldSkipRuntimeDdl()) {
+    legalSchemaReady = true;
+    return;
+  }
   if (
     !legalEnsurePromise &&
     legalIncompleteProbeAt > 0 &&
@@ -57,15 +62,6 @@ export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
       if (await columnExists(db, "legal_documents", "enabled")) {
         legalSchemaReady = true;
         legalIncompleteProbeAt = 0;
-        return;
-      }
-
-      if (shouldSkipRuntimeDdl()) {
-        console.error(
-          "[legal] ensureLegalSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
-        );
-        legalIncompleteProbeAt = Date.now();
-        legalEnsurePromise = null;
         return;
       }
 

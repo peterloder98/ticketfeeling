@@ -215,18 +215,15 @@ async function probeStripePayoutSchemaReady(db: PrismaClient): Promise<boolean> 
 /** Best-effort DDL so Finanzen works before migrate deploy catches up. */
 export async function ensureStripePayoutSchema(db: PrismaClient) {
   if (schemaReady) return;
+  // Production/Vercel: migrate-deploy owns schema — zero information_schema RTTs on clicks.
+  if (shouldSkipRuntimeDdl()) {
+    schemaReady = true;
+    return;
+  }
   if (!ensurePromise) {
     ensurePromise = (async () => {
       if (await probeStripePayoutSchemaReady(db)) {
         schemaReady = true;
-        return;
-      }
-
-      if (shouldSkipRuntimeDdl()) {
-        console.error(
-          "[stripe-payout] ensureStripePayoutSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
-        );
-        ensurePromise = null;
         return;
       }
 

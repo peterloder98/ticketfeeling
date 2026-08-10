@@ -63,7 +63,12 @@ async function probeReady(db: PrismaClient): Promise<boolean> {
 /** Best-effort DDL when migrate deploy has not run yet (local/dev). Skipped in production. */
 export async function ensureEventPricingSchema(db: PrismaClient) {
   if (schemaReady) return;
-  // Negative cache: incomplete/skipped schema must not re-probe every request.
+  // Production/Vercel: migrate-deploy owns schema — zero information_schema RTTs on clicks.
+  if (shouldSkipRuntimeDdl()) {
+    schemaReady = true;
+    return;
+  }
+  // Negative cache: incomplete schema must not re-probe every request (non-prod).
   if (
     !ensurePromise &&
     lastIncompleteProbeAt > 0 &&
@@ -76,13 +81,6 @@ export async function ensureEventPricingSchema(db: PrismaClient) {
       if (await probeReady(db)) {
         schemaReady = true;
         lastIncompleteProbeAt = 0;
-        return;
-      }
-      if (shouldSkipRuntimeDdl()) {
-        console.error(
-          "[ensureEventPricingSchema] schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
-        );
-        lastIncompleteProbeAt = Date.now();
         return;
       }
       for (const sql of STATEMENTS) {

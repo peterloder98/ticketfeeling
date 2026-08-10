@@ -63,7 +63,12 @@ async function probeSepaSchemaReady(db: PrismaClient): Promise<boolean> {
  */
 export async function ensureSepaPaymentSchema(db: PrismaClient) {
   if (schemaReady) return;
-  // Negative cache: incomplete/skipped schema must not re-probe every request.
+  // Production/Vercel: migrate-deploy owns schema — zero information_schema RTTs on clicks.
+  if (shouldSkipRuntimeDdl()) {
+    schemaReady = true;
+    return;
+  }
+  // Negative cache: incomplete schema must not re-probe every request (non-prod).
   if (
     !ensurePromise &&
     lastIncompleteProbeAt > 0 &&
@@ -76,15 +81,6 @@ export async function ensureSepaPaymentSchema(db: PrismaClient) {
       if (await probeSepaSchemaReady(db)) {
         schemaReady = true;
         lastIncompleteProbeAt = 0;
-        return;
-      }
-
-      if (shouldSkipRuntimeDdl()) {
-        console.error(
-          "[sepa] ensureSepaPaymentSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
-        );
-        lastIncompleteProbeAt = Date.now();
-        ensurePromise = null;
         return;
       }
 
