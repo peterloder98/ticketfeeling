@@ -15,11 +15,11 @@ export default async function EventsPage({ searchParams }: Props) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
 
-  const org = await getDefaultOrganization();
+  const [org, events] = await Promise.all([
+    getDefaultOrganization(),
+    loadPublicListingEvents({ take: 80 }),
+  ]);
   const feeConfig = resolveActivePlatformFeeConfig(org?.settings?.platformFeeConfig);
-
-  // Flip due Vorverkaufsstart, then load; search filters client-side for instant feedback.
-  const events = await loadPublicListingEvents({ take: 80 });
 
   const listings = buildPublicListingCards(events);
   const cards = await listingCardsToEventCardData(listings, feeConfig);

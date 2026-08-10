@@ -26,6 +26,7 @@ import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
 import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 
+export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -38,14 +39,16 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function EmbedEventShopPage({ params }: Props) {
   const { slug } = await params;
-  const { ensureEventPricingSchema } = await import(
-    "@/lib/commerce/ensure-event-pricing-schema"
-  );
-  const schemaReady = Promise.all([
-    ensureEventPricingSchema(prisma),
-    ensureScheduleChangedAtColumn(),
-  ]);
-  const eventPromise = prisma.event.findFirst({
+  // Never block public embed GET on schema ensures (prod is migrate-deploy).
+  if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
+    void Promise.all([
+      import("@/lib/commerce/ensure-event-pricing-schema").then(({ ensureEventPricingSchema }) =>
+        ensureEventPricingSchema(prisma),
+      ),
+      ensureScheduleChangedAtColumn(),
+    ]).catch((err) => console.error("[embed/event] schema ensure failed", err));
+  }
+  const event = await prisma.event.findFirst({
     where: { slug },
     include: {
       location: true,
@@ -58,7 +61,6 @@ export default async function EmbedEventShopPage({ params }: Props) {
       },
     },
   });
-  const [, event] = await Promise.all([schemaReady, eventPromise]);
   if (!event) {
     return (
       <div className="rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-10 text-center">
@@ -73,7 +75,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
   }
 
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
-  const { effectiveEventStatus } = await import("@/lib/commerce/event-sale");
+  const { effectiveEventStatus, isEventSaleOpen } = await import("@/lib/commerce/event-sale");
   void ensurePresaleAutoRelease({
     id: event.id,
     organizationId: event.organizationId,
@@ -122,7 +124,6 @@ export default async function EmbedEventShopPage({ params }: Props) {
   const coverImageUrl = resolveEventCoverUrl(event);
 
   const feeConfig = resolveActivePlatformFeeConfig(event.organization.settings?.platformFeeConfig);
-  const { isEventSaleOpen } = await import("@/lib/commerce/event-sale");
   const saleOpen = isEventSaleOpen(event);
 
   const hasReservedSeating =
@@ -141,15 +142,17 @@ export default async function EmbedEventShopPage({ params }: Props) {
         )
         .map((c) => c.id)
     : [];
-  const seatCounts = hasReservedSeating
-    ? await assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
-    : {};
 
   const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
     "@/lib/commerce/load-event-pricing"
   );
   const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
-  const campaigns = await loadEventPriceCampaigns(event.id);
+  const [seatCounts, campaigns] = await Promise.all([
+    hasReservedSeating
+      ? assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
+      : Promise.resolve({} as Record<string, number>),
+    loadEventPriceCampaigns(event.id),
+  ]);
   const accessibilityOffer = accessibilityOfferFromEvent(event);
   const priceNow = new Date();
 
@@ -226,7 +229,12 @@ export default async function EmbedEventShopPage({ params }: Props) {
 
   return (
     <>
-      <OrgTracking embedMode eventSlug={event.slug} eventTracking={event} />
+      <OrgTracking
+        embedMode
+        eventSlug={event.slug}
+        eventTracking={event}
+        orgSettings={event.organization.settings}
+      />
       <FunnelViewTracker
         kind="event_page_view"
         eventSlug={event.slug}

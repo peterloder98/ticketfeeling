@@ -3,6 +3,7 @@
   "framework": "nextjs",
   "installCommand": "cd ../.. && npm install",
   "buildCommand": "npm run build",
+  "regions": ["fra1"],
   "crons": [
     {
       "path": "/api/v1/cron/stripe-payout-reconcile?kind=daily",

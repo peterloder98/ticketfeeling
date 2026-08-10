@@ -12,6 +12,9 @@ import { HideSiteChrome } from "@/components/hide-site-chrome";
 import { SkipOnEmbed } from "@/components/skip-on-embed";
 import "./globals.css";
 
+/** DE product + EU Neon: never run SSR in iad1 (cross-Atlantic ≈ multi-second clicks). */
+export const preferredRegion = "fra1";
+
 const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],

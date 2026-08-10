@@ -35,6 +35,7 @@ import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 
+export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -62,16 +63,18 @@ function formatEventDate(date: Date) {
 
 export default async function EventPage({ params }: Props) {
   const { slug } = await params;
-  // Schema ensures are no-ops in production (migrate-deploy). Non-prod runs in parallel with load.
-  const { ensureEventPricingSchema } = await import(
-    "@/lib/commerce/ensure-event-pricing-schema"
-  );
-  const schemaReady = Promise.all([
-    ensureEventPricingSchema(prisma),
-    ensureScheduleChangedAtColumn(),
-    ensureTicketSponsorLogoColumns(),
-  ]);
-  const eventPromise = prisma.event.findFirst({
+  // Production skips ensure* (migrate-deploy). Never await DDL probes on public GET.
+  if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
+    void Promise.all([
+      import("@/lib/commerce/ensure-event-pricing-schema").then(({ ensureEventPricingSchema }) =>
+        ensureEventPricingSchema(prisma),
+      ),
+      ensureScheduleChangedAtColumn(),
+      ensureTicketSponsorLogoColumns(),
+    ]).catch((err) => console.error("[event] schema ensure failed", err));
+  }
+
+  const event = await prisma.event.findFirst({
     where: { slug },
     include: {
       location: true,
@@ -86,13 +89,12 @@ export default async function EventPage({ params }: Props) {
       },
     },
   });
-  const [, event] = await Promise.all([schemaReady, eventPromise]);
 
   if (!event) notFound();
 
   // UI uses effective status; durable DB flip runs in background (cron + throttled batch).
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
-  const { effectiveEventStatus } = await import("@/lib/commerce/event-sale");
+  const { effectiveEventStatus, isEventSaleOpen } = await import("@/lib/commerce/event-sale");
   void ensurePresaleAutoRelease({
     id: event.id,
     organizationId: event.organizationId,
@@ -151,7 +153,6 @@ export default async function EventPage({ params }: Props) {
 
   const feeConfig = resolveActivePlatformFeeConfig(event.organization.settings?.platformFeeConfig);
 
-  const { isEventSaleOpen } = await import("@/lib/commerce/event-sale");
   const saleOpen = isEventSaleOpen(event);
 
   const hasReservedSeating =
@@ -170,15 +171,19 @@ export default async function EventPage({ params }: Props) {
         )
         .map((c) => c.id)
     : [];
-  const seatCounts = hasReservedSeating
-    ? await assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
-    : {};
 
   const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
     "@/lib/commerce/load-event-pricing"
   );
   const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
-  const campaigns = await loadEventPriceCampaigns(event.id);
+
+  // Seat counts + campaigns are independent — never serialize Neon RTTs.
+  const [seatCounts, campaigns] = await Promise.all([
+    hasReservedSeating
+      ? assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
+      : Promise.resolve({} as Record<string, number>),
+    loadEventPriceCampaigns(event.id),
+  ]);
   const accessibilityOffer = accessibilityOfferFromEvent(event);
   const priceNow = new Date();
 

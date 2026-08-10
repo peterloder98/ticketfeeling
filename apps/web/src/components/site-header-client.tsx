@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
 import { BrandLogo } from "@/components/brand-logo";
@@ -10,22 +11,101 @@ import { Search, Ticket, HelpCircle, User } from "lucide-react";
 const navLinkClass =
   "inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-[14px] px-2.5 py-2 text-sm font-medium text-[var(--tf-navy)] transition hover:bg-[rgba(20,184,166,0.1)] hover:text-[var(--tf-teal-hover)] md:px-3";
 
-export function SiteHeaderClient({
-  signedIn,
-  canAdmin,
-  canKasse = false,
-  boxOfficeOnly = false,
-}: {
-  signedIn: boolean;
+type StaffNav = {
   canAdmin: boolean;
-  canKasse?: boolean;
-  boxOfficeOnly?: boolean;
-}) {
+  canKasse: boolean;
+  boxOfficeOnly: boolean;
+};
+
+const STAFF_NAV_CACHE_KEY = "tf_staff_nav_v1";
+const STAFF_NAV_TTL_MS = 5 * 60 * 1000;
+
+function readStaffNavCache(): StaffNav | null {
+  try {
+    const raw = sessionStorage.getItem(STAFF_NAV_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StaffNav & { at?: number };
+    if (!parsed.at || Date.now() - parsed.at > STAFF_NAV_TTL_MS) return null;
+    return {
+      canAdmin: Boolean(parsed.canAdmin),
+      canKasse: Boolean(parsed.canKasse),
+      boxOfficeOnly: Boolean(parsed.boxOfficeOnly),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeStaffNavCache(nav: StaffNav) {
+  try {
+    sessionStorage.setItem(STAFF_NAV_CACHE_KEY, JSON.stringify({ ...nav, at: Date.now() }));
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
+export function SiteHeaderClient({ signedIn }: { signedIn: boolean }) {
   const pathname = usePathname() ?? "";
   const isAdminChrome =
     pathname.startsWith("/admin") ||
     pathname.startsWith("/kasse") ||
     pathname.startsWith("/scanner");
+
+  // Path-only defaults (SSR-safe). sessionStorage / API fill in after mount.
+  const [staff, setStaff] = useState<StaffNav>(() => {
+    if (!signedIn) return { canAdmin: false, canKasse: false, boxOfficeOnly: false };
+    if (pathname.startsWith("/admin")) {
+      return { canAdmin: true, canKasse: false, boxOfficeOnly: false };
+    }
+    if (pathname.startsWith("/kasse") || pathname.startsWith("/scanner")) {
+      return { canAdmin: false, canKasse: true, boxOfficeOnly: true };
+    }
+    return { canAdmin: false, canKasse: false, boxOfficeOnly: false };
+  });
+
+  useEffect(() => {
+    if (!signedIn) {
+      setStaff({ canAdmin: false, canKasse: false, boxOfficeOnly: false });
+      try {
+        sessionStorage.removeItem(STAFF_NAV_CACHE_KEY);
+      } catch {
+        // ignore
+      }
+      return;
+    }
+
+    const cached = readStaffNavCache();
+    if (cached) {
+      setStaff(cached);
+      return;
+    }
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/v1/auth/nav", { credentials: "same-origin" });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as StaffNav;
+        const next = {
+          canAdmin: Boolean(data.canAdmin),
+          canKasse: Boolean(data.canKasse),
+          boxOfficeOnly: Boolean(data.boxOfficeOnly),
+        };
+        if (!cancelled) {
+          setStaff(next);
+          writeStaffNavCache(next);
+        }
+      } catch {
+        // Keep optimistic/public defaults — never block chrome.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn]);
+
+  const { canAdmin, canKasse, boxOfficeOnly } = staff;
   // Admin logo → public homepage (leave admin). Vorverkaufsstelle stays on Tageskasse.
   const homeHref =
     boxOfficeOnly || (isAdminChrome && canKasse && !canAdmin) ? "/kasse" : "/";
@@ -130,7 +210,14 @@ export function SiteHeaderClient({
               <button
                 type="button"
                 className="tf-btn tf-btn-secondary !min-h-11 shrink-0 !px-3 text-sm"
-                onClick={() => void signOut({ callbackUrl: "/" })}
+                onClick={() => {
+                  try {
+                    sessionStorage.removeItem(STAFF_NAV_CACHE_KEY);
+                  } catch {
+                    // ignore
+                  }
+                  void signOut({ callbackUrl: "/" });
+                }}
               >
                 Abmelden
               </button>

@@ -37,6 +37,29 @@ describe("withPrismaPoolParams", () => {
     }
   });
 
+  it("uses connection_limit=1 for serverless direct (non-pooler) hosts", () => {
+    const prev = process.env.VERCEL;
+    process.env.VERCEL = "1";
+    try {
+      const out = withPrismaPoolParams(
+        "postgresql://u:p@ep-cool-name.eu-central-1.aws.neon.tech:5432/neondb?schema=public",
+      );
+      expect(out).toContain("connection_limit=1");
+      expect(out).not.toContain("pgbouncer=true");
+    } finally {
+      if (prev === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = prev;
+    }
+  });
+
+  it("adds pgbouncer for Neon pooler hosts", () => {
+    const out = withPrismaPoolParams(
+      "postgresql://u:p@ep-cool-name-pooler.eu-central-1.aws.neon.tech:5432/neondb",
+    );
+    expect(out).toContain("pgbouncer=true");
+    expect(out).toContain("connection_limit=10");
+  });
+
   it("leaves local direct URLs unchanged when not serverless", () => {
     const prev = process.env.VERCEL;
     const prevEnv = process.env.VERCEL_ENV;

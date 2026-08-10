@@ -8,6 +8,7 @@
  */
 
 const SERVERLESS_CONNECTION_LIMIT = "10";
+const SERVERLESS_DIRECT_CONNECTION_LIMIT = "1";
 const SERVERLESS_POOL_TIMEOUT = "20";
 const SERVERLESS_CONNECT_TIMEOUT = "15";
 
@@ -57,11 +58,14 @@ export function withPrismaPoolParams(rawUrl: string): string {
   }
 
   if (serverless || pooler) {
-    // Always apply serverless defaults (env overrides win). Do not leave Prisma's
-    // ~5-connection default in place — concurrent seat-map/cart/tracking exhausts it.
+    // Pooler: modest multiplexed pool. Direct Neon/Postgres on serverless: 1 conn
+    // (opening 10 direct sockets per isolate stamps out max_connections and adds seconds).
+    const defaultLimit = pooler
+      ? SERVERLESS_CONNECTION_LIMIT
+      : SERVERLESS_DIRECT_CONNECTION_LIMIT;
     params.set(
       "connection_limit",
-      process.env.PRISMA_CONNECTION_LIMIT?.trim() || SERVERLESS_CONNECTION_LIMIT,
+      process.env.PRISMA_CONNECTION_LIMIT?.trim() || defaultLimit,
     );
     params.set(
       "pool_timeout",
