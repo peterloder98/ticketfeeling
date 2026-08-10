@@ -5,6 +5,12 @@ import {
   JobPermanentError,
   JobNeedsAttentionError,
 } from "@/lib/jobs/queue";
+import {
+  MISSING_MAIL_RETRY_MAX_AGE_MS,
+  STAFF_NOTIFY_MAX_AGE_MS,
+  shouldRetryMissingBuyerMail,
+  shouldSendStaffNewOrderNotify,
+} from "@/lib/jobs/order-email-policy";
 import { suggestEmailDomainFix } from "@/lib/email/typo-hint";
 import {
   evaluateForgottenTicketMatch,
@@ -35,6 +41,34 @@ describe("job queue retry classification", () => {
     expect(a1).toBeGreaterThanOrEqual(15_000);
     expect(a4).toBeGreaterThan(a1);
     expect(a9).toBeLessThanOrEqual(6 * 60 * 60 * 1000 + 2_000);
+  });
+});
+
+describe("order email age policy", () => {
+  const now = new Date("2026-08-10T08:03:00.000Z");
+
+  it("retries buyer mail within 7 days but not for week-old test orders", () => {
+    expect(
+      shouldRetryMissingBuyerMail({ paidAt: new Date("2026-08-09T10:00:00.000Z") }, now),
+    ).toBe(true);
+    expect(
+      shouldRetryMissingBuyerMail(
+        { paidAt: new Date(now.getTime() - MISSING_MAIL_RETRY_MAX_AGE_MS - 60_000) },
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it("blocks staff Neue Bestellung for orders older than 24h", () => {
+    expect(
+      shouldSendStaffNewOrderNotify({ paidAt: new Date("2026-08-10T06:00:00.000Z") }, now),
+    ).toBe(true);
+    expect(
+      shouldSendStaffNewOrderNotify(
+        { paidAt: new Date(now.getTime() - STAFF_NOTIFY_MAX_AGE_MS - 60_000) },
+        now,
+      ),
+    ).toBe(false);
   });
 });
 

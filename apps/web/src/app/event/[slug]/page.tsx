@@ -41,8 +41,11 @@ type Props = { params: Promise<{ slug: string }> };
 
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
-  await ensureTicketSponsorLogoColumns();
-  const event = await prisma.event.findFirst({ where: { slug } });
+  // Skip ensure* here — metadata must stay cheap; page load patches schema if needed.
+  const event = await prisma.event.findFirst({
+    where: { slug },
+    select: { name: true },
+  });
   return { title: event?.name ?? "Event" };
 }
 
@@ -62,9 +65,12 @@ export default async function EventPage({ params }: Props) {
   const { ensureEventPricingSchema } = await import(
     "@/lib/commerce/ensure-event-pricing-schema"
   );
-  await ensureEventPricingSchema(prisma);
-  await ensureScheduleChangedAtColumn();
-  await ensureTicketSponsorLogoColumns();
+  // Parallel schema probes (memoized / prod-noop) — never serialize three DDL waits.
+  await Promise.all([
+    ensureEventPricingSchema(prisma),
+    ensureScheduleChangedAtColumn(),
+    ensureTicketSponsorLogoColumns(),
+  ]);
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {

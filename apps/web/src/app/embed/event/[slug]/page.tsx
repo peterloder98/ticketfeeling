@@ -41,8 +41,10 @@ export default async function EmbedEventShopPage({ params }: Props) {
   const { ensureEventPricingSchema } = await import(
     "@/lib/commerce/ensure-event-pricing-schema"
   );
-  await ensureEventPricingSchema(prisma);
-  await ensureScheduleChangedAtColumn();
+  await Promise.all([
+    ensureEventPricingSchema(prisma),
+    ensureScheduleChangedAtColumn(),
+  ]);
   const event = await prisma.event.findFirst({
     where: { slug },
     include: {

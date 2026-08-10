@@ -16,8 +16,6 @@ export async function listStaffMemberships(organizationId: string) {
           email: true,
           name: true,
           status: true,
-          createdAt: true,
-          updatedAt: true,
         },
       },
       roles: {

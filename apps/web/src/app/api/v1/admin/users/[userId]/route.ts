@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { getDefaultOrganizationForUser } from "@/lib/rbac";
-import { canManageStaffUsers, ensureStaffManageableRoles } from "@/lib/admin/staff-access";
+import { canManageStaffUsers } from "@/lib/admin/staff-access";
 import {
   resetStaffPassword,
   setMembershipRoles,
@@ -11,7 +10,7 @@ import {
 } from "@/lib/admin/staff-users";
 
 async function requireUsersWrite() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) {
     return { error: NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }) };
   }
@@ -19,7 +18,7 @@ async function requireUsersWrite() {
   if (!membership) {
     return { error: NextResponse.json({ error: { code: "NO_ORG" } }, { status: 403 }) };
   }
-  await ensureStaffManageableRoles(membership.organizationId);
+  // Role sync lives in setMembershipRoles / create paths — avoid ~60 upserts per PATCH.
   const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {
     return { error: NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 }) };

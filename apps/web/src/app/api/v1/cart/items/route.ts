@@ -39,11 +39,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = schema.parse(await request.json());
-    const [session, sessionKey] = await Promise.all([
+    const [rawBody, session, sessionKey] = await Promise.all([
+      request.json(),
       getServerSession(authOptions),
       readCartSessionKeyFromRequest(request),
     ]);
+    const body = schema.parse(rawBody);
     const cart = await addToCart({
       categoryId: body.categoryId,
       quantity: body.quantity,

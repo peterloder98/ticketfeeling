@@ -1,19 +1,18 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { prisma } from "@/lib/db";
+import { getSession } from "@/lib/auth/session";
 import { getDefaultOrganizationForUser } from "@/lib/rbac";
 import {
   canManageStaffUsers,
   ensureStaffManageableRoles,
   staffRoleLabel,
 } from "@/lib/admin/staff-access";
-import { createStaffInvite } from "@/lib/admin/staff-invite";
+import { createStaffInvite, listOpenStaffInvites } from "@/lib/admin/staff-invite";
 import { createStaffUser, listStaffMemberships } from "@/lib/admin/staff-users";
+import { prisma } from "@/lib/db";
 
-async function requireUsersWrite() {
-  const session = await getServerSession(authOptions);
+async function requireUsersWrite(opts?: { syncRoles?: boolean }) {
+  const session = await getSession();
   if (!session?.user) {
     return { error: NextResponse.json({ error: { code: "UNAUTHORIZED" } }, { status: 401 }) };
   }
@@ -21,7 +20,10 @@ async function requireUsersWrite() {
   if (!membership) {
     return { error: NextResponse.json({ error: { code: "NO_ORG" } }, { status: 403 }) };
   }
-  await ensureStaffManageableRoles(membership.organizationId);
+  // Mutations may need role sync; list GET skips the heavy path (ensure is TTL-cached anyway).
+  if (opts?.syncRoles) {
+    await ensureStaffManageableRoles(membership.organizationId);
+  }
   const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {
     return { error: NextResponse.json({ error: { code: "FORBIDDEN" } }, { status: 403 }) };
@@ -30,7 +32,7 @@ async function requireUsersWrite() {
 }
 
 export async function GET() {
-  const auth = await requireUsersWrite();
+  const auth = await requireUsersWrite({ syncRoles: false });
   if ("error" in auth && auth.error) return auth.error;
 
   const { membership } = auth as Awaited<ReturnType<typeof requireUsersWrite>> & {
@@ -39,12 +41,7 @@ export async function GET() {
 
   const [members, invites, customerCount] = await Promise.all([
     listStaffMemberships(membership.organizationId),
-    prisma.staffInvite.findMany({
-      where: { organizationId: membership.organizationId },
-      include: { invitedBy: { select: { email: true, name: true } } },
-      orderBy: { invitedAt: "desc" },
-      take: 50,
-    }),
+    listOpenStaffInvites(membership.organizationId),
     prisma.customer.count({ where: { organizationId: membership.organizationId } }),
   ]);
 
@@ -69,8 +66,7 @@ export async function GET() {
       status: inv.status,
       invitedAt: inv.invitedAt.toISOString(),
       expiresAt: inv.expiresAt.toISOString(),
-      acceptPath: inv.status === "pending" ? `/einladung/${inv.token}` : null,
-      invitedBy: inv.invitedBy,
+      acceptPath: `/einladung/${inv.token}`,
     })),
     customerCount,
   });
@@ -95,7 +91,7 @@ const createSchema = z.discriminatedUnion("mode", [
 ]);
 
 export async function POST(request: Request) {
-  const auth = await requireUsersWrite();
+  const auth = await requireUsersWrite({ syncRoles: true });
   if ("error" in auth && auth.error) return auth.error;
 
   const { session, membership } = auth as Awaited<ReturnType<typeof requireUsersWrite>> & {

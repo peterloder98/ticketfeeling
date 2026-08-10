@@ -26,18 +26,45 @@ export async function isBoxOfficeOnlyUser(userId: string, organizationId: string
 /** Permissions for Rolle „Vorverkaufsstelle“ (key: box_office). */
 export const VORVERKAUF_ROLE_PERMISSIONS = ["box_office:sell"] as const;
 
+const vorverkaufSyncAt = new Map<string, number>();
+const VORVERKAUF_SYNC_TTL_MS = 10 * 60 * 1000;
+
 /**
  * Ensure org has Rolle „Vorverkaufsstelle“ with Tageskasse-only permissions.
  * Safe to call on invite / partner admin — syncs production without full seed.
+ * Memoized per process so partner admin pages do not re-upsert on every soft-nav.
  */
 export async function ensureVorverkaufRole(organizationId: string) {
-  for (const key of VORVERKAUF_ROLE_PERMISSIONS) {
-    await prisma.permission.upsert({
-      where: { key },
-      update: { description: "Tageskasse verkaufen" },
-      create: { key, description: "Tageskasse verkaufen" },
-    });
+  const last = vorverkaufSyncAt.get(organizationId);
+  if (last && Date.now() - last < VORVERKAUF_SYNC_TTL_MS) return;
+
+  const existingRole = await prisma.role.findUnique({
+    where: { organizationId_key: { organizationId, key: "box_office" } },
+    select: {
+      id: true,
+      permissions: { select: { permission: { select: { key: true } } } },
+    },
+  });
+  if (existingRole) {
+    const keys = new Set(existingRole.permissions.map((row) => row.permission.key));
+    const complete =
+      VORVERKAUF_ROLE_PERMISSIONS.every((key) => keys.has(key)) &&
+      [...keys].every((key) => (VORVERKAUF_ROLE_PERMISSIONS as readonly string[]).includes(key));
+    if (complete) {
+      vorverkaufSyncAt.set(organizationId, Date.now());
+      return prisma.role.findUniqueOrThrow({ where: { id: existingRole.id } });
+    }
   }
+
+  await Promise.all(
+    VORVERKAUF_ROLE_PERMISSIONS.map((key) =>
+      prisma.permission.upsert({
+        where: { key },
+        update: { description: "Tageskasse verkaufen" },
+        create: { key, description: "Tageskasse verkaufen" },
+      }),
+    ),
+  );
 
   const role = await prisma.role.upsert({
     where: {
@@ -57,15 +84,17 @@ export async function ensureVorverkaufRole(organizationId: string) {
   });
   const allowedIds = new Set(permissions.map((p) => p.id));
 
-  for (const permission of permissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: { roleId: role.id, permissionId: permission.id },
-      },
-      update: {},
-      create: { roleId: role.id, permissionId: permission.id },
-    });
-  }
+  await Promise.all(
+    permissions.map((permission) =>
+      prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: { roleId: role.id, permissionId: permission.id },
+        },
+        update: {},
+        create: { roleId: role.id, permissionId: permission.id },
+      }),
+    ),
+  );
 
   // Strip broader legacy grants (org:read, events:read, checkin:scan, …).
   const existing = await prisma.rolePermission.findMany({
@@ -82,6 +111,7 @@ export async function ensureVorverkaufRole(organizationId: string) {
     });
   }
 
+  vorverkaufSyncAt.set(organizationId, Date.now());
   return role;
 }
 

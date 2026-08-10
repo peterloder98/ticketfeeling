@@ -43,9 +43,12 @@ END $$;
 `;
 
 const ENSURE_BUDGET_MS = 4_000;
+/** Avoid information_schema probes on every cart/checkout click after a miss/skip. */
+const PROBE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 
 let ensurePromise: Promise<void> | null = null;
 let schemaReady = false;
+let lastIncompleteProbeAt = 0;
 
 async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
   try {
@@ -78,10 +81,19 @@ async function probeSeatingSchemaReady(db: PrismaClient): Promise<boolean> {
 
 export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPrisma) {
   if (schemaReady) return;
+  // Negative cache: incomplete/skipped schema must not re-probe every request.
+  if (
+    !ensurePromise &&
+    lastIncompleteProbeAt > 0 &&
+    Date.now() - lastIncompleteProbeAt < PROBE_NEGATIVE_TTL_MS
+  ) {
+    return;
+  }
   if (!ensurePromise) {
     ensurePromise = (async () => {
       if (await probeSeatingSchemaReady(db)) {
         schemaReady = true;
+        lastIncompleteProbeAt = 0;
         return;
       }
 
@@ -89,6 +101,7 @@ export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPr
         console.error(
           "[seating] ensureSeatingAssignmentSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
         );
+        lastIncompleteProbeAt = Date.now();
         ensurePromise = null;
         return;
       }
@@ -109,11 +122,14 @@ export async function ensureSeatingAssignmentSchema(db: PrismaClient = defaultPr
         console.error("[seating] ensureSeatingAssignmentSchema FK failed", error);
       }
       if (failed) {
+        lastIncompleteProbeAt = Date.now();
         ensurePromise = null;
         return;
       }
       schemaReady = true;
+      lastIncompleteProbeAt = 0;
     })().catch((error) => {
+      lastIncompleteProbeAt = Date.now();
       ensurePromise = null;
       throw error;
     });

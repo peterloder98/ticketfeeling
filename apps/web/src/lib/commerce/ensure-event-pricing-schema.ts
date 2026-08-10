@@ -41,9 +41,12 @@ const STATEMENTS = [
 ];
 
 const ENSURE_BUDGET_MS = 5_000;
+/** Avoid information_schema probes on every event/cart click after a miss/skip. */
+const PROBE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 
 let ensurePromise: Promise<void> | null = null;
 let schemaReady = false;
+let lastIncompleteProbeAt = 0;
 
 async function probeReady(db: PrismaClient): Promise<boolean> {
   try {
@@ -60,18 +63,28 @@ async function probeReady(db: PrismaClient): Promise<boolean> {
 /** Best-effort DDL when migrate deploy has not run yet (local/dev). Skipped in production. */
 export async function ensureEventPricingSchema(db: PrismaClient) {
   if (schemaReady) return;
-  if (await probeReady(db)) {
-    schemaReady = true;
-    return;
-  }
-  if (shouldSkipRuntimeDdl()) {
-    console.error(
-      "[ensureEventPricingSchema] schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
-    );
+  // Negative cache: incomplete/skipped schema must not re-probe every request.
+  if (
+    !ensurePromise &&
+    lastIncompleteProbeAt > 0 &&
+    Date.now() - lastIncompleteProbeAt < PROBE_NEGATIVE_TTL_MS
+  ) {
     return;
   }
   if (!ensurePromise) {
     ensurePromise = (async () => {
+      if (await probeReady(db)) {
+        schemaReady = true;
+        lastIncompleteProbeAt = 0;
+        return;
+      }
+      if (shouldSkipRuntimeDdl()) {
+        console.error(
+          "[ensureEventPricingSchema] schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
+        );
+        lastIncompleteProbeAt = Date.now();
+        return;
+      }
       for (const sql of STATEMENTS) {
         try {
           await db.$executeRawUnsafe(sql);
@@ -92,6 +105,8 @@ export async function ensureEventPricingSchema(db: PrismaClient) {
         }
       }
       schemaReady = await probeReady(db);
+      if (!schemaReady) lastIncompleteProbeAt = Date.now();
+      else lastIncompleteProbeAt = 0;
     })().finally(() => {
       ensurePromise = null;
     });

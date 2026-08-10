@@ -37,15 +37,26 @@ async function columnExists(
 
 let legalEnsurePromise: Promise<void> | null = null;
 let legalSchemaReady = false;
+let legalIncompleteProbeAt = 0;
 const LEGAL_ENSURE_BUDGET_MS = 4_000;
+/** Avoid information_schema probes on every checkout after a miss/skip. */
+const LEGAL_PROBE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 
 /** Best-effort schema patch when migrate deploy has not run yet. Memoized per process. */
 export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
   if (legalSchemaReady) return;
+  if (
+    !legalEnsurePromise &&
+    legalIncompleteProbeAt > 0 &&
+    Date.now() - legalIncompleteProbeAt < LEGAL_PROBE_NEGATIVE_TTL_MS
+  ) {
+    return;
+  }
   if (!legalEnsurePromise) {
     legalEnsurePromise = (async () => {
       if (await columnExists(db, "legal_documents", "enabled")) {
         legalSchemaReady = true;
+        legalIncompleteProbeAt = 0;
         return;
       }
 
@@ -53,6 +64,7 @@ export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
         console.error(
           "[legal] ensureLegalSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
         );
+        legalIncompleteProbeAt = Date.now();
         legalEnsurePromise = null;
         return;
       }
@@ -95,11 +107,14 @@ export async function ensureLegalSchema(db: PrismaClient = defaultPrisma) {
         await owned.$disconnect().catch(() => undefined);
       }
       if (failed) {
+        legalIncompleteProbeAt = Date.now();
         legalEnsurePromise = null;
         return;
       }
       legalSchemaReady = true;
+      legalIncompleteProbeAt = 0;
     })().catch((error) => {
+      legalIncompleteProbeAt = Date.now();
       legalEnsurePromise = null;
       throw error;
     });

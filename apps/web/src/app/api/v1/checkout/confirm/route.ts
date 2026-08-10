@@ -141,11 +141,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = schema.parse(await request.json());
-    const session = await getServerSession(authOptions);
+    // Overlap JSON parse with session + cart cookie — purchase latency critical path.
+    const [rawBody, session, sessionKey] = await Promise.all([
+      request.json(),
+      getServerSession(authOptions),
+      readCartSessionKeyFromRequest(request),
+    ]);
+    const body = schema.parse(rawBody);
     const asGuest = body.preferGuest === true || body.checkoutMode === "guest";
     const checkoutMode = asGuest ? "guest" : "register";
-    const sessionKey = await readCartSessionKeyFromRequest(request);
     const result = await createOrderFromCart({
       userId: asGuest ? null : session?.user?.id,
       sessionKey,

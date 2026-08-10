@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { getServerSession } from "next-auth";
+import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { formatEuroFromCents } from "@/lib/money";
 import { ChannelBadge } from "@/components/channel-badge";
 import { BuyerHeatmap } from "@/components/admin/buyer-heatmap";
@@ -38,15 +37,14 @@ function purchaseAt(order: { paidAt: Date | null; createdAt: Date }) {
 }
 
 export default async function AdminOrdersPage({ searchParams }: Props) {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
+  const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
   const allowed =
-    (await userHasPermission(session.user.id, membership.organizationId, "audit:read")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "org:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "reports:read"));
+    keys.has("audit:read") || keys.has("org:write") || keys.has("reports:read");
   if (!allowed) return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
 
   const sp = await searchParams;
@@ -82,11 +80,25 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
       where,
       orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
       take: 80,
-      include: {
-        customer: true,
-        tickets: true,
-        items: true,
-        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        channel: true,
+        voidedAt: true,
+        paidAt: true,
+        createdAt: true,
+        customerTotalCents: true,
+        grossCents: true,
+        paymentMethod: true,
+        customer: {
+          select: { firstName: true, lastName: true, email: true },
+        },
+        _count: { select: { tickets: true } },
+        items: {
+          select: { eventNameSnapshot: true },
+          take: 1,
+        },
       },
     }),
     loadBuyerHeatmapPoints({
@@ -186,7 +198,6 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
 
       <div className="space-y-3">
         {orders.map((order) => {
-          const payment = order.payments[0];
           const cancelled = isOrderCancelled({
             status: order.status,
             voidedAt: order.voidedAt,
@@ -235,10 +246,10 @@ export default async function AdminOrdersPage({ searchParams }: Props) {
                 {formatEuroFromCents(order.customerTotalCents || order.grossCents)}
                 <span className="font-normal text-[var(--tf-text-secondary)]">
                   {" "}
-                  · {order.tickets.length}{" "}
-                  {order.tickets.length === 1 ? "Ticket" : "Tickets"}
+                  · {order._count.tickets}{" "}
+                  {order._count.tickets === 1 ? "Ticket" : "Tickets"}
                   {order.channel === "box_office"
-                    ? ` · ${paymentMethodLabel(payment?.method)}`
+                    ? ` · ${paymentMethodLabel(order.paymentMethod)}`
                     : ""}
                 </span>
               </p>

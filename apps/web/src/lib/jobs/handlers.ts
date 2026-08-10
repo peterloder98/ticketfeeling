@@ -21,6 +21,7 @@ import {
   kickJob,
   registerJobHandler,
 } from "@/lib/jobs/queue";
+import { shouldSendStaffNewOrderNotify, shouldRetryMissingBuyerMail } from "@/lib/jobs/order-email-policy";
 
 let registered = false;
 
@@ -113,6 +114,11 @@ async function runPostFulfillSideEffects(orderId: string) {
       entityType: "order",
       entityId: orderId,
       after: { reason: "demo_seed" },
+    });
+    // Clear reconcile backlog — demo orders must not stay ticketSentAt=null forever.
+    await prisma.order.updateMany({
+      where: { id: orderId, ticketSentAt: null },
+      data: { ticketSentAt: new Date() },
     });
     return;
   }
@@ -262,6 +268,17 @@ async function sendBuyerTicketEmail(orderId: string) {
   } else if (sendResult.provider === "stub" && sendResult.reason === "smtp_not_configured") {
     throw new Error("TEMP: smtp_not_configured");
   } else if (sendResult.provider === "stub" && sendResult.reason === "local_guest") {
+    // Synthetic buyers never get SMTP — mark sent so reconcile does not retry.
+    await prisma.order.update({
+      where: { id: fresh.id },
+      data: {
+        ticketSentAt: new Date(),
+        deliveryStatus:
+          fresh.deliveryStatus === "printed" || fresh.deliveryStatus === "both"
+            ? "both"
+            : fresh.deliveryStatus,
+      },
+    });
     return;
   } else {
     throw new Error(`TEMP: email_not_delivered:${sendResult.provider}`);
@@ -292,6 +309,28 @@ async function sendStaffOrderEmail(orderId: string) {
     select: { id: true },
   });
   if (alreadyNotified) return;
+
+  if (
+    !shouldSendStaffNewOrderNotify({
+      paidAt: fresh.paidAt,
+      paymentSucceededAt: fresh.paymentSucceededAt,
+      createdAt: fresh.createdAt,
+    })
+  ) {
+    await writeAudit({
+      organizationId: fresh.organizationId,
+      action: "email.order_staff_skipped",
+      entityType: "order",
+      entityId: fresh.id,
+      after: {
+        reason: "stale_order",
+        paidAt: fresh.paidAt?.toISOString() ?? null,
+        paymentSucceededAt: fresh.paymentSucceededAt?.toISOString() ?? null,
+        createdAt: fresh.createdAt.toISOString(),
+      },
+    });
+    return;
+  }
 
   const recipients = await resolveOrderNotificationRecipients(fresh.organizationId);
   if (recipients.to.length === 0) {
@@ -475,9 +514,28 @@ async function healPaidOrder(orderId: string) {
     return;
   }
 
-  // Tickets exist but mail missing
+  // Tickets exist but mail missing — only auto-send while still in the retry window
   if (!order.ticketSentAt && order.channel !== "box_office") {
-    await sendBuyerTicketEmail(orderId);
+    if (
+      shouldRetryMissingBuyerMail({
+        paidAt: order.paidAt,
+        paymentSucceededAt: order.paymentSucceededAt,
+        createdAt: order.createdAt,
+      })
+    ) {
+      await sendBuyerTicketEmail(orderId);
+    } else {
+      await writeAudit({
+        organizationId: order.organizationId,
+        action: "reconcile.stale_missing_mail",
+        entityType: "order",
+        entityId: orderId,
+        after: {
+          reason: "heal_skipped_stale_buyer_mail",
+          paidAt: order.paidAt?.toISOString() ?? null,
+        },
+      });
+    }
   }
 
   // Invoice PDF missing — regenerate via fulfillment idempotent path is heavy;

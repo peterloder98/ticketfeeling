@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { getOpenCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
@@ -9,7 +8,7 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { PromoCodeForm } from "@/components/promo-code-form";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { buildSellerIdentity } from "@/lib/legal/seller";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import {
   buildCheckoutPaymentOptions,
   parsePaymentFeeConfig,
@@ -28,11 +27,13 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
 
 export default async function CheckoutPage() {
-  const session = await getServerSession(authOptions);
-  const sessionKey = await readCartSessionKey();
+  const [session, sessionKey, org] = await Promise.all([
+    getSession(),
+    readCartSessionKey(),
+    getDefaultOrganization(),
+  ]);
   const cart = await getOpenCart({ userId: session?.user?.id, sessionKey });
   const summary = await priceCart(cart);
-  const org = await getDefaultOrganization();
   const seller = buildSellerIdentity(org!, org?.settings);
   const feeConfig = parsePaymentFeeConfig(org?.settings?.paymentFeeConfig);
   const uiConfig = parsePaymentUiConfig(org?.settings?.paymentUiConfig);
@@ -68,10 +69,9 @@ export default async function CheckoutPage() {
   if (session?.user?.id) {
     const membership = await getDefaultOrganizationForUser(session.user.id);
     if (membership) {
+      const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
       isStaff =
-        (await userHasPermission(session.user.id, membership.organizationId, "events:write")) ||
-        (await userHasPermission(session.user.id, membership.organizationId, "org:write")) ||
-        (await userHasPermission(session.user.id, membership.organizationId, "box_office:sell"));
+        keys.has("events:write") || keys.has("org:write") || keys.has("box_office:sell");
     }
   }
 

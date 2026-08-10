@@ -20,6 +20,36 @@ function appUrl() {
 
 const INVITABLE_ROLE_KEYS = new Set<StaffManageableRoleKey>(["organizer_admin", "scanner"]);
 
+/** "Offene Einladungen" — only pending and not past expiry. */
+export function isOpenStaffInvite(status: string, expiresAt: Date, now = new Date()) {
+  return status === "pending" && expiresAt.getTime() > now.getTime();
+}
+
+/** Staff invites shown under Benutzerverwaltung → Offene Einladungen. */
+export async function listOpenStaffInvites(organizationId: string, take = 50) {
+  const now = new Date();
+  return prisma.staffInvite.findMany({
+    where: {
+      organizationId,
+      status: "pending",
+      expiresAt: { gt: now },
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      roleKey: true,
+      status: true,
+      invitedAt: true,
+      expiresAt: true,
+      token: true,
+    },
+    orderBy: { invitedAt: "desc" },
+    take,
+  });
+}
+
 export async function createStaffInvite(input: {
   organizationId: string;
   invitedByUserId: string;

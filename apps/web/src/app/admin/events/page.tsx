@@ -1,8 +1,7 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
+import { getSession } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { getEventListSales } from "@/lib/commerce/event-sales-report";
 import { parseEventListFilters } from "@/lib/admin/event-list-filters";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
@@ -17,24 +16,22 @@ export const metadata = { title: "Events" };
 type Props = { searchParams: Promise<{ f?: string }> };
 
 export default async function AdminEventsPage({ searchParams }: Props) {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
-  const allowed = await userHasPermission(session.user.id, membership.organizationId, "events:read");
+  const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
+  const allowed = keys.has("events:read");
   if (!allowed) return <p className="text-[var(--danger)]">Keine Berechtigung (events:read).</p>;
 
-  const canWrite = await userHasPermission(
-    session.user.id,
-    membership.organizationId,
-    "events:write",
-  );
+  const canWrite = keys.has("events:write");
 
   // Persist due Vorverkaufsstart → Im Verkauf before listing (closes cron lag).
-  await releaseDuePresales({ organizationId: membership.organizationId });
-
-  const sp = await searchParams;
+  const [sp] = await Promise.all([
+    searchParams,
+    releaseDuePresales({ organizationId: membership.organizationId }),
+  ]);
   const activeFilters = parseEventListFilters(sp.f);
   // Load all statuses once — chips filter client-side for instant response.
   const events = await getEventListSales(membership.organizationId);

@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { getSalesStats } from "@/lib/commerce/stats";
 import { formatEuroFromCents } from "@/lib/money";
@@ -23,7 +22,7 @@ function purchaseAt(order: { paidAt: Date | null; createdAt: Date }) {
 }
 
 export default async function AdminDashboardPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   const membership = session?.user
     ? await getDefaultOrganizationForUser(session.user.id)
     : null;

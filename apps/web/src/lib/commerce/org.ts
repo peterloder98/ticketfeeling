@@ -15,8 +15,10 @@ async function fetchDefaultOrganization() {
     // Common on Vercel when Prisma Client expects columns (e.g. payment_ui_config)
     // that migrate deploy has not applied yet. Patch + retry, then degrade.
     console.error("[org] findFirst with settings failed", error);
-    await ensureSepaPaymentSchema(prisma);
-    await ensureCompanyAddressSchema(prisma).catch(() => undefined);
+    await Promise.all([
+      ensureSepaPaymentSchema(prisma),
+      ensureCompanyAddressSchema(prisma).catch(() => undefined),
+    ]);
     try {
       return await prisma.organization.findFirst({
         where: { status: "active" },

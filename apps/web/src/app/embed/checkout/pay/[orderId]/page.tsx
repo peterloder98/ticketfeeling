@@ -13,9 +13,8 @@ import {
   verifyOrderAccessToken,
   withOrderAccessQuery,
 } from "@/lib/commerce/order-access";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getSession } from "@/lib/auth/session";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -27,16 +26,22 @@ type Props = {
 };
 
 export default async function EmbedPayPage({ params, searchParams }: Props) {
-  const { orderId } = await params;
-  const sp = await searchParams;
-  const session = await getServerSession(authOptions);
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: {
-      payments: true,
-      customer: true,
-    },
-  });
+  const [{ orderId }, sp] = await Promise.all([params, searchParams]);
+  const [session, order] = await Promise.all([
+    getSession(),
+    prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+        customer: {
+          select: {
+            userId: true,
+            emailNormalized: true,
+          },
+        },
+      },
+    }),
+  ]);
   if (!order) notFound();
 
   const hasAccessToken = verifyOrderAccessToken(order.id, sp.t);
@@ -44,9 +49,8 @@ export default async function EmbedPayPage({ params, searchParams }: Props) {
   if (session?.user) {
     const membership = await getDefaultOrganizationForUser(session.user.id);
     if (membership?.organizationId === order.organizationId) {
-      isStaff =
-        (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
-        (await userHasPermission(session.user.id, membership.organizationId, "events:read"));
+      const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
+      isStaff = keys.has("org:read") || keys.has("events:read");
     }
   }
   const isOwner =

@@ -110,7 +110,9 @@ const cartInclude = {
       category: {
         include: {
           event: {
-            include: { location: true },
+            include: {
+              location: { select: { name: true, city: true } },
+            },
           },
           taxRate: true,
         },

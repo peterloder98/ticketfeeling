@@ -2,11 +2,14 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { enqueueJob, kickJob, processPendingJobs } from "@/lib/jobs/queue";
 import { enqueuePostFulfillJobs, ensureJobHandlersRegistered } from "@/lib/jobs/handlers";
+import { MISSING_MAIL_RETRY_MAX_AGE_MS } from "@/lib/jobs/order-email-policy";
 import { getStripe } from "@/lib/payments/stripe-client";
 
 export type ReconcileSummary = {
   paidMissingTickets: number;
   missingTicketEmail: number;
+  /** Paid+tickets, never emailed, but older than the retry window — not auto-resent. */
+  staleMissingTicketEmail: number;
   failedWebhooksRetried: number;
   jobsProcessed: ReturnType<typeof processPendingJobs> extends Promise<infer R> ? R : never;
   healed: number;
@@ -17,9 +20,12 @@ export type ReconcileSummary = {
 /**
  * Clear-case reconciliation only:
  * - paid order without tickets → enqueue heal
- * - paid order with tickets but no buyer email → enqueue email
+ * - paid order with tickets but no buyer email → enqueue email (recent paidAt only)
  * - failed webhook_inbox → re-process when payload is payment_intent.succeeded
  * - drain pending background jobs
+ *
+ * Deliberately does NOT re-notify arbitrarily old paid orders (test purchases /
+ * SMTP outages from days ago) — that caused staff „Neue Bestellung“ storms.
  */
 export async function runCommerceReconciliation(options?: {
   limit?: number;
@@ -31,6 +37,7 @@ export async function runCommerceReconciliation(options?: {
   let needsAttention = 0;
   let paidMissingTickets = 0;
   let missingTicketEmail = 0;
+  let staleMissingTicketEmail = 0;
   let failedWebhooksRetried = 0;
 
   // 1) Paid orders without tickets
@@ -129,15 +136,35 @@ export async function runCommerceReconciliation(options?: {
     healed += 1;
   }
 
-  // 2) Paid with tickets, buyer mail never sent
+  // 2) Paid with tickets, buyer mail never sent — only recent orders.
+  // Historical ticketSentAt=null rows (failed SMTP / dead-letter) must not be
+  // resurrected forever; that re-fires buyer + staff „Neue Bestellung“ mails.
+  const mailRetryCutoff = new Date(Date.now() - MISSING_MAIL_RETRY_MAX_AGE_MS);
+  const missingMailWhere = {
+    paymentStatus: "paid" as const,
+    ticketSentAt: null,
+    channel: { not: "box_office" as const },
+    voidedAt: null,
+    tickets: { some: {} },
+    // Seed / inspection orders skip mail in the handler; don't keep re-enqueueing.
+    NOT: { contractSnapshot: { path: ["demo"], equals: true } },
+  };
   const missingMail = await prisma.order.findMany({
     where: {
-      paymentStatus: "paid",
-      ticketSentAt: null,
-      channel: { not: "box_office" },
-      voidedAt: null,
-      tickets: { some: {} },
+      ...missingMailWhere,
+      OR: [
+        { paidAt: { gte: mailRetryCutoff } },
+        { AND: [{ paidAt: null }, { paymentSucceededAt: { gte: mailRetryCutoff } }] },
+        {
+          AND: [
+            { paidAt: null },
+            { paymentSucceededAt: null },
+            { createdAt: { gte: mailRetryCutoff } },
+          ],
+        },
+      ],
     },
+    orderBy: { paidAt: "desc" },
     take: limit,
     select: { id: true, organizationId: true },
   });
@@ -145,6 +172,45 @@ export async function runCommerceReconciliation(options?: {
     missingTicketEmail += 1;
     await enqueuePostFulfillJobs(order.id, order.organizationId);
     healed += 1;
+  }
+
+  staleMissingTicketEmail = await prisma.order.count({
+    where: {
+      ...missingMailWhere,
+      AND: [
+        {
+          OR: [
+            { paidAt: { lt: mailRetryCutoff } },
+            {
+              AND: [
+                { paidAt: null },
+                { paymentSucceededAt: { lt: mailRetryCutoff } },
+              ],
+            },
+            {
+              AND: [
+                { paidAt: null },
+                { paymentSucceededAt: null },
+                { createdAt: { lt: mailRetryCutoff } },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  });
+  if (staleMissingTicketEmail > 0) {
+    await writeAudit({
+      organizationId: null,
+      action: "reconcile.stale_missing_mail",
+      entityType: "system",
+      entityId: "commerce_reconcile",
+      after: {
+        count: staleMissingTicketEmail,
+        cutoff: mailRetryCutoff.toISOString(),
+        maxAgeMs: MISSING_MAIL_RETRY_MAX_AGE_MS,
+      },
+    });
   }
 
   // 3) Failed commerce webhooks — re-queue processing via heal if PI succeeded
@@ -193,6 +259,7 @@ export async function runCommerceReconciliation(options?: {
     after: {
       paidMissingTickets,
       missingTicketEmail,
+      staleMissingTicketEmail,
       failedWebhooksRetried,
       jobsProcessed,
       healed,
@@ -204,6 +271,7 @@ export async function runCommerceReconciliation(options?: {
   return {
     paidMissingTickets,
     missingTicketEmail,
+    staleMissingTicketEmail,
     failedWebhooksRetried,
     jobsProcessed,
     healed,

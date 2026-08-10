@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
 import { BrandLogo } from "@/components/brand-logo";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
 import { RequestInvoiceForm } from "@/components/request-invoice-form";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tickets/access";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
@@ -27,36 +26,35 @@ type Props = {
 };
 
 export default async function OrderDetailPage({ params, searchParams }: Props) {
-  const session = await getServerSession(authOptions);
-  const { orderId } = await params;
-  const sp = await searchParams;
-
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    include: {
-      customer: true,
-      items: { orderBy: { id: "asc" } },
-      invoices: { select: { id: true, invoiceNumber: true } },
-      tickets: {
-        include: {
-          qrTokens: { where: { status: "active" }, take: 1 },
-          holder: true,
-          event: { include: { location: true } },
+  const [{ orderId }, sp] = await Promise.all([params, searchParams]);
+  const [session, order] = await Promise.all([
+    getSession(),
+    prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        customer: true,
+        items: { orderBy: { id: "asc" } },
+        invoices: { select: { id: true, invoiceNumber: true }, take: 1 },
+        tickets: {
+          include: {
+            qrTokens: { where: { status: "active" }, take: 1 },
+            holder: true,
+            event: { include: { location: true } },
+          },
+          orderBy: { createdAt: "asc" },
         },
-        orderBy: { createdAt: "asc" },
+        payments: { orderBy: { createdAt: "desc" }, take: 1 },
       },
-      payments: true,
-    },
-  });
+    }),
+  ]);
   if (!order) notFound();
 
   let isStaff = false;
   if (session?.user) {
     const membership = await getDefaultOrganizationForUser(session.user.id);
     if (membership?.organizationId === order.organizationId) {
-      isStaff =
-        (await userHasPermission(session.user.id, membership.organizationId, "org:read")) ||
-        (await userHasPermission(session.user.id, membership.organizationId, "events:read"));
+      const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
+      isStaff = keys.has("org:read") || keys.has("events:read");
     }
   }
 

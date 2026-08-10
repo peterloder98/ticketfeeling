@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { formatEuroFromCents } from "@/lib/money";
 import { orderStatusLabel } from "@/lib/commerce/channels";
@@ -10,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Mein Konto" };
 
 export default async function AccountPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login");
 
   const customers = await prisma.customer.findMany({
@@ -22,9 +21,14 @@ export default async function AccountPage() {
   const orders = await prisma.order.findMany({
     where: { customerId: { in: customerIds } },
     orderBy: { createdAt: "desc" },
-    include: {
-      tickets: true,
-      invoices: { select: { id: true, invoiceNumber: true } },
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      grossCents: true,
+      invoiceRequested: true,
+      _count: { select: { tickets: true } },
+      invoices: { select: { id: true, invoiceNumber: true }, take: 1 },
     },
   });
 
@@ -46,7 +50,7 @@ export default async function AccountPage() {
                 <p className="text-sm text-[var(--gold)]">{orderStatusLabel(order.status)}</p>
               </div>
               <p className="mt-1 text-sm text-[var(--muted)]">
-                {formatEuroFromCents(order.grossCents)} · {order.tickets.length} Ticket(s)
+                {formatEuroFromCents(order.grossCents)} · {order._count.tickets} Ticket(s)
                 {showInvoice && invoice ? (
                   <> · Rechnung {invoice.invoiceNumber}</>
                 ) : order.invoiceRequested ? (

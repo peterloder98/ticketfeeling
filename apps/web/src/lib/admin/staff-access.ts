@@ -59,6 +59,10 @@ const ORGANIZER_ADMIN_PERMISSION_HINTS = [
   "box_office:close",
 ] as const;
 
+/** Skip full role DDL when this process already synced the org recently. */
+const staffRoleSyncAt = new Map<string, number>();
+const STAFF_ROLE_SYNC_TTL_MS = 10 * 60 * 1000;
+
 /**
  * Reiner Scanner: checkin:scan, kein Admin und keine Tageskasse.
  * Admins (org:read / write / users:write) sind bewusst ausgenommen —
@@ -77,24 +81,80 @@ export async function isScannerOnlyUser(userId: string, organizationId: string) 
   return !elevated;
 }
 
+async function staffRolesLookComplete(organizationId: string) {
+  const roles = await prisma.role.findMany({
+    where: {
+      organizationId,
+      key: { in: ["organizer_admin", "scanner", "box_office"] },
+    },
+    select: {
+      key: true,
+      permissions: { select: { permission: { select: { key: true } } } },
+    },
+  });
+  if (roles.length < 3) return false;
+
+  const byKey = new Map(
+    roles.map((role) => [
+      role.key,
+      new Set(role.permissions.map((row) => row.permission.key)),
+    ]),
+  );
+
+  const adminKeys = byKey.get("organizer_admin");
+  if (!adminKeys || !ORGANIZER_ADMIN_PERMISSION_HINTS.every((key) => adminKeys.has(key))) {
+    return false;
+  }
+
+  const scannerKeys = byKey.get("scanner");
+  if (!scannerKeys || !SCANNER_ROLE_PERMISSIONS.every((key) => scannerKeys.has(key))) {
+    return false;
+  }
+
+  const boxKeys = byKey.get("box_office");
+  if (!boxKeys || !VORVERKAUF_ROLE_PERMISSIONS.every((key) => boxKeys.has(key))) {
+    return false;
+  }
+  // Legacy Vorverkauf roles sometimes carried org/events grants — force a sync to strip.
+  for (const key of boxKeys) {
+    if (!(VORVERKAUF_ROLE_PERMISSIONS as readonly string[]).includes(key)) return false;
+  }
+
+  return true;
+}
+
 /** Ensure Scanner + Admin roles exist (Vorverkauf via ensureVorverkaufRole). */
 export async function ensureStaffManageableRoles(organizationId: string) {
-  await ensureVorverkaufRole(organizationId);
-  await ensureScannerRole(organizationId);
-  await ensureOrganizerAdminRole(organizationId);
+  const last = staffRoleSyncAt.get(organizationId);
+  if (last && Date.now() - last < STAFF_ROLE_SYNC_TTL_MS) return;
+
+  if (await staffRolesLookComplete(organizationId)) {
+    staffRoleSyncAt.set(organizationId, Date.now());
+    return;
+  }
+
+  // Parallel role sync — previously sequential and ~60 roundtrips on every page load.
+  await Promise.all([
+    ensureVorverkaufRole(organizationId),
+    ensureScannerRole(organizationId),
+    ensureOrganizerAdminRole(organizationId),
+  ]);
+  staffRoleSyncAt.set(organizationId, Date.now());
 }
 
 export async function ensureScannerRole(organizationId: string) {
-  for (const key of SCANNER_ROLE_PERMISSIONS) {
-    await prisma.permission.upsert({
-      where: { key },
-      update: {},
-      create: {
-        key,
-        description: key === "checkin:scan" ? "Tickets am Einlass scannen" : "Events lesen",
-      },
-    });
-  }
+  await Promise.all(
+    SCANNER_ROLE_PERMISSIONS.map((key) =>
+      prisma.permission.upsert({
+        where: { key },
+        update: {},
+        create: {
+          key,
+          description: key === "checkin:scan" ? "Tickets am Einlass scannen" : "Events lesen",
+        },
+      }),
+    ),
+  );
 
   const role = await prisma.role.upsert({
     where: {
@@ -114,15 +174,17 @@ export async function ensureScannerRole(organizationId: string) {
   });
   const allowedIds = new Set(permissions.map((p) => p.id));
 
-  for (const permission of permissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: { roleId: role.id, permissionId: permission.id },
-      },
-      update: {},
-      create: { roleId: role.id, permissionId: permission.id },
-    });
-  }
+  await Promise.all(
+    permissions.map((permission) =>
+      prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: { roleId: role.id, permissionId: permission.id },
+        },
+        update: {},
+        create: { roleId: role.id, permissionId: permission.id },
+      }),
+    ),
+  );
 
   const existing = await prisma.rolePermission.findMany({
     where: { roleId: role.id },
@@ -142,13 +204,15 @@ export async function ensureScannerRole(organizationId: string) {
 }
 
 export async function ensureOrganizerAdminRole(organizationId: string) {
-  for (const key of ORGANIZER_ADMIN_PERMISSION_HINTS) {
-    await prisma.permission.upsert({
-      where: { key },
-      update: {},
-      create: { key, description: key },
-    });
-  }
+  await Promise.all(
+    ORGANIZER_ADMIN_PERMISSION_HINTS.map((key) =>
+      prisma.permission.upsert({
+        where: { key },
+        update: {},
+        create: { key, description: key },
+      }),
+    ),
+  );
 
   const role = await prisma.role.upsert({
     where: {
@@ -167,15 +231,17 @@ export async function ensureOrganizerAdminRole(organizationId: string) {
     where: { key: { in: [...ORGANIZER_ADMIN_PERMISSION_HINTS] } },
   });
 
-  for (const permission of permissions) {
-    await prisma.rolePermission.upsert({
-      where: {
-        roleId_permissionId: { roleId: role.id, permissionId: permission.id },
-      },
-      update: {},
-      create: { roleId: role.id, permissionId: permission.id },
-    });
-  }
+  await Promise.all(
+    permissions.map((permission) =>
+      prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: { roleId: role.id, permissionId: permission.id },
+        },
+        update: {},
+        create: { roleId: role.id, permissionId: permission.id },
+      }),
+    ),
+  );
 
   return role;
 }

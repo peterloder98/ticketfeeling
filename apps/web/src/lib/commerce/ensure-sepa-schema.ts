@@ -23,9 +23,12 @@ const SEPA_SCHEMA_STATEMENTS = [
 ];
 
 const ENSURE_BUDGET_MS = 4_000;
+/** Avoid information_schema probes on every cart/checkout click after a miss/skip. */
+const PROBE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 
 let ensurePromise: Promise<void> | null = null;
 let schemaReady = false;
+let lastIncompleteProbeAt = 0;
 
 async function probeSepaSchemaReady(db: PrismaClient): Promise<boolean> {
   try {
@@ -60,10 +63,19 @@ async function probeSepaSchemaReady(db: PrismaClient): Promise<boolean> {
  */
 export async function ensureSepaPaymentSchema(db: PrismaClient) {
   if (schemaReady) return;
+  // Negative cache: incomplete/skipped schema must not re-probe every request.
+  if (
+    !ensurePromise &&
+    lastIncompleteProbeAt > 0 &&
+    Date.now() - lastIncompleteProbeAt < PROBE_NEGATIVE_TTL_MS
+  ) {
+    return;
+  }
   if (!ensurePromise) {
     ensurePromise = (async () => {
       if (await probeSepaSchemaReady(db)) {
         schemaReady = true;
+        lastIncompleteProbeAt = 0;
         return;
       }
 
@@ -71,6 +83,7 @@ export async function ensureSepaPaymentSchema(db: PrismaClient) {
         console.error(
           "[sepa] ensureSepaPaymentSchema: schema incomplete in production — run migrate-deploy (skipping runtime ALTER)",
         );
+        lastIncompleteProbeAt = Date.now();
         ensurePromise = null;
         return;
       }
@@ -87,11 +100,14 @@ export async function ensureSepaPaymentSchema(db: PrismaClient) {
         }
       }
       if (failed) {
+        lastIncompleteProbeAt = Date.now();
         ensurePromise = null;
         return;
       }
       schemaReady = true;
+      lastIncompleteProbeAt = 0;
     })().catch((error) => {
+      lastIncompleteProbeAt = Date.now();
       ensurePromise = null;
       throw error;
     });

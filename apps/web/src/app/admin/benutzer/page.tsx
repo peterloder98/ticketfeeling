@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser } from "@/lib/rbac";
 import {
@@ -9,6 +8,7 @@ import {
   ensureStaffManageableRoles,
   staffRoleLabel,
 } from "@/lib/admin/staff-access";
+import { listOpenStaffInvites } from "@/lib/admin/staff-invite";
 import { listStaffMemberships } from "@/lib/admin/staff-users";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
@@ -18,20 +18,28 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Benutzerverwaltung" };
 
 export default async function AdminBenutzerPage() {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
   // Sync role permissions first so organizer_admin gains users:write if missing.
-  await ensureStaffManageableRoles(membership.organizationId);
+  // Fast-path + TTL inside ensure — fail soft so soft-nav is not aborted.
+  try {
+    await ensureStaffManageableRoles(membership.organizationId);
+  } catch (err) {
+    console.error(
+      "[admin/benutzer] role sync failed:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
 
   const allowed = await canManageStaffUsers(session.user.id, membership.organizationId);
   if (!allowed) {
     return <p className="text-[var(--danger)]">Keine Berechtigung für die Benutzerverwaltung.</p>;
   }
 
-  let invites: Awaited<ReturnType<typeof prisma.staffInvite.findMany>> = [];
+  let invites: Awaited<ReturnType<typeof listOpenStaffInvites>> = [];
   let members: Awaited<ReturnType<typeof listStaffMemberships>> = [];
   let customerCount = 0;
   let schemaHint: string | null = null;
@@ -39,11 +47,7 @@ export default async function AdminBenutzerPage() {
   try {
     [members, invites, customerCount] = await Promise.all([
       listStaffMemberships(membership.organizationId),
-      prisma.staffInvite.findMany({
-        where: { organizationId: membership.organizationId },
-        orderBy: { invitedAt: "desc" },
-        take: 50,
-      }),
+      listOpenStaffInvites(membership.organizationId),
       prisma.customer.count({ where: { organizationId: membership.organizationId } }),
     ]);
   } catch (err) {
@@ -81,7 +85,13 @@ export default async function AdminBenutzerPage() {
           membershipId: m.id,
           status: m.status,
           createdAt: m.createdAt.toISOString(),
-          user: m.user,
+          // Plain fields only — Prisma Date on user crashes client soft-nav.
+          user: {
+            id: m.user.id,
+            email: m.user.email,
+            name: m.user.name,
+            status: m.user.status,
+          },
           roles: m.roles.map((r) => ({
             key: r.role.key,
             name: staffRoleLabel(r.role.key),
@@ -97,7 +107,7 @@ export default async function AdminBenutzerPage() {
           status: inv.status,
           invitedAt: inv.invitedAt.toISOString(),
           expiresAt: inv.expiresAt.toISOString(),
-          acceptPath: inv.status === "pending" ? `/einladung/${inv.token}` : null,
+          acceptPath: `/einladung/${inv.token}`,
         }))}
       />
     </div>

@@ -8,7 +8,10 @@ import {
   readCartSessionKeyFromRequest,
 } from "@/lib/commerce/cart-session";
 import { getDefaultOrganization } from "@/lib/commerce/org";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import {
+  getDefaultOrganizationForUser,
+  getUserPermissionKeys,
+} from "@/lib/rbac";
 import {
   buildCheckoutPaymentOptions,
   parsePaymentFeeConfig,
@@ -51,12 +54,15 @@ export async function GET(request: Request) {
         if (!session?.user?.id) return false;
         const membership = await getDefaultOrganizationForUser(session.user.id);
         if (!membership) return false;
-        const checks = await Promise.all([
-          userHasPermission(session.user.id, membership.organizationId, "events:write"),
-          userHasPermission(session.user.id, membership.organizationId, "org:write"),
-          userHasPermission(session.user.id, membership.organizationId, "box_office:sell"),
-        ]);
-        return checks.some(Boolean);
+        const keys = await getUserPermissionKeys(
+          session.user.id,
+          membership.organizationId,
+        );
+        return (
+          keys.has("events:write") ||
+          keys.has("org:write") ||
+          keys.has("box_office:sell")
+        );
       })(),
     ]);
 

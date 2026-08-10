@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@prisma/client";
 
 function startOfDay(d = new Date()) {
   const x = new Date(d);
@@ -20,6 +21,29 @@ function startOfMonth(d = new Date()) {
 
 const PAID = ["paid", "fulfilled"] as const;
 
+type PeriodAgg = { orders: number; grossCents: number };
+
+async function paidPeriodAgg(
+  organizationId: string,
+  paidAtGte?: Date,
+  paidAtLt?: Date,
+): Promise<PeriodAgg> {
+  const rows = await prisma.$queryRaw<Array<{ orders: bigint; gross: bigint }>>`
+    SELECT COUNT(*)::bigint AS orders,
+           COALESCE(SUM(COALESCE(customer_total_cents, gross_cents)), 0)::bigint AS gross
+    FROM orders
+    WHERE organization_id = ${organizationId}::uuid
+      AND status IN ('paid', 'fulfilled')
+      ${paidAtGte ? Prisma.sql`AND paid_at >= ${paidAtGte}` : Prisma.empty}
+      ${paidAtLt ? Prisma.sql`AND paid_at < ${paidAtLt}` : Prisma.empty}
+  `;
+  const row = rows[0];
+  return {
+    orders: Number(row?.orders ?? 0),
+    grossCents: Number(row?.gross ?? 0),
+  };
+}
+
 export async function getSalesStats(organizationId: string) {
   const today = startOfDay();
   const yesterday = new Date(today);
@@ -27,90 +51,100 @@ export async function getSalesStats(organizationId: string) {
   const week = startOfWeek();
   const month = startOfMonth();
 
-  const paidWhere = {
-    organizationId,
-    status: { in: [...PAID] },
-  };
-
-  const [todayOrders, yesterdayOrders, weekOrders, monthOrders, allPaid, openFailed, recent] =
-    await Promise.all([
-      prisma.order.findMany({
-        where: { ...paidWhere, paidAt: { gte: today } },
-        select: { grossCents: true, customerTotalCents: true, id: true },
-      }),
-      prisma.order.findMany({
-        where: { ...paidWhere, paidAt: { gte: yesterday, lt: today } },
-        select: { grossCents: true, customerTotalCents: true, id: true },
-      }),
-      prisma.order.findMany({
-        where: { ...paidWhere, paidAt: { gte: week } },
-        select: { grossCents: true, customerTotalCents: true },
-      }),
-      prisma.order.findMany({
-        where: { ...paidWhere, paidAt: { gte: month } },
-        select: { grossCents: true, customerTotalCents: true },
-      }),
-      prisma.order.findMany({
-        where: paidWhere,
-        select: {
-          id: true,
-          grossCents: true,
-          customerTotalCents: true,
-          channel: true,
+  const [
+    todayAgg,
+    yesterdayAgg,
+    weekAgg,
+    monthAgg,
+    allAgg,
+    channelRows,
+    openFailed,
+    recent,
+    todayTickets,
+    ticketCounts,
+  ] = await Promise.all([
+    paidPeriodAgg(organizationId, today),
+    paidPeriodAgg(organizationId, yesterday, today),
+    paidPeriodAgg(organizationId, week),
+    paidPeriodAgg(organizationId, month),
+    paidPeriodAgg(organizationId),
+    prisma.$queryRaw<Array<{ channel: string | null; orders: bigint; gross: bigint }>>`
+      SELECT channel,
+             COUNT(*)::bigint AS orders,
+             COALESCE(SUM(COALESCE(customer_total_cents, gross_cents)), 0)::bigint AS gross
+      FROM orders
+      WHERE organization_id = ${organizationId}::uuid
+        AND status IN ('paid', 'fulfilled')
+      GROUP BY channel
+    `,
+    prisma.order.count({
+      where: {
+        organizationId,
+        status: { in: ["payment_failed", "pending_payment"] },
+      },
+    }),
+    prisma.order.findMany({
+      where: { organizationId },
+      orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
+      take: 12,
+      select: {
+        id: true,
+        orderNumber: true,
+        status: true,
+        channel: true,
+        voidedAt: true,
+        grossCents: true,
+        customerTotalCents: true,
+        paidAt: true,
+        createdAt: true,
+        customer: { select: { email: true, firstName: true, lastName: true } },
+        tickets: { select: { id: true } },
+        items: {
+          take: 1,
+          select: { quantity: true, eventNameSnapshot: true },
         },
-      }),
-      prisma.order.count({
-        where: {
-          organizationId,
-          status: { in: ["payment_failed", "pending_payment"] },
+        payments: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+          select: { method: true, status: true },
         },
-      }),
-      prisma.order.findMany({
-        where: { organizationId },
-        orderBy: [{ paidAt: "desc" }, { createdAt: "desc" }],
-        take: 12,
-        include: {
-          customer: true,
-          tickets: true,
-          items: true,
-          payments: { orderBy: { createdAt: "desc" }, take: 1 },
-        },
-      }),
-    ]);
-
-  /** What the customer paid (tickets + Verwaltungsgebühr − gift card). */
-  const paidCents = (row: {
-    grossCents: number;
-    customerTotalCents?: number | null;
-  }) => row.customerTotalCents || row.grossCents;
-
-  const sum = (
-    rows: { grossCents: number; customerTotalCents?: number | null }[],
-  ) => rows.reduce((s, r) => s + paidCents(r), 0);
-
-  const ticketCounts = await prisma.ticket.groupBy({
-    by: ["eventId"],
-    where: {
-      organizationId,
-      status: "active",
-      order: { status: { in: [...PAID] } },
-    },
-    _count: { _all: true },
-  });
+      },
+    }),
+    prisma.ticket.count({
+      where: {
+        organizationId,
+        issuedAt: { gte: today },
+        order: { status: { in: [...PAID] } },
+      },
+    }),
+    prisma.ticket.groupBy({
+      by: ["eventId"],
+      where: {
+        organizationId,
+        status: "active",
+        order: { status: { in: [...PAID] } },
+      },
+      _count: { _all: true },
+    }),
+  ]);
 
   const eventIds = ticketCounts.map((t) => t.eventId);
-  const events = await prisma.event.findMany({
-    where: { id: { in: eventIds } },
-    select: { id: true, name: true },
-  });
+  const events =
+    eventIds.length === 0
+      ? []
+      : await prisma.event.findMany({
+          where: { id: { in: eventIds } },
+          select: { id: true, name: true },
+        });
   const eventName = Object.fromEntries(events.map((e) => [e.id, e.name]));
 
-  const byChannel = allPaid.reduce<Record<string, { orders: number; grossCents: number }>>(
-    (acc, order) => {
-      const key = order.channel || "online";
-      acc[key] ??= { orders: 0, grossCents: 0 };
-      acc[key].orders += 1;
-      acc[key].grossCents += paidCents(order);
+  const byChannel = channelRows.reduce<Record<string, { orders: number; grossCents: number }>>(
+    (acc, row) => {
+      const key = row.channel || "online";
+      acc[key] = {
+        orders: Number(row.orders),
+        grossCents: Number(row.gross),
+      };
       return acc;
     },
     {},
@@ -118,26 +152,20 @@ export async function getSalesStats(organizationId: string) {
 
   return {
     today: {
-      orders: todayOrders.length,
-      grossCents: sum(todayOrders),
-      tickets: await prisma.ticket.count({
-        where: {
-          organizationId,
-          issuedAt: { gte: today },
-          order: { status: { in: [...PAID] } },
-        },
-      }),
+      orders: todayAgg.orders,
+      grossCents: todayAgg.grossCents,
+      tickets: todayTickets,
     },
     yesterday: {
-      orders: yesterdayOrders.length,
-      grossCents: sum(yesterdayOrders),
+      orders: yesterdayAgg.orders,
+      grossCents: yesterdayAgg.grossCents,
     },
-    week: { orders: weekOrders.length, grossCents: sum(weekOrders) },
-    month: { orders: monthOrders.length, grossCents: sum(monthOrders) },
+    week: { orders: weekAgg.orders, grossCents: weekAgg.grossCents },
+    month: { orders: monthAgg.orders, grossCents: monthAgg.grossCents },
     all: {
-      orders: allPaid.length,
-      grossCents: sum(allPaid),
-      avgOrderCents: allPaid.length ? Math.round(sum(allPaid) / allPaid.length) : 0,
+      orders: allAgg.orders,
+      grossCents: allAgg.grossCents,
+      avgOrderCents: allAgg.orders ? Math.round(allAgg.grossCents / allAgg.orders) : 0,
     },
     /** Orders still waiting for payment or with a failed payment attempt. */
     openOrFailedPayments: openFailed,

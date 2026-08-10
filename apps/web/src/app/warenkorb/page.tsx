@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { findOpenCart } from "@/lib/commerce/cart";
 import { priceCart } from "@/lib/commerce/pricing";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
@@ -14,8 +13,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Warenkorb" };
 
 export default async function CartPage() {
-  const session = await getServerSession(authOptions);
-  const sessionKey = await readCartSessionKey();
+  const [session, sessionKey] = await Promise.all([getSession(), readCartSessionKey()]);
   const cart = sessionKey
     ? await findOpenCart({ userId: session?.user?.id, sessionKey })
     : null;
