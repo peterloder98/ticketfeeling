@@ -1,9 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { getEventSalesReport } from "@/lib/commerce/event-sales-report";
 import { formatEuroFromCents } from "@/lib/money";
 import { eventStatusLabel } from "@/lib/admin/nav";
@@ -31,7 +30,7 @@ import { EventSalesReadiness } from "@/components/admin/event-sales-readiness";
 import { BuyerHeatmap } from "@/components/admin/buyer-heatmap";
 import { loadBuyerHeatmapPoints } from "@/lib/admin/load-buyer-heatmap";
 import { Suspense } from "react";
-import { cmToMetersLabel, parseVenuePlanObjects, planSeatCapacity } from "@/lib/saalplan/types";
+import { cmToMetersLabel } from "@/lib/saalplan/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventUsesTourCover } from "@/lib/commerce/tour-cover-sync";
 import { formatDeDateTime } from "@/lib/datetime-de";
@@ -43,8 +42,9 @@ import { ensureSaleClosedEarlyColumn } from "@/lib/commerce/ensure-sale-closed-e
 import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
 import { ensureTicketHeroImageColumn } from "@/lib/commerce/ensure-ticket-hero";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
+import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 import type { EventCategoryRow } from "@/components/admin/event-categories-panel";
-import { expireAndReconcileHolds } from "@/lib/commerce/cart";
+import { scheduleExpireAndReconcileHolds } from "@/lib/commerce/cart";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +74,54 @@ function EventLoadError({ message }: { message?: string }) {
   );
 }
 
+/** Heatmap is below the fold — stream it so KPIs/edit form paint first. */
+async function EventBuyerHeatmapSection({
+  organizationId,
+  eventId,
+  hmPeriod,
+  hmFrom,
+  hmTo,
+}: {
+  organizationId: string;
+  eventId: string;
+  hmPeriod?: string;
+  hmFrom?: string;
+  hmTo?: string;
+}) {
+  const heatmap = await loadBuyerHeatmapPoints({
+    organizationId,
+    eventId,
+    period: hmPeriod,
+    from: hmFrom,
+    to: hmTo,
+  });
+  return (
+    <BuyerHeatmap
+      title="Käufer-Heatmap (dieses Event)"
+      points={heatmap.points}
+      orderCount={heatmap.orderCount}
+      withGeo={heatmap.withGeo}
+      periodKey={heatmap.periodKey}
+      periodLabel={heatmap.periodLabel}
+      paramPrefix="hm"
+    />
+  );
+}
+
+async function ensureAdminEventSchema() {
+  // Production/Vercel: migrate-deploy owns schema — skip information_schema probes on every click.
+  if (shouldSkipRuntimeDdl()) return;
+  await Promise.all([
+    ensureSeatingAssignmentSchema(prisma),
+    ensureSepaPaymentSchema(prisma),
+    ensureEventPricingSchema(prisma),
+    ensureSaleClosedEarlyColumn(),
+    ensureScheduleChangedAtColumn(),
+    ensureTicketHeroImageColumn(),
+    ensureTicketSponsorLogoColumns(),
+  ]);
+}
+
 export async function generateMetadata({ params }: Props) {
   const { id } = await params;
   try {
@@ -88,50 +136,28 @@ export async function generateMetadata({ params }: Props) {
 }
 
 export default async function AdminEventDetailPage({ params, searchParams }: Props) {
-  const { id } = await params;
-  const { saved, coverMissing, hmPeriod, hmFrom, hmTo } = await searchParams;
+  const [{ id }, sp, session] = await Promise.all([params, searchParams, getSession()]);
+  const { saved, coverMissing, hmPeriod, hmFrom, hmTo } = sp;
 
-  const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login");
   const membership = await getDefaultOrganizationForUser(session.user.id);
   if (!membership) return <p>Keine Organisation.</p>;
 
-  const allowed = await userHasPermission(session.user.id, membership.organizationId, "events:read");
-  if (!allowed) return <p className="text-[var(--danger)]">Keine Berechtigung (events:read).</p>;
+  const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
+  if (!keys.has("events:read")) {
+    return <p className="text-[var(--danger)]">Keine Berechtigung (events:read).</p>;
+  }
+  const canWrite = keys.has("events:write") || keys.has("tours:write");
+  const orgId = membership.organizationId;
 
-  const canWrite =
-    (await userHasPermission(
-      session.user.id,
-      membership.organizationId,
-      "events:write",
-    )) ||
-    (await userHasPermission(
-      session.user.id,
-      membership.organizationId,
-      "tours:write",
-    ));
-
-  // Full Event scalars need SEPA + seating columns; list page uses a narrow select and
-  // can look fine while detail 500s on schema drift (P2022 → Application error).
-  await Promise.all([
-    ensureSeatingAssignmentSchema(prisma),
-    ensureSepaPaymentSchema(prisma),
-    ensureEventPricingSchema(prisma),
-    ensureSaleClosedEarlyColumn(),
-    ensureScheduleChangedAtColumn(),
-    ensureTicketHeroImageColumn(),
-    ensureTicketSponsorLogoColumns(),
-  ]);
-
-  // Expire stale cart holds and repair negative „reserviert“ counters before we render.
-  await expireAndReconcileHolds().catch((err) => {
-    console.error("[admin/event] hold expire/reconcile failed", err);
-  });
+  // Do not block first paint on hold cleanup (was a major click cost).
+  scheduleExpireAndReconcileHolds();
+  await ensureAdminEventSchema();
 
   let event;
   try {
     event = await prisma.event.findFirst({
-      where: { id, organizationId: membership.organizationId },
+      where: { id, organizationId: orgId },
       include: {
         // Never `location: true` — Decimal lat/lng breaks Client Component serialization.
         location: { select: { id: true, name: true, city: true } },
@@ -167,20 +193,132 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   }
   if (!event) notFound();
 
-  const released = await ensurePresaleAutoRelease({
-    id: event.id,
-    organizationId: event.organizationId,
-    status: event.status,
-    presaleStartsAt: event.presaleStartsAt,
-    coverImageUrl: event.coverImageUrl,
-    eventStartsAt: event.eventStartsAt,
-    tour: event.tour,
-    categories: event.ticketCategories.map((c) => ({
-      priceGrossCents: c.priceGrossCents,
-      capacity: c.capacity,
-    })),
-  });
-  if (released.flipped) event.status = released.status;
+  let report;
+  let locations: Array<{ id: string; name: string; city: string | null }> = [];
+  let venuePlans: Array<{
+    id: string;
+    name: string;
+    locationId: string;
+    widthCm: number;
+    depthCm: number;
+  }> = [];
+  let tours: Array<{ id: string; name: string }> = [];
+  let orgArtists: Array<{
+    id: string;
+    name: string;
+    homepage: string | null;
+    youtube: string | null;
+    shortBio: string | null;
+    profileImageUrl: string | null;
+    headerImageUrl: string | null;
+  }> = [];
+  let categoriesCreateLocked = false;
+  let unassignedSeatCount = 0;
+  let ticketsSold = 0;
+  let previewTicket: { id: string } | null = null;
+
+  try {
+    const emptyArtists = Promise.resolve([] as typeof orgArtists);
+    const emptyLocations = Promise.resolve([] as typeof locations);
+    const emptyPlans = Promise.resolve([] as typeof venuePlans);
+    const emptyTours = Promise.resolve([] as typeof tours);
+
+    const [released, related] = await Promise.all([
+      ensurePresaleAutoRelease({
+        id: event.id,
+        organizationId: event.organizationId,
+        status: event.status,
+        presaleStartsAt: event.presaleStartsAt,
+        coverImageUrl: event.coverImageUrl,
+        eventStartsAt: event.eventStartsAt,
+        tour: event.tour,
+        categories: event.ticketCategories.map((c) => ({
+          priceGrossCents: c.priceGrossCents,
+          capacity: c.capacity,
+        })),
+      }),
+      Promise.all([
+        getEventSalesReport(event.id),
+        canWrite
+          ? prisma.location.findMany({
+              where: { organizationId: orgId },
+              select: { id: true, name: true, city: true },
+              orderBy: { name: "asc" },
+            })
+          : emptyLocations,
+        // Skip huge venue_plans.objects JSON — seat maps load client-side via seating API.
+        canWrite
+          ? prisma.venuePlan.findMany({
+              where: { organizationId: orgId },
+              select: {
+                id: true,
+                name: true,
+                locationId: true,
+                widthCm: true,
+                depthCm: true,
+              },
+              orderBy: { name: "asc" },
+            })
+          : emptyPlans,
+        canWrite
+          ? prisma.tour.findMany({
+              where: { organizationId: orgId },
+              select: { id: true, name: true },
+              orderBy: { name: "asc" },
+            })
+          : emptyTours,
+        canWrite
+          ? prisma.artist.findMany({
+              where: { organizationId: orgId },
+              select: {
+                id: true,
+                name: true,
+                homepage: true,
+                youtube: true,
+                shortBio: true,
+                profileImageUrl: true,
+                headerImageUrl: true,
+              },
+              orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+            })
+          : emptyArtists,
+        canCreateEventCategories(event.id).then((ok) => !ok),
+        prisma.eventSeat
+          .count({ where: { eventId: event.id, categoryId: null } })
+          .catch((err) => {
+            console.error("[admin/events/[id]] seat count failed", event.id, err);
+            return 0;
+          }),
+        prisma.ticket.count({ where: { eventId: event.id } }).catch((err) => {
+          console.error("[admin/events/[id]] ticket count failed", event.id, err);
+          return 0;
+        }),
+        prisma.ticket.findFirst({
+          where: { eventId: event.id, status: { not: "voided" } },
+          select: { id: true },
+          orderBy: { createdAt: "desc" },
+        }),
+      ]),
+    ]);
+
+    if (released.flipped) event.status = released.status;
+    [
+      report,
+      locations,
+      venuePlans,
+      tours,
+      orgArtists,
+      categoriesCreateLocked,
+      unassignedSeatCount,
+      ticketsSold,
+      previewTicket,
+    ] = related;
+  } catch (err) {
+    console.error("[admin/events/[id]] related data load failed", id, err);
+    return (
+      <EventLoadError message="Zusätzliche Eventdaten konnten nicht geladen werden. Bitte erneut versuchen." />
+    );
+  }
 
   const displayStatus = effectiveEventStatus({
     status: event.status,
@@ -193,7 +331,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       capacity: c.capacity,
     })),
   });
-  const categoriesCreateLocked = !(await canCreateEventCategories(event.id));
 
   // Plain props only — never pass the raw Prisma graph into Client Components.
   const editEvent = {
@@ -255,57 +392,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     })),
   }));
 
-  let report;
-  let locations;
-  let venuePlans;
-  let tours;
-  let orgArtists;
-  try {
-    [report, locations, venuePlans, tours, orgArtists] = await Promise.all([
-      getEventSalesReport(event.id),
-      prisma.location.findMany({
-        where: { organizationId: membership.organizationId },
-        select: { id: true, name: true, city: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.venuePlan.findMany({
-        where: { organizationId: membership.organizationId },
-        select: {
-          id: true,
-          name: true,
-          locationId: true,
-          widthCm: true,
-          depthCm: true,
-          objects: true,
-        },
-        orderBy: { name: "asc" },
-      }),
-      prisma.tour.findMany({
-        where: { organizationId: membership.organizationId },
-        select: { id: true, name: true },
-        orderBy: { name: "asc" },
-      }),
-      prisma.artist.findMany({
-        where: { organizationId: membership.organizationId },
-        select: {
-          id: true,
-          name: true,
-          homepage: true,
-          youtube: true,
-          shortBio: true,
-          profileImageUrl: true,
-          headerImageUrl: true,
-        },
-        orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-      }),
-    ]);
-  } catch (err) {
-    console.error("[admin/events/[id]] related data load failed", id, err);
-    return (
-      <EventLoadError message="Zusätzliche Eventdaten konnten nicht geladen werden. Bitte erneut versuchen." />
-    );
-  }
-
   const displayCover = resolveEventCoverUrl(event);
   const usesTourCover = eventUsesTourCover({
     coverImageUrl: event.coverImageUrl,
@@ -317,7 +403,8 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     id: p.id,
     name: p.name,
     locationId: p.locationId,
-    seatCapacity: planSeatCapacity(parseVenuePlanObjects(p.objects)),
+    // Capacity comes from Saalplan editor; avoid shipping all plan JSON on open.
+    seatCapacity: 0,
     sizeLabel: `${cmToMetersLabel(p.widthCm)} × ${cmToMetersLabel(p.depthCm)}`,
   }));
 
@@ -330,16 +417,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       seatingEnabled: true,
     }),
   );
-  let unassignedSeatCount = 0;
-  if (seatingEnabled) {
-    try {
-      unassignedSeatCount = await prisma.eventSeat.count({
-        where: { eventId: event.id, categoryId: null },
-      });
-    } catch (err) {
-      console.error("[admin/events/[id]] seat count failed", event.id, err);
-    }
-  }
+  if (!seatingEnabled) unassignedSeatCount = 0;
   const needsSeatAssignment = seatingEnabled && unassignedSeatCount > 0;
 
   const when = event.eventStartsAt
@@ -348,28 +426,6 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         timeStyle: "short",
       })
     : null;
-
-  let ticketsSold = report.sold;
-  try {
-    ticketsSold = await prisma.ticket.count({ where: { eventId: event.id } });
-  } catch (err) {
-    console.error("[admin/events/[id]] ticket count failed", event.id, err);
-  }
-
-  const [heatmap, previewTicket] = await Promise.all([
-    loadBuyerHeatmapPoints({
-      organizationId: membership.organizationId,
-      eventId: event.id,
-      period: hmPeriod,
-      from: hmFrom,
-      to: hmTo,
-    }),
-    prisma.ticket.findFirst({
-      where: { eventId: event.id, status: { not: "voided" } },
-      select: { id: true },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
 
   return (
     <UnassignedSeatsProvider initialCount={seatingEnabled ? unassignedSeatCount : 0}>
@@ -616,15 +672,20 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         </section>
       </div>
 
-      <Suspense fallback={null}>
-        <BuyerHeatmap
-          title="Käufer-Heatmap (dieses Event)"
-          points={heatmap.points}
-          orderCount={heatmap.orderCount}
-          withGeo={heatmap.withGeo}
-          periodKey={heatmap.periodKey}
-          periodLabel={heatmap.periodLabel}
-          paramPrefix="hm"
+      <Suspense
+        fallback={
+          <div className="tf-card !p-5">
+            <div className="h-6 w-48 animate-pulse rounded bg-[rgba(15,39,71,0.08)]" />
+            <div className="mt-4 h-48 animate-pulse rounded-2xl bg-[rgba(15,39,71,0.06)]" />
+          </div>
+        }
+      >
+        <EventBuyerHeatmapSection
+          organizationId={orgId}
+          eventId={event.id}
+          hmPeriod={hmPeriod}
+          hmFrom={hmFrom}
+          hmTo={hmTo}
         />
       </Suspense>
 

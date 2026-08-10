@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { orderItemCustomerPaidCents } from "@/lib/commerce/public-price";
 
 const PAID = ["paid", "fulfilled"] as const;
 
@@ -150,6 +149,31 @@ export async function getEventListSales(
   });
 }
 
+/** Customer-paid line revenue (ticket + allocated Verwaltungsgebühr) — SQL mirror of orderItemCustomerPaidCents. */
+const LINE_REVENUE_SQL = Prisma.sql`
+  oi.gross_cents
+  + CASE
+      WHEN GREATEST(
+        COALESCE(o.tickets_gross_cents, 0) - COALESCE(o.discount_cents, 0),
+        0
+      ) > 0
+      THEN ROUND(
+        (
+          GREATEST(
+            COALESCE(NULLIF(o.admin_fee_gross_cents, 0), o.fee_gross_cents, 0),
+            0
+          )::numeric
+          * oi.gross_cents::numeric
+        )
+        / GREATEST(
+          o.tickets_gross_cents - o.discount_cents,
+          1
+        )::numeric
+      )::bigint
+      ELSE 0
+    END
+`;
+
 export async function getEventSalesReport(eventId: string): Promise<EventSalesReport> {
   const event = await prisma.event.findUniqueOrThrow({
     where: { id: eventId },
@@ -169,29 +193,49 @@ export async function getEventSalesReport(eventId: string): Promise<EventSalesRe
     },
   });
 
-  const items = await prisma.orderItem.findMany({
-    where: {
-      eventId,
-      order: { status: { in: [...PAID] } },
-    },
-    select: {
-      categoryId: true,
-      categorySnapshot: true,
-      quantity: true,
-      grossCents: true,
-      order: {
-        select: {
-          channel: true,
-          paidAt: true,
-          createdAt: true,
-          feeGrossCents: true,
-          administrationFeeGrossCents: true,
-          ticketsGrossCents: true,
-          discountCents: true,
-        },
-      },
-    },
-  });
+  // Aggregate in Postgres — never pull every order line into the Node heap for admin charts.
+  const [catRows, dayRows] = await Promise.all([
+    prisma.$queryRaw<
+      Array<{
+        category_id: string | null;
+        category_snapshot: string;
+        channel: string;
+        sold: bigint | number;
+        revenue_cents: bigint | number;
+      }>
+    >`
+      SELECT oi.category_id,
+             oi.category_snapshot,
+             o.channel,
+             COALESCE(SUM(oi.quantity), 0) AS sold,
+             COALESCE(SUM(${LINE_REVENUE_SQL}), 0) AS revenue_cents
+      FROM order_items oi
+      INNER JOIN orders o ON o.id = oi.order_id
+      WHERE oi.event_id = ${eventId}::uuid
+        AND o.status IN (${Prisma.join([...PAID])})
+      GROUP BY oi.category_id, oi.category_snapshot, o.channel
+    `,
+    prisma.$queryRaw<
+      Array<{
+        day: string;
+        tickets: bigint | number;
+        revenue_cents: bigint | number;
+      }>
+    >`
+      SELECT to_char(
+               (COALESCE(o.paid_at, o.created_at) AT TIME ZONE 'Europe/Berlin'),
+               'YYYY-MM-DD'
+             ) AS day,
+             COALESCE(SUM(oi.quantity), 0) AS tickets,
+             COALESCE(SUM(${LINE_REVENUE_SQL}), 0) AS revenue_cents
+      FROM order_items oi
+      INNER JOIN orders o ON o.id = oi.order_id
+      WHERE oi.event_id = ${eventId}::uuid
+        AND o.status IN (${Prisma.join([...PAID])})
+      GROUP BY 1
+      ORDER BY 1
+    `,
+  ]);
 
   const catMap = new Map<
     string,
@@ -207,28 +251,28 @@ export async function getEventSalesReport(eventId: string): Promise<EventSalesRe
     });
   }
 
-  const dayMap = new Map<string, { tickets: number; revenueCents: number }>();
-
-  for (const item of items) {
-    const key = item.categoryId ?? `snap:${item.categorySnapshot}`;
+  for (const row of catRows) {
+    const key = row.category_id ?? `snap:${row.category_snapshot}`;
     const existing = catMap.get(key) ?? {
       onlineSold: 0,
       boxOfficeSold: 0,
       revenueCents: 0,
-      name: item.categorySnapshot,
+      name: row.category_snapshot,
     };
-    if (item.order.channel === "box_office") existing.boxOfficeSold += item.quantity;
-    else existing.onlineSold += item.quantity;
-    const paid = orderItemCustomerPaidCents(item.grossCents, item.order);
-    existing.revenueCents += paid;
+    const sold = Number(row.sold);
+    const revenue = Number(row.revenue_cents);
+    if (row.channel === "box_office") existing.boxOfficeSold += sold;
+    else existing.onlineSold += sold;
+    existing.revenueCents += revenue;
     catMap.set(key, existing);
+  }
 
-    const when = item.order.paidAt ?? item.order.createdAt;
-    const day = berlinDayKey(when);
-    const d = dayMap.get(day) ?? { tickets: 0, revenueCents: 0 };
-    d.tickets += item.quantity;
-    d.revenueCents += paid;
-    dayMap.set(day, d);
+  const dayMap = new Map<string, { tickets: number; revenueCents: number }>();
+  for (const row of dayRows) {
+    dayMap.set(row.day, {
+      tickets: Number(row.tickets),
+      revenueCents: Number(row.revenue_cents),
+    });
   }
 
   const categories: CategorySalesRow[] = event.ticketCategories.map((cat) => {
@@ -276,9 +320,7 @@ export async function getEventSalesReport(eventId: string): Promise<EventSalesRe
   const onlineSold = categories.reduce((s, c) => s + c.onlineSold, 0);
   const boxOfficeSold = categories.reduce((s, c) => s + c.boxOfficeSold, 0);
 
-  const saleStart =
-    event.presaleStartsAt ??
-    event.createdAt;
+  const saleStart = event.presaleStartsAt ?? event.createdAt;
   const startKey = berlinDayKey(saleStart);
   const todayKey = berlinDayKey(new Date());
 

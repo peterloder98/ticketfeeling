@@ -69,9 +69,13 @@ export async function loadBuyerHeatmapPoints(opts: {
       customer: {
         select: { postalCode: true, city: true, country: true },
       },
-      tickets: opts.eventId
-        ? { where: { eventId: opts.eventId }, select: { id: true } }
-        : { select: { id: true } },
+      _count: {
+        select: {
+          tickets: opts.eventId
+            ? { where: { eventId: opts.eventId } }
+            : true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: opts.take ?? 2000,
@@ -85,7 +89,7 @@ export async function loadBuyerHeatmapPoints(opts: {
     const coords = approxCoordsFromPostal(loc);
     if (!coords) continue;
     withGeo += 1;
-    const weight = Math.max(1, order.tickets.length);
+    const weight = Math.max(1, order._count.tickets);
     const prefix = (loc.postalCode ?? "").slice(0, 2);
     const key = `${prefix}:${coords.lat.toFixed(3)}:${coords.lng.toFixed(3)}`;
     const existing = byKey.get(key);

@@ -104,6 +104,14 @@ function scheduleExpireHolds() {
   });
 }
 
+/**
+ * Admin event/detail pages must not await full hold expiry on every click.
+ * Same throttle as cart badge polls — fire-and-forget.
+ */
+export function scheduleExpireAndReconcileHolds() {
+  scheduleExpireHolds();
+}
+
 const cartInclude = {
   items: {
     include: {
