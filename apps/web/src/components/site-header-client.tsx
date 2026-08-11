@@ -162,12 +162,6 @@ export function SiteHeaderClient({ signedIn }: { signedIn: boolean }) {
                 />
                 <span className="hidden md:inline">Hilfe</span>
               </Link>
-              <Link
-                href="/hilfe/ticket-vergessen"
-                className={`${navLinkClass} hidden xl:inline-flex`}
-              >
-                Ticket vergessen
-              </Link>
             </>
           ) : null}
 

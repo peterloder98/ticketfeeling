@@ -24,7 +24,6 @@ export default async function HomePage() {
   const listings = buildPublicListingCards(events);
   const gridListings = listings.slice(0, 6);
   const gridCards = await listingCardsToEventCardData(gridListings, feeConfig);
-  const nextListing = listings[0] ?? null;
   const heroSlides = listings.slice(0, 3).map((card) => ({
     id: card.key,
     slug: card.href.startsWith("/tour/")
@@ -42,25 +41,27 @@ export default async function HomePage() {
 
   return (
     <div>
-      <section className="border-b border-[var(--tf-line)] bg-white">
-        <div className="tf-container grid items-center gap-6 py-7 md:grid-cols-[1.05fr_0.95fr] md:gap-10 md:py-9 lg:min-h-[480px]">
-          <div className="space-y-4">
-            <BrandLogo href={null} variant="full" priority className="!h-20 sm:!h-[5.25rem] md:!h-[5.5rem]" />
-            <h1 className="max-w-xl text-3xl font-bold leading-[1.1] tracking-tight text-[var(--tf-navy)] md:text-5xl lg:text-[3.25rem]">
+      <section className="relative overflow-hidden border-b border-[var(--tf-line)]">
+        <div
+          className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_70%_at_15%_20%,rgba(20,184,166,0.12),transparent_55%),radial-gradient(ellipse_60%_50%_at_90%_80%,rgba(15,39,71,0.06),transparent_50%),linear-gradient(180deg,#fff_0%,#f8fafc_100%)]"
+          aria-hidden
+        />
+        <div className="tf-container relative grid items-center gap-8 py-9 md:grid-cols-[1.05fr_0.95fr] md:gap-10 md:py-12 lg:min-h-[520px]">
+          <div className="space-y-5">
+            <BrandLogo href={null} variant="full" priority className="!h-20 sm:!h-[5.25rem] md:!h-[5.75rem]" />
+            <h1 className="max-w-xl text-3xl font-bold leading-[1.08] tracking-tight text-[var(--tf-navy)] md:text-5xl lg:text-[3.4rem]">
               Vorfreude beginnt beim Buchen.
             </h1>
-            <p className="max-w-[34rem] text-base leading-relaxed text-[var(--tf-text-secondary)] md:text-lg">
-              Tickets sicher und direkt beim Veranstalter — klar, persönlich, ohne Umwege.
+            <p className="max-w-[32rem] text-base leading-relaxed text-[var(--tf-text-secondary)] md:text-lg">
+              Sicher und direkt beim Veranstalter — klar, persönlich, ohne Umwege.
             </p>
             <div className="flex flex-wrap items-center gap-3 pt-1">
-              <a href="#aktuell" className="tf-btn tf-btn-primary !min-h-12 !px-6 text-base">
+              <a href="#aktuell" className="tf-btn tf-btn-primary !min-h-12 !px-7 text-base">
                 Tickets finden
               </a>
-              {nextListing ? (
-                <Link href={nextListing.href} className="tf-link text-base">
-                  Zum nächsten Event
-                </Link>
-              ) : null}
+              <Link href="/events" className="tf-btn tf-btn-secondary !min-h-12 !px-5 text-base">
+                Alle Events
+              </Link>
             </div>
           </div>
 
