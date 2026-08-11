@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { resolveTrackingConfig } from "@/lib/tracking/config";
+import { isPublicCommerceTrackingPath } from "@/lib/tracking/paths";
 import { TrackingScripts } from "@/components/tracking-scripts";
 import { getTrackingLinkerDomains } from "@/lib/embed/public-url";
 
@@ -11,6 +13,7 @@ type EventTracking = Parameters<typeof resolveTrackingConfig>[1];
 /**
  * Tracking must not block root-layout TTFB. Config is fetched after paint
  * (org settings are cached server-side for 60s on the API).
+ * Scripts nur auf öffentlichen Ticket-Commerce-Pfaden — nicht auf / oder /admin.
  */
 export function OrgTracking({
   embedMode = false,
@@ -24,11 +27,17 @@ export function OrgTracking({
   /** When already loaded (embed event page), skip the extra fetch. */
   orgSettings?: OrgSettings;
 } = {}) {
+  const pathname = usePathname();
+  const onCommercePath = isPublicCommerceTrackingPath(pathname);
   const [settings, setSettings] = useState<OrgSettings | null | undefined>(
     orgSettings === undefined ? undefined : orgSettings,
   );
 
   useEffect(() => {
+    if (!onCommercePath) {
+      setSettings(null);
+      return;
+    }
     if (orgSettings !== undefined) {
       setSettings(orgSettings);
       return;
@@ -50,8 +59,9 @@ export function OrgTracking({
     return () => {
       cancelled = true;
     };
-  }, [orgSettings]);
+  }, [orgSettings, onCommercePath]);
 
+  if (!onCommercePath) return null;
   if (settings === undefined || settings === null) return null;
 
   const config = resolveTrackingConfig(settings, eventTracking);

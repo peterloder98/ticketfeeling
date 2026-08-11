@@ -10,6 +10,7 @@ import {
   buildMetaPixelParams,
   metaPixelEventName,
 } from "@/lib/tracking/meta-pixel";
+import { isPublicCommerceTrackingPath } from "@/lib/tracking/paths";
 
 const SESSION_KEY = "tf_tracking_session_id";
 const VISITOR_KEY = "tf_tracking_visitor_id";
@@ -208,7 +209,10 @@ export async function trackTfEvent(
     fbq?: (...args: unknown[]) => void;
   };
 
-  if (consent?.statistics && typeof w.gtag === "function") {
+  // Externe Pixel nur auf Commerce-Pfaden; internes Event-Log oben bleibt.
+  const allowExternalPixels = isPublicCommerceTrackingPath(window.location.pathname);
+
+  if (allowExternalPixels && consent?.statistics && typeof w.gtag === "function") {
     const params: Record<string, unknown> = {
       event_id: eventId,
       ...(options.payload ?? {}),
@@ -234,7 +238,7 @@ export async function trackTfEvent(
   }
 
   const metaName = metaPixelEventName(name);
-  if (consent?.marketing && metaName && typeof w.fbq === "function") {
+  if (allowExternalPixels && consent?.marketing && metaName && typeof w.fbq === "function") {
     const params = buildMetaPixelParams({
       valueCents: options.valueCents,
       currency: options.currency,
