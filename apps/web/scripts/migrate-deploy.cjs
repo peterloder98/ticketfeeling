@@ -423,6 +423,10 @@ const FALLBACK_STATEMENTS = [
   `CREATE INDEX IF NOT EXISTS "tracking_deliveries_channel_status_idx" ON "tracking_deliveries"("channel", "status")`,
   `CREATE INDEX IF NOT EXISTS "tracking_deliveries_tracking_event_id_idx" ON "tracking_deliveries"("tracking_event_id")`,
   `ALTER TABLE "forgotten_ticket_requests" ADD COLUMN IF NOT EXISTS "last_name_hint" TEXT`,
+  // Buyer IP for GA4 MP ip_override / Meta CAPI (migration 20260811163000)
+  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "client_ip" TEXT`,
+  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "client_user_agent" TEXT`,
+  `ALTER TABLE "tracking_sessions" ADD COLUMN IF NOT EXISTS "client_ip" TEXT`,
 ];
 
 function withTimeout(promise, ms, label) {

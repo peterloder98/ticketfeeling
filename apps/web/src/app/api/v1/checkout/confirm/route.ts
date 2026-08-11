@@ -154,6 +154,8 @@ export async function POST(request: Request) {
       userId: asGuest ? null : session?.user?.id,
       sessionKey,
       paymentMethod: body.paymentMethod,
+      clientIp: ip,
+      clientUserAgent: request.headers.get("user-agent"),
       invoice: {
         requested: Boolean(body.invoiceRequested),
         recipientType: body.invoiceRecipientType ?? null,

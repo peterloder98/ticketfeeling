@@ -118,11 +118,24 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
 
   const deliveries: Array<{ channel: string; status: string; stub?: boolean }> = [];
 
-  // Session hints for MP / CAPI matching
-  const recentSession = await prisma.trackingSession.findFirst({
-    where: { organizationId: order.organizationId },
-    orderBy: { lastSeenAt: "desc" },
+  // Prefer session tied to this order; fall back to org latest (legacy).
+  const linkedEvent = await prisma.trackingEvent.findFirst({
+    where: {
+      organizationId: order.organizationId,
+      orderId: order.id,
+      trackingSessionId: { not: null },
+    },
+    orderBy: { createdAt: "desc" },
+    select: { trackingSessionId: true },
   });
+  const recentSession = linkedEvent?.trackingSessionId
+    ? await prisma.trackingSession.findUnique({
+        where: { id: linkedEvent.trackingSessionId },
+      })
+    : await prisma.trackingSession.findFirst({
+        where: { organizationId: order.organizationId },
+        orderBy: { lastSeenAt: "desc" },
+      });
 
   const items = order.items.map((item) => ({
     item_id: item.eventId,
@@ -170,7 +183,8 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
           externalId: order.customer.id,
           fbp: recentSession?.fbp,
           fbc: recentSession?.fbc,
-          userAgent: recentSession?.userAgent,
+          userAgent: order.clientUserAgent || recentSession?.userAgent,
+          clientIp: order.clientIp || recentSession?.clientIp,
         },
         testEventCode: process.env.META_TEST_EVENT_CODE?.trim() || null,
       });
@@ -220,6 +234,9 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
         valueCents,
         currency,
         items,
+        // Prefer checkout-captured buyer IP — without this MP geo = Vercel fra1
+        ipOverride: order.clientIp || recentSession?.clientIp,
+        userAgent: order.clientUserAgent || recentSession?.userAgent,
       });
       if (result.ok) {
         await markDeliverySent(claim.delivery.id, {
@@ -312,6 +329,7 @@ export async function recordInitiateCheckoutServer(input: {
       fbp: session?.fbp,
       fbc: session?.fbc,
       userAgent: session?.userAgent,
+      clientIp: session?.clientIp,
     },
   });
   if (result.ok) {

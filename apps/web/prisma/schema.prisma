@@ -1294,6 +1294,10 @@ model Order {
   voidedAt           DateTime? @map("voided_at")
   voidedByUserId     String?   @map("voided_by_user_id") @db.Uuid
   voidReason         String?   @map("void_reason")
+  /// Buyer IP at checkout confirm — GA4 MP ip_override / Meta CAPI geo (not server/Vercel IP)
+  clientIp           String?   @map("client_ip")
+  /// Buyer User-Agent at checkout confirm — GA4 MP / Meta CAPI device signals
+  clientUserAgent    String?   @map("client_user_agent") @db.Text
   createdAt          DateTime  @default(now()) @map("created_at")
   updatedAt          DateTime  @updatedAt @map("updated_at")
 
@@ -1993,6 +1997,8 @@ model TrackingSession {
   firstTouch       Json     @default("{}") @map("first_touch")
   lastTouch        Json     @default("{}") @map("last_touch")
   userAgent        String?  @map("user_agent") @db.Text
+  /// Last-seen client IP (x-forwarded-for) for MP/CAPI geo
+  clientIp         String?  @map("client_ip")
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
   lastSeenAt       DateTime @default(now()) @map("last_seen_at")

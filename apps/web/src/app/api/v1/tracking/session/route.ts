@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getDefaultOrganization } from "@/lib/commerce/org";
 import { parseAttributionFromUnknown } from "@/lib/tracking/attribution";
 import { upsertTrackingSession } from "@/lib/tracking/service";
+import { clientIpFromRequest } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
     consentStatistics: parsed.data.consent?.statistics,
     consentMarketing: parsed.data.consent?.marketing,
     userAgent: request.headers.get("user-agent"),
+    clientIp: clientIpFromRequest(request),
   });
 
   return NextResponse.json({

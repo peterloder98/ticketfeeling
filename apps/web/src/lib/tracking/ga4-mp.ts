@@ -17,6 +17,10 @@ export type Ga4MpEventInput = {
     quantity?: number;
   }>;
   params?: Record<string, string | number | boolean>;
+  /** Buyer IP — GA4 derives city/region (avoids server/Vercel datacenter geo). */
+  ipOverride?: string | null;
+  /** Buyer User-Agent for device reports. */
+  userAgent?: string | null;
 };
 
 export function resolveGa4ApiSecret(): string | null {
@@ -63,7 +67,10 @@ export async function sendGa4MpEvent(input: Ga4MpEventInput): Promise<{
   }
   if (input.items?.length) params.items = input.items;
 
-  const body = {
+  const ipOverride = normalizeIp(input.ipOverride);
+  const userAgent = input.userAgent?.trim().slice(0, 512) || null;
+
+  const body: Record<string, unknown> = {
     client_id: clientId,
     events: [
       {
@@ -76,6 +83,9 @@ export async function sendGa4MpEvent(input: Ga4MpEventInput): Promise<{
       },
     ],
   };
+  // Without these, MP hits are geolocated to the server egress (e.g. Vercel fra1 → Frankfurt).
+  if (ipOverride) body.ip_override = ipOverride;
+  if (userAgent) body.user_agent = userAgent;
 
   const url =
     `https://www.google-analytics.com/mp/collect` +
@@ -104,4 +114,10 @@ export async function sendGa4MpEvent(input: Ga4MpEventInput): Promise<{
       error: error instanceof Error ? error.message : "ga4_mp_fetch_failed",
     };
   }
+}
+
+function normalizeIp(value?: string | null): string | null {
+  const ip = value?.trim();
+  if (!ip || ip === "unknown") return null;
+  return ip.slice(0, 64);
 }

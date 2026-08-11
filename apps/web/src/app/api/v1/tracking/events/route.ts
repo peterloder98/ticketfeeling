@@ -5,6 +5,7 @@ import { parseAttributionFromUnknown } from "@/lib/tracking/attribution";
 import { isTfTrackingEventName, mapToMeta } from "@/lib/tracking/events";
 import { logTrackingEvent, upsertTrackingSession } from "@/lib/tracking/service";
 import { dispatchMetaCapiFunnelEvent } from "@/lib/tracking/meta-funnel";
+import { clientIpFromRequest } from "@/lib/security/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,7 @@ export async function POST(request: Request) {
   }
 
   const ua = request.headers.get("user-agent");
+  const clientIp = clientIpFromRequest(request);
   const attr = parseAttributionFromUnknown(parsed.data.attribution ?? {});
   const marketing = Boolean(parsed.data.consent?.marketing);
 
@@ -83,6 +85,7 @@ export async function POST(request: Request) {
     consentStatistics: parsed.data.consent?.statistics,
     consentMarketing: parsed.data.consent?.marketing,
     userAgent: ua,
+    clientIp,
   });
 
   const { event, created } = await logTrackingEvent({

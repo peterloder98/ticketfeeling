@@ -75,6 +75,9 @@ export async function createOrderFromCart(input: {
     city?: string | null;
     country?: string | null;
   };
+  /** Buyer IP / UA from checkout request — used for GA4 MP / Meta CAPI geo. */
+  clientIp?: string | null;
+  clientUserAgent?: string | null;
 }) {
   if (!input.customer.acceptTerms) throw new Error("TERMS_REQUIRED");
   if (!input.customer.acknowledgePrivacy) throw new Error("PRIVACY_REQUIRED");
@@ -465,6 +468,11 @@ export async function createOrderFromCart(input: {
         invoicePostalCode: input.invoice?.postalCode ?? null,
         invoiceCity: input.invoice?.city ?? null,
         invoiceCountry: input.invoice?.country ?? null,
+        clientIp:
+          input.clientIp && input.clientIp !== "unknown"
+            ? input.clientIp.slice(0, 64)
+            : null,
+        clientUserAgent: input.clientUserAgent?.slice(0, 512) ?? null,
         billingSnapshot: {
           email: customer.email,
           firstName: customer.firstName,

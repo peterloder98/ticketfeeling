@@ -101,6 +101,7 @@ export async function dispatchMetaCapiFunnelEvent(
       fbp: session?.fbp,
       fbc: session?.fbc,
       userAgent: session?.userAgent,
+      clientIp: session?.clientIp,
     },
     testEventCode: process.env.META_TEST_EVENT_CODE?.trim() || null,
   });
