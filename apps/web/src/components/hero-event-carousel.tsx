@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { BrandLogo } from "@/components/brand-logo";
 import { ResponsiveImage } from "@/components/responsive-image";
 
 export type HeroSlide = {
@@ -131,7 +130,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
         )}
       </div>
 
-      {/* Navy wash — keeps BrandLogo + copy readable over any cover */}
+      {/* Navy wash — keeps copy readable over any cover */}
       <div
         className="absolute inset-0 bg-[linear-gradient(105deg,rgba(15,39,71,0.94)_0%,rgba(15,39,71,0.78)_46%,rgba(15,39,71,0.55)_100%)]"
         aria-hidden
@@ -142,21 +141,12 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
       />
 
       <div className="tf-container relative z-[1] flex min-h-[min(100dvh,960px)] flex-col justify-center gap-8 py-10 md:min-h-[min(88dvh,840px)] md:grid md:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] md:items-center md:gap-10 md:py-14 lg:gap-16">
-        {/* Brand + headline */}
+        {/* Headline + CTAs — brand lives in the site header */}
         <div
-          className={`order-1 max-w-xl space-y-5 transition-all duration-300 ease-out md:col-start-1 md:row-start-1 md:space-y-6 ${
+          className={`order-1 max-w-xl space-y-4 transition-all duration-300 ease-out md:col-start-1 md:row-start-1 md:space-y-5 ${
             ready ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
           }`}
         >
-          <div className="inline-flex self-start rounded-2xl bg-white/95 px-3 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.25)] sm:px-4 sm:py-3">
-            <BrandLogo
-              href={null}
-              variant="full"
-              priority
-              className="!h-14 sm:!h-[4.75rem] md:!h-[5.5rem]"
-            />
-          </div>
-
           <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-[3.35rem]">
             Die Nacht, auf die du wartest.
           </h1>
