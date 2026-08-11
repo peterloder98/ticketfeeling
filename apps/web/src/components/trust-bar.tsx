@@ -1,34 +1,21 @@
-import { BadgeCheck, ShieldCheck, Smartphone, Headphones } from "lucide-react";
+import { ShieldCheck, Smartphone } from "lucide-react";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
-
-const ITEMS = [
-  { icon: BadgeCheck, label: "Direkt beim Veranstalter" },
-  { icon: ShieldCheck, label: "Sichere Zahlung" },
-  { icon: Smartphone, label: "Digitale Tickets sofort" },
-  { icon: Headphones, label: "Persönlicher Support" },
-];
 
 export function TrustBar() {
   return (
-    <section className="border-y border-[var(--tf-line)] bg-white">
-      <div className="tf-container space-y-4 py-4 lg:py-5">
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 lg:gap-6">
-          {ITEMS.map((item) => (
-            <div key={item.label} className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[rgba(20,184,166,0.12)] text-[var(--tf-teal)]">
-                <item.icon className="h-4 w-4" strokeWidth={2} aria-hidden />
-              </span>
-              <p className="text-sm font-medium text-[var(--tf-navy)]">{item.label}</p>
-            </div>
-          ))}
-        </div>
-
-        <div className="flex flex-col items-center gap-2 border-t border-[var(--tf-line)] pt-3 text-center">
-          <p className="text-xs font-medium text-[var(--tf-text-secondary)]">
-            Sicher bezahlen mit
+    <section className="border-y border-[var(--tf-line)] bg-[var(--tf-card)]">
+      <div className="tf-container flex flex-col items-center gap-3 py-4 md:flex-row md:justify-between md:gap-6 md:py-5">
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2 md:justify-start">
+          <p className="inline-flex items-center gap-2 text-sm font-medium text-[var(--tf-navy)]">
+            <ShieldCheck className="h-4 w-4 shrink-0 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
+            Sicher bezahlen
           </p>
-          <PaymentBrandRow />
+          <p className="inline-flex items-center gap-2 text-sm font-medium text-[var(--tf-navy)]">
+            <Smartphone className="h-4 w-4 shrink-0 text-[var(--tf-teal)]" strokeWidth={2} aria-hidden />
+            Tickets sofort digital
+          </p>
         </div>
+        <PaymentBrandRow />
       </div>
     </section>
   );

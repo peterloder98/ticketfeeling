@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { BrandLogo } from "@/components/brand-logo";
 import { ResponsiveImage } from "@/components/responsive-image";
 
 export type HeroSlide = {
@@ -15,12 +16,21 @@ export type HeroSlide = {
   coverImageUrl: string | null;
 };
 
-const INTERVAL_MS = 10_000;
+const INTERVAL_MS = 8_000;
+const FALLBACK_COVER =
+  "https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=1600&q=80";
 
 export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
   const [index, setIndex] = useState(0);
   const [pauseKey, setPauseKey] = useState(0);
+  const [ready, setReady] = useState(false);
   const count = slides.length;
+  const hasSlides = count > 0;
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setReady(true), 40);
+    return () => window.clearTimeout(id);
+  }, []);
 
   useEffect(() => {
     if (count < 2) return;
@@ -30,21 +40,11 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
     return () => window.clearInterval(id);
   }, [count, pauseKey]);
 
-  if (count === 0) {
-    return (
-      <div className="relative mx-auto aspect-square w-full max-w-[444px] overflow-hidden rounded-[28px] border border-[var(--tf-line)] bg-[var(--tf-navy)] shadow-[0_12px_40px_rgba(15,39,71,0.12)]">
-        <ResponsiveImage
-          src="https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=900&q=80"
-          alt="Live-Veranstaltung"
-          className="h-full w-full"
-          fallback="event"
-        />
-      </div>
-    );
-  }
-
-  const slide = slides[index] ?? slides[0];
-  const meta = [slide.whenLabel, slide.locationLabel].filter(Boolean).join(" · ");
+  const slide = hasSlides ? (slides[index] ?? slides[0]) : null;
+  const meta = slide
+    ? [slide.whenLabel, slide.locationLabel].filter(Boolean).join(" · ")
+    : null;
+  const primaryHref = slide?.href ?? (slide ? `/event/${slide.slug}` : "#aktuell");
 
   function goTo(next: number) {
     if (count < 1) return;
@@ -53,62 +53,143 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
   }
 
   return (
-    <div className="relative mx-auto w-full max-w-[444px]">
-      <Link
-        href={slide.href ?? `/event/${slide.slug}`}
-        className="relative block aspect-square w-full overflow-hidden rounded-[28px] border border-[var(--tf-line)] bg-[var(--tf-navy)] shadow-[0_12px_40px_rgba(15,39,71,0.12)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]"
-        aria-label={`${slide.name} ansehen`}
-      >
-        {slides.map((s, i) => (
-          <div
-            key={s.id}
-            className={`absolute inset-0 transition-opacity duration-700 ease-out ${
-              i === index ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-            aria-hidden={i !== index}
-          >
-            <ResponsiveImage
-              src={s.coverImageUrl}
-              alt={`Cover: ${s.name}`}
-              className="h-full w-full"
-              fallback="event"
+    <section
+      className="relative isolate min-h-[min(92dvh,860px)] overflow-hidden bg-[#0F2747] text-white md:min-h-[min(88dvh,820px)]"
+      aria-label="Ticketfeeling"
+    >
+      {/* Full-bleed event covers — real atmosphere, not abstract wash alone */}
+      <div className="absolute inset-0" aria-hidden>
+        {hasSlides ? (
+          slides.map((s, i) => (
+            <div
+              key={s.id}
+              className={`absolute inset-0 overflow-hidden transition-opacity duration-700 ease-out ${
+                i === index ? "opacity-100" : "opacity-0"
+              }`}
+            >
+              <ResponsiveImage
+                src={s.coverImageUrl}
+                alt=""
+                className={`absolute inset-0 h-full w-full transition-transform duration-[9000ms] ease-out ${
+                  i === index && ready ? "scale-100" : "scale-110"
+                }`}
+                fit="cover"
+                fallback="event"
+                priority={i === 0}
+              />
+            </div>
+          ))
+        ) : (
+          <ResponsiveImage
+            src={FALLBACK_COVER}
+            alt=""
+            className="absolute inset-0 h-full w-full"
+            fit="cover"
+            fallback="event"
+            priority
+          />
+        )}
+      </div>
+
+      {/* Navy readability wash — lighter on the right so cover atmosphere remains */}
+      <div
+        className="absolute inset-0 bg-[linear-gradient(100deg,rgba(15,39,71,0.9)_0%,rgba(15,39,71,0.68)_42%,rgba(15,39,71,0.35)_100%)]"
+        aria-hidden
+      />
+      <div
+        className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,39,71,0.3)_0%,transparent_32%,rgba(15,39,71,0.5)_78%,rgba(15,39,71,0.85)_100%)]"
+        aria-hidden
+      />
+
+      <div className="tf-container relative z-[1] flex min-h-[min(92dvh,860px)] flex-col justify-end pb-10 pt-8 md:min-h-[min(88dvh,820px)] md:justify-center md:pb-16 md:pt-12">
+        <div
+          className={`max-w-xl space-y-5 transition-all duration-300 ease-out md:space-y-6 ${
+            ready ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+          }`}
+        >
+          {/* Light plate so navy lockup stays readable on dark atmosphere */}
+          <div className="inline-flex rounded-2xl bg-white/95 px-3 py-2 shadow-[0_10px_40px_rgba(0,0,0,0.25)] sm:px-4 sm:py-3">
+            <BrandLogo
+              href={null}
+              variant="full"
+              priority
+              className="!h-14 sm:!h-[4.75rem] md:!h-[5.5rem]"
             />
           </div>
-        ))}
 
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-[rgba(15,39,71,0.92)] via-[rgba(15,39,71,0.55)] to-transparent px-4 pb-4 pt-16">
-          <p className="line-clamp-2 text-base font-semibold leading-snug text-white md:text-lg">
-            {slide.name}
+          <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-[3.35rem]">
+            Die Nacht, auf die du wartest.
+          </h1>
+
+          <p
+            className={`max-w-md text-base leading-relaxed text-white/90 transition-all delay-75 duration-300 ease-out md:text-lg ${
+              ready ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+            }`}
+          >
+            Tickets direkt beim Veranstalter — klar, sicher, ohne Umwege.
           </p>
-          {meta ? (
-            <p className="mt-1 line-clamp-2 text-sm leading-snug text-white/85">{meta}</p>
-          ) : null}
-        </div>
-      </Link>
 
-      {count > 1 ? (
-        <div
-          className="pointer-events-none absolute inset-x-0 top-3 z-10 flex justify-center"
-          role="tablist"
-          aria-label="Events im Wechsel"
-        >
-          <div className="pointer-events-auto flex items-center gap-2 rounded-full bg-black/35 px-2.5 py-1.5 backdrop-blur-sm">
-            {slides.map((s, i) => (
-              <button
-                key={s.id}
-                type="button"
-                role="tab"
-                aria-selected={i === index}
-                aria-label={`Event ${i + 1}: ${s.name}`}
-                onClick={() => goTo(i)}
-                className={`h-2.5 w-2.5 rounded-full transition ${
-                  i === index ? "scale-110 bg-white" : "bg-white/45 hover:bg-white/75"
-                }`}
-              />
-            ))}
+          <div
+            className={`flex flex-wrap items-center gap-3 pt-1 transition-all delay-150 duration-300 ease-out ${
+              ready ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+            }`}
+          >
+            <a href="#aktuell" className="tf-btn tf-btn-primary !min-h-12 !px-7 text-base">
+              Tickets sichern
+            </a>
+            <Link
+              href="/events"
+              className="tf-btn !min-h-12 !border-white/60 !bg-white/12 !px-5 text-base !text-white backdrop-blur-sm hover:!bg-white/20"
+            >
+              Alle Events
+            </Link>
           </div>
         </div>
-      ) : null}
-    </div>
+
+        {/* Featured event cue — conversion path without competing marketing blocks */}
+        {slide ? (
+          <div
+            className={`mt-10 flex max-w-xl flex-col gap-3 border-t border-white/20 pt-5 transition-all delay-200 duration-300 ease-out md:mt-14 md:flex-row md:items-end md:justify-between ${
+              ready ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+            }`}
+          >
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
+                Als Nächstes
+              </p>
+              <Link
+                href={primaryHref}
+                className="mt-1 block truncate text-base font-semibold text-white transition hover:text-[var(--tf-teal)] md:text-lg"
+              >
+                {slide.name}
+              </Link>
+              {meta ? <p className="mt-0.5 truncate text-sm text-white/75">{meta}</p> : null}
+            </div>
+
+            {count > 1 ? (
+              <div
+                className="flex shrink-0 items-center gap-2"
+                role="tablist"
+                aria-label="Events im Wechsel"
+              >
+                {slides.map((s, i) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={i === index}
+                    aria-label={`Event ${i + 1}: ${s.name}`}
+                    onClick={() => goTo(i)}
+                    className={`h-2.5 rounded-full transition-all duration-300 ease-out ${
+                      i === index ? "w-7 bg-[var(--tf-teal)]" : "w-2.5 bg-white/45 hover:bg-white/75"
+                    }`}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
