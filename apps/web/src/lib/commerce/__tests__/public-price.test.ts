@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   customerUnitPriceCents,
+  formatCustomerPriceLabel,
   orderItemCustomerPaidCents,
 } from "@/lib/commerce/public-price";
 
@@ -52,5 +53,39 @@ describe("customerUnitPriceCents", () => {
     expect(
       customerUnitPriceCents(10000, { enabled: true, percentageBasisPoints: 400 }),
     ).toBe(10400);
+  });
+});
+
+describe("formatCustomerPriceLabel", () => {
+  const feeOn = {
+    enabled: true,
+    percentageBasisPoints: 400,
+    displayName: "Verwaltungsgebühr",
+  };
+  const formatEuro = (c: number) => `${(c / 100).toFixed(2).replace(".", ",")} €`;
+
+  it("shows ticket price and zzgl. note without fee math in the label", () => {
+    const labeled = formatCustomerPriceLabel({
+      ticketGrossCents: 10000,
+      feeConfig: feeOn,
+      formatEuro,
+      prefix: "ab",
+    });
+    expect(labeled.totalLabel).toBe("ab 100,00 €");
+    expect(labeled.surchargeLabel).toBe("zzgl. Verwaltungsgebühr");
+    expect(labeled.ticketCents).toBe(10000);
+    expect(labeled.totalCents).toBe(10400);
+    expect(labeled.feeCents).toBe(400);
+  });
+
+  it("omits surcharge when fee is disabled", () => {
+    const labeled = formatCustomerPriceLabel({
+      ticketGrossCents: 5000,
+      feeConfig: { enabled: false, percentageBasisPoints: 400, displayName: "Verwaltungsgebühr" },
+      formatEuro,
+      prefix: "ab",
+    });
+    expect(labeled.totalLabel).toBe("ab 50,00 €");
+    expect(labeled.surchargeLabel).toBe("");
   });
 });

@@ -31,7 +31,7 @@ export type EventCardData = {
   campaignName?: string | null;
   /** ISO end of the ab-price Aktion (listing countdown priority) */
   campaignValidUntil?: string | null;
-  /** Small note under price, e.g. "inkl. 4 % Verwaltungsgebühr" */
+  /** Small note under price, e.g. "zzgl. Verwaltungsgebühr" */
   priceNote?: string | null;
   remainingTickets?: number | null;
   capacity?: number | null;
@@ -78,9 +78,13 @@ export function EventCard({
   quiet = false,
 }: {
   event: EventCardData;
-  /** Home/listing calm mode: hide fee line; countdown still only when urgent. */
+  /**
+   * Reserved for calm listing variants. Fee note always shows when `priceNote` is set
+   * (ticket price + „zzgl. Verwaltungsgebühr“).
+   */
   quiet?: boolean;
 }) {
+  void quiet;
   const when =
     event.whenLabel ??
     (event.eventStartsAt
@@ -107,7 +111,7 @@ export function EventCard({
   const href = event.href ?? `/event/${event.slug}`;
   const cta = event.ctaLabel ?? "Event ansehen";
   const onSale = Boolean(event.listPriceLabel && event.saleBadge);
-  const showFeeNote = Boolean(event.priceNote) && !quiet;
+  const showFeeNote = Boolean(event.priceNote);
 
   return (
     <Link

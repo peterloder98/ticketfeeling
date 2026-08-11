@@ -72,8 +72,9 @@ export function formatFeeIncludedNote(
 }
 
 /**
- * Public listing / “ab”-price: customer total including Verwaltungsgebühr.
- * Seat/category pickers that show ticket-only units keep using formatFeeSurchargeNote.
+ * Public listing / “ab”-price: normal ticket amount (ex fee) + calm „zzgl. …“ note.
+ * Checkout / cart keep fee-inclusive clarity separately. Seat pickers that need the
+ * percentage in the note still use formatFeeSurchargeNote.
  */
 export function formatCustomerPriceLabel(input: {
   ticketGrossCents: number;
@@ -81,10 +82,12 @@ export function formatCustomerPriceLabel(input: {
   formatEuro: (cents: number) => string;
   prefix?: "ab" | null;
 }): {
+  /** Ticket / from-price label (without Verwaltungsgebühr). */
   totalLabel: string;
   surchargeLabel: string;
   breakdownLabel: string;
   ticketCents: number;
+  /** Ticket + fee — for callers that need the checkout total, not the listing label. */
   totalCents: number;
   feeCents: number;
 } {
@@ -92,8 +95,11 @@ export function formatCustomerPriceLabel(input: {
   const feeCents = customerUnitFeeCents(ticketCents, input.feeConfig);
   const totalCents = ticketCents + feeCents;
   const prefix = input.prefix === "ab" ? "ab " : "";
-  const totalLabel = `${prefix}${input.formatEuro(totalCents)}`;
-  const surchargeLabel = formatFeeIncludedNote(input.feeConfig);
+  const totalLabel = `${prefix}${input.formatEuro(ticketCents)}`;
+  const surchargeLabel =
+    input.feeConfig.enabled && input.feeConfig.percentageBasisPoints > 0
+      ? `zzgl. ${input.feeConfig.displayName}`
+      : "";
 
   return {
     ticketCents,
