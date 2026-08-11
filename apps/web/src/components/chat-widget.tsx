@@ -4,6 +4,9 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { MessageCircle, Send, X, Bot } from "lucide-react";
+import { OPEN_CHAT_EVENT } from "@/lib/chat-open";
+
+export { OPEN_CHAT_EVENT };
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -58,6 +61,33 @@ export function ChatWidget({ compact = false }: { compact?: boolean }) {
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, loading, open]);
+
+  useEffect(() => {
+    if (!compact) return;
+
+    function openFromTrigger() {
+      setOpen(true);
+    }
+
+    function openFromQuery() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("chat") === "1") {
+          setOpen(true);
+          params.delete("chat");
+          const next = params.toString();
+          const url = `${window.location.pathname}${next ? `?${next}` : ""}${window.location.hash}`;
+          window.history.replaceState({}, "", url);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    openFromQuery();
+    window.addEventListener(OPEN_CHAT_EVENT, openFromTrigger);
+    return () => window.removeEventListener(OPEN_CHAT_EVENT, openFromTrigger);
+  }, [compact]);
 
   async function sendMessage(message: string) {
     const trimmed = message.trim();

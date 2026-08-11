@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { ChatWidget } from "@/components/chat-widget";
+import { ChevronDown } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { SupportContactForm } from "@/components/support-contact-form";
+import { OpenChatButton } from "@/components/open-chat-button";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Hilfe" };
@@ -19,54 +20,84 @@ export default async function HelpPage() {
           Support
         </p>
         <h1 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--tf-navy)] md:text-4xl">
-          Hilfe-Chat
+          Hilfe
         </h1>
         <p className="mt-2 text-[var(--tf-text-secondary)]">
-          Unser Chatbot beantwortet Fragen zu Events, Bestellung, Zahlung und Tickets — rund um die
-          Uhr. Für Einzelfälle erreichst du unten den Kundenservice.
+          Schnelle Antworten im Chat, klare Themen unten — und für Einzelfälle den Kundenservice.
         </p>
       </div>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-[1.1fr_0.9fr] lg:items-start">
-        <ChatWidget />
-
-        <div className="space-y-6">
-          <div className="tf-card !p-5">
-            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Schnellzugriff</h2>
-            <div className="mt-4 flex flex-col gap-2">
-              <Link href="/hilfe/ticket-vergessen" className="tf-btn tf-btn-primary justify-center">
-                Ticket vergessen
-              </Link>
-              <Link href="/events" className="tf-btn tf-btn-secondary justify-center">
-                Events ansehen
-              </Link>
-              <Link href="/konto" className="tf-btn tf-btn-secondary justify-center">
-                Meine Tickets / Konto
-              </Link>
-            </div>
+      <div className="mt-8 grid gap-6 lg:grid-cols-2 lg:items-start">
+        <div className="tf-card !p-5">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Chat-Assistent</h2>
+          <p className="mt-1.5 text-sm text-[var(--tf-text-secondary)]">
+            Fragen zu Events, Bestellung, Zahlung und Tickets — rund um die Uhr. Öffnet den Chat
+            unten rechts.
+          </p>
+          <div className="mt-4">
+            <OpenChatButton />
           </div>
+        </div>
 
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Häufige Themen</h2>
-            {articles.map((article) => (
-              <article key={article.id} className="tf-card !p-4">
-                <h3 className="font-semibold text-[var(--tf-navy)]">{article.title}</h3>
-                <p className="mt-1.5 text-sm text-[var(--tf-text-secondary)]">{article.body}</p>
-              </article>
-            ))}
-          </div>
-
-          <div id="kontakt" className="tf-card !p-5">
-            <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Kundenservice</h2>
-            <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-              Für individuelle Fälle. Der Bot erstattet oder entwertet keine Tickets.
-            </p>
-            <div className="mt-4">
-              <SupportContactForm />
-            </div>
+        <div className="tf-card !p-5">
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Schnellzugriff</h2>
+          <div className="mt-4 flex flex-col gap-2">
+            <Link href="/hilfe/ticket-vergessen" className="tf-btn tf-btn-primary justify-center">
+              Ticket vergessen
+            </Link>
+            <a href="#kontakt" className="tf-btn tf-btn-secondary justify-center">
+              Kundenservice schreiben
+            </a>
+            <Link href="/events" className="tf-btn tf-btn-secondary justify-center">
+              Events ansehen
+            </Link>
+            <Link href="/konto" className="tf-btn tf-btn-secondary justify-center">
+              Meine Tickets / Konto
+            </Link>
           </div>
         </div>
       </div>
+
+      <div id="kontakt" className="tf-card mt-8 scroll-mt-28 !p-5 md:scroll-mt-24">
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Kundenservice</h2>
+        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+          Für individuelle Fälle. Der Chat erstattet oder entwertet keine Tickets.
+        </p>
+        <div className="mt-4">
+          <SupportContactForm />
+        </div>
+      </div>
+
+      <section className="mt-10 max-w-3xl">
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Häufige Themen</h2>
+        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+          Tippe auf ein Thema — die Antwort klappt auf.
+        </p>
+        {articles.length === 0 ? (
+          <p className="mt-4 text-sm text-[var(--tf-text-secondary)]">
+            Gerade keine veröffentlichten Artikel.
+          </p>
+        ) : (
+          <div className="tf-card mt-4 divide-y divide-[var(--tf-line)] !p-0 overflow-hidden">
+            {articles.map((article) => (
+              <details key={article.id} className="group">
+                <summary className="flex cursor-pointer list-none items-center gap-3 px-4 py-3.5 transition hover:bg-[rgba(20,184,166,0.04)] [&::-webkit-details-marker]:hidden">
+                  <span className="min-w-0 flex-1 font-medium text-[var(--tf-navy)]">
+                    {article.title}
+                  </span>
+                  <ChevronDown
+                    className="h-4 w-4 shrink-0 text-[var(--tf-text-secondary)] transition group-open:rotate-180"
+                    aria-hidden
+                  />
+                </summary>
+                <div className="px-4 pb-4 text-sm leading-relaxed whitespace-pre-wrap text-[var(--tf-text-secondary)]">
+                  {article.body}
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

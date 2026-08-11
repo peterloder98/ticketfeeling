@@ -25,11 +25,15 @@ export function SupportContactForm() {
   }
 
   if (done) {
-    return <p className="tf-card text-[var(--gold-soft)]">Danke — deine Anfrage wurde aufgenommen.</p>;
+    return (
+      <p className="rounded-xl border border-[var(--tf-line)] bg-[rgba(20,184,166,0.08)] px-4 py-3 text-sm font-medium text-[var(--tf-navy)]">
+        Geschafft — deine Anfrage ist angekommen. Wir melden uns per E-Mail.
+      </p>
+    );
   }
 
   return (
-    <form onSubmit={onSubmit} className="tf-card space-y-3">
+    <form onSubmit={onSubmit} className="space-y-3">
       <div>
         <label className="tf-label" htmlFor="support-email">
           E-Mail
