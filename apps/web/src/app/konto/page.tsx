@@ -61,7 +61,14 @@ export default async function AccountPage() {
           );
         })}
         {orders.length === 0 ? (
-          <p className="text-[var(--muted)]">Noch keine Bestellungen.</p>
+          <div className="tf-card space-y-4 p-6">
+            <p className="text-base text-[var(--tf-text-secondary)]">
+              Noch keine Bestellungen — die nächsten Events warten schon.
+            </p>
+            <Link href="/events" className="tf-btn tf-btn-primary inline-flex">
+              Tickets finden
+            </Link>
+          </div>
         ) : null}
       </div>
     </div>

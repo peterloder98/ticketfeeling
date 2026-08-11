@@ -48,7 +48,7 @@ function checkoutErrorMessage(code: string) {
     case "CART_EXPIRED":
       return "Reservierung abgelaufen — bitte erneut in den Warenkorb legen.";
     case "HOLD_EXPIRED":
-      return "Deine Platzreservierung ist abgelaufen — bitte die Plätze neu wählen.";
+      return "Ihre Platzreservierung ist abgelaufen — bitte die Plätze neu wählen.";
     case "TERMS_REQUIRED":
     case "PRIVACY_REQUIRED":
       return "Bitte AGB und Datenschutz bestätigen.";
@@ -404,7 +404,7 @@ export function CheckoutForm({
     >
       {isStaff ? (
         <div className="mb-5 rounded-[16px] border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] p-4 text-sm text-[var(--tf-navy)]">
-          <p className="font-semibold">Du bist als Mitarbeiter angemeldet</p>
+          <p className="font-semibold">Sie sind als Mitarbeiter angemeldet</p>
           <p className="mt-1 text-[var(--tf-text-secondary)]">
             Für einen normalen Kundentest: als Gast kaufen (unten) — oder{" "}
             <button
@@ -425,7 +425,7 @@ export function CheckoutForm({
 
       {showAccountChoice ? (
         <div className="mb-6">
-          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Wie möchtest du kaufen?</h2>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Wie möchten Sie kaufen?</h2>
           <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
             Gastkauf ohne Konto — oder schnell registrieren für später.
           </p>
@@ -510,7 +510,7 @@ export function CheckoutForm({
           />
           {emailDomainHint ? (
             <p className="mt-1.5 text-sm text-[var(--tf-text-secondary)]">
-              Meintest du{" "}
+              Meinten Sie{" "}
               <button
                 type="button"
                 className="font-medium text-[var(--tf-teal)] underline"
@@ -643,8 +643,8 @@ export function CheckoutForm({
         {invoiceRequested ? (
           <div className="grid gap-3 sm:grid-cols-2">
             <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)] sm:col-span-2">
-              Für die Rechnung brauchen wir deine Adresse. Nach dem Kauf findest du den PDF-Download
-              in deiner Bestellung (und in der Bestätigungsmail).
+              Für die Rechnung brauchen wir Ihre Adresse. Nach dem Kauf finden Sie den PDF-Download
+              in Ihrer Bestellung (und in der Bestätigungsmail).
             </p>
             <div>
               <label className="tf-label" htmlFor="street">

@@ -73,7 +73,14 @@ function urgencyBadge(
   return { label: "Tickets", className: "bg-[rgba(20,184,166,0.95)] text-white" };
 }
 
-export function EventCard({ event }: { event: EventCardData }) {
+export function EventCard({
+  event,
+  quiet = false,
+}: {
+  event: EventCardData;
+  /** Home/listing calm mode: hide fee line; countdown still only when urgent. */
+  quiet?: boolean;
+}) {
   const when =
     event.whenLabel ??
     (event.eventStartsAt
@@ -100,6 +107,7 @@ export function EventCard({ event }: { event: EventCardData }) {
   const href = event.href ?? `/event/${event.slug}`;
   const cta = event.ctaLabel ?? "Event ansehen";
   const onSale = Boolean(event.listPriceLabel && event.saleBadge);
+  const showFeeNote = Boolean(event.priceNote) && !quiet;
 
   return (
     <Link
@@ -193,10 +201,10 @@ export function EventCard({ event }: { event: EventCardData }) {
                 {event.campaignName}
               </span>
             ) : null}
-            {event.priceNote ? (
+            {showFeeNote ? (
               <FeeSurchargeNote
                 as="p"
-                note={event.priceNote}
+                note={event.priceNote!}
                 className="mt-0.5"
                 textClassName="text-[11px] text-[var(--tf-text-secondary)]"
               />

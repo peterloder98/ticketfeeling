@@ -133,11 +133,11 @@ export default async function PayPage({ params, searchParams }: Props) {
               Lastschrift
             </p>
             <h1 className="mt-2 text-3xl font-bold text-[var(--tf-navy)]">
-              Deine Zahlung wird verarbeitet
+              Ihre Zahlung wird verarbeitet
             </h1>
             <p className="mt-3 text-[var(--tf-text-secondary)]">
-              Vielen Dank für deine Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald
-              die Zahlung bestätigt wurde, erhältst du deine endgültige Zahlungsbestätigung und dein
+              Vielen Dank für Ihre Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald
+              die Zahlung bestätigt wurde, erhalten Sie Ihre endgültige Zahlungsbestätigung und Ihr
               Ticket per E-Mail.
             </p>
             <Link href={processingHref} className="tf-btn tf-btn-primary mt-6 inline-flex">
@@ -155,7 +155,7 @@ export default async function PayPage({ params, searchParams }: Props) {
       ? "Mit Klarna weiter"
       : "Zahlungsdaten eingeben";
   const helper = isSepa
-    ? "Nur noch die Bankverbindung — danach erteilst du das Lastschriftmandat."
+    ? "Nur noch die Bankverbindung — danach erteilen Sie das Lastschriftmandat."
     : isKlarna
       ? "Als Nächstes öffnet sich Klarna. Betrag und Bestellung sind schon erfasst."
       : "Nur noch Karte oder Wallet — Betrag und Bestellung sind schon erfasst.";

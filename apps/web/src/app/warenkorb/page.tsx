@@ -101,12 +101,14 @@ export default async function CartPage() {
           </div>
         ))}
         {items.length === 0 ? (
-          <p className="text-[var(--muted)]">
-            Warenkorb ist leer.{" "}
-            <Link href="/events" className="text-[var(--gold-soft)] underline">
-              Events ansehen
+          <div className="tf-card mt-2 space-y-4 p-6 text-center sm:text-left">
+            <p className="text-base text-[var(--tf-text-secondary)]">
+              Ihr Warenkorb ist noch leer.
+            </p>
+            <Link href="/events" className="tf-btn tf-btn-primary inline-flex">
+              Events entdecken
             </Link>
-          </p>
+          </div>
         ) : null}
       </div>
 

@@ -18,17 +18,16 @@ export function PersonalSupportSection() {
           </p>
           <h2 className="tf-display mt-2 text-2xl md:text-4xl">Persönlich für dich da.</h2>
           <p className="mt-4 max-w-[65ch] text-base leading-relaxed text-[var(--tf-text-secondary)]">
-            Ticketfeeling wurde aus der Praxis heraus entwickelt. Wir veranstalten selbst Konzerte und
-            wissen, wie wichtig ein einfacher Ticketkauf, klare Informationen und ein erreichbarer
-            Ansprechpartner sind. Bei uns landest du nicht in einem anonymen Callcenter, sondern bei
-            Menschen, die ihre Veranstaltungen und Besucher kennen.
+            Ticketfeeling kommt aus der Praxis: Wir veranstalten selbst Konzerte und wissen, wie
+            wichtig ein einfacher Ticketkauf und ein erreichbarer Ansprechpartner sind. Bei Fragen
+            landest du nicht im anonymen Callcenter — sondern bei Menschen, die ihre Events kennen.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/hilfe" className="tf-btn tf-btn-primary">
-              Mehr über Ticketfeeling
-            </Link>
-            <Link href="/hilfe#kontakt" className="tf-btn tf-btn-secondary">
+            <Link href="/hilfe#kontakt" className="tf-btn tf-btn-primary">
               Kontakt aufnehmen
+            </Link>
+            <Link href="/hilfe" className="tf-btn tf-btn-secondary">
+              Hilfe & FAQ
             </Link>
           </div>
         </div>

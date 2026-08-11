@@ -44,6 +44,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
   }
 
   const slide = slides[index] ?? slides[0];
+  const meta = [slide.whenLabel, slide.locationLabel].filter(Boolean).join(" · ");
 
   function goTo(next: number) {
     if (count < 1) return;
@@ -74,6 +75,15 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
             />
           </div>
         ))}
+
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] bg-gradient-to-t from-[rgba(15,39,71,0.92)] via-[rgba(15,39,71,0.55)] to-transparent px-4 pb-4 pt-16">
+          <p className="line-clamp-2 text-base font-semibold leading-snug text-white md:text-lg">
+            {slide.name}
+          </p>
+          {meta ? (
+            <p className="mt-1 line-clamp-2 text-sm leading-snug text-white/85">{meta}</p>
+          ) : null}
+        </div>
       </Link>
 
       {count > 1 ? (
