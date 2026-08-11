@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts && tsx prisma/seed-schlagerparadies-2027.ts && tsx prisma/seed-weihnachtstraum-2026.ts",
+    "db:sync-knowledge": "tsx scripts/sync-support-knowledge.mjs",
     "db:seed:weihnachtstraum": "tsx prisma/seed-weihnachtstraum-2026.ts",
     "db:seed:demo-orders": "tsx scripts/seed-demo-orders.ts",
     "db:studio": "prisma studio",

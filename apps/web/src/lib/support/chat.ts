@@ -6,6 +6,7 @@ import {
 } from "@/lib/commerce/inventory-availability";
 import { writeAudit } from "@/lib/audit";
 import { formatEuroFromCents } from "@/lib/money";
+import { ensureSupportKnowledge } from "@/lib/support/sync-knowledge";
 
 export type ChatResult = {
   sessionId: string;
@@ -34,9 +35,62 @@ function detectIntent(message: string): string {
     m.includes("mail nicht") ||
     m.includes("e-mail nicht") ||
     m.includes("ticket verloren") ||
-    m.includes("nicht bekommen")
+    m.includes("nicht bekommen") ||
+    m.includes("erneut senden") ||
+    m.includes("ticket erneut")
   ) {
     return "forgotten_ticket";
+  }
+  if (
+    m.includes("verwaltungsgebuhr") ||
+    m.includes("servicegebuhr") ||
+    ((m.includes("gebuhr") || m.includes("gebuehr")) &&
+      (m.includes("was") || m.includes("warum") || m.includes("zzgl") || m.includes("inkl")))
+  ) {
+    return "fees";
+  }
+  if (
+    m.includes("saalplan") ||
+    m.includes("bestplatz") ||
+    m.includes("sitzplatz") ||
+    m.includes("sitzplatze") ||
+    m.includes("freie platzwahl") ||
+    m.includes("stehplatz") ||
+    m.includes("platze wahlen") ||
+    m.includes("plätze wählen") ||
+    m.includes("platz auswahlen") ||
+    m.includes("platz auswählen") ||
+    m.includes("nummerierte")
+  ) {
+    return "seating";
+  }
+  if (
+    m.includes("kein versand") ||
+    m.includes("postversand") ||
+    m.includes("per post") ||
+    m.includes("print@home") ||
+    m.includes("print at home") ||
+    (m.includes("digital") && m.includes("ticket")) ||
+    (m.includes("qr") && (m.includes("ticket") || m.includes("pdf") || m.includes("code")))
+  ) {
+    return "digital_tickets";
+  }
+  if (
+    (m.includes("warenkorb") &&
+      (m.includes("minut") || m.includes("reserv") || m.includes("zeit") || m.includes("ablauf"))) ||
+    m.includes("reservierung abgelaufen") ||
+    m.includes("10 minuten") ||
+    m.includes("hold")
+  ) {
+    return "cart_hold";
+  }
+  if (
+    m.includes("rechnung") ||
+    m.includes("beleg") ||
+    m.includes("ust-id") ||
+    m.includes("umsatzsteuer")
+  ) {
+    return "invoice";
   }
   if (
     /\bvip\b/.test(m) ||
@@ -68,7 +122,7 @@ function detectIntent(message: string): string {
     m.includes("künstler") ||
     m.includes("artist") ||
     m.includes("wer spielt") ||
-    m.includes("welche events") && (m.includes("von") || m.includes("mit"))
+    (m.includes("welche events") && (m.includes("von") || m.includes("mit")))
   ) {
     return "artist_events";
   }
@@ -87,7 +141,12 @@ function detectIntent(message: string): string {
     m.includes("paypal") ||
     m.includes("karte") ||
     m.includes("kreditkarte") ||
-    m.includes("zahlungsmittel")
+    m.includes("zahlungsmittel") ||
+    m.includes("sepa") ||
+    m.includes("lastschrift") ||
+    m.includes("klarna") ||
+    m.includes("apple pay") ||
+    m.includes("google pay")
   ) {
     return "payment";
   }
@@ -107,12 +166,16 @@ function detectIntent(message: string): string {
     m.includes("storno") ||
     m.includes("ruckerstatt") ||
     m.includes("rückerstatt") ||
-    m.includes("widerruf")
+    m.includes("widerruf") ||
+    m.includes("umbuchung") ||
+    m.includes("verlegung")
   ) {
     return "refund_info";
   }
   if (
     m.includes("einlass") ||
+    m.includes("qr scannen") ||
+    m.includes("qr-code") ||
     m.includes("beginn") ||
     m.includes("uhrzeit") ||
     m.includes("wann") ||
@@ -126,7 +189,15 @@ function detectIntent(message: string): string {
   ) {
     return "event_info";
   }
-  if (m.includes("anmeld") || m.includes("login") || m.includes("registr") || m.includes("passwort")) {
+  if (
+    m.includes("anmeld") ||
+    m.includes("login") ||
+    m.includes("registr") ||
+    m.includes("passwort") ||
+    m.includes("gastkauf") ||
+    m.includes("als gast") ||
+    m.includes("kundenkonto")
+  ) {
     return "account";
   }
   if (
@@ -140,6 +211,26 @@ function detectIntent(message: string): string {
     return "handoff_human";
   }
   return "faq_general";
+}
+
+async function articleBySlug(organizationId: string, slug: string) {
+  return prisma.supportKnowledgeArticle.findFirst({
+    where: { organizationId, slug, status: "published", visibility: "public" },
+  });
+}
+
+async function answerFromArticle(
+  organizationId: string,
+  slug: string,
+  fallback: string,
+  sources: { title: string; slug: string }[],
+) {
+  const article = await articleBySlug(organizationId, slug);
+  if (article) {
+    sources.push({ title: article.title, slug: article.slug });
+    return article.body;
+  }
+  return fallback;
 }
 
 async function findDefaultOrganizationId() {
@@ -319,23 +410,24 @@ async function findArtists(organizationId: string, message: string) {
 const FALLBACKS: Record<string, { answer: string; actions: { label: string; href: string }[] }> = {
   order_howto: {
     answer:
-      "So bestellst du bei Ticketfeeling:\n1) Event öffnen und Kategorie + Anzahl wählen\n2) „In den Warenkorb“\n3) Warenkorb prüfen und „Zur Kasse“\n4) Daten eingeben und zahlungspflichtig bestellen\nDanach Tickets per E-Mail und im Konto.",
+      "So bestellst du bei Ticketfeeling:\n1) Event öffnen, Kategorie wählen\n2) Bei Sitzplätzen: Bestplatzbuchung oder Saalplan — sonst Menge für Stehplatz / Freie Platzwahl\n3) In den Warenkorb (10 Minuten reserviert)\n4) Zur Kasse und zahlungspflichtig bestellen\nDanach Tickets per E-Mail (QR + PDF) — kein Postversand.",
     actions: [
       { label: "Events ansehen", href: "/events" },
       { label: "Warenkorb", href: "/warenkorb" },
+      { label: "Hilfe", href: "/hilfe" },
     ],
   },
   payment: {
     answer:
-      "Im Checkout zahlst du online (u. a. Karte, je nach Freischaltung). Fällig wird der Betrag erst mit „zahlungspflichtig bestellen“. Danach sind Tickets sofort im Konto und per E-Mail da.",
+      "Im Checkout zahlst du online: Lastschrift (SEPA), Kredit-/Debitkarte, Apple Pay, Google Pay oder Klarna — je nach Gerät und Event. PayPal gibt es nicht. Fällig wird der Betrag erst mit „Zahlungspflichtig bestellen“. Nach Kartenzahlung/Wallet/Klarna sind Tickets sofort da; bei SEPA nach bestätigter Zahlung.",
     actions: [
       { label: "Zur Kasse", href: "/checkout" },
-      { label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" },
+      { label: "Hilfe: Zahlung", href: "/hilfe" },
     ],
   },
   my_tickets: {
     answer:
-      "Tickets findest du nach dem Login unter „Konto“ (PDF mit QR). Kein Zugang? „Ticket vergessen“ mit der Bestell-E-Mail nutzen.",
+      "Tickets sind nur digital (QR + PDF). Mit Login unter „Konto“ downloaden oder erneut senden. Ohne Zugang: „Ticket vergessen“ mit Bestell-E-Mail plus Bestellnummer oder Nachname.",
     actions: [
       { label: "Zum Konto", href: "/konto" },
       { label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" },
@@ -343,10 +435,47 @@ const FALLBACKS: Record<string, { answer: string; actions: { label: string; href
   },
   account: {
     answer:
-      "Mit Kundenkonto siehst du Bestellungen und Tickets zentral. Anmelden über „Anmelden“. Ohne Login hilft „Ticket vergessen“.",
+      "Gastkauf geht ohne Konto — Tickets per E-Mail, später „Ticket vergessen“. Mit Kundenkonto liegen Bestellungen und Tickets dauerhaft unter „Konto“. Anmelden über „Anmelden“.",
     actions: [
       { label: "Anmelden", href: "/login" },
       { label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" },
+    ],
+  },
+  seating: {
+    answer:
+      "Bei nummerierten Sitzen: Bestplatzbuchung (wir wählen die besten Plätze, möglichst nebeneinander) oder Saalplan (selbst klicken). Stehplatz und Freie Platzwahl buchst du über die Menge — ohne Sitznummer. Details stehen unter Sitzplätze auf der Eventseite.",
+    actions: [
+      { label: "Events", href: "/events" },
+      { label: "Hilfe", href: "/hilfe" },
+    ],
+  },
+  fees: {
+    answer:
+      "Zum Ticketpreis kommt zzgl. die Verwaltungsgebühr (meist 4 %). Sie deckt Plattform, Zahlung, Tickets/QR/Einlass und Support. Im Warenkorb siehst du den Betrag als eigene Zeile — ohne Aufpreis je nach Zahlungsart.",
+    actions: [{ label: "Hilfe", href: "/hilfe" }],
+  },
+  digital_tickets: {
+    answer:
+      "Kein Postversand: Du bekommst QR-Code und PDF per E-Mail sowie im Konto — zum Vorzeigen auf dem Handy oder Ausdrucken (Print@Home).",
+    actions: [
+      { label: "Zum Konto", href: "/konto" },
+      { label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" },
+    ],
+  },
+  cart_hold: {
+    answer:
+      "Im Warenkorb sind Plätze 10 Minuten reserviert. Der Countdown „Reservierung“ zeigt die Restzeit — danach bitte neu wählen.",
+    actions: [
+      { label: "Warenkorb", href: "/warenkorb" },
+      { label: "Events", href: "/events" },
+    ],
+  },
+  invoice: {
+    answer:
+      "Im Checkout kannst du „Ich benötige eine Rechnung“ anhaken. Danach steht die Rechnung als PDF bereit — optional zu Tickets und Bestellbestätigung.",
+    actions: [
+      { label: "Konto", href: "/konto" },
+      { label: "Hilfe", href: "/hilfe" },
     ],
   },
 };
@@ -362,7 +491,10 @@ export async function handleSupportChat(input: {
     input.organizationId ?? (await findDefaultOrganizationId());
   if (!organizationId) throw new Error("NO_ORGANIZATION");
 
+  await ensureSupportKnowledge(organizationId);
+
   const intent = detectIntent(input.message);
+  const normalizedMessage = normalize(input.message);
   let session = input.sessionId
     ? await prisma.supportChatSession.findUnique({ where: { id: input.sessionId } })
     : null;
@@ -395,9 +527,60 @@ export async function handleSupportChat(input: {
   const events = await loadPublicEvents(organizationId);
 
   if (intent === "forgotten_ticket") {
-    answer =
-      "Über „Ticket vergessen“ kannst du einen sicheren Link anfordern. Dafür brauchst du deine Bestell-E-Mail plus Bestellnummer oder Nachname — nur die E-Mail reicht aus Sicherheitsgründen nicht. Ob eine Bestellung bekannt ist, sagen wir nicht; bei Treffer kommt eine Mail (auch Spam prüfen).";
+    answer = await answerFromArticle(
+      organizationId,
+      "tickets-nicht-gefunden",
+      "Über „Ticket vergessen“ kannst du einen sicheren Link anfordern. Dafür brauchst du deine Bestell-E-Mail plus Bestellnummer oder Nachname — nur die E-Mail reicht aus Sicherheitsgründen nicht. Ob eine Bestellung bekannt ist, sagen wir nicht; bei Treffer kommt eine Mail (auch Spam prüfen).",
+      sources,
+    );
     suggestedActions.push({ label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" });
+  } else if (intent === "seating") {
+    const wantsBest =
+      normalizedMessage.includes("bestplatz") || normalizedMessage.includes("automatisch");
+    const wantsFree =
+      normalizedMessage.includes("freie platzwahl") ||
+      normalizedMessage.includes("stehplatz") ||
+      normalizedMessage.includes("nummeriert");
+    const slug = wantsBest ? "bestplatz" : wantsFree ? "freie-platzwahl" : "saalplan";
+    answer = await answerFromArticle(
+      organizationId,
+      slug,
+      FALLBACKS.seating.answer,
+      sources,
+    );
+    suggestedActions.push(...FALLBACKS.seating.actions);
+  } else if (intent === "fees") {
+    answer = await answerFromArticle(
+      organizationId,
+      "verwaltungsgebuehr",
+      FALLBACKS.fees.answer,
+      sources,
+    );
+    suggestedActions.push(...FALLBACKS.fees.actions);
+  } else if (intent === "digital_tickets") {
+    answer = await answerFromArticle(
+      organizationId,
+      "digitale-tickets",
+      FALLBACKS.digital_tickets.answer,
+      sources,
+    );
+    suggestedActions.push(...FALLBACKS.digital_tickets.actions);
+  } else if (intent === "cart_hold") {
+    answer = await answerFromArticle(
+      organizationId,
+      "warenkorb-reservierung",
+      FALLBACKS.cart_hold.answer,
+      sources,
+    );
+    suggestedActions.push(...FALLBACKS.cart_hold.actions);
+  } else if (intent === "invoice") {
+    answer = await answerFromArticle(
+      organizationId,
+      "rechnung",
+      FALLBACKS.invoice.answer,
+      sources,
+    );
+    suggestedActions.push(...FALLBACKS.invoice.actions);
   } else if (intent === "handoff_human") {
     answer =
       "Gerne — nutze das Kontaktformular. Ich selbst kann keine Erstattungen, Entwertungen oder Ticketänderungen ausführen.";
@@ -407,11 +590,12 @@ export async function handleSupportChat(input: {
       data: { status: "handed_off" },
     });
   } else if (intent === "refund_info") {
-    const knowledge = await searchKnowledge(organizationId, "erstattung storno widerruf");
-    answer = knowledge[0]?.body
-      ? knowledge[0].body
-      : "Erstattungen richten sich nach AGB und Eventbedingungen. Der Bot storniert nicht — bitte Kundenservice.";
-    if (knowledge[0]) sources.push({ title: knowledge[0].title, slug: knowledge[0].slug });
+    answer = await answerFromArticle(
+      organizationId,
+      "erstattung",
+      "Erstattungen richten sich nach AGB und Eventbedingungen. Der Bot storniert nicht — bitte Kundenservice.",
+      sources,
+    );
     suggestedActions.push(
       { label: "Rückerstattung", href: "/recht/rueckerstattung" },
       { label: "Kundenservice", href: "/hilfe#kontakt" },
@@ -423,7 +607,8 @@ export async function handleSupportChat(input: {
       suggestedActions.push({ label: "Events", href: "/events" });
     } else {
       answer = matches.map(formatPrices).join("\n\n");
-      answer += "\n\nPreise brutto. Tickets legst du direkt auf der Eventseite in den Warenkorb.";
+      answer +=
+        "\n\nPreise brutto, zzgl. Verwaltungsgebühr. Tickets legst du direkt auf der Eventseite in den Warenkorb.";
       for (const event of matches) {
         suggestedActions.push({ label: `Tickets: ${event.name.slice(0, 36)}`, href: `/event/${event.slug}` });
       }
@@ -566,7 +751,27 @@ export async function handleSupportChat(input: {
     }
   } else if (intent in FALLBACKS) {
     const fb = FALLBACKS[intent];
-    answer = fb.answer;
+    if (intent === "payment") {
+      answer = await answerFromArticle(organizationId, "zahlung", fb.answer, sources);
+      if (normalizedMessage.includes("paypal")) {
+        answer =
+          "PayPal bieten wir nicht an. Du kannst mit Lastschrift (SEPA), Karte, Apple Pay, Google Pay oder Klarna bezahlen — je nach Gerät und Event.\n\n" +
+          answer;
+      }
+    } else if (intent === "my_tickets") {
+      answer = await answerFromArticle(organizationId, "meine-tickets", fb.answer, sources);
+    } else if (intent === "order_howto") {
+      answer = await answerFromArticle(
+        organizationId,
+        "wie-funktioniert-der-kauf",
+        fb.answer,
+        sources,
+      );
+    } else if (intent === "account") {
+      answer = await answerFromArticle(organizationId, "gastkauf-konto", fb.answer, sources);
+    } else {
+      answer = fb.answer;
+    }
     suggestedActions.push(...fb.actions);
   } else {
     // creative fallback: try artist then event then knowledge
@@ -583,10 +788,11 @@ export async function handleSupportChat(input: {
         sources.push({ title: knowledge[0].title, slug: knowledge[0].slug });
       } else {
         answer =
-          "Ich helfe bei konkreten Fragen — z. B.:\n• „Was kosten Tickets für die Schlagernacht?“\n• „Gibt’s noch VIP fürs Open Air?“\n• „Bei welchen Events ist Anni Perka dabei?“\n• Bestellung, Zahlung, Ticket vergessen";
+          "Ich helfe bei konkreten Fragen — z. B.:\n• „Was kosten Tickets für die Schlagernacht?“\n• „Gibt’s noch VIP?“\n• „Wie funktioniert Bestplatzbuchung?“\n• „Was ist die Verwaltungsgebühr?“\n• „Ticket vergessen“ / Zahlung / Saalplan";
       }
       suggestedActions.push(
         { label: "Events", href: "/events" },
+        { label: "Hilfe", href: "/hilfe" },
         { label: "Ticket vergessen", href: "/hilfe/ticket-vergessen" },
       );
     }
@@ -595,6 +801,12 @@ export async function handleSupportChat(input: {
   if (intent === "refund_info" || /storn|refund|entwert/i.test(input.message)) {
     answer +=
       "\n\nHinweis: Der Assistent führt keine Erstattungen, Entwertungen oder Sitzplatzänderungen durch.";
+  } else if (intent === "event_info" && /einlass|qr/i.test(input.message)) {
+    const einlass = await articleBySlug(organizationId, "einlass");
+    if (einlass && !sources.some((s) => s.slug === "einlass")) {
+      answer += `\n\n${einlass.body}`;
+      sources.push({ title: einlass.title, slug: einlass.slug });
+    }
   }
 
   await prisma.supportChatMessage.create({

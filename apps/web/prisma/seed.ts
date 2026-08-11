@@ -269,75 +269,8 @@ async function main() {
     },
   });
 
-  const faq = [
-    {
-      slug: "tickets-nicht-gefunden",
-      title: "Ich finde meine Tickets nicht",
-      body: "Wenn du deine Tickets nicht findest, nutze bitte die Funktion „Ticket vergessen“. Wir senden dir bei vorhandener Bestellung einen sicheren Link an die E-Mail-Adresse deiner Bestellung. Prüfe auch Spam-Ordner. Mit Login findest du Tickets jederzeit unter Konto.",
-      tags: ["tickets", "email", "hilfe", "konto"],
-    },
-    {
-      slug: "wie-funktioniert-der-kauf",
-      title: "Wie funktioniert der Ticketkauf?",
-      body: "Wähle ein Event, lege Tickets in den Warenkorb, gehe zur Kasse, prüfe die Bestellübersicht und bestätige mit „Zahlungspflichtig bestellen“. Nach erfolgreicher Zahlung erhältst du Tickets und Rechnung per E-Mail — und siehst sie im Konto.",
-      tags: ["kauf", "checkout", "bestellen", "warenkorb"],
-    },
-    {
-      slug: "zahlung",
-      title: "Wie kann ich bezahlen?",
-      body: "Im Checkout zahlst du online (u. a. Karte, je nach Freischaltung). Der Betrag wird erst mit „zahlungspflichtig bestellen“ fällig. Nach erfolgreicher Zahlung sind Tickets sofort verfügbar.",
-      tags: ["zahlung", "bezahlen", "paypal", "karte", "checkout"],
-    },
-    {
-      slug: "meine-tickets",
-      title: "Wo sind meine Tickets?",
-      body: "Nach dem Login unter „Konto“ siehst du Bestellungen und kannst PDF-Tickets mit QR-Code herunterladen. Ohne Zugang: „Ticket vergessen“ mit der Bestell-E-Mail nutzen.",
-      tags: ["tickets", "konto", "pdf", "qr"],
-    },
-    {
-      slug: "einlass",
-      title: "Wann ist Einlass?",
-      body: "Die Einlasszeiten stehen auf der jeweiligen Eventseite und auf deinem Ticket. VIP-Einlass kann früher beginnen, sofern ausgewiesen.",
-      tags: ["einlass", "event", "beginn"],
-    },
-    {
-      slug: "erstattung",
-      title: "Kann ich Tickets stornieren oder erstatten lassen?",
-      body: "Erstattungen richten sich nach den Ticket-AGB und den Bedingungen des jeweiligen Events. Nutze den Chat für eine Weiterleitung an den Kundenservice — der Bot führt keine Erstattungen selbst durch.",
-      tags: ["erstattung", "storno", "widerruf"],
-    },
-  ];
-
-  for (const article of faq) {
-    await prisma.supportKnowledgeArticle.upsert({
-      where: {
-        organizationId_slug_locale: {
-          organizationId: org.id,
-          slug: article.slug,
-          locale: "de-DE",
-        },
-      },
-      update: {
-        title: article.title,
-        body: article.body,
-        tags: article.tags,
-        status: "published",
-        visibility: "public",
-        publishedAt: new Date(),
-      },
-      create: {
-        organizationId: org.id,
-        slug: article.slug,
-        title: article.title,
-        body: article.body,
-        tags: article.tags,
-        locale: "de-DE",
-        status: "published",
-        visibility: "public",
-        publishedAt: new Date(),
-      },
-    });
-  }
+  const { syncSupportKnowledge } = await import("../src/lib/support/sync-knowledge");
+  await syncSupportKnowledge(org.id, prisma);
 
   const categoryTemplates = [
     { name: "Kat. 3", priceGrossCents: 4500, capacity: 150, maxPerOrder: 10, sortOrder: 0 },

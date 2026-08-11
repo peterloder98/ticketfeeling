@@ -3,14 +3,35 @@ import { ChevronDown } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { SupportContactForm } from "@/components/support-contact-form";
 import { OpenChatButton } from "@/components/open-chat-button";
+import { SUPPORT_KNOWLEDGE_HILFE_ORDER } from "@/lib/support/knowledge-articles";
+import { ensureSupportKnowledge } from "@/lib/support/sync-knowledge";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Hilfe" };
 
 export default async function HelpPage() {
-  const articles = await prisma.supportKnowledgeArticle.findMany({
-    where: { status: "published", visibility: "public" },
-    orderBy: { title: "asc" },
+  const org = await prisma.organization.findFirst({
+    where: { status: "active" },
+    orderBy: { createdAt: "asc" },
+    select: { id: true },
+  });
+  if (org) {
+    await ensureSupportKnowledge(org.id);
+  }
+
+  const articlesRaw = await prisma.supportKnowledgeArticle.findMany({
+    where: {
+      status: "published",
+      visibility: "public",
+      ...(org ? { organizationId: org.id } : {}),
+    },
+  });
+  const orderIndex = new Map(SUPPORT_KNOWLEDGE_HILFE_ORDER.map((slug, i) => [slug, i]));
+  const articles = [...articlesRaw].sort((a, b) => {
+    const ai = orderIndex.get(a.slug) ?? 1000;
+    const bi = orderIndex.get(b.slug) ?? 1000;
+    if (ai !== bi) return ai - bi;
+    return a.title.localeCompare(b.title, "de");
   });
 
   return (
