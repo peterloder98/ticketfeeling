@@ -59,27 +59,16 @@ export function toDatetimeLocalValue(date: Date | null | undefined) {
 }
 
 /**
- * Parse a datetime-local string as Europe/Berlin wall time → UTC Date.
- *
- * Critical: `new Date("2026-08-06T09:06")` on a UTC server is 09:06 UTC (= 11:06 Berlin in summer).
- * That caused Vorverkaufsstart to jump +2h after save. Always interpret the wall clock in Berlin.
+ * Parse wall-clock Y-M-D H:M[:S] as Europe/Berlin → UTC Date (DST-safe).
  */
-export function parseDatetimeLocalBerlin(raw: string): Date | null {
-  const trimmed = String(raw ?? "").trim();
-  if (!trimmed) return null;
-  const match = trimmed.match(
-    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/,
-  );
-  if (!match) {
-    const fallback = new Date(trimmed);
-    return Number.isNaN(fallback.getTime()) ? null : fallback;
-  }
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const hour = Number(match[4]);
-  const minute = Number(match[5]);
-  const second = Number(match[6] ?? "0");
+function berlinWallToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+): Date | null {
   if (![year, month, day, hour, minute, second].every((n) => Number.isFinite(n))) {
     return null;
   }
@@ -103,6 +92,61 @@ export function parseDatetimeLocalBerlin(raw: string): Date | null {
   }
   const result = new Date(utcMs);
   return Number.isNaN(result.getTime()) ? null : result;
+}
+
+/**
+ * Parse a datetime-local string as Europe/Berlin wall time → UTC Date.
+ *
+ * Critical: `new Date("2026-08-06T09:06")` on a UTC server is 09:06 UTC (= 11:06 Berlin in summer).
+ * That caused Vorverkaufsstart to jump +2h after save. Always interpret the wall clock in Berlin.
+ *
+ * Also:
+ * - Date-only `YYYY-MM-DD` → Berlin midnight (not UTC midnight, which shows as 02:00 in summer).
+ * - Absolute ISO with `Z` / offset → keep as instant (do not re-read digits as Berlin wall).
+ */
+export function parseDatetimeLocalBerlin(raw: string): Date | null {
+  const trimmed = String(raw ?? "").trim();
+  if (!trimmed) return null;
+
+  // Absolute ISO with timezone — never reinterpret clock digits as Berlin wall time.
+  if (
+    /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(
+      trimmed,
+    )
+  ) {
+    const absolute = new Date(trimmed);
+    return Number.isNaN(absolute.getTime()) ? null : absolute;
+  }
+
+  // Date-only: Berlin calendar day at 00:00 (avoids UTC-midnight → 02:00 Berlin display bug).
+  const dateOnly = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) {
+    return berlinWallToUtc(
+      Number(dateOnly[1]),
+      Number(dateOnly[2]),
+      Number(dateOnly[3]),
+      0,
+      0,
+      0,
+    );
+  }
+
+  const match = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/,
+  );
+  if (!match) {
+    const fallback = new Date(trimmed);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  return berlinWallToUtc(
+    Number(match[1]),
+    Number(match[2]),
+    Number(match[3]),
+    Number(match[4]),
+    Number(match[5]),
+    Number(match[6] ?? "0"),
+  );
 }
 
 export const EVENT_STATUSES = [

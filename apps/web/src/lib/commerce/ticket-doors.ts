@@ -3,6 +3,8 @@
  * Not VIP-hardcoded — any category may set Sonder-Einlass + Hinweis.
  */
 
+import { BERLIN_TZ } from "@/lib/datetime-de";
+
 export type DoorsEventLike = {
   doorsOpenAt?: Date | null;
 };
@@ -30,9 +32,11 @@ export type ResolvedTicketDoors = {
 function formatDoorsTime(date: Date | null | undefined): string | null {
   if (!date) return null;
   return date.toLocaleTimeString("de-DE", {
-    timeZone: "Europe/Berlin",
+    timeZone: BERLIN_TZ,
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
+    hourCycle: "h23",
   });
 }
 

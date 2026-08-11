@@ -19,7 +19,12 @@ import {
   type LibraryArtist,
   type LineupArtistRow,
 } from "@/lib/admin/lineup-artist";
-import { CREATE_EVENT_STATUSES, slugify } from "@/lib/admin/event-form";
+import {
+  CREATE_EVENT_STATUSES,
+  parseDatetimeLocalBerlin,
+  slugify,
+} from "@/lib/admin/event-form";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { eventStatusLabel } from "@/lib/admin/nav";
 import {
   STREET_NO_NUMBERS_MESSAGE,
@@ -1786,10 +1791,15 @@ export function CreateEventWizard({
                 <dt className="inline font-medium text-[var(--tf-navy)]">Termin: </dt>
                 <dd className="inline">
                   {eventStartsAt
-                    ? new Date(eventStartsAt).toLocaleString("de-DE", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })
+                    ? (() => {
+                        const d = parseDatetimeLocalBerlin(eventStartsAt);
+                        return d
+                          ? formatDeDateTime(d, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })
+                          : "—";
+                      })()
                     : "—"}
                 </dd>
               </div>

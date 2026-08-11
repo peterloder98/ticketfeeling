@@ -14,6 +14,13 @@ export function withUhr(label: string): string {
   return `${trimmed} Uhr`;
 }
 
+const BERLIN_DISPLAY_LOCK: Intl.DateTimeFormatOptions = {
+  timeZone: BERLIN_TZ,
+  // Force 24h — never let caller options or locale defaults flip to 12h / override TZ.
+  hour12: false,
+  hourCycle: "h23",
+};
+
 /** Full German datetime for display (includes "Uhr" when a time is present). */
 export function formatDeDateTime(
   date: Date,
@@ -21,8 +28,8 @@ export function formatDeDateTime(
 ): string {
   return withUhr(
     date.toLocaleString("de-DE", {
-      timeZone: BERLIN_TZ,
       ...options,
+      ...BERLIN_DISPLAY_LOCK,
     }),
   );
 }
@@ -31,9 +38,9 @@ export function formatDeDateTime(
 export function formatDeTime(date: Date): string {
   return withUhr(
     date.toLocaleTimeString("de-DE", {
-      timeZone: BERLIN_TZ,
       hour: "2-digit",
       minute: "2-digit",
+      ...BERLIN_DISPLAY_LOCK,
     }),
   );
 }
