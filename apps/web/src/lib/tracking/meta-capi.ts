@@ -1,6 +1,8 @@
 import { createHash } from "crypto";
 import { decryptSecret } from "@/lib/crypto-fields";
+import { normalizePublicClientIp } from "@/lib/security/client-ip";
 import { mapToMeta, type TfTrackingEventName } from "@/lib/tracking/events";
+import { normalizeCountryId } from "@/lib/tracking/ga4-mp";
 
 export type MetaCapiUserData = {
   email?: string | null;
@@ -10,6 +12,8 @@ export type MetaCapiUserData = {
   fbp?: string | null;
   fbc?: string | null;
   externalId?: string | null;
+  /** ISO country — used only when no public client IP (Meta prefers IP). */
+  country?: string | null;
 };
 
 export type MetaCapiEventInput = {
@@ -43,10 +47,14 @@ function buildUserData(user?: MetaCapiUserData) {
     if (digits) out.ph = [sha256Normalize(digits)];
   }
   if (user.externalId) out.external_id = [sha256Normalize(user.externalId)];
-  if (user.clientIp) out.client_ip_address = user.clientIp;
+  const clientIp = normalizePublicClientIp(user.clientIp);
+  if (clientIp) out.client_ip_address = clientIp;
   if (user.userAgent) out.client_user_agent = user.userAgent.slice(0, 512);
   if (user.fbp) out.fbp = user.fbp;
   if (user.fbc) out.fbc = user.fbc;
+  const country = normalizeCountryId(user.country);
+  // Meta hashes country; only send when IP missing so we don't override IP-derived geo.
+  if (!clientIp && country) out.country = [sha256Normalize(country)];
   return out;
 }
 

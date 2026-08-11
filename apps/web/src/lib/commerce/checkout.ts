@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { hashPassword } from "@/lib/security/password";
+import { normalizePublicClientIp } from "@/lib/security/client-ip";
 import { getOpenCart } from "@/lib/commerce/cart";
 import { readCartSessionKey } from "@/lib/commerce/cart-session";
 import { priceCart } from "@/lib/commerce/pricing";
@@ -468,10 +469,7 @@ export async function createOrderFromCart(input: {
         invoicePostalCode: input.invoice?.postalCode ?? null,
         invoiceCity: input.invoice?.city ?? null,
         invoiceCountry: input.invoice?.country ?? null,
-        clientIp:
-          input.clientIp && input.clientIp !== "unknown"
-            ? input.clientIp.slice(0, 64)
-            : null,
+        clientIp: normalizePublicClientIp(input.clientIp),
         clientUserAgent: input.clientUserAgent?.slice(0, 512) ?? null,
         billingSnapshot: {
           email: customer.email,

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
+import { normalizePublicClientIp } from "@/lib/security/client-ip";
 import {
   attributionTouchSnapshot,
   buildFbcFromFbclid,
@@ -116,7 +117,7 @@ export async function upsertTrackingSession(input: UpsertSessionInput) {
         firstTouch: touch as Prisma.InputJsonValue,
         lastTouch: touch as Prisma.InputJsonValue,
         userAgent: input.userAgent?.slice(0, 512) ?? null,
-        clientIp: normalizeClientIp(input.clientIp),
+        clientIp: normalizePublicClientIp(input.clientIp),
         lastSeenAt: new Date(),
       },
     });
@@ -163,16 +164,10 @@ export async function upsertTrackingSession(input: UpsertSessionInput) {
       firstTouch,
       lastTouch: touch as Prisma.InputJsonValue,
       userAgent: input.userAgent?.slice(0, 512) ?? existing.userAgent,
-      clientIp: normalizeClientIp(input.clientIp) ?? existing.clientIp,
+      clientIp: normalizePublicClientIp(input.clientIp) ?? existing.clientIp,
       lastSeenAt: new Date(),
     },
   });
-}
-
-function normalizeClientIp(value?: string | null): string | null {
-  const ip = value?.trim();
-  if (!ip || ip === "unknown") return null;
-  return ip.slice(0, 64);
 }
 
 /**

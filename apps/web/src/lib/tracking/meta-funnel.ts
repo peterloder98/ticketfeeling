@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { normalizePublicClientIp } from "@/lib/security/client-ip";
 import { resolveTrackingConfig } from "@/lib/tracking/config";
 import { mapToMeta, type TfTrackingEventName } from "@/lib/tracking/events";
 import {
@@ -101,7 +102,7 @@ export async function dispatchMetaCapiFunnelEvent(
       fbp: session?.fbp,
       fbc: session?.fbc,
       userAgent: session?.userAgent,
-      clientIp: session?.clientIp,
+      clientIp: normalizePublicClientIp(session?.clientIp),
     },
     testEventCode: process.env.META_TEST_EVENT_CODE?.trim() || null,
   });

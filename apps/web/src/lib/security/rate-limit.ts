@@ -143,13 +143,8 @@ export async function takeRateLimit(input: {
   return takeRateLimitMemory(input);
 }
 
-export function clientIpFromRequest(request: Request): string {
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) {
-    const first = fwd.split(",")[0]?.trim();
-    if (first) return first.slice(0, 64);
-  }
-  const real = request.headers.get("x-real-ip")?.trim();
-  if (real) return real.slice(0, 64);
-  return "unknown";
-}
+export {
+  clientIpFromRequest,
+  normalizePublicClientIp,
+  isPublicClientIp,
+} from "@/lib/security/client-ip";

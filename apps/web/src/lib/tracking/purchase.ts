@@ -1,8 +1,13 @@
 import { prisma } from "@/lib/db";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { normalizePublicClientIp } from "@/lib/security/client-ip";
 import { resolveTrackingConfig } from "@/lib/tracking/config";
 import { purchaseEventIdForOrder } from "@/lib/tracking/events";
-import { resolveGa4ApiSecret, sendGa4MpEvent } from "@/lib/tracking/ga4-mp";
+import {
+  normalizeCountryId,
+  resolveGa4ApiSecret,
+  sendGa4MpEvent,
+} from "@/lib/tracking/ga4-mp";
 import { resolveMetaCapiAccessToken, sendMetaCapiEvent } from "@/lib/tracking/meta-capi";
 import {
   claimTrackingDelivery,
@@ -10,6 +15,72 @@ import {
   markDeliveryFailed,
   markDeliverySent,
 } from "@/lib/tracking/service";
+
+type PurchaseGeo = {
+  /** Public buyer IP only — never staff / private / Vercel. */
+  ipOverride: string | null;
+  userAgent: string | null;
+  /** Country-only when no IP (box office or missing capture). */
+  countryId: string | null;
+};
+
+function countryFromOrder(order: {
+  channel: string;
+  invoiceCountry: string | null;
+  billingSnapshot: unknown;
+}): string | null {
+  const fromInvoice = normalizeCountryId(order.invoiceCountry);
+  if (fromInvoice) return fromInvoice;
+  if (order.billingSnapshot && typeof order.billingSnapshot === "object") {
+    const country = (order.billingSnapshot as { country?: unknown }).country;
+    if (typeof country === "string") return normalizeCountryId(country);
+  }
+  return null;
+}
+
+/**
+ * Resolve geo for server purchase MP/CAPI.
+ * - Online: checkout-captured public IP (order) → linked tracking session IP → country fallback
+ * - Box office (Kasse): never staff IP/UA — country from billing only
+ */
+export function resolvePurchaseGeo(input: {
+  channel: string;
+  clientIp?: string | null;
+  clientUserAgent?: string | null;
+  invoiceCountry?: string | null;
+  billingSnapshot?: unknown;
+  linkedSessionIp?: string | null;
+  linkedSessionUserAgent?: string | null;
+}): PurchaseGeo {
+  const isBoxOffice = input.channel === "box_office";
+  const countryId = countryFromOrder({
+    channel: input.channel,
+    invoiceCountry: input.invoiceCountry ?? null,
+    billingSnapshot: input.billingSnapshot ?? null,
+  });
+
+  if (isBoxOffice) {
+    return {
+      ipOverride: null,
+      userAgent: null,
+      countryId,
+    };
+  }
+
+  const ipOverride =
+    normalizePublicClientIp(input.clientIp) ||
+    normalizePublicClientIp(input.linkedSessionIp);
+
+  return {
+    ipOverride,
+    userAgent:
+      input.clientUserAgent?.trim().slice(0, 512) ||
+      input.linkedSessionUserAgent?.trim().slice(0, 512) ||
+      null,
+    // Country only when IP missing — prefer IP-derived city/region over address guess
+    countryId: ipOverride ? null : countryId,
+  };
+}
 
 /**
  * Authoritative purchase conversion — call when order is paid/fulfilled (webhook path).
@@ -118,7 +189,7 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
 
   const deliveries: Array<{ channel: string; status: string; stub?: boolean }> = [];
 
-  // Prefer session tied to this order; fall back to org latest (legacy).
+  // Prefer session tied to this order for IP/UA. Org-latest is only for ga/fbp ids (legacy).
   const linkedEvent = await prisma.trackingEvent.findFirst({
     where: {
       organizationId: order.organizationId,
@@ -128,14 +199,28 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
     orderBy: { createdAt: "desc" },
     select: { trackingSessionId: true },
   });
-  const recentSession = linkedEvent?.trackingSessionId
+  const linkedSession = linkedEvent?.trackingSessionId
     ? await prisma.trackingSession.findUnique({
         where: { id: linkedEvent.trackingSessionId },
       })
-    : await prisma.trackingSession.findFirst({
-        where: { organizationId: order.organizationId },
-        orderBy: { lastSeenAt: "desc" },
-      });
+    : null;
+  const recentSession =
+    linkedSession ??
+    (await prisma.trackingSession.findFirst({
+      where: { organizationId: order.organizationId },
+      orderBy: { lastSeenAt: "desc" },
+    }));
+
+  const geo = resolvePurchaseGeo({
+    channel: order.channel,
+    clientIp: order.clientIp,
+    clientUserAgent: order.clientUserAgent,
+    invoiceCountry: order.invoiceCountry,
+    billingSnapshot: order.billingSnapshot,
+    // Never use org-wide session IP — that would geolocate to a random visitor.
+    linkedSessionIp: linkedSession?.clientIp,
+    linkedSessionUserAgent: linkedSession?.userAgent,
+  });
 
   const items = order.items.map((item) => ({
     item_id: item.eventId,
@@ -183,8 +268,9 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
           externalId: order.customer.id,
           fbp: recentSession?.fbp,
           fbc: recentSession?.fbc,
-          userAgent: order.clientUserAgent || recentSession?.userAgent,
-          clientIp: order.clientIp || recentSession?.clientIp,
+          userAgent: geo.userAgent,
+          clientIp: geo.ipOverride,
+          country: geo.countryId,
         },
         testEventCode: process.env.META_TEST_EVENT_CODE?.trim() || null,
       });
@@ -234,9 +320,9 @@ export async function recordServerPurchaseConversion(orderId: string): Promise<{
         valueCents,
         currency,
         items,
-        // Prefer checkout-captured buyer IP — without this MP geo = Vercel fra1
-        ipOverride: order.clientIp || recentSession?.clientIp,
-        userAgent: order.clientUserAgent || recentSession?.userAgent,
+        ipOverride: geo.ipOverride,
+        userAgent: geo.userAgent,
+        userLocation: geo.countryId ? { countryId: geo.countryId } : null,
       });
       if (result.ok) {
         await markDeliverySent(claim.delivery.id, {
@@ -325,12 +411,12 @@ export async function recordInitiateCheckoutServer(input: {
     valueCents: input.valueCents,
     currency: input.currency,
     contentIds: input.contentIds,
-    userData: {
-      fbp: session?.fbp,
-      fbc: session?.fbc,
-      userAgent: session?.userAgent,
-      clientIp: session?.clientIp,
-    },
+      userData: {
+        fbp: session?.fbp,
+        fbc: session?.fbc,
+        userAgent: session?.userAgent,
+        clientIp: normalizePublicClientIp(session?.clientIp),
+      },
   });
   if (result.ok) {
     await markDeliverySent(claim.delivery.id, { stub: Boolean(result.stub), body: result.body });

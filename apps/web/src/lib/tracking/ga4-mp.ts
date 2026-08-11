@@ -1,4 +1,12 @@
 import { mapToGa4, type TfTrackingEventName } from "@/lib/tracking/events";
+import { normalizePublicClientIp } from "@/lib/security/client-ip";
+
+export type Ga4UserLocation = {
+  /** ISO 3166-1 alpha-2 — country-only fallback when no public buyer IP. */
+  countryId: string;
+  city?: string;
+  regionId?: string;
+};
 
 export type Ga4MpEventInput = {
   measurementId: string;
@@ -21,6 +29,11 @@ export type Ga4MpEventInput = {
   ipOverride?: string | null;
   /** Buyer User-Agent for device reports. */
   userAgent?: string | null;
+  /**
+   * Structured geo when no reliable public IP (e.g. box office / missing XFF).
+   * Prefer ip_override when available — do not send city guessed from checkout address.
+   */
+  userLocation?: Ga4UserLocation | null;
 };
 
 export function resolveGa4ApiSecret(): string | null {
@@ -67,8 +80,9 @@ export async function sendGa4MpEvent(input: Ga4MpEventInput): Promise<{
   }
   if (input.items?.length) params.items = input.items;
 
-  const ipOverride = normalizeIp(input.ipOverride);
+  const ipOverride = normalizePublicClientIp(input.ipOverride);
   const userAgent = input.userAgent?.trim().slice(0, 512) || null;
+  const countryId = normalizeCountryId(input.userLocation?.countryId);
 
   const body: Record<string, unknown> = {
     client_id: clientId,
@@ -83,8 +97,17 @@ export async function sendGa4MpEvent(input: Ga4MpEventInput): Promise<{
       },
     ],
   };
-  // Without these, MP hits are geolocated to the server egress (e.g. Vercel fra1 → Frankfurt).
-  if (ipOverride) body.ip_override = ipOverride;
+  // Prefer public buyer IP for city/region. Without either field, MP geo ≈ server egress (fra1).
+  if (ipOverride) {
+    body.ip_override = ipOverride;
+  } else if (countryId) {
+    // Country-only fallback — never invent city from street address.
+    const location: Record<string, string> = { country_id: countryId };
+    if (input.userLocation?.regionId?.trim()) {
+      location.region_id = input.userLocation.regionId.trim().slice(0, 16);
+    }
+    body.user_location = location;
+  }
   if (userAgent) body.user_agent = userAgent;
 
   const url =
@@ -116,8 +139,8 @@ export async function sendGa4MpEvent(input: Ga4MpEventInput): Promise<{
   }
 }
 
-function normalizeIp(value?: string | null): string | null {
-  const ip = value?.trim();
-  if (!ip || ip === "unknown") return null;
-  return ip.slice(0, 64);
+export function normalizeCountryId(value?: string | null): string | null {
+  const code = value?.trim().toUpperCase();
+  if (!code || !/^[A-Z]{2}$/.test(code)) return null;
+  return code;
 }

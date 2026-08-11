@@ -51,4 +51,36 @@ describe("sendGa4MpEvent geo fields", () => {
     const body = JSON.parse(String(init?.body));
     expect(body.ip_override).toBeUndefined();
   });
+
+  it("rejects private / loopback ip_override", async () => {
+    const { sendGa4MpEvent } = await import("@/lib/tracking/ga4-mp");
+    await sendGa4MpEvent({
+      measurementId: "G-TEST",
+      apiSecret: "secret",
+      eventName: "purchase",
+      eventId: "33333333-3333-4333-8333-333333333333",
+      ipOverride: "10.0.0.5",
+      userLocation: { countryId: "DE" },
+    });
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const body = JSON.parse(String(init?.body));
+    expect(body.ip_override).toBeUndefined();
+    expect(body.user_location).toEqual({ country_id: "DE" });
+  });
+
+  it("prefers public ip_override over user_location", async () => {
+    const { sendGa4MpEvent } = await import("@/lib/tracking/ga4-mp");
+    await sendGa4MpEvent({
+      measurementId: "G-TEST",
+      apiSecret: "secret",
+      eventName: "purchase",
+      eventId: "44444444-4444-4444-8444-444444444444",
+      ipOverride: "198.51.100.10",
+      userLocation: { countryId: "DE" },
+    });
+    const [, init] = vi.mocked(fetch).mock.calls[0]!;
+    const body = JSON.parse(String(init?.body));
+    expect(body.ip_override).toBe("198.51.100.10");
+    expect(body.user_location).toBeUndefined();
+  });
 });
