@@ -9,7 +9,7 @@ import { ResponsiveImage } from "@/components/responsive-image";
 /** On-screen crop preview (CSS/display only). */
 const PREVIEW_SIZE = 320;
 /** Export resolution — must match server COVER_SIZE_PX for sharp covers. */
-const OUT_SIZE = 1600;
+const OUT_SIZE = 1920;
 /** Downscale source before crop UI so large phone photos don't freeze the tab. */
 const PREVIEW_MAX = 2400;
 

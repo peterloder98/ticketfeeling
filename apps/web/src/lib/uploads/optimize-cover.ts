@@ -1,12 +1,12 @@
 import sharp from "sharp";
 
-/** Square cover for cards/hero — sharp on retina (~444 CSS px → need ≥2–3×). */
-export const COVER_SIZE_PX = 1600;
+/** Square cover for cards / cinema poster hero — sharp on retina. */
+export const COVER_SIZE_PX = 1920;
 export const COVER_WEBP_QUALITY = 90;
 
 /**
  * Normalize uploads: strip EXIF, crop centre square, WebP.
- * High enough for hero/retina; still far smaller than phone originals.
+ * Sized for poster hero + retina cards; still far smaller than phone originals.
  */
 export async function optimizeCoverImage(input: Buffer): Promise<{
   buffer: Buffer;
