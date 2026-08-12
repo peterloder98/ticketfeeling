@@ -588,18 +588,24 @@ export function EventEditForm({
         ) : null}
 
         {scheduleNoticeAt ? (
-          <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(185,28,28,0.35)] bg-[rgba(185,28,28,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-            <p>
-              Öffentlicher Hinweis „Achtung, geänderter Termin“ ist aktiv (seit{" "}
-              {formatDeDateTime(new Date(scheduleNoticeAt), {
-                dateStyle: "medium",
-                timeStyle: "short",
-              })}
-              ).
-            </p>
+          <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-[rgba(185,28,28,0.45)] bg-[rgba(185,28,28,0.1)] px-4 py-3 text-sm text-[var(--tf-navy)]">
+            <div className="min-w-0 space-y-1">
+              <p className="font-semibold">
+                Öffentlicher Hinweis „Achtung, geänderter Termin“ ist aktiv
+              </p>
+              <p className="text-[var(--tf-text-secondary)]">
+                Seit{" "}
+                {formatDeDateTime(new Date(scheduleNoticeAt), {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })}
+                . Entfernen, wenn der Termin endgültig ist — dann erscheint kein Banner mehr auf
+                der Eventseite.
+              </p>
+            </div>
             <button
               type="button"
-              className="tf-btn tf-btn-ghost !py-1.5 text-sm"
+              className="tf-btn tf-btn-primary shrink-0 !py-2 text-sm"
               disabled={pending}
               onClick={clearScheduleNotice}
             >

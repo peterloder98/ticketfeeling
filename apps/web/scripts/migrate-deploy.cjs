@@ -90,6 +90,10 @@ const FALLBACK_STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "status_before_pause" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "sale_closed_early" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "schedule_changed_at" TIMESTAMP(3)`,
+  // Weihnachtstraum 2026 dates are final — clear stale public „geänderter Termin“ (esp. Löwenberg).
+  `UPDATE "events" SET "schedule_changed_at" = NULL
+   WHERE "slug" LIKE 'schlagerfeeling-weihnachtstraum-2026-%'
+     AND "schedule_changed_at" IS NOT NULL`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_hero_image_url" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_sponsor_logo_above_url" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "ticket_sponsor_logo_below_url" TEXT`,

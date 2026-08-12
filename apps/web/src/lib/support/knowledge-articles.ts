@@ -123,7 +123,7 @@ Nach erfolgreicher Kartenzahlung / Wallet / Klarna sind Tickets sofort da. Bei S
   {
     slug: "verwaltungsgebuehr",
     title: "Was ist die Verwaltungsgebühr?",
-    body: `Zum Ticketpreis kommt zzgl. eine Verwaltungsgebühr (aktuell in der Regel 4 %). Auf Eventseiten und „ab“-Preisen steht das klar als „zzgl. Verwaltungsgebühr“ — im Warenkorb und Checkout siehst du den Betrag als eigene Zeile.
+    body: `Zum Ticketpreis kommt zzgl. eine Verwaltungsgebühr (aktuell in der Regel 4 %). Auf Eventseiten und „ab“-Preisen steht das klar als „zzgl. 4 % Verwaltungsgebühr“ — im Warenkorb und Checkout siehst du den Betrag als eigene Zeile.
 
 Die Verwaltungsgebühr deckt u. a.:
 • Plattformbetrieb und sichere Zahlungsabwicklung

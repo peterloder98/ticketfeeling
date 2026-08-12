@@ -102,7 +102,7 @@ describe("resolveListingFromPrice", () => {
     expect(from?.unitCents).toBe(5000);
   });
 
-  it("keeps ticket from-price and zzgl. Verwaltungsgebühr when fee is on", () => {
+  it("keeps ticket from-price and zzgl. 4 % Verwaltungsgebühr when fee is on", () => {
     const from = resolveListingFromPrice({
       categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 10000 }],
       campaignsByEventId: new Map([["ev1", []]]),
@@ -115,7 +115,7 @@ describe("resolveListingFromPrice", () => {
       now,
     });
     expect(from?.priceLabel).toBe("ab 100,00 €");
-    expect(from?.surchargeLabel).toBe("zzgl. Verwaltungsgebühr");
+    expect(from?.surchargeLabel).toBe("zzgl. 4 % Verwaltungsgebühr");
     expect(from?.unitCents).toBe(10000);
   });
 });

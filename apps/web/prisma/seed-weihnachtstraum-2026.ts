@@ -402,6 +402,7 @@ async function main() {
         showRemainingAvailability: false,
         artistsUseTourDefaults: true,
         detailsUseTourDefaults: true,
+        scheduleChangedAt: null,
       },
       create: {
         organizationId: org.id,

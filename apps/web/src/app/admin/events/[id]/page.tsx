@@ -110,7 +110,11 @@ async function EventBuyerHeatmapSection({
 
 async function ensureAdminEventSchema() {
   // Production/Vercel: migrate-deploy owns schema — skip information_schema probes on every click.
-  if (shouldSkipRuntimeDdl()) return;
+  // WT schedule notice clear is data-only and still runs via ensureScheduleChangedAtColumn.
+  if (shouldSkipRuntimeDdl()) {
+    await ensureScheduleChangedAtColumn();
+    return;
+  }
   await Promise.all([
     ensureSeatingAssignmentSchema(prisma),
     ensureSepaPaymentSchema(prisma),

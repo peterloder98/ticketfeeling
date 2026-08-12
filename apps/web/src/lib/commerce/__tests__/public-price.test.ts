@@ -72,7 +72,7 @@ describe("formatCustomerPriceLabel", () => {
       prefix: "ab",
     });
     expect(labeled.totalLabel).toBe("ab 100,00 €");
-    expect(labeled.surchargeLabel).toBe("zzgl. Verwaltungsgebühr");
+    expect(labeled.surchargeLabel).toBe("zzgl. 4 % Verwaltungsgebühr");
     expect(labeled.ticketCents).toBe(10000);
     expect(labeled.totalCents).toBe(10400);
     expect(labeled.feeCents).toBe(400);

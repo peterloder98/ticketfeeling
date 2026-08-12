@@ -34,7 +34,11 @@ import {
 import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
 import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
 import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
-import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
+import {
+  clearWeihnachtstraum2026ScheduleNotices,
+  ensureScheduleChangedAtColumn,
+  isWeihnachtstraum2026Slug,
+} from "@/lib/commerce/ensure-schedule-changed";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 
 export const preferredRegion = "fra1";
@@ -73,7 +77,11 @@ function formatEventDate(date: Date) {
 
 export default async function EventPage({ params }: Props) {
   const { slug } = await params;
-  // Production skips ensure* (migrate-deploy). Never await DDL probes on public GET.
+  // WT 2026 dates are final — clear stale public banner (data fix; safe in prod).
+  if (isWeihnachtstraum2026Slug(slug)) {
+    await clearWeihnachtstraum2026ScheduleNotices();
+  }
+  // Production skips DDL ensure* (migrate-deploy). Never await DDL probes on public GET.
   if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
     void Promise.all([
       import("@/lib/commerce/ensure-event-pricing-schema").then(({ ensureEventPricingSchema }) =>

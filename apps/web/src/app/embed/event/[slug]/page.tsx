@@ -25,7 +25,11 @@ import {
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { ScheduleChangedBanner } from "@/components/schedule-changed-banner";
 import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
-import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-changed";
+import {
+  clearWeihnachtstraum2026ScheduleNotices,
+  ensureScheduleChangedAtColumn,
+  isWeihnachtstraum2026Slug,
+} from "@/lib/commerce/ensure-schedule-changed";
 
 export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
@@ -40,7 +44,10 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function EmbedEventShopPage({ params }: Props) {
   const { slug } = await params;
-  // Never block public embed GET on schema ensures (prod is migrate-deploy).
+  if (isWeihnachtstraum2026Slug(slug)) {
+    await clearWeihnachtstraum2026ScheduleNotices();
+  }
+  // Never block public embed GET on DDL ensures (prod is migrate-deploy).
   if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
     void Promise.all([
       import("@/lib/commerce/ensure-event-pricing-schema").then(({ ensureEventPricingSchema }) =>

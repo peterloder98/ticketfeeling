@@ -471,7 +471,7 @@ const FALLBACKS: Record<string, { answer: string; actions: { label: string; href
   },
   fees: {
     answer:
-      "Zum Ticketpreis kommt zzgl. die Verwaltungsgebühr (meist 4 %). Sie deckt Plattform, Zahlung, Tickets/QR/Einlass und Support. Im Warenkorb siehst du den Betrag als eigene Zeile — ohne Aufpreis je nach Zahlungsart.",
+      "Zum Ticketpreis kommt zzgl. 4 % Verwaltungsgebühr. Sie deckt Plattform, Zahlung, Tickets/QR/Einlass und Support. Im Warenkorb siehst du den Betrag als eigene Zeile — ohne Aufpreis je nach Zahlungsart.",
     actions: [{ label: "Hilfe", href: "/hilfe" }],
   },
   digital_tickets: {
@@ -628,7 +628,7 @@ export async function handleSupportChat(input: {
     } else {
       answer = matches.map(formatPrices).join("\n\n");
       answer +=
-        "\n\nPreise brutto, zzgl. Verwaltungsgebühr. Tickets legst du direkt auf der Eventseite in den Warenkorb.";
+        "\n\nPreise brutto, zzgl. 4 % Verwaltungsgebühr. Tickets legst du direkt auf der Eventseite in den Warenkorb.";
       for (const event of matches) {
         suggestedActions.push({ label: `Tickets: ${event.name.slice(0, 36)}`, href: `/event/${event.slug}` });
       }

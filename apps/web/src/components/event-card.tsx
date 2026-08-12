@@ -33,7 +33,7 @@ export type EventCardData = {
   campaignName?: string | null;
   /** ISO end of the ab-price Aktion (listing countdown priority) */
   campaignValidUntil?: string | null;
-  /** Small note under price, e.g. "zzgl. Verwaltungsgebühr" */
+  /** Small note under price, e.g. "zzgl. 4 % Verwaltungsgebühr" */
   priceNote?: string | null;
   remainingTickets?: number | null;
   capacity?: number | null;
@@ -82,7 +82,7 @@ export function EventCard({
   event: EventCardData;
   /**
    * Reserved for calm listing variants. Fee note always shows when `priceNote` is set
-   * (ticket price + „zzgl. Verwaltungsgebühr“).
+   * (ticket price + „zzgl. 4 % Verwaltungsgebühr“).
    */
   quiet?: boolean;
 }) {
