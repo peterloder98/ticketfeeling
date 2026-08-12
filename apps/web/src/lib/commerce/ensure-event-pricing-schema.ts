@@ -42,6 +42,9 @@ const STATEMENTS = [
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "campaign_group_id" UUID`,
+  `CREATE INDEX IF NOT EXISTS "event_price_campaigns_campaign_group_id_idx"
+    ON "event_price_campaigns"("campaign_group_id")`,
 ];
 
 const ENSURE_BUDGET_MS = 5_000;
@@ -55,8 +58,10 @@ let lastIncompleteProbeAt = 0;
 async function probeReady(db: PrismaClient): Promise<boolean> {
   try {
     const rows = await db.$queryRawUnsafe<Array<{ c: number }>>(
-      `SELECT COUNT(*)::int AS c FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name = 'event_price_campaigns'`,
+      `SELECT COUNT(*)::int AS c FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = 'event_price_campaigns'
+         AND column_name = 'campaign_group_id'`,
     );
     return (rows[0]?.c ?? 0) > 0;
   } catch {

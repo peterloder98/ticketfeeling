@@ -834,6 +834,8 @@ model EventPriceCampaign {
   badgeLabel String?  @map("badge_label")
   /// Smaller fair disclaimer e.g. „* beim Kauf von 2 Tickets“
   badgeDisclaimer String? @map("badge_disclaimer")
+  /// Shared id when the same Aktion is applied across tour sibling events
+  campaignGroupId String? @map("campaign_group_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
@@ -841,6 +843,7 @@ model EventPriceCampaign {
   categories EventPriceCampaignCategory[]
 
   @@index([eventId, active, validFrom, validUntil])
+  @@index([campaignGroupId])
   @@map("event_price_campaigns")
 }
 

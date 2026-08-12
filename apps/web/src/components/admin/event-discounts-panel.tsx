@@ -31,6 +31,8 @@ type CampaignRow = {
   badgeLabel: string | null;
   badgeDisclaimer: string | null;
   categoryIds: string[];
+  campaignGroupId?: string | null;
+  matchedSiblingEventIds?: string[];
 };
 
 type AccessibilityState = {
@@ -196,6 +198,10 @@ export function EventDiscountsPanel({
           minQuantity: Math.max(1, c.minQuantity ?? 1),
           badgeLabel: c.badgeLabel ?? null,
           badgeDisclaimer: c.badgeDisclaimer ?? null,
+          campaignGroupId: c.campaignGroupId ?? null,
+          matchedSiblingEventIds: Array.isArray(c.matchedSiblingEventIds)
+            ? c.matchedSiblingEventIds
+            : [],
         })),
       );
       setTourSiblings(Array.isArray(data.tourSiblings) ? data.tourSiblings : []);
@@ -308,12 +314,17 @@ export function EventDiscountsPanel({
       }
       setWarnMsg(warnParts.length > 0 ? warnParts.join(" ") : null);
       const extra = Math.max(0, Number(data.appliedCount ?? 1) - 1);
+      const removed = Math.max(0, Number(data.removedCount ?? 0));
       setOkMsg(
         extra > 0
           ? extra === 1
             ? "Preisaktion gespeichert und auf einen weiteren Termin übernommen."
             : `Preisaktion gespeichert und auf ${extra} weitere Termine übernommen.`
-          : "Preisaktion gespeichert.",
+          : removed > 0
+            ? removed === 1
+              ? "Preisaktion gespeichert und von einem weiteren Termin entfernt."
+              : `Preisaktion gespeichert und von ${removed} weiteren Terminen entfernt.`
+            : "Preisaktion gespeichert.",
       );
       await load();
     } catch (e) {
@@ -405,7 +416,15 @@ export function EventDiscountsPanel({
 
   function editCampaign(c: CampaignRow) {
     setWarnMsg(null);
-    resetTourScope();
+    const linked = (c.matchedSiblingEventIds ?? []).filter((id) =>
+      tourSiblings.some((s) => s.id === id),
+    );
+    if (linked.length > 0) {
+      setTourScopeMode("multi");
+      setSelectedSiblingIds(linked);
+    } else {
+      resetTourScope();
+    }
     setDraft({
       campaignId: c.id,
       name: c.name,
@@ -798,8 +817,9 @@ export function EventDiscountsPanel({
                       Tour-Termine
                     </p>
                     <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                      Diese Aktion gilt für dieses Event. Optional kannst du weitere Termine der
-                      Tour mit denselben Einstellungen übernehmen.
+                      {draft.campaignId
+                        ? "Die Auswahl ist der vollständige Geltungsbereich dieser Aktion. Abgewählte Termine verlieren die passende Preisaktion."
+                        : "Diese Aktion gilt für dieses Event. Optional kannst du weitere Termine der Tour mit denselben Einstellungen übernehmen."}
                     </p>
                   </div>
                   <div className="space-y-2">
@@ -820,7 +840,9 @@ export function EventDiscountsPanel({
                           Nur dieses Event
                         </span>
                         <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                          Andere Termine bleiben unverändert
+                          {draft.campaignId
+                            ? "Entfernt die Aktion von anderen Tour-Terminen, falls sie dort dieselbe Aktion hatten"
+                            : "Andere Termine bleiben unverändert"}
                         </span>
                       </span>
                     </label>
@@ -840,7 +862,7 @@ export function EventDiscountsPanel({
                           Weitere Termine der Tour
                         </span>
                         <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                          Preis, Badge, Zeitraum und Kategorien auf gewählte Termine kopieren
+                          Preis, Badge, Zeitraum und Kategorien auf gewählte Termine übernehmen
                         </span>
                       </span>
                     </label>

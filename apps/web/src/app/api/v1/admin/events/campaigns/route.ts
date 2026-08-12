@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
@@ -5,6 +6,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { campaignsMatch } from "@/lib/commerce/campaign-sibling-match";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
 import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
 import { parseDatetimeLocalBerlin } from "@/lib/admin/event-form";
@@ -158,6 +160,20 @@ export async function GET(request: Request) {
     locationName: string | null;
     city: string | null;
   }> = [];
+  let siblingCampaigns: Array<{
+    id: string;
+    eventId: string;
+    name: string;
+    type: string;
+    value: number;
+    channels: string;
+    applyMode: string;
+    minQuantity: number;
+    badgeLabel: string | null;
+    validFrom: Date;
+    campaignGroupId: string | null;
+  }> = [];
+
   if (event.tourId) {
     const siblings = await prisma.event.findMany({
       where: {
@@ -171,6 +187,21 @@ export async function GET(request: Request) {
         name: true,
         eventStartsAt: true,
         location: { select: { name: true, city: true } },
+        priceCampaigns: {
+          select: {
+            id: true,
+            eventId: true,
+            name: true,
+            type: true,
+            value: true,
+            channels: true,
+            applyMode: true,
+            minQuantity: true,
+            badgeLabel: true,
+            validFrom: true,
+            campaignGroupId: true,
+          },
+        },
       },
     });
     tourSiblings = siblings.map((s) => ({
@@ -180,6 +211,7 @@ export async function GET(request: Request) {
       locationName: s.location?.name ?? null,
       city: s.location?.city ?? null,
     }));
+    siblingCampaigns = siblings.flatMap((s) => s.priceCampaigns);
   }
 
   return NextResponse.json({
@@ -198,21 +230,47 @@ export async function GET(request: Request) {
           : event.accessibilityDiscountValue / 100,
     },
     categories: event.ticketCategories,
-    campaigns: event.priceCampaigns.map((c) => ({
-      id: c.id,
-      name: c.name,
-      active: c.active,
-      validFrom: c.validFrom.toISOString(),
-      validUntil: c.validUntil.toISOString(),
-      type: c.type,
-      valueDisplay: c.value / 100,
-      channels: c.channels,
-      applyMode: c.applyMode === "order" ? "order" : "unit",
-      minQuantity: Math.max(1, c.minQuantity ?? 1),
-      badgeLabel: c.badgeLabel ?? null,
-      badgeDisclaimer: c.badgeDisclaimer ?? null,
-      categoryIds: c.categories.map((x) => x.categoryId),
-    })),
+    campaigns: event.priceCampaigns.map((c) => {
+      const matchedSiblingEventIds = [
+        ...new Set(
+          siblingCampaigns
+            .filter((sib) =>
+              campaignsMatch(
+                {
+                  campaignGroupId: c.campaignGroupId,
+                  name: c.name,
+                  type: c.type,
+                  value: c.value,
+                  channels: c.channels,
+                  applyMode: c.applyMode,
+                  minQuantity: c.minQuantity,
+                  badgeLabel: c.badgeLabel,
+                  validFrom: c.validFrom,
+                },
+                sib,
+              ),
+            )
+            .map((sib) => sib.eventId),
+        ),
+      ];
+      return {
+        id: c.id,
+        name: c.name,
+        active: c.active,
+        validFrom: c.validFrom.toISOString(),
+        validUntil: c.validUntil.toISOString(),
+        type: c.type,
+        valueDisplay: c.value / 100,
+        channels: c.channels,
+        applyMode: c.applyMode === "order" ? "order" : "unit",
+        minQuantity: Math.max(1, c.minQuantity ?? 1),
+        badgeLabel: c.badgeLabel ?? null,
+        badgeDisclaimer: c.badgeDisclaimer ?? null,
+        campaignGroupId: c.campaignGroupId ?? null,
+        matchedSiblingEventIds,
+        categoryIds: c.categories.map((x) => x.categoryId),
+      };
+    }),
   });
 }
 
@@ -320,13 +378,67 @@ export async function PUT(request: Request) {
     }
 
     const alsoEventIds = [...new Set((body.alsoEventIds ?? []).filter((id) => id !== event.id))];
-    let siblingEvents: Array<{
+    const isEdit = Boolean(body.campaignId);
+
+    let originalCampaign: {
+      id: string;
+      name: string;
+      type: string;
+      value: number;
+      channels: string;
+      applyMode: string;
+      minQuantity: number;
+      badgeLabel: string | null;
+      validFrom: Date;
+      campaignGroupId: string | null;
+    } | null = null;
+
+    if (body.campaignId) {
+      originalCampaign = await prisma.eventPriceCampaign.findFirst({
+        where: { id: body.campaignId, eventId: event.id },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          value: true,
+          channels: true,
+          applyMode: true,
+          minQuantity: true,
+          badgeLabel: true,
+          validFrom: true,
+          campaignGroupId: true,
+        },
+      });
+      if (!originalCampaign) {
+        return NextResponse.json({ error: { code: "CAMPAIGN_NOT_FOUND" } }, { status: 404 });
+      }
+    }
+
+    /** When editing, alsoEventIds is the full desired sibling set — remove matches from unchecked. */
+    const needsTourSiblingLookup =
+      alsoEventIds.length > 0 || (isEdit && Boolean(event.tourId));
+
+    type SiblingRow = {
       id: string;
       eventEndsAt: Date | null;
       eventStartsAt: Date | null;
       ticketCategories: { id: string; name: string; categoryKind: string }[];
-    }> = [];
-    if (alsoEventIds.length > 0) {
+      priceCampaigns: {
+        id: string;
+        name: string;
+        type: string;
+        value: number;
+        channels: string;
+        applyMode: string;
+        minQuantity: number;
+        badgeLabel: string | null;
+        validFrom: Date;
+        campaignGroupId: string | null;
+      }[];
+    };
+
+    let tourSiblingRows: SiblingRow[] = [];
+    if (needsTourSiblingLookup) {
       if (!event.tourId) {
         return NextResponse.json(
           {
@@ -338,11 +450,11 @@ export async function PUT(request: Request) {
           { status: 400 },
         );
       }
-      siblingEvents = await prisma.event.findMany({
+      tourSiblingRows = await prisma.event.findMany({
         where: {
-          id: { in: alsoEventIds },
           organizationId: membership.organizationId,
           tourId: event.tourId,
+          id: { not: event.id },
         },
         select: {
           id: true,
@@ -351,9 +463,27 @@ export async function PUT(request: Request) {
           ticketCategories: {
             select: { id: true, name: true, categoryKind: true },
           },
+          priceCampaigns: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              value: true,
+              channels: true,
+              applyMode: true,
+              minQuantity: true,
+              badgeLabel: true,
+              validFrom: true,
+              campaignGroupId: true,
+            },
+          },
         },
       });
-      if (siblingEvents.length !== alsoEventIds.length) {
+    }
+
+    if (alsoEventIds.length > 0) {
+      const allowed = new Set(tourSiblingRows.map((s) => s.id));
+      if (alsoEventIds.some((id) => !allowed.has(id))) {
         return NextResponse.json(
           {
             error: {
@@ -364,6 +494,36 @@ export async function PUT(request: Request) {
           { status: 400 },
         );
       }
+    }
+
+    const matchSource = originalCampaign ?? {
+      name: body.name.trim(),
+      type: body.type,
+      value: toStoredValue(body.type, body.valueDisplay),
+      channels: body.channels,
+      applyMode: body.applyMode === "order" ? "order" : "unit",
+      minQuantity: Math.max(1, body.minQuantity ?? 1),
+      badgeLabel: body.badgeLabel?.trim() || null,
+      validFrom,
+      campaignGroupId: null as string | null,
+    };
+
+    function findMatchingCampaign(sib: SiblingRow) {
+      return (
+        sib.priceCampaigns.find((c) =>
+          campaignsMatch(matchSource, {
+            campaignGroupId: c.campaignGroupId,
+            name: c.name,
+            type: c.type,
+            value: c.value,
+            channels: c.channels,
+            applyMode: c.applyMode,
+            minQuantity: c.minQuantity,
+            badgeLabel: c.badgeLabel,
+            validFrom: c.validFrom,
+          }),
+        ) ?? null
+      );
     }
 
     type TargetApply = {
@@ -383,48 +543,39 @@ export async function PUT(request: Request) {
     ];
 
     const siblingWarnings: string[] = [];
-    const siblingTargets: TargetApply[] = [];
-    for (const sib of siblingEvents) {
-      const mapped = mapCategoriesToSibling({
-        sourceSelected,
-        siblingCategories: sib.ticketCategories,
-      });
-      if (mapped.length < 1) {
-        siblingWarnings.push(`Termin ohne passende Preiskategorie übersprungen.`);
-        continue;
+    const selectedSiblingSet = new Set(alsoEventIds);
+    const removeCampaignIds: string[] = [];
+
+    for (const sib of tourSiblingRows) {
+      const matched = findMatchingCampaign(sib);
+      if (selectedSiblingSet.has(sib.id)) {
+        const mapped = mapCategoriesToSibling({
+          sourceSelected,
+          siblingCategories: sib.ticketCategories,
+        });
+        if (mapped.length < 1) {
+          siblingWarnings.push(`Termin ohne passende Preiskategorie übersprungen.`);
+          continue;
+        }
+        if (mapped.length < sourceSelected.length) {
+          siblingWarnings.push(
+            `Bei einem Termin wurden nicht alle Kategorien gefunden — nur passende übernommen.`,
+          );
+        }
+        targets.push({
+          eventId: sib.id,
+          categoryIds: mapped,
+          eventBound: sib.eventEndsAt ?? sib.eventStartsAt,
+          campaignId: matched?.id,
+        });
+      } else if (isEdit && matched) {
+        removeCampaignIds.push(matched.id);
       }
-      if (mapped.length < sourceSelected.length) {
-        siblingWarnings.push(
-          `Bei einem Termin wurden nicht alle Kategorien gefunden — nur passende übernommen.`,
-        );
-      }
-      siblingTargets.push({
-        eventId: sib.id,
-        categoryIds: mapped,
-        eventBound: sib.eventEndsAt ?? sib.eventStartsAt,
-      });
     }
 
-    if (siblingTargets.length > 0) {
-      const existingByEvent = await prisma.eventPriceCampaign.findMany({
-        where: {
-          eventId: { in: siblingTargets.map((t) => t.eventId) },
-          name: body.name.trim(),
-        },
-        select: { id: true, eventId: true, updatedAt: true },
-        orderBy: { updatedAt: "desc" },
-      });
-      const latestByEvent = new Map<string, string>();
-      for (const row of existingByEvent) {
-        if (!latestByEvent.has(row.eventId)) latestByEvent.set(row.eventId, row.id);
-      }
-      for (const t of siblingTargets) {
-        targets.push({
-          ...t,
-          campaignId: latestByEvent.get(t.eventId),
-        });
-      }
-    }
+    const campaignGroupId =
+      originalCampaign?.campaignGroupId ??
+      (targets.length > 1 ? randomUUID() : null);
 
     const applyMode = body.applyMode === "order" ? "order" : "unit";
     const minQuantity = Math.max(1, body.minQuantity ?? 1);
@@ -439,6 +590,7 @@ export async function PUT(request: Request) {
       minQuantity,
       badgeLabel: body.badgeLabel?.trim() || null,
       badgeDisclaimer: body.badgeDisclaimer?.trim() || null,
+      campaignGroupId,
     };
 
     let primaryCampaignId = body.campaignId;
@@ -523,20 +675,41 @@ export async function PUT(request: Request) {
       });
     }
 
+    if (removeCampaignIds.length > 0) {
+      await prisma.eventPriceCampaign.deleteMany({
+        where: { id: { in: removeCampaignIds } },
+      });
+      for (const removedId of removeCampaignIds) {
+        await writeAudit({
+          organizationId: membership.organizationId,
+          actorUserId: session.user.id,
+          action: "event.price_campaign.delete",
+          entityType: "event_price_campaign",
+          entityId: removedId,
+          after: { reason: "tour_scope_sync", sourceEventId: event.id },
+        });
+      }
+    }
+
     const extraCount = Math.max(0, appliedEventIds.length - 1);
+    const removedCount = removeCampaignIds.length;
     return NextResponse.json({
       ok: true,
       campaignId: primaryCampaignId,
+      campaignGroupId,
       clampedToEventEnd,
       appliedEventIds,
       appliedCount: appliedEventIds.length,
+      removedCount,
       validUntil: validUntil.toISOString(),
       warnings: siblingWarnings.length > 0 ? siblingWarnings : undefined,
       message: clampedToEventEnd
         ? "Aktionsende lag nach dem Eventende und wurde auf das Eventende gesetzt."
         : extraCount > 0
           ? `Preisaktion auf ${appliedEventIds.length} Termine übernommen.`
-          : undefined,
+          : removedCount > 0
+            ? `Preisaktion gespeichert; von ${removedCount} weiteren Termin(en) entfernt.`
+            : undefined,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
