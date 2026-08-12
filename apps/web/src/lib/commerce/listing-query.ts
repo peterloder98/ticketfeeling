@@ -21,6 +21,7 @@ export const publicListingInclude = {
       name: true,
       slug: true,
       coverImageUrl: true,
+      shortDescription: true,
       description: true,
       visibility: true,
       artists: publicListingArtistInclude,
@@ -60,6 +61,7 @@ const publicListingSelect = {
   coverImageUrl: true,
   tourId: true,
   artistsUseTourDefaults: true,
+  detailsUseTourDefaults: true,
   ...publicListingInclude,
 } satisfies Prisma.EventSelect;
 

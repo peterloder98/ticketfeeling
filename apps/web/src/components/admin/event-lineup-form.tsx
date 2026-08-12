@@ -32,13 +32,23 @@ export function EventLineupForm({ eventId, initialLineup, library, tour }: Props
     if (tour?.inherits) return [];
     return initialLineup.length > 0 ? initialLineup : [];
   });
+  const [dirty, setDirty] = useState(false);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
 
+  function onLineupChange(next: LineupArtistRow[]) {
+    setLineup(next);
+    setDirty(true);
+    setSaved(false);
+    setInfo(null);
+    setError(null);
+  }
+
   function startOverride() {
     setInherits(false);
+    setDirty(false);
     setSaved(false);
     setInfo(null);
     setLineup(
@@ -58,6 +68,7 @@ export function EventLineupForm({ eventId, initialLineup, library, tour }: Props
       try {
         await updateEventLineupAction(formData);
         setInherits(false);
+        setDirty(false);
         setSaved(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
@@ -68,6 +79,7 @@ export function EventLineupForm({ eventId, initialLineup, library, tour }: Props
   function onClearOverride() {
     setError(null);
     setSaved(false);
+    setDirty(false);
     setInfo(null);
     startTransition(async () => {
       try {
@@ -161,7 +173,7 @@ export function EventLineupForm({ eventId, initialLineup, library, tour }: Props
       ) : null}
       <ArtistLineupEditor
         value={lineup}
-        onChange={setLineup}
+        onChange={onLineupChange}
         library={library}
         hint="Aus der Bibliothek wählen oder neuen Namen tippen. Bilder und Details sind optional."
       />
@@ -183,15 +195,16 @@ export function EventLineupForm({ eventId, initialLineup, library, tour }: Props
           <button
             type="button"
             className="tf-btn tf-btn-ghost !py-2 text-sm"
-            onClick={() => setLineup([emptyLineupArtist()])}
+            onClick={() => onLineupChange([emptyLineupArtist()])}
           >
             Ersten Künstler vorbereiten
           </button>
         ) : null}
-        {saved ? (
+        {dirty ? (
+          <p className="text-sm text-[var(--tf-text-secondary)]">Ungespeicherte Änderungen</p>
+        ) : saved ? (
           <p className="text-sm font-medium text-[var(--tf-teal-hover)]">Line-up gespeichert.</p>
-        ) : null}
-        {info ? (
+        ) : info ? (
           <p className="text-sm font-medium text-[var(--tf-teal-hover)]">{info}</p>
         ) : null}
         {error ? <p className="text-sm text-[var(--danger)]">{error}</p> : null}

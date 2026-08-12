@@ -178,12 +178,23 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
               defaultValue={dateValue(tour.endsOn)}
             />
             <label className="grid gap-1 text-sm sm:col-span-2">
+              <span className="text-[var(--tf-text-secondary)]">Kurzbeschreibung</span>
+              <textarea
+                name="shortDescription"
+                rows={2}
+                className="tf-input"
+                defaultValue={tour.shortDescription ?? ""}
+                placeholder="Kurzer Text für Eventseiten — Termine übernehmen ihn standardmäßig."
+              />
+            </label>
+            <label className="grid gap-1 text-sm sm:col-span-2">
               <span className="text-[var(--tf-text-secondary)]">Beschreibung</span>
               <textarea
                 name="description"
-                rows={3}
+                rows={4}
                 className="tf-input"
                 defaultValue={tour.description ?? ""}
+                placeholder="Längerer Text — Termine übernehmen ihn standardmäßig."
               />
             </label>
           </div>

@@ -14,6 +14,7 @@ import { FunnelViewTracker } from "@/components/funnel-view-tracker";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { resolveEffectiveEventDetails } from "@/lib/commerce/effective-event-details";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
 import {
@@ -52,7 +53,16 @@ export default async function EmbedEventShopPage({ params }: Props) {
     where: { slug },
     include: {
       location: true,
-      tour: { select: { slug: true, coverImageUrl: true, visibility: true } },
+      tour: {
+        select: {
+          slug: true,
+          name: true,
+          shortDescription: true,
+          description: true,
+          coverImageUrl: true,
+          visibility: true,
+        },
+      },
       organization: { select: { name: true, settings: true } },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
@@ -73,6 +83,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
       </div>
     );
   }
+
+  const effectiveDetails = resolveEffectiveEventDetails(event);
 
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
   const { effectiveEventStatus, isEventSaleOpen } = await import("@/lib/commerce/event-sale");
@@ -198,6 +210,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
       id: category.id,
       name: category.name,
       description: category.description,
+      extrasShortText: category.extrasShortText,
       priceGrossCents: priced.unitCents,
       listPriceGrossCents: priced.listCents,
       campaignName: priced.campaignName,
@@ -257,7 +270,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
         kind="event_page_view"
         eventSlug={event.slug}
         eventId={event.id}
-        eventTitle={event.name}
+        eventTitle={effectiveDetails.name}
         valueCents={categories[0]?.priceGrossCents ?? null}
         embedMode
       />
@@ -281,7 +294,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
             </div>
             <div className="space-y-1.5 p-3">
               <h1 className="text-base font-bold leading-snug text-[var(--tf-navy)]">
-                {event.name}
+                {effectiveDetails.name}
               </h1>
               {when ? (
                 <p className="flex items-start gap-1.5 text-xs text-[var(--tf-text-secondary)]">
@@ -310,9 +323,9 @@ export default async function EmbedEventShopPage({ params }: Props) {
           />
         </div>
 
-        {event.shortDescription ? (
+        {effectiveDetails.shortDescription ? (
           <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
-            {event.shortDescription}
+            {effectiveDetails.shortDescription}
           </p>
         ) : null}
 
@@ -361,7 +374,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   compact
                   eventSlug={event.slug}
                   eventId={event.id}
-                  eventTitle={event.name}
+                  eventTitle={effectiveDetails.name}
                   orderPromo={orderPromo}
                   accessibilityOffer={
                     accessibilityOffer.enabled

@@ -19,9 +19,17 @@ export function TourLineupForm({ tourId, initialLineup, library }: Props) {
   const [lineup, setLineup] = useState<LineupArtistRow[]>(
     initialLineup.length > 0 ? initialLineup : [],
   );
+  const [dirty, setDirty] = useState(false);
   const [pending, startTransition] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function onLineupChange(next: LineupArtistRow[]) {
+    setLineup(next);
+    setDirty(true);
+    setSaved(false);
+    setError(null);
+  }
 
   function onSubmit(formData: FormData) {
     setError(null);
@@ -29,6 +37,7 @@ export function TourLineupForm({ tourId, initialLineup, library }: Props) {
     startTransition(async () => {
       try {
         await updateTourLineupAction(formData);
+        setDirty(false);
         setSaved(true);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
@@ -51,7 +60,7 @@ export function TourLineupForm({ tourId, initialLineup, library }: Props) {
       <input type="hidden" name="tourId" value={tourId} />
       <ArtistLineupEditor
         value={lineup}
-        onChange={setLineup}
+        onChange={onLineupChange}
         library={library}
         hint="Gilt für alle Termine der Tour — solange ein Termin kein eigenes Line-up hat."
       />
@@ -63,12 +72,14 @@ export function TourLineupForm({ tourId, initialLineup, library }: Props) {
           <button
             type="button"
             className="tf-btn tf-btn-ghost !py-2 text-sm"
-            onClick={() => setLineup([emptyLineupArtist()])}
+            onClick={() => onLineupChange([emptyLineupArtist()])}
           >
             Ersten Künstler vorbereiten
           </button>
         ) : null}
-        {saved ? (
+        {dirty ? (
+          <p className="text-sm text-[var(--tf-text-secondary)]">Ungespeicherte Änderungen</p>
+        ) : saved ? (
           <p className="text-sm font-medium text-[var(--tf-teal-hover)]">
             Tour-Line-up gespeichert.
           </p>

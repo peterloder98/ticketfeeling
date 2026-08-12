@@ -648,6 +648,7 @@ model Tour {
   organizationId String    @map("organization_id") @db.Uuid
   name           String
   slug           String
+  shortDescription String? @map("short_description") @db.Text
   description    String?   @db.Text
   coverImageUrl  String?   @map("cover_image_url")
   logoUrl        String?   @map("logo_url")
@@ -788,6 +789,8 @@ model Event {
   /// When true and tourId is set, public/admin effective line-up comes from TourArtist.
   /// When false, EventArtist rows are the override for this date.
   artistsUseTourDefaults Boolean @default(true) @map("artists_use_tour_defaults")
+  /// When true and tourId is set, public name / Kurzbeschreibung / Beschreibung come from Tour.
+  detailsUseTourDefaults Boolean @default(true) @map("details_use_tour_defaults")
   artists      EventArtist[]
   ticketCategories EventTicketCategory[]
   inventoryPools InventoryPool[]
@@ -1064,6 +1067,8 @@ model EventTicketCategory {
   name             String
   internalName     String?   @map("internal_name")
   description      String?   @db.Text
+  /// Short VIP blurb for „was separat dabei ist“ (in addition to longer description)
+  extrasShortText  String?   @map("extras_short_text") @db.Text
   color            String?
   priceGrossCents  Int       @map("price_gross_cents")
   currency         String    @default("EUR")

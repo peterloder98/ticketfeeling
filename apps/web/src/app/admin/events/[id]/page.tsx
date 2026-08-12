@@ -252,7 +252,12 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     widthCm: number;
     depthCm: number;
   }> = [];
-  let tours: Array<{ id: string; name: string }> = [];
+  let tours: Array<{
+    id: string;
+    name: string;
+    shortDescription: string | null;
+    description: string | null;
+  }> = [];
   let orgArtists: Array<{
     id: string;
     name: string;
@@ -313,7 +318,12 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         canWrite
           ? prisma.tour.findMany({
               where: { organizationId: orgId },
-              select: { id: true, name: true },
+              select: {
+                id: true,
+                name: true,
+                shortDescription: true,
+                description: true,
+              },
               orderBy: { name: "asc" },
             })
           : emptyTours,
@@ -407,6 +417,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     sepaMinDaysBeforeEvent: event.sepaMinDaysBeforeEvent,
     coverImageUrl: event.coverImageUrl,
     scheduleChangedAt: event.scheduleChangedAt,
+    detailsUseTourDefaults: event.detailsUseTourDefaults,
     seatOptPreferContiguous: event.seatOptPreferContiguous,
     seatOptPreventNewSingletons: event.seatOptPreventNewSingletons,
     seatOptIntelligentRemnants: event.seatOptIntelligentRemnants,

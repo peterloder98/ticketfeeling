@@ -195,6 +195,7 @@ export async function loadTicketPresentation(
     categoryName,
     categoryKind,
     isVip,
+    extrasShortText: ticket.category?.extrasShortText?.trim() || null,
     placeLabel,
     placeDisplayLabel: place.label,
     hasAssignedSeat: place.hasAssignedSeat,

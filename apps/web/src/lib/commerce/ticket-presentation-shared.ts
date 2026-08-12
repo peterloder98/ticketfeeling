@@ -122,6 +122,8 @@ export type TicketPresentation = {
   categoryName: string;
   categoryKind: string | null;
   isVip: boolean;
+  /** Short VIP extras blurb („Separat dabei“) */
+  extrasShortText: string | null;
   /** Row/seat or Stehplatz / Freie Platzwahl */
   placeLabel: string;
   /** Prominent print line: BLOCK A · REIHE 1 · PLATZ 9 / FREIE PLATZWAHL / Stehplatz */

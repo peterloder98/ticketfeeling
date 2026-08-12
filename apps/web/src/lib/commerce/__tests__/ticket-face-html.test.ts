@@ -31,6 +31,7 @@ function mockData(overrides: Partial<TicketPresentation> = {}): TicketPresentati
     categoryName: "Kat 1",
     categoryKind: "seated",
     isVip: false,
+    extrasShortText: null,
     placeLabel: "Block A · Reihe 1 · Platz 1",
     placeDisplayLabel: "BLOCK A · REIHE 1 · PLATZ 1",
     hasAssignedSeat: true,

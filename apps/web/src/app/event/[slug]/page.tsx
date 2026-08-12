@@ -24,6 +24,7 @@ import {
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { resolveEffectiveArtistLinks } from "@/lib/commerce/effective-event-artists";
+import { resolveEffectiveEventDetails } from "@/lib/commerce/effective-event-details";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
 import {
   assignedUnlockedSeatCounts,
@@ -46,9 +47,17 @@ export async function generateMetadata({ params }: Props) {
   // Skip ensure* here — metadata must stay cheap; page load patches schema if needed.
   const event = await prisma.event.findFirst({
     where: { slug },
-    select: { name: true },
+    select: {
+      name: true,
+      detailsUseTourDefaults: true,
+      tourId: true,
+      tour: { select: { name: true } },
+    },
   });
-  return { title: event?.name ?? "Event" };
+  const title = event
+    ? resolveEffectiveEventDetails(event).name
+    : "Event";
+  return { title };
 }
 
 function formatEventDate(date: Date) {
@@ -82,6 +91,9 @@ export default async function EventPage({ params }: Props) {
       room: true,
       tour: {
         select: {
+          name: true,
+          shortDescription: true,
+          description: true,
           coverImageUrl: true,
           visibility: true,
           artists: {
@@ -108,6 +120,7 @@ export default async function EventPage({ params }: Props) {
   if (!event) notFound();
 
   const effectiveArtists = resolveEffectiveArtistLinks(event);
+  const effectiveDetails = resolveEffectiveEventDetails(event);
 
   // UI uses effective status; durable DB flip runs in background (cron + throttled batch).
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
@@ -150,7 +163,7 @@ export default async function EventPage({ params }: Props) {
             Ticketfeeling
           </p>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">
-            {event.name}
+            {effectiveDetails.name}
           </h1>
           <p className="mt-3 text-base text-[var(--tf-text-secondary)]">
             Dieses Event wurde abgesagt. Tickets sind nicht mehr erhältlich.
@@ -246,6 +259,7 @@ export default async function EventPage({ params }: Props) {
       id: category.id,
       name: category.name,
       description: category.description,
+      extrasShortText: category.extrasShortText,
       priceGrossCents: priced.unitCents,
       listPriceGrossCents: priced.listCents,
       campaignName: priced.campaignName,
@@ -359,7 +373,7 @@ export default async function EventPage({ params }: Props) {
         kind="event_page_view"
         eventSlug={event.slug}
         eventId={event.id}
-        eventTitle={event.name}
+        eventTitle={effectiveDetails.name}
         valueCents={categories[0]?.priceGrossCents ?? null}
       />
       <section className="border-b border-[var(--tf-line)] bg-[var(--tf-navy)] text-white">
@@ -369,7 +383,7 @@ export default async function EventPage({ params }: Props) {
               Live bei Ticketfeeling
             </p>
             <h1 className="mt-3 max-w-3xl text-[2.125rem] font-bold leading-[1.1] tracking-tight md:text-5xl lg:text-[3.75rem]">
-              {event.name}
+              {effectiveDetails.name}
             </h1>
             <EventPageUrgencyCountdown
               className="mt-5"
@@ -377,9 +391,9 @@ export default async function EventPage({ params }: Props) {
               eventStartsAt={eventStartsIso}
               campaignValidUntils={campaignValidUntils}
             />
-            {event.shortDescription ? (
+            {effectiveDetails.shortDescription ? (
               <p className="mt-4 max-w-[40rem] text-base leading-relaxed text-white/85 md:text-lg">
-                {event.shortDescription}
+                {effectiveDetails.shortDescription}
               </p>
             ) : null}
             <div className="mt-5 flex flex-col gap-2 text-base text-white/85">
@@ -423,7 +437,7 @@ export default async function EventPage({ params }: Props) {
               <div className="aspect-square max-h-[444px] overflow-hidden">
                 <ResponsiveImage
                   src={coverImageUrl}
-                  alt={`Cover: ${event.name}`}
+                  alt={`Cover: ${effectiveDetails.name}`}
                   className="h-full w-full transition duration-300 group-hover:scale-[1.02]"
                   fallback="event"
                 />
@@ -438,7 +452,9 @@ export default async function EventPage({ params }: Props) {
           <div>
             <h2 className="tf-display text-2xl md:text-3xl">Darauf kannst du dich freuen</h2>
             <p className="mt-3 max-w-[70ch] whitespace-pre-wrap text-base leading-relaxed text-[var(--tf-text-secondary)]">
-              {event.description || event.shortDescription || "Details folgen in Kürze."}
+              {effectiveDetails.description ||
+                effectiveDetails.shortDescription ||
+                "Details folgen in Kürze."}
             </p>
           </div>
 

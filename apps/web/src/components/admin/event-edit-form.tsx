@@ -2,7 +2,10 @@
 
 import { useEffect, useId, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { updateEventAction } from "@/app/admin/events/actions";
+import {
+  clearScheduleChangedNoticeAction,
+  updateEventAction,
+} from "@/app/admin/events/actions";
 import {
   EVENT_STATUSES,
   parseDatetimeLocalBerlin,
@@ -32,7 +35,12 @@ type PlanOpt = {
   seatCapacity: number;
   sizeLabel: string;
 };
-type TourOpt = { id: string; name: string };
+type TourOpt = {
+  id: string;
+  name: string;
+  shortDescription?: string | null;
+  description?: string | null;
+};
 
 function humanizeEventSaveError(code: string): string {
   switch (code) {
@@ -118,6 +126,7 @@ export function EventEditForm({
     sepaMinDaysBeforeEvent: number | null;
     coverImageUrl: string | null;
     scheduleChangedAt?: Date | null;
+    detailsUseTourDefaults?: boolean;
     seatOptPreferContiguous?: boolean;
     seatOptPreventNewSingletons?: boolean;
     seatOptIntelligentRemnants?: boolean;
@@ -139,6 +148,13 @@ export function EventEditForm({
   ticketsSold?: number;
 }) {
   const [status, setStatus] = useState(event.status);
+  const [tourId, setTourId] = useState(event.tourId ?? "");
+  const [inheritsDetails, setInheritsDetails] = useState(
+    Boolean(event.tourId && event.detailsUseTourDefaults !== false),
+  );
+  const [name, setName] = useState(event.name);
+  const [shortDescription, setShortDescription] = useState(event.shortDescription ?? "");
+  const [description, setDescription] = useState(event.description ?? "");
   const [startsAt, setStartsAt] = useState(toDatetimeLocalValue(event.eventStartsAt));
   const [endsAt, setEndsAt] = useState(toDatetimeLocalValue(event.eventEndsAt));
   const [doorsOpenAt, setDoorsOpenAt] = useState(toDatetimeLocalValue(event.doorsOpenAt));
@@ -149,10 +165,14 @@ export function EventEditForm({
   const [saved, setSaved] = useState(false);
   const [saveHint, setSaveHint] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [scheduleNoticeAt, setScheduleNoticeAt] = useState(event.scheduleChangedAt ?? null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingFormData, setPendingFormData] = useState<FormData | null>(null);
   const dialogTitleId = useId();
   const router = useRouter();
+
+  const selectedTour = tours.find((t) => t.id === tourId) ?? null;
+  const canInheritDetails = Boolean(selectedTour);
 
   const needsScheduleGate = shouldConfirmScheduleChange({
     status: event.status,
@@ -232,6 +252,14 @@ export function EventEditForm({
     formData.set("eventEndsAt", endsAt);
     formData.set("doorsOpenAt", doorsOpenAt);
     formData.set("presaleStartsAt", presaleStartsAt);
+    formData.set("tourId", tourId);
+    formData.set("name", name);
+    formData.set("shortDescription", shortDescription);
+    formData.set("description", description);
+    formData.set(
+      "detailsUseTourDefaults",
+      canInheritDetails && inheritsDetails ? "1" : "0",
+    );
 
     const nextStart = parseDatetimeLocalBerlin(startsAt);
     const startChanged = scheduleStartChanged(event.eventStartsAt, nextStart);
@@ -268,6 +296,42 @@ export function EventEditForm({
     fd.set("presaleStartsAt", presaleStartsAt);
     fd.set("scheduleChangeConfirmed", "1");
     submitFormData(fd);
+  }
+
+  function startDetailsOverride() {
+    if (!selectedTour) return;
+    setInheritsDetails(false);
+    setName(selectedTour.name);
+    setShortDescription(selectedTour.shortDescription ?? "");
+    setDescription(selectedTour.description ?? "");
+  }
+
+  function restoreTourDetails() {
+    if (!selectedTour) return;
+    setInheritsDetails(true);
+    setName(selectedTour.name);
+    setShortDescription(selectedTour.shortDescription ?? "");
+    setDescription(selectedTour.description ?? "");
+  }
+
+  function clearScheduleNotice() {
+    setError(null);
+    startTransition(async () => {
+      try {
+        const fd = new FormData();
+        fd.set("eventId", event.id);
+        const result = await clearScheduleChangedNoticeAction(fd);
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setScheduleNoticeAt(null);
+        setSaveHint("Öffentlicher Hinweis „geänderter Termin“ entfernt.");
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Hinweis konnte nicht entfernt werden");
+      }
+    });
   }
 
   function closeConfirm() {
@@ -312,31 +376,101 @@ export function EventEditForm({
           </div>
         ) : null}
         <input type="hidden" name="eventId" value={event.id} />
+        <input
+          type="hidden"
+          name="detailsUseTourDefaults"
+          value={canInheritDetails && inheritsDetails ? "1" : "0"}
+        />
 
-        <label className="grid gap-1 md:col-span-2">
-          <span className="font-medium">Name</span>
-          <input name="name" className="tf-input" required defaultValue={event.name} />
-        </label>
+        {canInheritDetails && inheritsDetails ? (
+          <div className="md:col-span-2 space-y-3 rounded-2xl border border-[var(--tf-line)] bg-[#f8fafc] px-4 py-3">
+            <p className="text-sm font-medium text-[var(--tf-navy)]">
+              Übernimmt Name, Kurzbeschreibung und Beschreibung von „{selectedTour!.name}“
+            </p>
+            <p className="text-xs text-[var(--tf-text-secondary)]">
+              Änderungen an der Tour gelten auch für diesen Termin — solange du nicht anpasst.
+            </p>
+            <div className="space-y-2 text-sm text-[var(--tf-navy)]">
+              <p>
+                <span className="text-[var(--tf-text-secondary)]">Name · </span>
+                {selectedTour!.name}
+              </p>
+              <p>
+                <span className="text-[var(--tf-text-secondary)]">Kurzbeschreibung · </span>
+                {selectedTour!.shortDescription?.trim() || "—"}
+              </p>
+              <p className="whitespace-pre-wrap">
+                <span className="text-[var(--tf-text-secondary)]">Beschreibung · </span>
+                {selectedTour!.description?.trim() || "—"}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="tf-btn tf-btn-ghost !py-2 text-sm"
+              onClick={startDetailsOverride}
+            >
+              Für diesen Termin anpassen
+            </button>
+            {/* Keep values in the payload while inheriting */}
+            <input type="hidden" name="name" value={selectedTour!.name} />
+            <input
+              type="hidden"
+              name="shortDescription"
+              value={selectedTour!.shortDescription ?? ""}
+            />
+            <input
+              type="hidden"
+              name="description"
+              value={selectedTour!.description ?? ""}
+            />
+          </div>
+        ) : (
+          <>
+            <label className="grid gap-1 md:col-span-2">
+              <span className="font-medium">Name</span>
+              <input
+                name="name"
+                className="tf-input"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
 
-        <label className="grid gap-1 md:col-span-2">
-          <span className="font-medium">Kurzbeschreibung</span>
-          <textarea
-            name="shortDescription"
-            rows={2}
-            className="tf-input"
-            defaultValue={event.shortDescription ?? ""}
-          />
-        </label>
+            <label className="grid gap-1 md:col-span-2">
+              <span className="font-medium">Kurzbeschreibung</span>
+              <textarea
+                name="shortDescription"
+                rows={2}
+                className="tf-input"
+                value={shortDescription}
+                onChange={(e) => setShortDescription(e.target.value)}
+              />
+            </label>
 
-        <label className="grid gap-1 md:col-span-2">
-          <span className="font-medium">Beschreibung</span>
-          <textarea
-            name="description"
-            rows={5}
-            className="tf-input"
-            defaultValue={event.description ?? ""}
-          />
-        </label>
+            <label className="grid gap-1 md:col-span-2">
+              <span className="font-medium">Beschreibung</span>
+              <textarea
+                name="description"
+                rows={5}
+                className="tf-input"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </label>
+            {canInheritDetails ? (
+              <div className="md:col-span-2">
+                <button
+                  type="button"
+                  className="tf-btn tf-btn-ghost !py-2 text-sm"
+                  onClick={restoreTourDetails}
+                >
+                  Tour-Texte wieder übernehmen
+                </button>
+              </div>
+            ) : null}
+          </>
+        )}
 
         <label className="grid gap-1">
           <span className="font-medium">Untertitel</span>
@@ -350,7 +484,20 @@ export function EventEditForm({
 
         <label className="grid gap-1 md:col-span-2">
           <span className="font-medium">Tour</span>
-          <select name="tourId" className="tf-input" defaultValue={event.tourId ?? ""}>
+          <select
+            name="tourId"
+            className="tf-input"
+            value={tourId}
+            onChange={(e) => {
+              const next = e.target.value;
+              setTourId(next);
+              if (!next) {
+                setInheritsDetails(false);
+              } else if (!event.tourId || event.detailsUseTourDefaults !== false) {
+                setInheritsDetails(true);
+              }
+            }}
+          >
             <option value="">Kein Tour-Termin (einzelnes Event)</option>
             {tours.map((tour) => (
               <option key={tour.id} value={tour.id}>
@@ -440,15 +587,25 @@ export function EventEditForm({
           </p>
         ) : null}
 
-        {event.scheduleChangedAt ? (
-          <p className="md:col-span-2 rounded-xl border border-[rgba(185,28,28,0.35)] bg-[rgba(185,28,28,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
-            Öffentlicher Hinweis „Achtung, geänderter Termin“ ist aktiv (seit{" "}
-            {formatDeDateTime(new Date(event.scheduleChangedAt), {
-              dateStyle: "medium",
-              timeStyle: "short",
-            })}
-            ).
-          </p>
+        {scheduleNoticeAt ? (
+          <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(185,28,28,0.35)] bg-[rgba(185,28,28,0.08)] px-3 py-2 text-sm text-[var(--tf-navy)]">
+            <p>
+              Öffentlicher Hinweis „Achtung, geänderter Termin“ ist aktiv (seit{" "}
+              {formatDeDateTime(new Date(scheduleNoticeAt), {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
+              ).
+            </p>
+            <button
+              type="button"
+              className="tf-btn tf-btn-ghost !py-1.5 text-sm"
+              disabled={pending}
+              onClick={clearScheduleNotice}
+            >
+              Hinweis entfernen
+            </button>
+          </div>
         ) : null}
 
         <div className="relative z-20 md:col-span-2 grid gap-3 md:grid-cols-2">

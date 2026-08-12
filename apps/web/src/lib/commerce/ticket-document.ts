@@ -167,7 +167,11 @@ export function buildTicketFaceEmbed(
     data.isVip && /^vip$/i.test(data.categoryName.trim())
       ? ""
       : `<strong>${escapeHtml(data.categoryName)}</strong>`;
-  const categoryHtml = `<p class="tf-category">Kategorie ${vipBadge}${categoryLabel}</p>`;
+  const categoryHtml = `<p class="tf-category">Kategorie ${vipBadge}${categoryLabel}</p>${
+    data.isVip && data.extrasShortText
+      ? `<p class="tf-extras">${escapeHtml(data.extrasShortText)}</p>`
+      : ""
+  }`;
 
   const sponsorAboveHtml = sponsorAbove
     ? `<img class="tf-sponsor-logo" style="width:${aboveMaxW}px;height:${aboveMaxH}px;object-fit:contain" src="${escapeAttr(sponsorAbove)}" alt="" />`
@@ -422,6 +426,14 @@ export function buildTicketFaceEmbed(
 .tf-category strong {
   font-weight: 600;
   color: ${TF_NAVY};
+}
+.tf-extras {
+  margin: 2px 0 0;
+  font-size: 9px;
+  color: ${TF_MUTED};
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tf-vip-badge {
   display: inline-block;

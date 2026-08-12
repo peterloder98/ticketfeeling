@@ -77,6 +77,10 @@ const CRITICAL_FALLBACK_STATEMENTS = [
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
+  // Tour details inherit + VIP extras (migration 20260812210000)
+  `ALTER TABLE "tours" ADD COLUMN IF NOT EXISTS "short_description" TEXT`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "details_use_tour_defaults" BOOLEAN NOT NULL DEFAULT true`,
+  `ALTER TABLE "event_ticket_categories" ADD COLUMN IF NOT EXISTS "extras_short_text" TEXT`,
 ];
 
 const FALLBACK_STATEMENTS = [

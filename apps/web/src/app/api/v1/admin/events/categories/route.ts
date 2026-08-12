@@ -45,6 +45,7 @@ const upsertSchema = z.object({
   /** ISO datetime, datetime-local, DE display, or null to clear */
   doorsOpenAt: z.string().nullable().optional(),
   doorsNote: z.string().max(200).nullable().optional(),
+  extrasShortText: z.string().max(280).nullable().optional(),
 });
 
 function parseOptionalDoorsAt(raw: string | null | undefined): Date | null | undefined {
@@ -130,6 +131,12 @@ export async function PUT(request: Request) {
         : body.doorsNote?.trim()
           ? body.doorsNote.trim().slice(0, 200)
           : null;
+    const extrasShortText =
+      body.extrasShortText === undefined
+        ? undefined
+        : body.extrasShortText?.trim()
+          ? body.extrasShortText.trim().slice(0, 280)
+          : null;
     const color =
       body.color === undefined
         ? undefined
@@ -164,6 +171,7 @@ export async function PUT(request: Request) {
             color: color === undefined ? undefined : color,
             ...(doorsOpenAt !== undefined ? { doorsOpenAt } : {}),
             ...(doorsNote !== undefined ? { doorsNote } : {}),
+            ...(extrasShortText !== undefined ? { extrasShortText } : {}),
           },
         });
         if (!planBacked) {
@@ -239,6 +247,7 @@ export async function PUT(request: Request) {
           color: color ?? null,
           doorsOpenAt: doorsOpenAt ?? null,
           doorsNote: doorsNote ?? null,
+          extrasShortText: extrasShortText ?? null,
           sortOrder,
           status: "active",
         },

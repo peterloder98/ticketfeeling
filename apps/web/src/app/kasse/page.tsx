@@ -370,6 +370,7 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           id: category.id,
           name: category.name,
           description: category.description,
+          extrasShortText: category.extrasShortText,
           priceGrossCents: priced.unitCents,
           listPriceGrossCents: priced.listCents,
           campaignName: priced.campaignName,

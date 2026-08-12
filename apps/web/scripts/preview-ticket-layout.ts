@@ -33,6 +33,7 @@ const mock: TicketPresentation = {
   categoryName: "Kategorie 1",
   categoryKind: "seated",
   isVip: false,
+  extrasShortText: null,
   placeLabel: "Block A · Reihe 1 · Platz 9",
   placeDisplayLabel: "BLOCK A · REIHE 1 · PLATZ 9",
   hasAssignedSeat: true,

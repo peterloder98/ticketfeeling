@@ -12,6 +12,7 @@ export type EventCategoryRow = {
   id: string;
   name: string;
   description: string | null;
+  extrasShortText?: string | null;
   priceGrossCents: number;
   capacity: number;
   maxPerOrder: number;
@@ -140,6 +141,7 @@ function CategoryKindFields({
   defaultCompanionFree = false,
   defaultDoorsOpenAt = null,
   defaultDoorsNote = null,
+  defaultExtrasShortText = null,
   showDoors = true,
   compact = false,
 }: {
@@ -147,6 +149,7 @@ function CategoryKindFields({
   defaultCompanionFree?: boolean;
   defaultDoorsOpenAt?: string | Date | null;
   defaultDoorsNote?: string | null;
+  defaultExtrasShortText?: string | null;
   showDoors?: boolean;
   compact?: boolean;
 }) {
@@ -190,6 +193,23 @@ function CategoryKindFields({
         >
           <input type="checkbox" name="companionFree" defaultChecked={defaultCompanionFree} />
           Begleitung frei
+        </label>
+      ) : null}
+      {isVip ? (
+        <label className={`grid ${compact ? "col-span-2 gap-0.5" : "gap-1"}`}>
+          <span className={labelClass ?? "text-sm text-[var(--tf-text-secondary)]"}>
+            Separat dabei (kurz)
+          </span>
+          <input
+            name="extrasShortText"
+            className={inputClass}
+            maxLength={280}
+            defaultValue={defaultExtrasShortText ?? ""}
+            placeholder="z. B. Welcome-Drink & Meet and Greet"
+          />
+          <span className="text-[10px] leading-snug text-[var(--tf-text-secondary)]">
+            Kurzer Hinweis, was zusätzlich dabei ist — neben der längeren Vorteils-Liste.
+          </span>
         </label>
       ) : null}
       {showDoorsFields ? (
@@ -346,6 +366,15 @@ function NewCategoryCapacityFields({ seatingEnabled }: { seatingEnabled: boolean
               placeholder="z. B. VIP-Einlass über den Haupteingang"
             />
           </label>
+          <label className="grid gap-1">
+            <span>Separat dabei (kurz)</span>
+            <input
+              name="extrasShortText"
+              className="tf-input"
+              maxLength={280}
+              placeholder="z. B. Welcome-Drink & Meet and Greet"
+            />
+          </label>
         </>
       ) : null}
     </>
@@ -420,6 +449,9 @@ export function EventCategoriesPanel({
             : {}),
           ...(fd.has("doorsNote")
             ? { doorsNote: String(fd.get("doorsNote") ?? "").trim() || null }
+            : {}),
+          ...(fd.has("extrasShortText")
+            ? { extrasShortText: String(fd.get("extrasShortText") ?? "").trim() || null }
             : {}),
         }),
       });
@@ -582,6 +614,7 @@ export function EventCategoriesPanel({
                     defaultCompanionFree={Boolean(cat.companionFree)}
                     defaultDoorsOpenAt={cat.doorsOpenAt}
                     defaultDoorsNote={cat.doorsNote}
+                    defaultExtrasShortText={cat.extrasShortText}
                   />
                   <div className="col-span-2 flex flex-wrap items-center justify-between gap-2">
                     <CategoryColorSwatches defaultColor={cat.color} />

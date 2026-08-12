@@ -499,6 +499,18 @@ async function createEventFromFormData(
       });
     }
 
+    // Tour date: inherit name/copy unless form explicitly overrides
+    if (tourId) {
+      const detailsOverride = String(formData.get("detailsUseTourDefaults") ?? "").trim();
+      await tx.event.update({
+        where: { id: created.id },
+        data: {
+          detailsUseTourDefaults:
+            detailsOverride !== "0" && detailsOverride !== "false",
+        },
+      });
+    }
+
     return created;
   });
 
@@ -709,6 +721,13 @@ export async function updateEventAction(formData: FormData) {
   // Cover is owned by CoverImageField (upload API). Only sync when tour link changes.
   let nextCoverUrl = event.coverImageUrl;
   let artistsUseTourDefaults = event.artistsUseTourDefaults;
+  let detailsUseTourDefaults = event.detailsUseTourDefaults;
+  const detailsFlagRaw = String(formData.get("detailsUseTourDefaults") ?? "").trim();
+  if (detailsFlagRaw === "0" || detailsFlagRaw === "false") {
+    detailsUseTourDefaults = false;
+  } else if (detailsFlagRaw === "1" || detailsFlagRaw === "true" || detailsFlagRaw === "on") {
+    detailsUseTourDefaults = true;
+  }
   if ((event.tourId ?? null) !== tourId) {
     if (tourId) {
       const previousTourCover = event.tourId
@@ -730,10 +749,18 @@ export async function updateEventAction(formData: FormData) {
       });
       // Keep existing event line-up as override when joining a tour; otherwise inherit.
       artistsUseTourDefaults = eventArtistCount === 0;
+      // Joining a tour: inherit details unless admin explicitly overrode in this save.
+      if (detailsFlagRaw === "") {
+        detailsUseTourDefaults = true;
+      }
     } else {
       // Leaving a tour: keep any event artists as the sole line-up.
       artistsUseTourDefaults = true;
+      detailsUseTourDefaults = true;
     }
+  }
+  if (!tourId) {
+    detailsUseTourDefaults = true;
   }
   const statusReadyInput = {
     coverImageUrl: nextCoverUrl,
@@ -818,6 +845,7 @@ export async function updateEventAction(formData: FormData) {
       description,
       coverImageUrl: nextCoverUrl,
       artistsUseTourDefaults,
+      detailsUseTourDefaults,
       eventStartsAt,
       eventEndsAt,
       doorsOpenAt,
@@ -1327,4 +1355,44 @@ export async function deleteOrCancelEventAction(
     revalidatePath("/admin/tours");
   }
   return { ok: true, mode: "deleted" };
+}
+
+/**
+ * Clear public „geänderter Termin“ banner (scheduleChangedAt) without changing dates.
+ */
+export async function clearScheduleChangedNoticeAction(
+  formData: FormData,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { session, membership } = await requireEventWrite();
+  const eventId = String(formData.get("eventId") ?? "").trim();
+  if (!eventId) return { ok: false, error: "Event fehlt." };
+
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, organizationId: membership.organizationId },
+    select: { id: true, slug: true, tourId: true, scheduleChangedAt: true },
+  });
+  if (!event) return { ok: false, error: "Event nicht gefunden." };
+  if (!event.scheduleChangedAt) return { ok: true };
+
+  await prisma.event.update({
+    where: { id: event.id },
+    data: { scheduleChangedAt: null },
+  });
+
+  await writeAudit({
+    organizationId: membership.organizationId,
+    actorUserId: session.user.id,
+    action: "event.schedule_notice_cleared",
+    entityType: "event",
+    entityId: event.id,
+    before: { scheduleChangedAt: event.scheduleChangedAt.toISOString() },
+    after: { scheduleChangedAt: null },
+  });
+
+  revalidateEventSurfaces({
+    eventId: event.id,
+    slug: event.slug,
+    tourId: event.tourId,
+  });
+  return { ok: true };
 }

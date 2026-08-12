@@ -36,6 +36,7 @@ export async function createTourAction(formData: FormData) {
   let slug = String(formData.get("slug") ?? "").trim();
   if (!slug) slug = slugify(name);
   const description = String(formData.get("description") ?? "").trim() || null;
+  const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
   const visibility = String(formData.get("visibility") ?? "draft");
   if (visibility !== "draft" && visibility !== "published") throw new Error("INVALID_VISIBILITY");
@@ -52,6 +53,7 @@ export async function createTourAction(formData: FormData) {
       organizationId: membership.organizationId,
       name,
       slug,
+      shortDescription,
       description,
       coverImageUrl,
       startsOn,
@@ -66,7 +68,7 @@ export async function createTourAction(formData: FormData) {
     action: "tour.created",
     entityType: "tour",
     entityId: created.id,
-    after: { name, slug, visibility, coverImageUrl },
+    after: { name, slug, visibility, coverImageUrl, shortDescription },
   });
 
   revalidatePath("/admin/tours");
@@ -89,6 +91,7 @@ export async function updateTourAction(formData: FormData) {
   let slug = String(formData.get("slug") ?? "").trim() || existing.slug;
   if (!slug) slug = slugify(name);
   const description = String(formData.get("description") ?? "").trim() || null;
+  const shortDescription = String(formData.get("shortDescription") ?? "").trim() || null;
   const coverImageUrl = String(formData.get("coverImageUrl") ?? "").trim() || null;
   const visibility = String(formData.get("visibility") ?? existing.visibility);
   if (visibility !== "draft" && visibility !== "published") throw new Error("INVALID_VISIBILITY");
@@ -109,6 +112,7 @@ export async function updateTourAction(formData: FormData) {
     data: {
       name,
       slug,
+      shortDescription,
       description,
       coverImageUrl,
       startsOn,
@@ -134,8 +138,9 @@ export async function updateTourAction(formData: FormData) {
       slug: existing.slug,
       visibility: existing.visibility,
       coverImageUrl: existing.coverImageUrl,
+      shortDescription: existing.shortDescription,
     },
-    after: { name, slug, visibility, coverImageUrl },
+    after: { name, slug, visibility, coverImageUrl, shortDescription },
   });
 
   revalidatePath("/admin/tours");

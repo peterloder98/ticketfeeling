@@ -6,6 +6,7 @@ import {
 import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import { resolveEffectiveListingArtists } from "@/lib/commerce/effective-event-artists";
+import { resolveEffectiveEventDetails } from "@/lib/commerce/effective-event-details";
 
 export type ListingEvent = {
   id: string;
@@ -20,12 +21,14 @@ export type ListingEvent = {
   coverImageUrl: string | null;
   tourId: string | null;
   artistsUseTourDefaults?: boolean;
+  detailsUseTourDefaults?: boolean;
   location: { name: string; city: string | null } | null;
   tour: {
     id: string;
     name: string;
     slug: string;
     coverImageUrl: string | null;
+    shortDescription?: string | null;
     description: string | null;
     visibility?: string;
     artists?: {
@@ -178,10 +181,11 @@ function cardFromDates(
 }
 
 function cardFromSingle(event: ListingEvent): PublicListingCard {
+  const details = resolveEffectiveEventDetails(event);
   return {
     key: `event-${event.id}`,
     href: `/event/${event.slug}`,
-    name: event.name,
+    name: details.name,
     status: listingDisplayStatus([event]),
     coverImageUrl: resolveEventCoverUrl(event),
     whenLabel: formatWhen(event.eventStartsAt),

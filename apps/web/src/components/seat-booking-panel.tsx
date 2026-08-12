@@ -33,6 +33,7 @@ type Category = {
   id: string;
   name: string;
   description: string | null;
+  extrasShortText?: string | null;
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
@@ -924,6 +925,11 @@ export function SeatBookingPanel({
                 <div className="flex justify-between gap-2">
                   <div>
                     <p className="font-semibold text-[var(--tf-navy)]">{category.name}</p>
+                    {category.extrasShortText ? (
+                      <p className="mt-1 text-sm font-medium text-[var(--tf-navy)]">
+                        Separat dabei: {category.extrasShortText}
+                      </p>
+                    ) : null}
                     {category.description ? (
                       <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
                         {category.description}

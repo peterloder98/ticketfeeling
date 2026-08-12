@@ -300,6 +300,8 @@ async function main() {
     },
     update: {
       name: "SCHLAGERfeeling Weihnachtstraum",
+      shortDescription:
+        "Freie Platzwahl · Normal 49,00 € · VIP 89,00 € · Aktion: 10 € sparen ab 2 Tickets.",
       description:
         "SCHLAGERfeeling Weihnachtstraum 2026 — drei Termine, freie Platzwahl (Reihenbestuhlung). Normal 49,00 € · VIP 89,00 €. Aktion: 10 € sparen beim Kauf von 2 Tickets (bis 31.08.2026).",
       startsOn: new Date("2026-11-29"),
@@ -310,6 +312,8 @@ async function main() {
       organizationId: org.id,
       name: "SCHLAGERfeeling Weihnachtstraum",
       slug: "schlagerfeeling-weihnachtstraum-2026",
+      shortDescription:
+        "Freie Platzwahl · Normal 49,00 € · VIP 89,00 € · Aktion: 10 € sparen ab 2 Tickets.",
       description:
         "SCHLAGERfeeling Weihnachtstraum 2026 — drei Termine, freie Platzwahl (Reihenbestuhlung). Normal 49,00 € · VIP 89,00 €. Aktion: 10 € sparen beim Kauf von 2 Tickets (bis 31.08.2026).",
       startsOn: new Date("2026-11-29"),
@@ -396,6 +400,8 @@ async function main() {
         trackingReviewedAt: new Date(),
         trackingUseOrgDefaults: true,
         showRemainingAvailability: false,
+        artistsUseTourDefaults: true,
+        detailsUseTourDefaults: true,
       },
       create: {
         organizationId: org.id,
@@ -419,6 +425,8 @@ async function main() {
         trackingReviewedAt: new Date(),
         trackingUseOrgDefaults: true,
         showRemainingAvailability: false,
+        artistsUseTourDefaults: true,
+        detailsUseTourDefaults: true,
       },
     });
 

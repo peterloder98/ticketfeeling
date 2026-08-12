@@ -27,6 +27,7 @@ type Category = {
   id: string;
   name: string;
   description?: string | null;
+  extrasShortText?: string | null;
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
@@ -674,6 +675,11 @@ export function BoxOfficeForm({
                           </span>
                         ) : null}
                       </div>
+                      {category.extrasShortText ? (
+                        <p className="mt-1 text-sm font-medium text-[var(--tf-navy)]">
+                          Separat dabei: {category.extrasShortText}
+                        </p>
+                      ) : null}
                       {category.description ? (
                         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
                           {category.description}
