@@ -37,6 +37,7 @@ export async function listingCardsToEventCardData(
       priceLabel: from?.priceLabel ?? null,
       listPriceLabel: from?.listPriceLabel ?? null,
       saleBadge: from?.saleBadge ?? null,
+      saleDisclaimer: from?.saleDisclaimer ?? null,
       campaignName: from?.campaignName ?? null,
       campaignValidUntil: from?.campaignValidUntil ?? null,
       priceNote: from?.surchargeLabel || null,

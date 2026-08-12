@@ -1,4 +1,8 @@
-import { resolveTicketUnitPrice, type PriceCampaignInput } from "@/lib/commerce/event-pricing";
+import {
+  resolveTicketUnitPrice,
+  pickActiveOrderCampaignBadge,
+  type PriceCampaignInput,
+} from "@/lib/commerce/event-pricing";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { discountBadgeLabel } from "@/lib/commerce/campaign-price-ui";
 
@@ -14,6 +18,8 @@ export type ListingFromPrice = {
   /** List "ab …" when on sale, else null */
   listPriceLabel: string | null;
   saleBadge: string | null;
+  /** e.g. „* beim Kauf von 2 Tickets“ */
+  saleDisclaimer: string | null;
   campaignName: string | null;
   campaignValidUntil: string | null;
   surchargeLabel: string;
@@ -24,6 +30,7 @@ export type ListingFromPrice = {
 /**
  * Cheapest online unit across listing categories, with active campaign applied.
  * Used for homepage / events / embed “ab XX €” surfaces.
+ * Order-threshold promos keep list unit price but may still show badge/disclaimer.
  */
 export function resolveListingFromPrice(input: {
   categories: ListingCategoryPriceInput[];
@@ -40,6 +47,8 @@ export function resolveListingFromPrice(input: {
   let bestList = Number.POSITIVE_INFINITY;
   let campaignName: string | null = null;
   let campaignValidUntil: string | null = null;
+  let saleBadge: string | null = null;
+  let saleDisclaimer: string | null = null;
 
   for (const cat of categories) {
     const campaigns = campaignsByEventId.get(cat.eventId) ?? [];
@@ -56,10 +65,39 @@ export function resolveListingFromPrice(input: {
       bestList = priced.listCents;
       campaignName = priced.campaignName;
       campaignValidUntil = priced.campaignValidUntil;
+      saleBadge =
+        priced.listCents > priced.unitCents
+          ? discountBadgeLabel(priced.listCents, priced.unitCents)
+          : null;
+      saleDisclaimer = null;
     }
   }
 
   if (!Number.isFinite(bestUnit)) return null;
+
+  // Order-mode promos: keep „ab“ list price, show badge + fair disclaimer
+  if (!saleBadge) {
+    const byEvent = new Map<string, string[]>();
+    for (const cat of categories) {
+      const list = byEvent.get(cat.eventId) ?? [];
+      list.push(cat.id);
+      byEvent.set(cat.eventId, list);
+    }
+    for (const [eventId, categoryIds] of byEvent) {
+      const orderBadge = pickActiveOrderCampaignBadge({
+        categoryIds,
+        channel: "online",
+        now,
+        campaigns: campaignsByEventId.get(eventId) ?? [],
+      });
+      if (!orderBadge) continue;
+      saleBadge = orderBadge.badgeLabel?.trim() || orderBadge.name || "Aktion";
+      saleDisclaimer = orderBadge.badgeDisclaimer?.trim() || null;
+      campaignName = orderBadge.name;
+      campaignValidUntil = orderBadge.validUntil.toISOString();
+      break;
+    }
+  }
 
   const unitLabel = formatCustomerPriceLabel({
     ticketGrossCents: bestUnit,
@@ -80,9 +118,10 @@ export function resolveListingFromPrice(input: {
   return {
     priceLabel: unitLabel.totalLabel,
     listPriceLabel: listLabel,
-    saleBadge: onSale ? discountBadgeLabel(bestList, bestUnit) : null,
-    campaignName: onSale ? campaignName : null,
-    campaignValidUntil: onSale ? campaignValidUntil : null,
+    saleBadge,
+    saleDisclaimer,
+    campaignName: saleBadge ? campaignName : null,
+    campaignValidUntil: saleBadge ? campaignValidUntil : null,
     surchargeLabel: unitLabel.surchargeLabel,
     unitCents: bestUnit,
     listCents: bestList,

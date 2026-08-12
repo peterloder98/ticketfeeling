@@ -38,6 +38,10 @@ const STATEMENTS = [
   `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "accessibility_selected" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "price_campaign_id" UUID`,
   `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "price_campaign_name" TEXT`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "apply_mode" TEXT NOT NULL DEFAULT 'unit'`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
 ];
 
 const ENSURE_BUDGET_MS = 5_000;

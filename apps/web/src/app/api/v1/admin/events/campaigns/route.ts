@@ -49,6 +49,11 @@ const campaignSchema = z.object({
   valueDisplay: z.number().min(0),
   channels: z.enum(["online", "box_office", "both"]).default("both"),
   categoryIds: z.array(z.string().uuid()).min(1),
+  /** unit = per ticket; order = once when qty ≥ minQuantity */
+  applyMode: z.enum(["unit", "order"]).default("unit"),
+  minQuantity: z.number().int().min(1).max(99).default(1),
+  badgeLabel: z.string().max(80).optional().nullable(),
+  badgeDisclaimer: z.string().max(160).optional().nullable(),
 });
 
 function toStoredValue(type: "percent" | "fixed", valueDisplay: number) {
@@ -115,6 +120,10 @@ export async function GET(request: Request) {
       type: c.type,
       valueDisplay: c.value / 100,
       channels: c.channels,
+      applyMode: c.applyMode === "order" ? "order" : "unit",
+      minQuantity: Math.max(1, c.minQuantity ?? 1),
+      badgeLabel: c.badgeLabel ?? null,
+      badgeDisclaimer: c.badgeDisclaimer ?? null,
       categoryIds: c.categories.map((x) => x.categoryId),
     })),
   });
@@ -236,6 +245,8 @@ export async function PUT(request: Request) {
     }
 
     const value = toStoredValue(body.type, body.valueDisplay);
+    const applyMode = body.applyMode === "order" ? "order" : "unit";
+    const minQuantity = Math.max(1, body.minQuantity ?? 1);
     const data = {
       name: body.name.trim(),
       active: body.active,
@@ -244,6 +255,10 @@ export async function PUT(request: Request) {
       type: body.type,
       value,
       channels: body.channels,
+      applyMode,
+      minQuantity,
+      badgeLabel: body.badgeLabel?.trim() || null,
+      badgeDisclaimer: body.badgeDisclaimer?.trim() || null,
     };
 
     let campaignId = body.campaignId;

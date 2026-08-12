@@ -1,6 +1,8 @@
 import { prisma } from "@/lib/db";
 import { cartHasCampaignPrice } from "@/lib/commerce/campaign-promo";
 import { resolveDiscountCode, resolveGiftCard } from "@/lib/commerce/discounts";
+import { resolveOrderCampaignDiscount } from "@/lib/commerce/event-pricing";
+import { loadPriceCampaignsForEvents } from "@/lib/commerce/load-event-pricing";
 import { computeOrderPricing } from "@/lib/commerce/order-pricing";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 
@@ -14,8 +16,10 @@ type CartLike = {
     quantity: number;
     unitPriceGrossCents: number;
     eventId: string;
+    categoryId?: string;
     priceCampaignId?: string | null;
     category: {
+      id?: string;
       taxRate?: { rateBps: number } | null;
       event: {
         id: string;
@@ -42,11 +46,28 @@ export async function priceCart(cart: CartLike) {
   const itemCount = cart.items.reduce((s, i) => s + i.quantity, 0);
   const eventIds = [...new Set(cart.items.map((i) => i.eventId))];
 
+  const campaignsByEventId = await loadPriceCampaignsForEvents(eventIds);
+  const orderLines = cart.items.map((item) => ({
+    eventId: item.eventId,
+    categoryId: item.categoryId ?? item.category.id ?? "",
+    quantity: item.quantity,
+    unitGrossCents: item.unitPriceGrossCents,
+  }));
+
+  const orderCampaign = resolveOrderCampaignDiscount({
+    lines: orderLines.filter((l) => l.categoryId),
+    campaignsByEventId,
+    channel: "online",
+  });
+
   let discountCents = 0;
   let discountLabel: string | null = null;
   let discountCode: string | null = cart.discountCode ?? null;
-  // Aktion prices already include campaign discount — do not stack promo codes.
-  if (discountCode && cartHasCampaignPrice(cart.items)) {
+
+  // Aktion prices / applied order promos already include campaign discount — do not stack codes.
+  const hasCampaign = cartHasCampaignPrice(cart.items) || Boolean(orderCampaign);
+
+  if (discountCode && hasCampaign) {
     discountCode = null;
   }
   if (discountCode) {
@@ -61,6 +82,9 @@ export async function priceCart(cart: CartLike) {
       discountLabel = d.label;
       discountCode = d.code;
     }
+  } else if (orderCampaign) {
+    discountCents = orderCampaign.discountCents;
+    discountLabel = orderCampaign.label;
   }
 
   const lines = cart.items.map((item) => {
@@ -152,5 +176,8 @@ export async function priceCart(cart: CartLike) {
     feeCustomerDescription: feeConfig.customerDescription,
     platformFeeConfig: feeConfig,
     lineSplits: priced.lineSplits,
+    orderCampaignId: orderCampaign?.campaignId ?? null,
+    orderCampaignName: orderCampaign?.campaignName ?? null,
+    orderCampaignDisclaimer: orderCampaign?.badgeDisclaimer ?? null,
   };
 }

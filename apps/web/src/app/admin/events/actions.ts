@@ -139,6 +139,7 @@ async function createEventFromFormData(
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   const eventEndsAt = parseDt(formData, "eventEndsAt");
   const doorsOpenAt = parseDt(formData, "doorsOpenAt");
+  const vipDoorsOpenAt = parseDt(formData, "vipDoorsOpenAt");
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
   // Creating already „Im Verkauf“ → start now if empty; Entwurf+Vorverkauf → geplant/Im Verkauf.
   const becomingOnSale = isEventSalesReleased(requestedStatus);
@@ -419,6 +420,7 @@ async function createEventFromFormData(
         eventStartsAt,
         eventEndsAt,
         doorsOpenAt,
+        vipDoorsOpenAt,
         presaleStartsAt,
         shortDescription,
         description,
@@ -611,6 +613,7 @@ export async function updateEventAction(formData: FormData) {
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   let eventEndsAt = parseDt(formData, "eventEndsAt");
   let doorsOpenAt = parseDt(formData, "doorsOpenAt");
+  let vipDoorsOpenAt = parseDt(formData, "vipDoorsOpenAt");
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
   const scheduleChangeConfirmed =
     String(formData.get("scheduleChangeConfirmed") ?? "") === "1";
@@ -631,6 +634,11 @@ export async function updateEventAction(formData: FormData) {
   if (startChanged && scheduleChangeConfirmed) {
     eventEndsAt = shiftRelativeToStart(event.eventEndsAt, event.eventStartsAt, eventStartsAt);
     doorsOpenAt = shiftRelativeToStart(event.doorsOpenAt, event.eventStartsAt, eventStartsAt);
+    vipDoorsOpenAt = shiftRelativeToStart(
+      event.vipDoorsOpenAt,
+      event.eventStartsAt,
+      eventStartsAt,
+    );
   }
 
   const notifyBuyers =
@@ -774,6 +782,7 @@ export async function updateEventAction(formData: FormData) {
   const oldStartsAt = event.eventStartsAt;
   const oldEndsAt = event.eventEndsAt;
   const oldDoorsOpenAt = event.doorsOpenAt;
+  const oldVipDoorsOpenAt = event.vipDoorsOpenAt;
 
   await prisma.event.update({
     where: { id: event.id },
@@ -794,6 +803,7 @@ export async function updateEventAction(formData: FormData) {
       eventStartsAt,
       eventEndsAt,
       doorsOpenAt,
+      vipDoorsOpenAt,
       presaleStartsAt,
       ticketTaxRateBasisPoints,
       administrationFeeTaxMode,
@@ -812,6 +822,23 @@ export async function updateEventAction(formData: FormData) {
       organizerWebsite: String(formData.get("organizerWebsite") ?? "").trim() || null,
     },
   });
+
+  // Keep VIP category Sonder-Einlass in sync with event.vipDoorsOpenAt (tickets / check-in).
+  if (vipDoorsOpenAt?.getTime() !== oldVipDoorsOpenAt?.getTime()) {
+    await prisma.eventTicketCategory.updateMany({
+      where: {
+        eventId: event.id,
+        OR: [{ categoryKind: "vip" }, { name: { startsWith: "VIP", mode: "insensitive" } }],
+        status: "active",
+      },
+      data: {
+        doorsOpenAt: vipDoorsOpenAt,
+        doorsNote: vipDoorsOpenAt
+          ? "VIP-Einlass: eine halbe Stunde vor dem regulären Einlass"
+          : null,
+      },
+    });
+  }
 
   let campaignsAdjusted = 0;
   if (startChanged && eventStartsAt) {
@@ -872,6 +899,7 @@ export async function updateEventAction(formData: FormData) {
       eventStartsAt: oldStartsAt,
       eventEndsAt: oldEndsAt,
       doorsOpenAt: oldDoorsOpenAt,
+      vipDoorsOpenAt: oldVipDoorsOpenAt,
     },
     after: {
       name,
@@ -886,6 +914,7 @@ export async function updateEventAction(formData: FormData) {
       eventStartsAt,
       eventEndsAt,
       doorsOpenAt,
+      vipDoorsOpenAt,
       ...(becomingOnSale ? { presaleStartsAt } : {}),
       ...(startChanged && scheduleChangeConfirmed
         ? {

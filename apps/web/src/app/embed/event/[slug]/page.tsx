@@ -146,7 +146,9 @@ export default async function EmbedEventShopPage({ params }: Props) {
   const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
     "@/lib/commerce/load-event-pricing"
   );
-  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const { resolveTicketUnitPrice, pickActiveOrderCampaignBadge } = await import(
+    "@/lib/commerce/event-pricing"
+  );
   const [seatCounts, campaigns] = await Promise.all([
     hasReservedSeating
       ? assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
@@ -155,6 +157,22 @@ export default async function EmbedEventShopPage({ params }: Props) {
   ]);
   const accessibilityOffer = accessibilityOfferFromEvent(event);
   const priceNow = new Date();
+  const orderCampaignBadge = pickActiveOrderCampaignBadge({
+    categoryIds: event.ticketCategories.map((c) => c.id),
+    channel: "online",
+    now: priceNow,
+    campaigns,
+  });
+  const orderPromo = orderCampaignBadge
+    ? {
+        badgeLabel:
+          orderCampaignBadge.badgeLabel?.trim() ||
+          orderCampaignBadge.name ||
+          "Aktion",
+        disclaimer: orderCampaignBadge.badgeDisclaimer?.trim() || null,
+        campaignName: orderCampaignBadge.name,
+      }
+    : null;
 
   const categories = event.ticketCategories.map((category) => {
     const sellableCapacity = resolveSellableCategoryCapacity({
@@ -344,6 +362,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   eventSlug={event.slug}
                   eventId={event.id}
                   eventTitle={event.name}
+                  orderPromo={orderPromo}
                   accessibilityOffer={
                     accessibilityOffer.enabled
                       ? {

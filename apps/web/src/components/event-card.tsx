@@ -26,8 +26,10 @@ export type EventCardData = {
   priceLabel?: string | null;
   /** Strikethrough list from-price when campaign active */
   listPriceLabel?: string | null;
-  /** e.g. "−20%" — same Aktion language as ticket UI */
+  /** e.g. "−20%" / „10 € sparen“ — same Aktion language as ticket UI */
   saleBadge?: string | null;
+  /** Fair disclaimer under badge, e.g. „* beim Kauf von 2 Tickets“ */
+  saleDisclaimer?: string | null;
   campaignName?: string | null;
   /** ISO end of the ab-price Aktion (listing countdown priority) */
   campaignValidUntil?: string | null;
@@ -111,6 +113,7 @@ export function EventCard({
   const href = event.href ?? `/event/${event.slug}`;
   const cta = event.ctaLabel ?? "Event ansehen";
   const onSale = Boolean(event.listPriceLabel && event.saleBadge);
+  const hasPromoBadge = Boolean(event.saleBadge);
   const showFeeNote = Boolean(event.priceNote);
 
   return (
@@ -196,13 +199,25 @@ export function EventCard({
                 </span>
               </div>
             ) : (
-              <span className="block text-sm font-semibold text-[var(--tf-navy)]">
-                {event.priceLabel ?? "Tickets"}
-              </span>
+              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                {hasPromoBadge ? (
+                  <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
+                    {event.saleBadge}
+                  </span>
+                ) : null}
+                <span className="block text-sm font-semibold text-[var(--tf-navy)]">
+                  {event.priceLabel ?? "Tickets"}
+                </span>
+              </div>
             )}
-            {onSale && event.campaignName ? (
+            {hasPromoBadge && event.campaignName ? (
               <span className="mt-0.5 block text-[11px] font-medium text-[var(--tf-navy)]">
                 {event.campaignName}
+              </span>
+            ) : null}
+            {event.saleDisclaimer ? (
+              <span className="mt-0.5 block text-[10px] text-[var(--tf-text-secondary)]">
+                {event.saleDisclaimer}
               </span>
             ) : null}
             {showFeeNote ? (

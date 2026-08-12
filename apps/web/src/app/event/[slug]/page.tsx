@@ -175,7 +175,9 @@ export default async function EventPage({ params }: Props) {
   const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
     "@/lib/commerce/load-event-pricing"
   );
-  const { resolveTicketUnitPrice } = await import("@/lib/commerce/event-pricing");
+  const { resolveTicketUnitPrice, pickActiveOrderCampaignBadge } = await import(
+    "@/lib/commerce/event-pricing"
+  );
 
   // Seat counts + campaigns are independent — never serialize Neon RTTs.
   const [seatCounts, campaigns] = await Promise.all([
@@ -186,6 +188,22 @@ export default async function EventPage({ params }: Props) {
   ]);
   const accessibilityOffer = accessibilityOfferFromEvent(event);
   const priceNow = new Date();
+  const orderCampaignBadge = pickActiveOrderCampaignBadge({
+    categoryIds: event.ticketCategories.map((c) => c.id),
+    channel: "online",
+    now: priceNow,
+    campaigns,
+  });
+  const orderPromo = orderCampaignBadge
+    ? {
+        badgeLabel:
+          orderCampaignBadge.badgeLabel?.trim() ||
+          orderCampaignBadge.name ||
+          "Aktion",
+        disclaimer: orderCampaignBadge.badgeDisclaimer?.trim() || null,
+        campaignName: orderCampaignBadge.name,
+      }
+    : null;
 
   const categories = event.ticketCategories.map((category) => {
     const sellableCapacity = resolveSellableCategoryCapacity({
@@ -254,10 +272,15 @@ export default async function EventPage({ params }: Props) {
       fromListTicket != null &&
       fromListTicket > fromTicket
       ? `Tickets ${fromPrice.totalLabel} · ${fromCampaignName}`
-      : `Tickets ${fromPrice.totalLabel}`
+      : orderPromo
+        ? `Tickets ${fromPrice.totalLabel} · ${orderPromo.badgeLabel}`
+        : `Tickets ${fromPrice.totalLabel}`
     : "Tickets";
 
-  const campaignValidUntils = categories.map((c) => c.campaignValidUntil);
+  const campaignValidUntils = [
+    ...categories.map((c) => c.campaignValidUntil),
+    orderCampaignBadge?.validUntil.toISOString() ?? null,
+  ];
   const eventStartsIso = event.eventStartsAt?.toISOString() ?? null;
 
   const placeName = event.location?.name ?? null;
@@ -270,6 +293,14 @@ export default async function EventPage({ params }: Props) {
         .join(", ")
     : null;
   const place = [placeName, placeAddress || event.location?.city].filter(Boolean).join(" · ") || null;
+
+  const hasVipCategory = event.ticketCategories.some(
+    (c) => c.categoryKind === "vip" || /^vip/i.test(c.name),
+  );
+  const vipDoors =
+    event.vipDoorsOpenAt ??
+    event.ticketCategories.find((c) => c.categoryKind === "vip")?.doorsOpenAt ??
+    null;
 
   const infoItems = [
     event.eventStartsAt
@@ -284,6 +315,13 @@ export default async function EventPage({ params }: Props) {
           icon: DoorOpen,
           label: "Einlass",
           value: formatDeTime(event.doorsOpenAt),
+        }
+      : null,
+    hasVipCategory && vipDoors
+      ? {
+          icon: DoorOpen,
+          label: "VIP-Einlass",
+          value: formatDeTime(vipDoors),
         }
       : null,
     place ? { icon: MapPin, label: "Location", value: place } : null,
@@ -499,6 +537,7 @@ export default async function EventPage({ params }: Props) {
                     eventSlug={event.slug}
                     eventId={event.id}
                     eventTitle={event.name}
+                    orderPromo={orderPromo}
                     accessibilityOffer={
                       accessibilityOffer.enabled
                         ? {

@@ -216,10 +216,19 @@ export default async function CheckoutPage() {
                 <span className="tabular-nums">{formatEuroFromCents(summary.ticketsGrossCents)}</span>
               </p>
               {summary.discountCents > 0 ? (
-                <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                  <span>Rabatt</span>
-                  <span className="tabular-nums">−{formatEuroFromCents(summary.discountCents)}</span>
-                </p>
+                <div className="space-y-0.5">
+                  <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
+                    <span>{summary.discountLabel?.trim() || "Rabatt"}</span>
+                    <span className="tabular-nums">
+                      −{formatEuroFromCents(summary.discountCents)}
+                    </span>
+                  </p>
+                  {summary.orderCampaignDisclaimer ? (
+                    <p className="text-[11px] text-[var(--tf-text-secondary)]">
+                      {summary.orderCampaignDisclaimer}
+                    </p>
+                  ) : null}
+                </div>
               ) : null}
               {summary.feeGrossCents > 0 ? (
                 <div className="space-y-1">

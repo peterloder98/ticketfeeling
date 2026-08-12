@@ -349,6 +349,7 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     eventStartsAt: event.eventStartsAt,
     eventEndsAt: event.eventEndsAt,
     doorsOpenAt: event.doorsOpenAt,
+    vipDoorsOpenAt: event.vipDoorsOpenAt,
     presaleStartsAt: event.presaleStartsAt,
     ticketTaxRateBasisPoints: event.ticketTaxRateBasisPoints,
     administrationFeeTaxMode: event.administrationFeeTaxMode,

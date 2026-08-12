@@ -14,6 +14,10 @@ type Props = {
   unitCents: number;
   /** Campaign name, or accessibility label when that discount is active */
   promoLabel?: string | null;
+  /** Explicit badge override e.g. „10 € sparen“ (order-threshold promos) */
+  saleBadge?: string | null;
+  /** Fair disclaimer e.g. „* beim Kauf von 2 Tickets“ */
+  saleDisclaimer?: string | null;
   /** @deprecated Countdown lives in EventPageUrgencyCountdown — kept for call-site compat */
   validUntil?: string | null;
   feeNote?: string | null;
@@ -35,6 +39,8 @@ export function CampaignPriceDisplay({
   listCents,
   unitCents,
   promoLabel = null,
+  saleBadge = null,
+  saleDisclaimer = null,
   feeNote = null,
   feePercentageBasisPoints,
   size = "md",
@@ -42,7 +48,8 @@ export function CampaignPriceDisplay({
   inline = false,
 }: Props) {
   const showStrike = listCents > unitCents;
-  const badge = showStrike ? discountBadgeLabel(listCents, unitCents) : null;
+  const badge =
+    saleBadge?.trim() || (showStrike ? discountBadgeLabel(listCents, unitCents) : null);
 
   const priceSize =
     size === "lg" ? "text-xl" : size === "sm" ? "text-sm" : "text-lg";
@@ -81,6 +88,9 @@ export function CampaignPriceDisplay({
       </div>
       {!inline && promoLabel ? (
         <p className="mt-0.5 text-[11px] font-medium text-[var(--tf-navy)]">{promoLabel}</p>
+      ) : null}
+      {!inline && saleDisclaimer ? (
+        <p className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]">{saleDisclaimer}</p>
       ) : null}
       {!inline && feeNote && size === "sm" ? (
         <FeeSurchargeNote

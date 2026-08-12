@@ -29,6 +29,12 @@ type AccessibilityOfferProp = {
   value: number;
 };
 
+type OrderPromoProp = {
+  badgeLabel: string;
+  disclaimer?: string | null;
+  campaignName?: string | null;
+};
+
 export function AddToCartPanel({
   categories,
   feeSurchargeNote,
@@ -37,6 +43,7 @@ export function AddToCartPanel({
   cartHref = "/warenkorb",
   checkoutHref = "/checkout",
   accessibilityOffer = null,
+  orderPromo = null,
   eventSlug = null,
   eventId = null,
   eventTitle = null,
@@ -49,6 +56,8 @@ export function AddToCartPanel({
   cartHref?: string;
   checkoutHref?: string;
   accessibilityOffer?: AccessibilityOfferProp | null;
+  /** Order-threshold promo (e.g. 10€ ab 2 Tickets) — badge without unit strike */
+  orderPromo?: OrderPromoProp | null;
   /** Meta AddToCart content ids / ViewContent continuity */
   eventSlug?: string | null;
   eventId?: string | null;
@@ -217,7 +226,15 @@ export function AddToCartPanel({
                   promoLabel={
                     accessibilitySelected && accessibilityOffer
                       ? accessibilityOffer.label
-                      : category.campaignName
+                      : category.campaignName || orderPromo?.campaignName || null
+                  }
+                  saleBadge={
+                    price.list > price.unit
+                      ? null
+                      : orderPromo?.badgeLabel ?? null
+                  }
+                  saleDisclaimer={
+                    price.list > price.unit ? null : orderPromo?.disclaimer ?? null
                   }
                   validUntil={
                     accessibilitySelected && accessibilityOffer
@@ -226,8 +243,7 @@ export function AddToCartPanel({
                   }
                   feeNote={feeSurchargeNote}
                   size={compact ? "sm" : "md"}
-                />
-              </div>
+                />              </div>
               {soldOut ? (
                 <p className="text-[11px] font-medium text-[var(--tf-text-secondary)]">Ausverkauft</p>
               ) : showRemainingAvailability ? (

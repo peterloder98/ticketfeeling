@@ -1,15 +1,36 @@
 /**
- * SCHLAGERfeeling Weihnachtstraum 2026 — Tour mit 3 Terminen.
- * Run: npx tsx prisma/seed-weihnachtstraum-2026.ts
+ * SCHLAGERfeeling Weihnachtstraum 2026 — Tour mit 3 Terminen + 10€-ab-2-Tickets Aktion.
+ * Run: npm run db:seed:weihnachtstraum  (from apps/web)
+ *   or: npx tsx prisma/seed-weihnachtstraum-2026.ts
  */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
+const VIP_NAME = "VIP-Ticket | freie Sitzplatzwahl";
 const VIP_DESCRIPTION =
-  "VIP: Plätze in den ersten beiden Reihen, früherer Einlass (halbe Stunde früher), musikalische Überraschung. Freie Platzwahl · Reihenbestuhlung.";
+  "VIP-Ticket mit freier Sitzplatzwahl:\n" +
+  "• früherer Einlass (halbe Std. vor regulärem Einlass)\n" +
+  "• Begrüßung durch Anni Perka und ihre Gäste\n" +
+  "• Meet and Greet\n" +
+  "• musikalische Überraschung\n" +
+  "• beste und garantierte Sitzplätze direkt in den ersten Reihen";
 
 const NORMAL_DESCRIPTION = "Normale Tickets · freie Platzwahl · Reihenbestuhlung.";
+
+/** Promo: 10 € once off the order when buying ≥2 eligible tickets (Normal + VIP). */
+const PROMO = {
+  name: "10 € sparen",
+  badgeLabel: "10 € sparen",
+  badgeDisclaimer: "* beim Kauf von 2 Tickets",
+  /** Inclusive end of day Europe/Berlin 2026-08-31 */
+  validUntil: new Date("2026-08-31T23:59:59.999+02:00"),
+  valueCents: 1000,
+  minQuantity: 2,
+};
+
+const NORMAL_PRICE_CENTS = 4900;
+const VIP_PRICE_CENTS = 8900;
 
 type DateSpec = {
   slug: string;
@@ -20,14 +41,17 @@ type DateSpec = {
     city: string;
     postalCode: string;
     street: string;
+    houseNumber: string | null;
     description: string;
     maxCapacity: number;
   };
-  /** ISO local with offset */
   startsAt: string;
   endsAt: string;
   doorsOpenAt: string;
   vipDoorsOpenAt: string;
+  capacityNormal: number;
+  /** 0 = sold out but still listed */
+  capacityVip: number;
 };
 
 const DATES: DateSpec[] = [
@@ -39,14 +63,17 @@ const DATES: DateSpec[] = [
       slug: "buergerhaus-loewenberg",
       city: "Löwenberger Land",
       postalCode: "16775",
-      street: "Bürgerhaus Löwenberg",
-      description: "Bürgerhaus Löwenberg im Löwenberger Land.",
-      maxCapacity: 800,
+      street: "Am Waldstadion",
+      houseNumber: "6",
+      description: "Bürgerhaus Löwenberg, Am Waldstadion 6, 16775 Löwenberger Land.",
+      maxCapacity: 204,
     },
-    startsAt: "2026-11-30T16:00:00+01:00",
-    endsAt: "2026-11-30T19:30:00+01:00",
-    doorsOpenAt: "2026-11-30T15:00:00+01:00",
-    vipDoorsOpenAt: "2026-11-30T14:30:00+01:00",
+    startsAt: "2026-11-29T17:00:00+01:00",
+    endsAt: "2026-11-29T20:30:00+01:00",
+    doorsOpenAt: "2026-11-29T16:00:00+01:00",
+    vipDoorsOpenAt: "2026-11-29T15:30:00+01:00",
+    capacityNormal: 200,
+    capacityVip: 4,
   },
   {
     slug: "schlagerfeeling-weihnachtstraum-2026-ergolding",
@@ -56,136 +83,194 @@ const DATES: DateSpec[] = [
       slug: "buergersaal-ergolding",
       city: "Ergolding",
       postalCode: "84030",
-      street: "Am Bürgersaal",
-      description: "Bürgersaal Ergolding — zentrale Location für große Schlagerabende.",
-      maxCapacity: 1200,
+      street: "Lindenstraße",
+      houseNumber: "40",
+      description: "Bürgersaal Ergolding, Lindenstraße 40, 84030 Ergolding.",
+      maxCapacity: 287,
     },
-    startsAt: "2026-12-10T18:00:00+01:00",
-    endsAt: "2026-12-10T21:30:00+01:00",
-    doorsOpenAt: "2026-12-10T17:00:00+01:00",
-    vipDoorsOpenAt: "2026-12-10T16:30:00+01:00",
+    startsAt: "2026-12-10T19:00:00+01:00",
+    endsAt: "2026-12-10T22:30:00+01:00",
+    doorsOpenAt: "2026-12-10T18:00:00+01:00",
+    vipDoorsOpenAt: "2026-12-10T17:30:00+01:00",
+    capacityNormal: 283,
+    capacityVip: 4,
   },
   {
     slug: "schlagerfeeling-weihnachtstraum-2026-hamburg",
     subtitle: "Kent Club · Hamburg",
     location: {
-      name: "Kent Club",
+      name: "Kent Club Hamburg",
       slug: "kent-club-hamburg",
       city: "Hamburg",
-      postalCode: "20359",
-      street: "Kent Club",
-      description: "Kent Club Hamburg.",
-      maxCapacity: 900,
+      postalCode: "22769",
+      street: "Stresemannstraße",
+      houseNumber: "163",
+      description: "Kent Club Hamburg, Stresemannstraße 163, 22769 Hamburg.",
+      maxCapacity: 173,
     },
-    startsAt: "2026-12-13T16:00:00+01:00",
-    endsAt: "2026-12-13T19:30:00+01:00",
-    doorsOpenAt: "2026-12-13T15:00:00+01:00",
-    vipDoorsOpenAt: "2026-12-13T14:30:00+01:00",
+    startsAt: "2026-12-13T17:00:00+01:00",
+    endsAt: "2026-12-13T20:30:00+01:00",
+    doorsOpenAt: "2026-12-13T16:00:00+01:00",
+    vipDoorsOpenAt: "2026-12-13T15:30:00+01:00",
+    capacityNormal: 173,
+    capacityVip: 0,
   },
 ];
 
-async function ensureCategories(
-  eventId: string,
-  taxRateId: string,
-  capacityNormal: number,
-  capacityVip: number,
-) {
-  const rows = [
-    {
-      name: "Normal",
-      description: NORMAL_DESCRIPTION,
-      priceGrossCents: 5490,
-      capacity: capacityNormal,
-      sortOrder: 2,
-      categoryKind: "free_choice",
-    },
-    {
-      name: "VIP",
-      description: VIP_DESCRIPTION,
-      priceGrossCents: 9890,
-      capacity: capacityVip,
-      sortOrder: 1,
-      categoryKind: "vip",
-    },
-  ];
+async function ensureCategory(input: {
+  eventId: string;
+  taxRateId: string;
+  name: string;
+  description: string;
+  priceGrossCents: number;
+  capacity: number;
+  sortOrder: number;
+  categoryKind: string;
+  doorsOpenAt: Date | null;
+  doorsNote: string | null;
+  /** When true, fill online pool as sold (VIP Hamburg) */
+  forceSoldOut?: boolean;
+}) {
+  const {
+    eventId,
+    taxRateId,
+    name,
+    description,
+    priceGrossCents,
+    capacity,
+    sortOrder,
+    categoryKind,
+    doorsOpenAt,
+    doorsNote,
+    forceSoldOut,
+  } = input;
 
-  // Remove legacy demo categories that no longer apply
-  await prisma.eventTicketCategory.updateMany({
-    where: {
-      eventId,
-      name: { in: ["Kategorie 1", "Kategorie 2", "Kategorie 3"] },
-      status: "active",
+  // Match by kind first (rename Normal/VIP → VIP-Ticket …), else by exact name.
+  const existing =
+    (await prisma.eventTicketCategory.findFirst({
+      where: { eventId, categoryKind, status: "active" },
+    })) ??
+    (await prisma.eventTicketCategory.findFirst({
+      where: { eventId, name },
+    })) ??
+    (categoryKind === "vip"
+      ? await prisma.eventTicketCategory.findFirst({
+          where: { eventId, name: { startsWith: "VIP" } },
+        })
+      : await prisma.eventTicketCategory.findFirst({
+          where: { eventId, name: "Normal" },
+        }));
+
+  const safetyReserve = 0;
+  const data = {
+    name,
+    description,
+    priceGrossCents,
+    capacity,
+    safetyReserve,
+    maxPerOrder: 8,
+    onlineBookable: true,
+    boxOfficeBookable: true,
+    freeSeating: true,
+    categoryKind,
+    sortOrder,
+    status: "active" as const,
+    saleStartsAt: new Date("2026-01-01T10:00:00+01:00"),
+    taxRateId,
+    doorsOpenAt,
+    doorsNote,
+  };
+
+  const category = existing
+    ? await prisma.eventTicketCategory.update({
+        where: { id: existing.id },
+        data,
+      })
+    : await prisma.eventTicketCategory.create({
+        data: { eventId, ...data },
+      });
+
+  const poolCap = Math.max(0, capacity - safetyReserve);
+  const soldOnline = forceSoldOut ? poolCap : undefined;
+
+  await prisma.inventoryPool.upsert({
+    where: { categoryId_channel: { categoryId: category.id, channel: "online" } },
+    update: {
+      capacity: poolCap,
+      ...(soldOnline != null ? { soldQuantity: soldOnline, heldQuantity: 0 } : {}),
     },
-    data: { status: "inactive", onlineBookable: false, boxOfficeBookable: false },
+    create: {
+      eventId,
+      categoryId: category.id,
+      channel: "online",
+      capacity: poolCap,
+      soldQuantity: soldOnline ?? 0,
+      heldQuantity: 0,
+    },
+  });
+  await prisma.inventoryPool.upsert({
+    where: { categoryId_channel: { categoryId: category.id, channel: "box_office" } },
+    update: {
+      capacity: Math.min(80, poolCap),
+      ...(forceSoldOut ? { soldQuantity: Math.min(80, poolCap), heldQuantity: 0 } : {}),
+    },
+    create: {
+      eventId,
+      categoryId: category.id,
+      channel: "box_office",
+      capacity: Math.min(80, poolCap),
+      soldQuantity: forceSoldOut ? Math.min(80, poolCap) : 0,
+      heldQuantity: 0,
+    },
   });
 
-  for (const row of rows) {
-    const existing = await prisma.eventTicketCategory.findFirst({
-      where: { eventId, name: row.name },
-    });
-    const category = existing
-      ? await prisma.eventTicketCategory.update({
-          where: { id: existing.id },
-          data: {
-            description: row.description,
-            priceGrossCents: row.priceGrossCents,
-            capacity: row.capacity,
-            safetyReserve: 5,
-            maxPerOrder: 8,
-            onlineBookable: true,
-            boxOfficeBookable: true,
-            freeSeating: true,
-            categoryKind: row.categoryKind,
-            sortOrder: row.sortOrder,
-            status: "active",
-            saleStartsAt: new Date("2026-01-01T10:00:00+01:00"),
-            taxRateId,
-          },
-        })
-      : await prisma.eventTicketCategory.create({
-          data: {
-            eventId,
-            taxRateId,
-            name: row.name,
-            description: row.description,
-            priceGrossCents: row.priceGrossCents,
-            capacity: row.capacity,
-            safetyReserve: 5,
-            maxPerOrder: 8,
-            onlineBookable: true,
-            boxOfficeBookable: true,
-            freeSeating: true,
-            categoryKind: row.categoryKind,
-            sortOrder: row.sortOrder,
-            status: "active",
-            saleStartsAt: new Date("2026-01-01T10:00:00+01:00"),
-          },
-        });
+  return category;
+}
 
-    const poolCap = Math.max(0, row.capacity - 5);
-    await prisma.inventoryPool.upsert({
-      where: { categoryId_channel: { categoryId: category.id, channel: "online" } },
-      update: { capacity: poolCap },
-      create: {
-        eventId,
-        categoryId: category.id,
-        channel: "online",
-        capacity: poolCap,
-        soldQuantity: 0,
-        heldQuantity: 0,
-      },
+async function ensurePromoCampaign(
+  eventId: string,
+  categoryIds: string[],
+) {
+  const existing = await prisma.eventPriceCampaign.findFirst({
+    where: {
+      eventId,
+      OR: [{ name: PROMO.name }, { badgeLabel: PROMO.badgeLabel }],
+    },
+  });
+
+  const data = {
+    name: PROMO.name,
+    active: true,
+    validFrom: new Date("2026-01-01T00:00:00+01:00"),
+    validUntil: PROMO.validUntil,
+    type: "fixed",
+    value: PROMO.valueCents,
+    channels: "both",
+    applyMode: "order",
+    minQuantity: PROMO.minQuantity,
+    badgeLabel: PROMO.badgeLabel,
+    badgeDisclaimer: PROMO.badgeDisclaimer,
+  };
+
+  let campaignId: string;
+  if (existing) {
+    await prisma.eventPriceCampaign.update({
+      where: { id: existing.id },
+      data,
     });
-    await prisma.inventoryPool.upsert({
-      where: { categoryId_channel: { categoryId: category.id, channel: "box_office" } },
-      update: { capacity: Math.min(80, poolCap) },
-      create: {
-        eventId,
-        categoryId: category.id,
-        channel: "box_office",
-        capacity: Math.min(80, poolCap),
-        soldQuantity: 0,
-        heldQuantity: 0,
-      },
+    campaignId = existing.id;
+    await prisma.eventPriceCampaignCategory.deleteMany({ where: { campaignId } });
+  } else {
+    const created = await prisma.eventPriceCampaign.create({
+      data: { eventId, ...data },
+    });
+    campaignId = created.id;
+  }
+
+  if (categoryIds.length > 0) {
+    await prisma.eventPriceCampaignCategory.createMany({
+      data: categoryIds.map((categoryId) => ({ campaignId, categoryId })),
+      skipDuplicates: true,
     });
   }
 }
@@ -216,8 +301,8 @@ async function main() {
     update: {
       name: "SCHLAGERfeeling Weihnachtstraum",
       description:
-        "SCHLAGERfeeling Weihnachtstraum 2026 — drei Termine, freie Platzwahl (Reihenbestuhlung). Normal 54,90 € · VIP 98,90 € (erste beiden Reihen, Einlass 30 Min. früher, musikalische Überraschung).",
-      startsOn: new Date("2026-11-30"),
+        "SCHLAGERfeeling Weihnachtstraum 2026 — drei Termine, freie Platzwahl (Reihenbestuhlung). Normal 49,00 € · VIP 89,00 €. Aktion: 10 € sparen beim Kauf von 2 Tickets (bis 31.08.2026).",
+      startsOn: new Date("2026-11-29"),
       endsOn: new Date("2026-12-13"),
       visibility: "published",
     },
@@ -226,8 +311,8 @@ async function main() {
       name: "SCHLAGERfeeling Weihnachtstraum",
       slug: "schlagerfeeling-weihnachtstraum-2026",
       description:
-        "SCHLAGERfeeling Weihnachtstraum 2026 — drei Termine, freie Platzwahl (Reihenbestuhlung). Normal 54,90 € · VIP 98,90 € (erste beiden Reihen, Einlass 30 Min. früher, musikalische Überraschung).",
-      startsOn: new Date("2026-11-30"),
+        "SCHLAGERfeeling Weihnachtstraum 2026 — drei Termine, freie Platzwahl (Reihenbestuhlung). Normal 49,00 € · VIP 89,00 €. Aktion: 10 € sparen beim Kauf von 2 Tickets (bis 31.08.2026).",
+      startsOn: new Date("2026-11-29"),
       endsOn: new Date("2026-12-13"),
       visibility: "published",
     },
@@ -254,8 +339,9 @@ async function main() {
   const description =
     "SCHLAGERfeeling Weihnachtstraum — weihnachtliche Schlager-Show mit freier Platzwahl (Reihenbestuhlung).\n\n" +
     "Tickets:\n" +
-    "• Normal 54,90 €\n" +
-    "• VIP 98,90 € — Plätze in den ersten beiden Reihen, Einlass eine halbe Stunde früher, musikalische Überraschung.";
+    "• Normal 49,00 €\n" +
+    "• VIP 89,00 € — freier Sitzplatzwahl, früherer Einlass, Begrüßung, Meet and Greet, musikalische Überraschung, beste Plätze in den ersten Reihen.\n\n" +
+    "Aktion bis 31.08.2026: 10 € sparen beim Kauf von 2 Tickets.";
 
   for (const date of DATES) {
     const location = await prisma.location.upsert({
@@ -267,6 +353,7 @@ async function main() {
         city: date.location.city,
         postalCode: date.location.postalCode,
         street: date.location.street,
+        houseNumber: date.location.houseNumber,
         country: "DE",
         description: date.location.description,
         maxCapacity: date.location.maxCapacity,
@@ -278,6 +365,7 @@ async function main() {
         city: date.location.city,
         postalCode: date.location.postalCode,
         street: date.location.street,
+        houseNumber: date.location.houseNumber,
         country: "DE",
         description: date.location.description,
         maxCapacity: date.location.maxCapacity,
@@ -295,7 +383,7 @@ async function main() {
         subtitle: date.subtitle,
         eventType: "concert",
         shortDescription:
-          "Freie Platzwahl · Normal 54,90 € · VIP 98,90 € (erste Reihen, früherer Einlass, Überraschung).",
+          "Freie Platzwahl · Normal 49,00 € · VIP 89,00 € · Aktion: 10 € sparen ab 2 Tickets.",
         description,
         status: "presale_active",
         seatingBookingMode: "none",
@@ -318,7 +406,7 @@ async function main() {
         slug: date.slug,
         eventType: "concert",
         shortDescription:
-          "Freie Platzwahl · Normal 54,90 € · VIP 98,90 € (erste Reihen, früherer Einlass, Überraschung).",
+          "Freie Platzwahl · Normal 49,00 € · VIP 89,00 € · Aktion: 10 € sparen ab 2 Tickets.",
         description,
         status: "presale_active",
         seatingBookingMode: "none",
@@ -334,15 +422,54 @@ async function main() {
       },
     });
 
-    const normalCap = Math.max(200, Math.floor(date.location.maxCapacity * 0.85));
-    const vipCap = Math.max(40, Math.floor(date.location.maxCapacity * 0.08));
-    await ensureCategories(event.id, tax7.id, normalCap, vipCap);
+    // Retire legacy demo categories
+    await prisma.eventTicketCategory.updateMany({
+      where: {
+        eventId: event.id,
+        name: { in: ["Kategorie 1", "Kategorie 2", "Kategorie 3"] },
+        status: "active",
+      },
+      data: { status: "inactive", onlineBookable: false, boxOfficeBookable: false },
+    });
 
-    console.log(`  ✓ ${date.subtitle} → /event/${event.slug}`);
+    const normal = await ensureCategory({
+      eventId: event.id,
+      taxRateId: tax7.id,
+      name: "Normal",
+      description: NORMAL_DESCRIPTION,
+      priceGrossCents: NORMAL_PRICE_CENTS,
+      capacity: date.capacityNormal,
+      sortOrder: 2,
+      categoryKind: "free_choice",
+      doorsOpenAt: null,
+      doorsNote: null,
+    });
+
+    const vip = await ensureCategory({
+      eventId: event.id,
+      taxRateId: tax7.id,
+      name: VIP_NAME,
+      description: VIP_DESCRIPTION,
+      priceGrossCents: VIP_PRICE_CENTS,
+      capacity: date.capacityVip,
+      sortOrder: 1,
+      categoryKind: "vip",
+      doorsOpenAt: new Date(date.vipDoorsOpenAt),
+      doorsNote: "VIP-Einlass: eine halbe Stunde vor dem regulären Einlass",
+      forceSoldOut: date.capacityVip === 0,
+    });
+
+    await ensurePromoCampaign(event.id, [normal.id, vip.id]);
+
+    console.log(
+      `  ✓ ${date.subtitle} → /event/${event.slug}` +
+        ` · Normal ${date.capacityNormal}` +
+        ` · VIP ${date.capacityVip === 0 ? "ausverkauft" : date.capacityVip}`,
+    );
   }
 
   console.log("Seeded SCHLAGERfeeling Weihnachtstraum 2026 (Tour, 3 Termine)");
-  console.log("  Normal 54,90 € · VIP 98,90 € · freie Platzwahl");
+  console.log("  Normal 49,00 € · VIP 89,00 € · Aktion 10 € ab 2 Tickets bis 31.08.2026");
 }
 
 main()

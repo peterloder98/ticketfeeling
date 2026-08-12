@@ -17,6 +17,10 @@ type CampaignRow = {
   type: "percent" | "fixed";
   valueDisplay: number;
   channels: string;
+  applyMode: "unit" | "order";
+  minQuantity: number;
+  badgeLabel: string | null;
+  badgeDisclaimer: string | null;
   categoryIds: string[];
 };
 
@@ -78,6 +82,10 @@ export function EventDiscountsPanel({
     type: "percent" | "fixed";
     valueDisplay: number;
     channels: "online" | "box_office" | "both";
+    applyMode: "unit" | "order";
+    minQuantity: number;
+    badgeLabel: string;
+    badgeDisclaimer: string;
     categoryIds: string[];
   } | null>(null);
 
@@ -152,6 +160,10 @@ export function EventDiscountsPanel({
         (data.campaigns ?? []).map((c: CampaignRow) => ({
           ...c,
           type: c.type === "fixed" ? "fixed" : "percent",
+          applyMode: c.applyMode === "order" ? "order" : "unit",
+          minQuantity: Math.max(1, c.minQuantity ?? 1),
+          badgeLabel: c.badgeLabel ?? null,
+          badgeDisclaimer: c.badgeDisclaimer ?? null,
         })),
       );
       if (data.eventEndsAt || data.eventStartsAt) {
@@ -242,6 +254,10 @@ export function EventDiscountsPanel({
           type: nextDraft.type,
           valueDisplay: nextDraft.valueDisplay,
           channels: nextDraft.channels,
+          applyMode: nextDraft.applyMode,
+          minQuantity: nextDraft.minQuantity,
+          badgeLabel: nextDraft.badgeLabel.trim() || null,
+          badgeDisclaimer: nextDraft.badgeDisclaimer.trim() || null,
           categoryIds: nextDraft.categoryIds,
         }),
       });
@@ -305,6 +321,10 @@ export function EventDiscountsPanel({
       type: "fixed",
       valueDisplay: 10,
       channels: "both",
+      applyMode: "unit",
+      minQuantity: 1,
+      badgeLabel: "",
+      badgeDisclaimer: "",
       categoryIds: categories.map((c) => c.id),
     });
   }
@@ -320,6 +340,10 @@ export function EventDiscountsPanel({
       type: c.type === "fixed" ? "fixed" : "percent",
       valueDisplay: c.valueDisplay,
       channels: (c.channels as "online" | "box_office" | "both") || "both",
+      applyMode: c.applyMode === "order" ? "order" : "unit",
+      minQuantity: Math.max(1, c.minQuantity ?? 1),
+      badgeLabel: c.badgeLabel ?? "",
+      badgeDisclaimer: c.badgeDisclaimer ?? "",
       categoryIds: c.categoryIds,
     });
   }
@@ -471,9 +495,14 @@ export function EventDiscountsPanel({
                   ) : null}
                 </p>
                 <p className="text-[var(--tf-text-secondary)]">
-                  {c.type === "percent"
-                    ? `${c.valueDisplay} %`
-                    : `${formatEuroFromCents(Math.round(c.valueDisplay * 100))} günstiger`}
+                  {c.applyMode === "order"
+                    ? c.type === "percent"
+                      ? `${c.valueDisplay} % einmalig ab ${c.minQuantity} Tickets`
+                      : `${formatEuroFromCents(Math.round(c.valueDisplay * 100))} einmalig ab ${c.minQuantity} Tickets`
+                    : c.type === "percent"
+                      ? `${c.valueDisplay} %`
+                      : `${formatEuroFromCents(Math.round(c.valueDisplay * 100))} günstiger`}
+                  {c.badgeLabel ? ` · „${c.badgeLabel}“` : ""}
                   {" · "}
                   {new Date(c.validFrom).toLocaleString("de-DE")} –{" "}
                   {new Date(c.validUntil).toLocaleString("de-DE")}
@@ -561,6 +590,42 @@ export function EventDiscountsPanel({
                 />
               </label>
               <label className="block text-sm">
+                <span className="text-[var(--tf-text-secondary)]">Anwendung</span>
+                <select
+                  className="tf-input mt-1 w-full"
+                  value={draft.applyMode}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      applyMode: e.target.value === "order" ? "order" : "unit",
+                      minQuantity:
+                        e.target.value === "order" && draft.minQuantity < 2
+                          ? 2
+                          : draft.minQuantity,
+                    })
+                  }
+                >
+                  <option value="unit">Pro Ticket (Aktionspreis)</option>
+                  <option value="order">Einmalig ab Mindestmenge</option>
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="text-[var(--tf-text-secondary)]">Mindestmenge</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={99}
+                  className="tf-input mt-1 w-full"
+                  value={draft.minQuantity}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      minQuantity: Math.max(1, Math.round(Number(e.target.value) || 1)),
+                    })
+                  }
+                />
+              </label>
+              <label className="block text-sm">
                 <span className="text-[var(--tf-text-secondary)]">Kanäle</span>
                 <select
                   className="tf-input mt-1 w-full"
@@ -576,6 +641,28 @@ export function EventDiscountsPanel({
                   <option value="online">Nur Shop</option>
                   <option value="box_office">Nur Tageskasse</option>
                 </select>
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-[var(--tf-text-secondary)]">
+                  Badge-Text (z. B. „10 € sparen“)
+                </span>
+                <input
+                  className="tf-input mt-1 w-full"
+                  value={draft.badgeLabel}
+                  onChange={(e) => setDraft({ ...draft, badgeLabel: e.target.value })}
+                  placeholder="Optional"
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="text-[var(--tf-text-secondary)]">
+                  Hinweis klein (z. B. „* beim Kauf von 2 Tickets“)
+                </span>
+                <input
+                  className="tf-input mt-1 w-full"
+                  value={draft.badgeDisclaimer}
+                  onChange={(e) => setDraft({ ...draft, badgeDisclaimer: e.target.value })}
+                  placeholder="Optional"
+                />
               </label>
               <label className="flex items-center gap-2 text-sm sm:col-span-2">
                 <input

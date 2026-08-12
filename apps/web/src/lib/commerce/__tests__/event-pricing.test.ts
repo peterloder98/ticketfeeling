@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyDiscountOff,
   pickBestCampaign,
+  resolveOrderCampaignDiscount,
   resolveTicketUnitPrice,
   type PriceCampaignInput,
 } from "@/lib/commerce/event-pricing";
@@ -125,5 +126,71 @@ describe("resolveTicketUnitPrice", () => {
     });
     expect(resolved.unitCents).toBe(5000);
     expect(resolved.accessibilityApplied).toBe(false);
+  });
+
+  it("ignores order-mode campaigns for unit price", () => {
+    const resolved = resolveTicketUnitPrice({
+      listCents: 4900,
+      categoryId: "cat-a",
+      channel: "online",
+      now,
+      campaigns: [
+        campaign({
+          id: "pair",
+          name: "10 € sparen",
+          type: "fixed",
+          value: 1000,
+          applyMode: "order",
+          minQuantity: 2,
+        }),
+      ],
+    });
+    expect(resolved.unitCents).toBe(4900);
+    expect(resolved.campaignId).toBeNull();
+  });
+});
+
+describe("resolveOrderCampaignDiscount", () => {
+  it("applies 10€ once when eligible qty ≥ 2", () => {
+    const campaigns = [
+      campaign({
+        id: "pair",
+        name: "10 € sparen",
+        type: "fixed",
+        value: 1000,
+        applyMode: "order",
+        minQuantity: 2,
+        badgeLabel: "10 € sparen",
+        badgeDisclaimer: "* beim Kauf von 2 Tickets",
+      }),
+    ];
+    const map = new Map([["ev1", campaigns]]);
+
+    expect(
+      resolveOrderCampaignDiscount({
+        lines: [{ eventId: "ev1", categoryId: "cat-a", quantity: 1, unitGrossCents: 4900 }],
+        campaignsByEventId: map,
+        channel: "online",
+        now,
+      }),
+    ).toBeNull();
+
+    const applied = resolveOrderCampaignDiscount({
+      lines: [{ eventId: "ev1", categoryId: "cat-a", quantity: 2, unitGrossCents: 4900 }],
+      campaignsByEventId: map,
+      channel: "online",
+      now,
+    });
+    expect(applied?.discountCents).toBe(1000);
+    expect(applied?.label).toBe("10 € sparen");
+    expect(applied?.badgeDisclaimer).toBe("* beim Kauf von 2 Tickets");
+
+    const three = resolveOrderCampaignDiscount({
+      lines: [{ eventId: "ev1", categoryId: "cat-a", quantity: 3, unitGrossCents: 4900 }],
+      campaignsByEventId: map,
+      channel: "online",
+      now,
+    });
+    expect(three?.discountCents).toBe(1000);
   });
 });

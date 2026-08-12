@@ -110,6 +110,7 @@ export function EventEditForm({
     eventStartsAt: Date | null;
     eventEndsAt: Date | null;
     doorsOpenAt: Date | null;
+    vipDoorsOpenAt: Date | null;
     presaleStartsAt: Date | null;
     ticketTaxRateBasisPoints: number | null;
     administrationFeeTaxMode: string | null;
@@ -141,6 +142,9 @@ export function EventEditForm({
   const [startsAt, setStartsAt] = useState(toDatetimeLocalValue(event.eventStartsAt));
   const [endsAt, setEndsAt] = useState(toDatetimeLocalValue(event.eventEndsAt));
   const [doorsOpenAt, setDoorsOpenAt] = useState(toDatetimeLocalValue(event.doorsOpenAt));
+  const [vipDoorsOpenAt, setVipDoorsOpenAt] = useState(
+    toDatetimeLocalValue(event.vipDoorsOpenAt),
+  );
   const [presaleStartsAt, setPresaleStartsAt] = useState(
     toDatetimeLocalValue(event.presaleStartsAt),
   );
@@ -230,6 +234,7 @@ export function EventEditForm({
     formData.set("eventStartsAt", startsAt);
     formData.set("eventEndsAt", endsAt);
     formData.set("doorsOpenAt", doorsOpenAt);
+    formData.set("vipDoorsOpenAt", vipDoorsOpenAt);
     formData.set("presaleStartsAt", presaleStartsAt);
 
     const nextStart = parseDatetimeLocalBerlin(startsAt);
@@ -257,13 +262,20 @@ export function EventEditForm({
       event.eventStartsAt,
       startsAt,
     );
+    const nextVipDoors = shiftLocalByStoredOffset(
+      event.vipDoorsOpenAt,
+      event.eventStartsAt,
+      startsAt,
+    );
     setEndsAt(nextEnds);
     setDoorsOpenAt(nextDoors);
+    setVipDoorsOpenAt(nextVipDoors);
 
     const fd = pendingFormData;
     fd.set("eventStartsAt", startsAt);
     fd.set("eventEndsAt", nextEnds);
     fd.set("doorsOpenAt", nextDoors);
+    fd.set("vipDoorsOpenAt", nextVipDoors);
     fd.set("presaleStartsAt", presaleStartsAt);
     fd.set("scheduleChangeConfirmed", "1");
     submitFormData(fd);
@@ -282,6 +294,11 @@ export function EventEditForm({
   );
   const previewDoors = shiftLocalByStoredOffset(
     event.doorsOpenAt,
+    event.eventStartsAt,
+    startsAt,
+  );
+  const previewVipDoors = shiftLocalByStoredOffset(
+    event.vipDoorsOpenAt,
     event.eventStartsAt,
     startsAt,
   );
@@ -459,6 +476,16 @@ export function EventEditForm({
             value={doorsOpenAt}
             onChange={setDoorsOpenAt}
           />
+          <SmartDateTimeInput
+            name="vipDoorsOpenAt"
+            label="VIP-Einlass (optional)"
+            value={vipDoorsOpenAt}
+            onChange={setVipDoorsOpenAt}
+          />
+          <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
+            VIP-Einlass gilt für VIP-Kategorien (Tickets & Check-in). Leer = regulärer Einlass.
+            Standard oft 30 Minuten vor dem normalen Einlass.
+          </p>
           <SmartDateTimeInput
             name="presaleStartsAt"
             label="Vorverkaufsstart"
@@ -686,6 +713,17 @@ export function EventEditForm({
                   <dd className="font-medium text-[var(--tf-navy)]">
                     {formatScheduleLabel(toDatetimeLocalValue(event.doorsOpenAt))} →{" "}
                     {formatScheduleLabel(previewDoors)}
+                  </dd>
+                </div>
+              ) : null}
+              {previewVipDoors ? (
+                <div>
+                  <dt className="text-xs uppercase tracking-[0.12em] text-[var(--tf-text-secondary)]">
+                    VIP-Einlass (automatisch)
+                  </dt>
+                  <dd className="font-medium text-[var(--tf-navy)]">
+                    {formatScheduleLabel(toDatetimeLocalValue(event.vipDoorsOpenAt))} →{" "}
+                    {formatScheduleLabel(previewVipDoors)}
                   </dd>
                 </div>
               ) : null}

@@ -50,9 +50,43 @@ describe("resolveListingFromPrice", () => {
     expect(from?.unitCents).toBe(8000);
     expect(from?.listCents).toBe(10000);
     expect(from?.saleBadge).toBe("−20%");
+    expect(from?.saleDisclaimer).toBeNull();
     expect(from?.campaignName).toBe("Frühbucher");
     expect(from?.priceLabel).toContain("80,00");
     expect(from?.listPriceLabel).toContain("100,00");
+  });
+
+  it("shows order-threshold badge without lowering unit price", () => {
+    const map = new Map([
+      [
+        "ev1",
+        [
+          campaign({
+            id: "pair",
+            name: "10 € sparen",
+            type: "fixed",
+            value: 1000,
+            applyMode: "order",
+            minQuantity: 2,
+            badgeLabel: "10 € sparen",
+            badgeDisclaimer: "* beim Kauf von 2 Tickets",
+            categoryIds: ["cat-a"],
+          }),
+        ],
+      ],
+    ]);
+    const from = resolveListingFromPrice({
+      categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 4900 }],
+      campaignsByEventId: map,
+      feeConfig: feeOff,
+      formatEuro: (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`,
+      now,
+    });
+    expect(from?.unitCents).toBe(4900);
+    expect(from?.listPriceLabel).toBeNull();
+    expect(from?.saleBadge).toBe("10 € sparen");
+    expect(from?.saleDisclaimer).toBe("* beim Kauf von 2 Tickets");
+    expect(from?.campaignName).toBe("10 € sparen");
   });
 
   it("returns plain from-price without campaign", () => {
