@@ -247,6 +247,28 @@ export function EventEditForm({
     });
   }
 
+  function applyScheduleOffsetsAndSubmit(formData: FormData) {
+    const nextEnds = shiftLocalByStoredOffset(
+      event.eventEndsAt,
+      event.eventStartsAt,
+      startsAt,
+    );
+    const nextDoors = shiftLocalByStoredOffset(
+      event.doorsOpenAt,
+      event.eventStartsAt,
+      startsAt,
+    );
+    setEndsAt(nextEnds);
+    setDoorsOpenAt(nextDoors);
+
+    formData.set("eventStartsAt", startsAt);
+    formData.set("eventEndsAt", nextEnds);
+    formData.set("doorsOpenAt", nextDoors);
+    formData.set("presaleStartsAt", presaleStartsAt);
+    formData.set("scheduleChangeConfirmed", "1");
+    submitFormData(formData);
+  }
+
   function onSubmit(formData: FormData) {
     // Controlled datetime fields may not be in FormData if SmartDateTimeInput
     // only syncs via React state — always stamp current values.
@@ -267,6 +289,11 @@ export function EventEditForm({
     const startChanged = scheduleStartChanged(event.eventStartsAt, nextStart);
 
     if (startChanged && needsScheduleGate) {
+      // Kill switch off: save silently (shift companions, no buyer/banner confirm).
+      if (!isScheduleChangeAlertsEnabled()) {
+        applyScheduleOffsetsAndSubmit(formData);
+        return;
+      }
       setPendingFormData(formData);
       setConfirmOpen(true);
       setError(null);
@@ -278,26 +305,7 @@ export function EventEditForm({
 
   function onConfirmScheduleChange() {
     if (!pendingFormData) return;
-    const nextEnds = shiftLocalByStoredOffset(
-      event.eventEndsAt,
-      event.eventStartsAt,
-      startsAt,
-    );
-    const nextDoors = shiftLocalByStoredOffset(
-      event.doorsOpenAt,
-      event.eventStartsAt,
-      startsAt,
-    );
-    setEndsAt(nextEnds);
-    setDoorsOpenAt(nextDoors);
-
-    const fd = pendingFormData;
-    fd.set("eventStartsAt", startsAt);
-    fd.set("eventEndsAt", nextEnds);
-    fd.set("doorsOpenAt", nextDoors);
-    fd.set("presaleStartsAt", presaleStartsAt);
-    fd.set("scheduleChangeConfirmed", "1");
-    submitFormData(fd);
+    applyScheduleOffsetsAndSubmit(pendingFormData);
   }
 
   function startDetailsOverride() {

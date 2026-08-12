@@ -21,6 +21,8 @@ describe("schedule-change", () => {
     expect(isScheduleChangeAlertsEnabled()).toBe(false);
     expect(shouldShowScheduleChangedBanner(new Date())).toBe(false);
     expect(shouldShowScheduleChangedBanner(null)).toBe(false);
+    // Confirm dialog is gated in the admin form via isScheduleChangeAlertsEnabled();
+    // with the kill switch off, start edits save without the nag.
   });
 
   it("detects start changes at minute precision", () => {

@@ -8,7 +8,8 @@ import type { PrismaClient } from "@prisma/client";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /**
- * TEMPORARY KILL SWITCH — buyer emails + public/admin „Termin geändert“ banners.
+ * TEMPORARY KILL SWITCH — buyer emails, public/admin „Termin geändert“ banners,
+ * and the admin confirm dialog when saving start/doors/end.
  * Default OFF so event dates can be corrected without side effects.
  *
  * Re-enable when the user asks:

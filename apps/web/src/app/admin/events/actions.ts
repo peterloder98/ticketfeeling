@@ -643,7 +643,9 @@ export async function updateEventAction(formData: FormData) {
   const ticketsSold = startChanged
     ? await prisma.ticket.count({ where: { eventId: event.id } })
     : 0;
+  const alertsEnabled = isScheduleChangeAlertsEnabled();
   const needsScheduleConfirm =
+    alertsEnabled &&
     startChanged &&
     shouldConfirmScheduleChange({ status: event.status, ticketsSold });
 
@@ -651,8 +653,14 @@ export async function updateEventAction(formData: FormData) {
     throw new Error("SCHEDULE_CHANGE_CONFIRM_REQUIRED");
   }
 
-  // On confirmed start move: preserve relative Ende / Einlass offsets from the stored start.
-  if (startChanged && scheduleChangeConfirmed) {
+  // Confirmed start move, or silent correction while alerts kill switch is off:
+  // preserve relative Ende / Einlass offsets from the stored start.
+  const applyScheduleOffsets =
+    startChanged &&
+    (scheduleChangeConfirmed ||
+      (!alertsEnabled &&
+        shouldConfirmScheduleChange({ status: event.status, ticketsSold })));
+  if (applyScheduleOffsets) {
     eventEndsAt = shiftRelativeToStart(event.eventEndsAt, event.eventStartsAt, eventStartsAt);
     doorsOpenAt = shiftRelativeToStart(event.doorsOpenAt, event.eventStartsAt, eventStartsAt);
     vipDoorsOpenAt = shiftRelativeToStart(
@@ -662,7 +670,6 @@ export async function updateEventAction(formData: FormData) {
     );
   }
 
-  const alertsEnabled = isScheduleChangeAlertsEnabled();
   const notifyBuyers =
     alertsEnabled &&
     startChanged &&
