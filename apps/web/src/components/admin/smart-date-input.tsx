@@ -52,6 +52,8 @@ function sameDay(a: Date, b: Date) {
 
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
 
+type FocusField = "day" | "month" | "year" | null;
+
 type Props = {
   name?: string;
   label: string;
@@ -78,6 +80,7 @@ export function SmartDateInput({
   const dayRef = useRef<HTMLInputElement>(null);
   const monthRef = useRef<HTMLInputElement>(null);
   const yearRef = useRef<HTMLInputElement>(null);
+  const focusFieldRef = useRef<FocusField>(null);
 
   const [internal, setInternal] = useState(controlled ?? defaultValue);
   const value = controlled ?? internal;
@@ -88,14 +91,20 @@ export function SmartDateInput({
   }
 
   const selected = useMemo(() => parseYmd(value), [value]);
-
   const [day, setDay] = useState(() => (selected ? pad2(selected.getDate()) : ""));
   const [month, setMonth] = useState(() => (selected ? pad2(selected.getMonth() + 1) : ""));
   const [year, setYear] = useState(() => (selected ? String(selected.getFullYear()) : ""));
   const [open, setOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(selected ?? new Date()));
+  const [focusField, setFocusField] = useState<FocusField>(null);
+  const editing = focusField !== null;
 
   useEffect(() => {
+    focusFieldRef.current = focusField;
+  }, [focusField]);
+
+  useEffect(() => {
+    if (editing) return;
     if (!selected) {
       if (!value) {
         setDay("");
@@ -108,7 +117,7 @@ export function SmartDateInput({
     setMonth(pad2(selected.getMonth() + 1));
     setYear(String(selected.getFullYear()));
     setViewMonth(startOfMonth(selected));
-  }, [value, selected]);
+  }, [value, selected, editing]);
 
   useEffect(() => {
     if (!open) return;
@@ -126,58 +135,68 @@ export function SmartDateInput({
     };
   }, [open]);
 
-  function tryCommit(partial: { day?: string; month?: string; year?: string }) {
-    const d = partial.day ?? day;
-    const m = partial.month ?? month;
-    const y = partial.year ?? year;
-    if (d.length < 1 || m.length < 1 || y.length < 4) return;
+  function commitParts(dRaw: string, mRaw: string, yRaw: string) {
+    const d = dRaw.length === 1 ? pad2(Number(dRaw) || 0) : dRaw;
+    const m = mRaw.length === 1 ? pad2(Number(mRaw) || 0) : mRaw;
+    const y = yRaw;
+    if (d.length !== 2 || m.length !== 2 || y.length !== 4) return false;
     const dn = Number(d);
     const mn = Number(m);
     const yn = Number(y);
-    if (!isValidYmd(yn, mn, dn)) return;
+    if (!isValidYmd(yn, mn, dn)) return false;
     setValue(toYmd(yn, mn, dn));
+    return true;
+  }
+
+  function focusAndSelect(el: HTMLInputElement | null) {
+    el?.focus();
+    el?.select();
+  }
+
+  function beginFieldFocus(field: FocusField, el: HTMLInputElement | null) {
+    setFocusField(field);
+    window.requestAnimationFrame(() => el?.select());
+  }
+
+  function endFieldFocus(field: FocusField, related: EventTarget | null) {
+    const next = related instanceof HTMLElement ? related : null;
+    const nextIsOurInput = Boolean(
+      next && (next === dayRef.current || next === monthRef.current || next === yearRef.current),
+    );
+
+    if (field === "day" && day.length === 1) {
+      const nextDay = pad2(Number(day) || 0);
+      setDay(nextDay);
+      commitParts(nextDay, month, year);
+    } else if (field === "month" && month.length === 1) {
+      const nextMonth = pad2(Number(month) || 0);
+      setMonth(nextMonth);
+      commitParts(day, nextMonth, year);
+    } else {
+      commitParts(day, month, year);
+    }
+
+    if (!nextIsOurInput) {
+      window.setTimeout(() => {
+        if (focusFieldRef.current === field) setFocusField(null);
+      }, 0);
+    }
   }
 
   function updateDay(raw: string) {
     const digits = onlyDigits(raw, 2);
     setDay(digits);
-    if (digits.length === 2) {
-      tryCommit({ day: digits });
-      monthRef.current?.focus();
-      monthRef.current?.select();
-    }
+    if (digits.length === 2) focusAndSelect(monthRef.current);
   }
 
   function updateMonth(raw: string) {
     const digits = onlyDigits(raw, 2);
     setMonth(digits);
-    if (digits.length === 2) {
-      tryCommit({ month: digits });
-      yearRef.current?.focus();
-      yearRef.current?.select();
-    }
+    if (digits.length === 2) focusAndSelect(yearRef.current);
   }
 
   function updateYear(raw: string) {
-    const digits = onlyDigits(raw, 4);
-    setYear(digits);
-    if (digits.length === 4) tryCommit({ year: digits });
-  }
-
-  function blurPadDay() {
-    if (day.length === 1) {
-      const next = pad2(Number(day) || 0);
-      setDay(next);
-      tryCommit({ day: next });
-    }
-  }
-
-  function blurPadMonth() {
-    if (month.length === 1) {
-      const next = pad2(Number(month) || 0);
-      setMonth(next);
-      tryCommit({ month: next });
-    }
+    setYear(onlyDigits(raw, 4));
   }
 
   function pickCalendarDay(date: Date) {
@@ -187,6 +206,7 @@ export function SmartDateInput({
     setDay(d);
     setMonth(m);
     setYear(y);
+    setFocusField(null);
     setValue(toYmd(date.getFullYear(), date.getMonth() + 1, date.getDate()));
     setOpen(false);
   }
@@ -228,7 +248,7 @@ export function SmartDateInput({
           }
           e.preventDefault();
           setOpen(true);
-          dayRef.current?.focus();
+          focusAndSelect(dayRef.current);
         }}
       >
         <label className="grid w-[2.25rem] gap-0">
@@ -242,8 +262,11 @@ export function SmartDateInput({
             className={cellClass}
             value={day}
             onChange={(e) => updateDay(e.target.value)}
-            onFocus={() => setOpen(true)}
-            onBlur={blurPadDay}
+            onFocus={() => {
+              setOpen(true);
+              beginFieldFocus("day", dayRef.current);
+            }}
+            onBlur={(e) => endFieldFocus("day", e.relatedTarget)}
             aria-label={`${label} Tag`}
           />
         </label>
@@ -259,8 +282,11 @@ export function SmartDateInput({
             className={cellClass}
             value={month}
             onChange={(e) => updateMonth(e.target.value)}
-            onFocus={() => setOpen(true)}
-            onBlur={blurPadMonth}
+            onFocus={() => {
+              setOpen(true);
+              beginFieldFocus("month", monthRef.current);
+            }}
+            onBlur={(e) => endFieldFocus("month", e.relatedTarget)}
             aria-label={`${label} Monat`}
           />
         </label>
@@ -276,7 +302,11 @@ export function SmartDateInput({
             className={cellClass}
             value={year}
             onChange={(e) => updateYear(e.target.value)}
-            onFocus={() => setOpen(true)}
+            onFocus={() => {
+              setOpen(true);
+              beginFieldFocus("year", yearRef.current);
+            }}
+            onBlur={(e) => endFieldFocus("year", e.relatedTarget)}
             aria-label={`${label} Jahr`}
           />
         </label>
@@ -361,6 +391,7 @@ export function SmartDateInput({
                 setDay("");
                 setMonth("");
                 setYear("");
+                setFocusField(null);
                 setOpen(false);
               }}
             >

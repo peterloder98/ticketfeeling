@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
 import { parseDatetimeLocalBerlin, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
@@ -118,10 +118,8 @@ export function EventDiscountsPanel({
   });
 
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
-  const [tourScopeOpen, setTourScopeOpen] = useState(false);
   const [tourScopeMode, setTourScopeMode] = useState<"this" | "multi">("this");
   const [selectedSiblingIds, setSelectedSiblingIds] = useState<string[]>([]);
-  const tourDialogTitleId = useId();
 
   const eventBoundDate = (() => {
     if (!eventEndsAt) return null;
@@ -224,15 +222,6 @@ export function EventDiscountsPanel({
     void load();
   }, [load]);
 
-  useEffect(() => {
-    if (!tourScopeOpen) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape" && !saving) setTourScopeOpen(false);
-    }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [tourScopeOpen, saving]);
-
   async function saveAccessibility() {
     if (!canWrite) return;
     setSaving(true);
@@ -308,7 +297,8 @@ export function EventDiscountsPanel({
         );
       }
       setDraft(null);
-      setTourScopeOpen(false);
+      setTourScopeMode("this");
+      setSelectedSiblingIds([]);
       const warnParts: string[] = [];
       if (data.clampedToEventEnd || clamped.clamped) {
         warnParts.push(data.message || CAMPAIGN_END_CLAMP_MSG);
@@ -333,6 +323,17 @@ export function EventDiscountsPanel({
     }
   }
 
+  function resolveAlsoEventIds(): string[] | null {
+    if (tourSiblings.length < 1) return [];
+    if (tourScopeMode === "this") return [];
+    const also = selectedSiblingIds.filter((id) => id !== eventId);
+    if (also.length < 1) {
+      setError("Bitte mindestens einen weiteren Termin wählen — oder nur dieses Event.");
+      return null;
+    }
+    return also;
+  }
+
   function requestSaveCampaign() {
     if (!canWrite || !draft) return;
     if (draft.categoryIds.length < 1) {
@@ -344,23 +345,8 @@ export function EventDiscountsPanel({
       return;
     }
     setError(null);
-    if (tourSiblings.length > 0) {
-      setTourScopeMode("this");
-      setSelectedSiblingIds([]);
-      setTourScopeOpen(true);
-      return;
-    }
-    void persistCampaign(draft, []);
-  }
-
-  function confirmTourScopeSave() {
-    if (!draft) return;
-    if (tourScopeMode === "multi" && selectedSiblingIds.length < 1) {
-      setError("Bitte mindestens einen weiteren Termin wählen — oder nur dieses Event.");
-      return;
-    }
-    const also =
-      tourScopeMode === "multi" ? selectedSiblingIds.filter((id) => id !== eventId) : [];
+    const also = resolveAlsoEventIds();
+    if (also === null) return;
     void persistCampaign(draft, also);
   }
 
@@ -386,6 +372,11 @@ export function EventDiscountsPanel({
     }
   }
 
+  function resetTourScope() {
+    setTourScopeMode("this");
+    setSelectedSiblingIds([]);
+  }
+
   function startNewCampaign() {
     const from = new Date();
     let until = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
@@ -395,6 +386,7 @@ export function EventDiscountsPanel({
       warn = CAMPAIGN_END_CLAMP_MSG;
     }
     setWarnMsg(warn);
+    resetTourScope();
     setDraft({
       name: "Frühbucher",
       active: true,
@@ -413,6 +405,7 @@ export function EventDiscountsPanel({
 
   function editCampaign(c: CampaignRow) {
     setWarnMsg(null);
+    resetTourScope();
     setDraft({
       campaignId: c.id,
       name: c.name,
@@ -797,6 +790,105 @@ export function EventDiscountsPanel({
                   })}
                 </div>
               </fieldset>
+
+              {tourSiblings.length > 0 ? (
+                <div className="sm:col-span-2 space-y-3 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--tf-navy)]">
+                      Tour-Termine
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                      Diese Aktion gilt für dieses Event. Optional kannst du weitere Termine der
+                      Tour mit denselben Einstellungen übernehmen.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] bg-white p-3">
+                      <input
+                        type="radio"
+                        className="mt-1"
+                        name="tourScopeInline"
+                        checked={tourScopeMode === "this"}
+                        onChange={() => {
+                          setTourScopeMode("this");
+                          setSelectedSiblingIds([]);
+                          setError(null);
+                        }}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                          Nur dieses Event
+                        </span>
+                        <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                          Andere Termine bleiben unverändert
+                        </span>
+                      </span>
+                    </label>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] bg-white p-3">
+                      <input
+                        type="radio"
+                        className="mt-1"
+                        name="tourScopeInline"
+                        checked={tourScopeMode === "multi"}
+                        onChange={() => {
+                          setTourScopeMode("multi");
+                          setError(null);
+                        }}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                          Weitere Termine der Tour
+                        </span>
+                        <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                          Preis, Badge, Zeitraum und Kategorien auf gewählte Termine kopieren
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+                  {tourScopeMode === "multi" ? (
+                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-white p-3">
+                      <div className="mb-1 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[var(--tf-teal)] hover:underline"
+                          onClick={() => setSelectedSiblingIds(tourSiblings.map((s) => s.id))}
+                        >
+                          Alle wählen
+                        </button>
+                        <button
+                          type="button"
+                          className="text-xs font-medium text-[var(--tf-text-secondary)] hover:underline"
+                          onClick={() => setSelectedSiblingIds([])}
+                        >
+                          Auswahl leeren
+                        </button>
+                      </div>
+                      {tourSiblings.map((s) => {
+                        const checked = selectedSiblingIds.includes(s.id);
+                        return (
+                          <label
+                            key={s.id}
+                            className="flex cursor-pointer items-start gap-2 text-sm text-[var(--tf-navy)]"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={checked}
+                              onChange={() => {
+                                setSelectedSiblingIds((prev) =>
+                                  checked ? prev.filter((id) => id !== s.id) : [...prev, s.id],
+                                );
+                                setError(null);
+                              }}
+                            />
+                            <span>{siblingLabel(s)}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <button
@@ -812,7 +904,7 @@ export function EventDiscountsPanel({
                 onClick={() => {
                   setDraft(null);
                   setWarnMsg(null);
-                  setTourScopeOpen(false);
+                  resetTourScope();
                 }}
               >
                 Abbrechen
@@ -821,141 +913,6 @@ export function EventDiscountsPanel({
           </form>
         ) : null}
       </div>
-
-      {tourScopeOpen && draft && tourSiblings.length > 0 ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,39,71,0.45)] p-4"
-          role="presentation"
-          onClick={() => {
-            if (!saving) setTourScopeOpen(false);
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={tourDialogTitleId}
-            className="relative w-full max-w-md rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 id={tourDialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
-              Aktion für welche Termine?
-            </h2>
-            <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-              Dieses Event gehört zu einer Tour. Du kannst die Aktion nur hier speichern oder
-              auf weitere Termine übernehmen.
-            </p>
-
-            <div className="mt-4 space-y-3">
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] p-3">
-                <input
-                  type="radio"
-                  className="mt-1"
-                  name="tourScope"
-                  checked={tourScopeMode === "this"}
-                  onChange={() => {
-                    setTourScopeMode("this");
-                    setSelectedSiblingIds([]);
-                    setError(null);
-                  }}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-[var(--tf-navy)]">
-                    Nur dieses Event
-                  </span>
-                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Standard — andere Termine bleiben unverändert
-                  </span>
-                </span>
-              </label>
-
-              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] p-3">
-                <input
-                  type="radio"
-                  className="mt-1"
-                  name="tourScope"
-                  checked={tourScopeMode === "multi"}
-                  onChange={() => {
-                    setTourScopeMode("multi");
-                    setError(null);
-                  }}
-                />
-                <span>
-                  <span className="block text-sm font-medium text-[var(--tf-navy)]">
-                    Weitere Termine der Tour
-                  </span>
-                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                    Gleiche Einstellungen (Preis, Badge, Zeitraum, …) auf gewählte Termine
-                  </span>
-                </span>
-              </label>
-            </div>
-
-            {tourScopeMode === "multi" ? (
-              <div className="mt-4 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
-                <div className="mb-1 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-[var(--tf-teal)] hover:underline"
-                    onClick={() => setSelectedSiblingIds(tourSiblings.map((s) => s.id))}
-                  >
-                    Alle wählen
-                  </button>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-[var(--tf-text-secondary)] hover:underline"
-                    onClick={() => setSelectedSiblingIds([])}
-                  >
-                    Auswahl leeren
-                  </button>
-                </div>
-                {tourSiblings.map((s) => {
-                  const checked = selectedSiblingIds.includes(s.id);
-                  return (
-                    <label
-                      key={s.id}
-                      className="flex cursor-pointer items-start gap-2 text-sm text-[var(--tf-navy)]"
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5"
-                        checked={checked}
-                        onChange={() => {
-                          setSelectedSiblingIds((prev) =>
-                            checked ? prev.filter((id) => id !== s.id) : [...prev, s.id],
-                          );
-                          setError(null);
-                        }}
-                      />
-                      <span>{siblingLabel(s)}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            ) : null}
-
-            {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
-
-            <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                className="tf-btn tf-btn-secondary !min-h-10 text-sm"
-                disabled={saving}
-                onClick={() => setTourScopeOpen(false)}
-              >
-                Zurück
-              </button>
-              <button
-                type="button"
-                className="tf-btn tf-btn-primary !min-h-10 text-sm"
-                disabled={saving}
-                onClick={confirmTourScopeSave}
-              >
-                {saving ? "Speichert…" : "Speichern"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
