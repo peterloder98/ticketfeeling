@@ -1,10 +1,12 @@
 /**
  * Company addresses for Ticketfeeling / Peter Loder (Einzelunternehmen).
  *
- * Public address → Impressum, Kontakt, Footer, AGB, Datenschutz, Widerruf, cookies,
- * email signatures, website/app/checkout/customer contact. NEVER show Konradinstr. publicly.
+ * Public address → Impressum, Kontakt, site footer, AGB, Datenschutz, Widerruf, cookies,
+ * website/app/checkout. NEVER show Konradinstr. publicly.
  *
- * Billing address → invoice PDFs, invoice headers, credit notes, tax/accounting PDFs only.
+ * Do NOT inject the public address into transactional customer emails (order confirmation,
+ * tickets, schedule change, SEPA, etc.). Billing / tax address → invoice PDFs, credit notes,
+ * and other legally required Rechnung documents only.
  */
 
 export type CompanyAddress = {

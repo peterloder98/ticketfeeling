@@ -3,11 +3,6 @@ import path from "path";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import { isAppleWalletConfigured, isGoogleWalletConfigured } from "@/lib/wallet/config";
-import {
-  DEFAULT_LEGAL_PERSON_LINE,
-  DEFAULT_PUBLIC_COMPANY_ADDRESS,
-  formatCompanyAddressBlock,
-} from "@/lib/legal/company-address";
 
 function appBaseUrl() {
   return getPublicAppUrl();
@@ -20,6 +15,10 @@ function escapeHtml(value: string) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
 }
+
+/** Brand-aligned stack for HTML mail (Inter when available, otherwise system UI). */
+const EMAIL_FONT =
+  "Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
 /** Small hosted logo for e-mail clients that allow remote images (transparent / light). */
 export function emailLogoRemoteUrl() {
@@ -51,20 +50,27 @@ export function loadEmailLogoBuffer(): Buffer | null {
 
 export const EMAIL_LOGO_CID = "ticketfeeling-logo";
 
+/**
+ * Shared HTML shell for transactional buyer mail.
+ * No company / Impressum address here — that belongs on invoices and legal pages only.
+ */
 function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
   const logoSrc = `cid:${EMAIL_LOGO_CID}`;
   const logoFallback = emailLogoRemoteUrl();
   const body = paragraphs
-    .map((p) =>
-      p
-        ? `<p style="margin:0 0 16px;font-size:16px;line-height:1.55;color:#0F2747;font-family:Georgia,'Times New Roman',serif">${p}</p>`
-        : "<br/>",
-    )
+    .map((p) => {
+      if (!p) return "<br/>";
+      // Tables / block roots must not sit inside <p> (invalid HTML in mail clients).
+      if (/<(?:table|div|ul|ol)\b/i.test(p)) {
+        return `<div style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#0F2747;font-family:${EMAIL_FONT}">${p}</div>`;
+      }
+      return `<p style="margin:0 0 18px;font-size:16px;line-height:1.55;color:#0F2747;font-family:${EMAIL_FONT}">${p}</p>`;
+    })
     .join("");
   // Legacy: only when a caller still expects attachments and generation failed.
   const attachHint =
     opts?.hasAttachment === false
-      ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#B45309;font-family:system-ui,sans-serif">Hinweis: Die PDF-Anhänge konnten nicht erzeugt werden — öffne deine Tickets über den Link unten.</p>`
+      ? `<p style="margin:0 0 16px;font-size:14px;line-height:1.5;color:#B45309;font-family:${EMAIL_FONT}">Hinweis: Die PDF-Anhänge konnten nicht erzeugt werden — öffne deine Tickets über den Link unten.</p>`
       : "";
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#EEF2F7">
   <div style="padding:28px 16px">
@@ -82,13 +88,8 @@ function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
       ${body}
       ${attachHint}
     </div>
-    <div style="padding:8px 28px 28px">
-      <p style="margin:0 0 10px;font-size:13px;line-height:1.45;color:#64748B;font-family:system-ui,-apple-system,sans-serif">Fragen? Antworte einfach auf diese E-Mail oder schreib an den Support über ticketfeeling.de/hilfe.</p>
-      <p style="margin:0;font-size:12px;line-height:1.45;color:#94A3B8;font-family:system-ui,-apple-system,sans-serif">${escapeHtml(
-        formatCompanyAddressBlock(DEFAULT_PUBLIC_COMPANY_ADDRESS, {
-          legalPersonLine: DEFAULT_LEGAL_PERSON_LINE,
-        }),
-      ).replaceAll("\n", "<br/>")}</p>
+    <div style="padding:4px 28px 28px;border-top:1px solid #E2E8F0">
+      <p style="margin:16px 0 0;font-size:13px;line-height:1.45;color:#64748B;font-family:${EMAIL_FONT}">Fragen? Antworte einfach auf diese E-Mail oder schreib an den Support über ticketfeeling.de/hilfe.</p>
     </div>
   </div>
   </div>
@@ -589,15 +590,94 @@ export function buildBoxOfficeTicketsMail(input: {
   };
 }
 
-function scheduleLine(label: string, oldValue: string | null, newValue: string | null) {
-  if (!oldValue && !newValue) return null;
-  if (oldValue && newValue && oldValue === newValue) {
-    return `${label}: ${newValue}`;
-  }
-  if (oldValue && newValue) {
+type ScheduleField = {
+  label: string;
+  oldValue: string | null;
+  newValue: string | null;
+};
+
+function scheduleFields(input: {
+  oldStartsLabel: string | null;
+  newStartsLabel: string | null;
+  oldEndsLabel?: string | null;
+  newEndsLabel?: string | null;
+  oldDoorsLabel?: string | null;
+  newDoorsLabel?: string | null;
+}): ScheduleField[] {
+  return [
+    {
+      label: "Beginn",
+      oldValue: input.oldStartsLabel,
+      newValue: input.newStartsLabel,
+    },
+    {
+      label: "Einlass",
+      oldValue: input.oldDoorsLabel ?? null,
+      newValue: input.newDoorsLabel ?? null,
+    },
+    {
+      label: "Ende",
+      oldValue: input.oldEndsLabel ?? null,
+      newValue: input.newEndsLabel ?? null,
+    },
+  ].filter((row) => row.oldValue || row.newValue);
+}
+
+function scheduleTextLine(row: ScheduleField): string {
+  const { label, oldValue, newValue } = row;
+  if (oldValue && newValue && oldValue !== newValue) {
     return `${label}: ${oldValue} → ${newValue}`;
   }
+  if (oldValue && newValue) {
+    return `${label}: ${newValue} (unverändert)`;
+  }
   return `${label}: ${newValue ?? oldValue}`;
+}
+
+function scheduleChangeTableHtml(rows: ScheduleField[]): string {
+  if (rows.length === 0) return "";
+  const th =
+    "padding:10px 12px;font-size:12px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#64748B;text-align:left;border-bottom:1px solid #E2E8F0;font-family:" +
+    EMAIL_FONT;
+  const tdLabel =
+    "padding:12px;font-size:14px;color:#64748B;vertical-align:top;width:22%;font-family:" +
+    EMAIL_FONT;
+  const tdOld =
+    "padding:12px;font-size:14px;color:#64748B;vertical-align:top;width:39%;font-family:" +
+    EMAIL_FONT;
+  const tdNew =
+    "padding:12px;font-size:14px;color:#0F2747;font-weight:600;vertical-align:top;width:39%;font-family:" +
+    EMAIL_FONT;
+
+  const body = rows
+    .map((row) => {
+      const changed = Boolean(
+        row.oldValue && row.newValue && row.oldValue !== row.newValue,
+      );
+      const oldCell = row.oldValue
+        ? changed
+          ? `<span style="text-decoration:line-through;color:#94A3B8">${escapeHtml(row.oldValue)}</span>`
+          : escapeHtml(row.oldValue)
+        : "—";
+      const newCell = escapeHtml(row.newValue ?? row.oldValue ?? "—");
+      return `<tr>
+        <td style="${tdLabel}">${escapeHtml(row.label)}</td>
+        <td style="${tdOld}">${oldCell}</td>
+        <td style="${tdNew}">${newCell}</td>
+      </tr>`;
+    })
+    .join("");
+
+  return `<table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="border-collapse:collapse;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden">
+    <thead>
+      <tr>
+        <th style="${th}"></th>
+        <th style="${th}">Bisher</th>
+        <th style="${th}">Neu</th>
+      </tr>
+    </thead>
+    <tbody>${body}</tbody>
+  </table>`;
 }
 
 /** Buyer notice when an event’s Beginn / Ende / Einlass was moved. */
@@ -628,55 +708,46 @@ export function buildScheduleChangedMail(input: {
   const base = appBaseUrl();
   const hilfeUrl = `${base}/hilfe`;
   const agbUrl = `${base}/recht/agb`;
-
-  const beginn = scheduleLine("Beginn", input.oldStartsLabel, input.newStartsLabel);
-  const einlass = scheduleLine(
-    "Einlass",
-    input.oldDoorsLabel ?? null,
-    input.newDoorsLabel ?? null,
-  );
-  const ende = scheduleLine("Ende", input.oldEndsLabel ?? null, input.newEndsLabel ?? null);
-
-  const scheduleLines = [beginn, einlass, ende].filter(Boolean) as string[];
+  const rows = scheduleFields(input);
+  const scheduleText = rows.map(scheduleTextLine);
 
   const lines = [
     `${greeting},`,
     "",
-    `der Termin für „${input.eventName}“ hat sich geändert.`,
+    `der Termin für „${input.eventName}“ wurde angepasst.`,
     "",
-    "Bisher → neu:",
-    ...scheduleLines,
+    "Was sich ändert:",
+    ...scheduleText,
     ...(place ? [`Ort: ${place}`] : []),
     "",
-    `Ihre Tickets bleiben gültig für den neuen Termin. Bestellung ${input.orderNumber}:`,
-    input.orderUrl,
+    "Ihre Tickets bleiben für den neuen Termin gültig. Sie müssen nichts weiter tun.",
     "",
+    `Bestellung ${input.orderNumber}: ${input.orderUrl}`,
     `Event-Seite: ${input.eventUrl}`,
     "",
-    "Falls Sie am neuen Termin nicht teilnehmen können, melden Sie sich bitte beim Support oder beim Veranstalter — Storno- und Erstattungsoptionen richten sich nach den AGB.",
-    `Hilfe / Kontakt: ${hilfeUrl}`,
+    "Passt der neue Termin nicht? Schreiben Sie uns gern — Storno und Erstattung richten sich nach den AGB.",
+    `Hilfe: ${hilfeUrl}`,
     `AGB: ${agbUrl}`,
     "",
+    "Herzliche Grüße",
     "Ihr Ticketfeeling-Team",
   ];
 
-  const scheduleHtml = scheduleLines
-    .map((l) => escapeHtml(l))
-    .join("<br/>");
+  const placeHtml = place
+    ? `<div style="margin:14px 0 0;font-size:14px;line-height:1.5;color:#334155;font-family:${EMAIL_FONT}"><span style="color:#64748B">Ort</span><br/><strong style="color:#0F2747">${escapeHtml(place)}</strong></div>`
+    : "";
 
   return {
-    subject: `Wichtiger Hinweis: Terminänderung – ${input.eventName}`,
+    subject: `Terminänderung – ${input.eventName}`,
     text: lines.join("\n"),
     html: wrapHtml([
       escapeHtml(`${greeting},`),
-      `der Termin für <strong>${escapeHtml(input.eventName)}</strong> hat sich geändert.`,
-      `<strong>Bisher → neu</strong><br/>${scheduleHtml}${
-        place ? `<br/>Ort: ${escapeHtml(place)}` : ""
-      }`,
-      `Ihre Tickets bleiben gültig für den neuen Termin.<br/><a href="${escapeHtml(input.orderUrl)}" style="color:#0D9488;font-weight:600">Bestellung ${escapeHtml(input.orderNumber)} öffnen</a>`,
-      `<a href="${escapeHtml(input.eventUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Event-Seite öffnen</a>`,
-      `Falls Sie am neuen Termin nicht teilnehmen können, melden Sie sich bitte beim Support oder beim Veranstalter — Storno- und Erstattungsoptionen richten sich nach den <a href="${escapeHtml(agbUrl)}" style="color:#0D9488">AGB</a>. <a href="${escapeHtml(hilfeUrl)}" style="color:#0D9488">Hilfe / Kontakt</a>`,
-      "Ihr Ticketfeeling-Team",
+      `der Termin für <strong>${escapeHtml(input.eventName)}</strong> wurde angepasst.`,
+      `<span style="display:block;margin:0 0 10px;font-size:13px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#0D9488;font-family:${EMAIL_FONT}">Was sich ändert</span>${scheduleChangeTableHtml(rows)}${placeHtml}`,
+      "Ihre Tickets bleiben für den neuen Termin gültig. Sie müssen nichts weiter tun.",
+      `<a href="${escapeHtml(input.orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:${EMAIL_FONT};font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px;margin:0 10px 10px 0">Bestellung ${escapeHtml(input.orderNumber)} öffnen</a><a href="${escapeHtml(input.eventUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:${EMAIL_FONT};font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1;margin:0 0 10px 0">Event-Seite öffnen</a>`,
+      `Passt der neue Termin nicht? Schreiben Sie uns gern über <a href="${escapeHtml(hilfeUrl)}" style="color:#0D9488">Hilfe / Kontakt</a> — Storno und Erstattung richten sich nach den <a href="${escapeHtml(agbUrl)}" style="color:#0D9488">AGB</a>.`,
+      "Herzliche Grüße<br/>Ihr Ticketfeeling-Team",
     ]),
   };
 }

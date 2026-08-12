@@ -89,7 +89,8 @@ function withAddress(
   };
 }
 
-/** Public-facing seller (Impressum, checkout, tickets, emails). Landshut — never Konradinstr. */
+/** Public-facing seller (Impressum, checkout, site). Landshut — never Konradinstr.
+ *  Not for transactional email footers — those omit the street address. */
 export function buildSellerIdentity(
   org: Organization,
   settings: OrganizationSettings | null | undefined,
