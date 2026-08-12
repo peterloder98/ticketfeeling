@@ -1,10 +1,15 @@
-import { getServerSession } from "next-auth";
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { authOptions } from "@/lib/auth";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getSession } from "@/lib/auth/session";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
-import { formatBytes, getStorageUsage } from "@/lib/admin/storage-usage";
+import {
+  formatBytes,
+  getStorageUsage,
+  type StorageUsageSnapshot,
+} from "@/lib/admin/storage-usage";
+import { canAccessSystemStorage } from "@/lib/admin/system-access";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Speicher · System" };
@@ -16,48 +21,51 @@ function formatPercent(value: number) {
   }).format(value);
 }
 
-export default async function AdminStoragePage() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) redirect("/login");
-  const membership = await getDefaultOrganizationForUser(session.user.id);
-  if (!membership) return <p>Keine Organisation.</p>;
+/** Strip anything Flight can't serialize (BigInt leftovers, etc.). */
+function toPlainSnapshot(snapshot: StorageUsageSnapshot): StorageUsageSnapshot {
+  return JSON.parse(
+    JSON.stringify(snapshot, (_key, value) =>
+      typeof value === "bigint" ? Number(value) : value,
+    ),
+  ) as StorageUsageSnapshot;
+}
 
-  const allowed =
-    (await userHasPermission(session.user.id, membership.organizationId, "org:write")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "audit:read")) ||
-    (await userHasPermission(session.user.id, membership.organizationId, "org:read"));
-  if (!allowed) {
-    return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
-  }
+function Header() {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
+        System
+      </p>
+      <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Speicher</h1>
+      <p className="mt-2 text-[var(--tf-text-secondary)]">
+        Wie voll die Datenbank ist — und was den Platz belegt.
+      </p>
+    </div>
+  );
+}
 
-  let snapshot;
-  let loadError: string | null = null;
-  try {
-    snapshot = await getStorageUsage();
-  } catch {
-    loadError = "Speicherdaten konnten gerade nicht geladen werden. Versuch es gleich nochmal.";
-  }
-
-  if (!snapshot) {
-    return (
-      <div className="space-y-6">
-        <Header />
-        <AdminSubnav items={ADMIN_SUBNAV.system} />
-        <p className="text-[var(--danger)]">{loadError}</p>
+function StorageSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="tf-card h-24 animate-pulse bg-[rgba(15,39,71,0.04)]" />
+        ))}
       </div>
-    );
-  }
+      <div className="tf-card h-28 animate-pulse bg-[rgba(15,39,71,0.04)]" />
+      <p className="text-sm text-[var(--tf-text-secondary)]">Speicherdaten werden geladen …</p>
+    </div>
+  );
+}
 
+function StorageOverview({ snapshot }: { snapshot: StorageUsageSnapshot }) {
   const warn = snapshot.warnLowStorage;
   const barColor = warn ? "var(--tf-warning)" : "var(--tf-teal)";
-  const usedRatio = Math.min(100, Math.max(0, snapshot.percentUsed));
-  const freeLabel = formatPercent(Math.max(0, snapshot.percentFree));
+  const usedRatio = Math.min(100, Math.max(0, Number(snapshot.percentUsed) || 0));
+  const freeLabel = formatPercent(Math.max(0, Number(snapshot.percentFree) || 0));
 
   return (
-    <div className="space-y-6">
-      <Header />
-      <AdminSubnav items={ADMIN_SUBNAV.system} />
-
+    <>
       {warn ? (
         <div
           className="tf-card border border-[color-mix(in_srgb,var(--tf-warning)_35%,transparent)] bg-[color-mix(in_srgb,var(--tf-warning)_10%,transparent)]"
@@ -187,20 +195,59 @@ export default async function AdminStoragePage() {
           . Stand {new Date(snapshot.measuredAt).toLocaleString("de-DE")}.
         </p>
       </section>
-    </div>
+    </>
   );
 }
 
-function Header() {
+async function StorageBody() {
+  let snapshot: StorageUsageSnapshot | null = null;
+  let loadError: string | null = null;
+  try {
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const raw = await Promise.race([
+      getStorageUsage(),
+      new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("STORAGE_TIMEOUT")), 12_000);
+      }),
+    ]).finally(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+    });
+    snapshot = toPlainSnapshot(raw);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error("[admin/speicher] load failed:", msg);
+    loadError =
+      msg === "STORAGE_TIMEOUT"
+        ? "Die Speicherabfrage dauert zu lange. Bitte Seite neu laden."
+        : "Speicherdaten konnten gerade nicht geladen werden. Versuch es gleich nochmal.";
+  }
+
+  if (!snapshot) {
+    return <p className="text-[var(--danger)]">{loadError}</p>;
+  }
+
+  return <StorageOverview snapshot={snapshot} />;
+}
+
+export default async function AdminStoragePage() {
+  const session = await getSession();
+  if (!session?.user) redirect("/login");
+  const membership = await getDefaultOrganizationForUser(session.user.id);
+  if (!membership) return <p>Keine Organisation.</p>;
+
+  const keys = await getUserPermissionKeys(session.user.id, membership.organizationId);
+  if (!canAccessSystemStorage(keys)) {
+    return <p className="text-[var(--danger)]">Keine Berechtigung.</p>;
+  }
+
+  // Shell + subnav first so soft-nav is not blocked by Postgres size queries.
   return (
-    <div>
-      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
-        System
-      </p>
-      <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">Speicher</h1>
-      <p className="mt-2 text-[var(--tf-text-secondary)]">
-        Wie voll die Datenbank ist — und was den Platz belegt.
-      </p>
+    <div className="space-y-6">
+      <Header />
+      <AdminSubnav items={ADMIN_SUBNAV.system} />
+      <Suspense fallback={<StorageSkeleton />}>
+        <StorageBody />
+      </Suspense>
     </div>
   );
 }

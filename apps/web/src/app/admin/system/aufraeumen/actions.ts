@@ -1,16 +1,16 @@
 "use server";
 
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getSession } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
-import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
+import { getDefaultOrganizationForUser, getUserPermissionKeys } from "@/lib/rbac";
 import {
   PURGE_CONFIRM_PHRASE,
   PURGE_ORG_SLUG,
   purgeTestCommerce,
   type PurgeTestCommerceResult,
 } from "@/lib/admin/purge-test-commerce";
+import { canAccessSystemStorage } from "@/lib/admin/system-access";
 
 export type PurgeTestCommerceState = {
   ok: boolean | null;
@@ -29,10 +29,10 @@ async function requirePurgeAdmin(): Promise<
   | { error: string }
   | {
       userId: string;
-      membership: NonNullable<Awaited<ReturnType<typeof getDefaultOrganizationForUser>>>;
+      organizationId: string;
     }
 > {
-  const session = await getServerSession(authOptions);
+  const session = await getSession();
   const userId = session?.user?.id;
   if (!userId) {
     return { error: "Bitte zuerst anmelden." };
@@ -42,11 +42,9 @@ async function requirePurgeAdmin(): Promise<
     return { error: "Keine Organisation." };
   }
 
-  const allowed =
-    (await userHasPermission(userId, membership.organizationId, "org:write")) ||
-    (await userHasPermission(userId, membership.organizationId, "users:write"));
-  if (!allowed) {
-    return { error: "Keine Berechtigung (nur Administrator)." };
+  const keys = await getUserPermissionKeys(userId, membership.organizationId);
+  if (!canAccessSystemStorage(keys)) {
+    return { error: "Keine Berechtigung." };
   }
 
   if (membership.organization.slug !== PURGE_ORG_SLUG) {
@@ -55,7 +53,7 @@ async function requirePurgeAdmin(): Promise<
     };
   }
 
-  return { userId, membership };
+  return { userId, organizationId: membership.organizationId };
 }
 
 export async function purgeTestCommerceAction(
@@ -66,7 +64,7 @@ export async function purgeTestCommerceAction(
   if ("error" in gate) {
     return { ok: false, message: gate.error };
   }
-  const { userId, membership } = gate;
+  const { userId, organizationId } = gate;
 
   const phrase = String(formData.get("confirmPhrase") ?? "").trim();
   if (phrase !== PURGE_CONFIRM_PHRASE) {
@@ -80,11 +78,11 @@ export async function purgeTestCommerceAction(
     const result = await purgeTestCommerce(prisma, { dryRun: false });
 
     await writeAudit({
-      organizationId: membership.organizationId,
+      organizationId,
       actorUserId: userId,
       action: "system.purge_test_commerce",
       entityType: "organization",
-      entityId: membership.organizationId,
+      entityId: organizationId,
       after: {
         ordersDeleted: result.ordersDeleted,
         eventsDeleted: result.eventsDeleted,

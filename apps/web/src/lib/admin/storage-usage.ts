@@ -269,8 +269,12 @@ export async function getStorageUsage(options?: {
     return cache.value;
   }
   const value = await measureStorageUsageUncached();
-  cache = { at: Date.now(), value };
-  return value;
+  // Always plain JSON — BigInt from pg_* size functions must never reach RSC Flight.
+  const plain = JSON.parse(
+    JSON.stringify(value, (_key, v) => (typeof v === "bigint" ? Number(v) : v)),
+  ) as StorageUsageSnapshot;
+  cache = { at: Date.now(), value: plain };
+  return plain;
 }
 
 /** Test helper — clears the in-process cache. */
