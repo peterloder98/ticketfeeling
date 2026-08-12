@@ -7,6 +7,30 @@ import type { PrismaClient } from "@prisma/client";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * TEMPORARY KILL SWITCH — buyer emails + public/admin „Termin geändert“ banners.
+ * Default OFF so event dates can be corrected without side effects.
+ *
+ * Re-enable when the user asks:
+ * 1) set `SCHEDULE_CHANGE_ALERTS_ENABLED = true` below, OR
+ * 2) set env `SCHEDULE_CHANGE_NOTIFICATIONS_ENABLED=true` (env wins when set).
+ */
+export const SCHEDULE_CHANGE_ALERTS_ENABLED = false;
+
+export function isScheduleChangeAlertsEnabled(): boolean {
+  const env = process.env.SCHEDULE_CHANGE_NOTIFICATIONS_ENABLED?.trim().toLowerCase();
+  if (env === "true" || env === "1") return true;
+  if (env === "false" || env === "0") return false;
+  return SCHEDULE_CHANGE_ALERTS_ENABLED;
+}
+
+/** Public/admin banner when scheduleChangedAt is set AND alerts are enabled. */
+export function shouldShowScheduleChangedBanner(
+  scheduleChangedAt: Date | string | null | undefined,
+): boolean {
+  return Boolean(isScheduleChangeAlertsEnabled() && scheduleChangedAt);
+}
+
 /** Millisecond precision for “same instant” compares (datetime-local is minute). */
 export function sameInstantMs(
   a: Date | null | undefined,

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   clampCampaignToEventEnd,
   clampCampaignToEventStart,
+  isScheduleChangeAlertsEnabled,
   scheduleEndChanged,
   scheduleStartChanged,
   shiftRelativeToStart,
   shouldShowEventStartCountdown,
+  shouldShowScheduleChangedBanner,
 } from "@/lib/commerce/schedule-change";
 import {
   formatCampaignCountdown,
@@ -15,6 +17,12 @@ import {
 } from "@/lib/commerce/campaign-price-ui";
 
 describe("schedule-change", () => {
+  it("keeps schedule-change alerts disabled by default (temporary kill switch)", () => {
+    expect(isScheduleChangeAlertsEnabled()).toBe(false);
+    expect(shouldShowScheduleChangedBanner(new Date())).toBe(false);
+    expect(shouldShowScheduleChangedBanner(null)).toBe(false);
+  });
+
   it("detects start changes at minute precision", () => {
     const a = new Date("2026-08-20T18:00:00.000Z");
     const b = new Date("2026-08-20T18:00:30.000Z");

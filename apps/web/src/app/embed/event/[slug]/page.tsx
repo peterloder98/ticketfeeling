@@ -31,6 +31,7 @@ import {
   isWeihnachtstraum2026Slug,
 } from "@/lib/commerce/ensure-schedule-changed";
 import { ensureWeihnachtstraum2026Venues } from "@/lib/commerce/ensure-weihnachtstraum-venues";
+import { shouldShowScheduleChangedBanner } from "@/lib/commerce/schedule-change";
 
 export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
@@ -292,7 +293,9 @@ export default async function EmbedEventShopPage({ params }: Props) {
         ) : (
           <EmbedBackLink fallbackHref="/embed/shop" label="Zurück" />
         )}
-        {event.scheduleChangedAt ? <ScheduleChangedBanner compact /> : null}
+        {shouldShowScheduleChangedBanner(event.scheduleChangedAt) ? (
+          <ScheduleChangedBanner compact />
+        ) : null}
         <div className="mx-auto w-full max-w-[444px]">
           <div className="group overflow-hidden rounded-xl border border-[var(--tf-line)]">
             <div className="relative aspect-square w-full max-h-[444px] overflow-hidden bg-[var(--tf-navy)]">

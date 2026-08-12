@@ -14,8 +14,10 @@ import {
 import { eventStatusLabel } from "@/lib/admin/nav";
 import { isEventSalesReleased } from "@/lib/commerce/event-sale";
 import {
+  isScheduleChangeAlertsEnabled,
   scheduleStartChanged,
   shouldConfirmScheduleChange,
+  shouldShowScheduleChangedBanner,
   shiftRelativeToStart,
 } from "@/lib/commerce/schedule-change";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
@@ -356,6 +358,7 @@ export function EventEditForm({
     startsAt,
   );
   const willNotifyBuyers =
+    isScheduleChangeAlertsEnabled() &&
     needsScheduleGate &&
     (isEventSalesReleased(event.status) ||
       event.status === "paused" ||
@@ -587,7 +590,7 @@ export function EventEditForm({
           </p>
         ) : null}
 
-        {scheduleNoticeAt ? (
+        {scheduleNoticeAt && shouldShowScheduleChangedBanner(scheduleNoticeAt) ? (
           <div className="md:col-span-2 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-[rgba(185,28,28,0.45)] bg-[rgba(185,28,28,0.1)] px-4 py-3 text-sm text-[var(--tf-navy)]">
             <div className="min-w-0 space-y-1">
               <p className="font-semibold">

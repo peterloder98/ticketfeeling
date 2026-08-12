@@ -37,6 +37,7 @@ import { ensureScheduleChangedAtColumn } from "@/lib/commerce/ensure-schedule-ch
 import {
   clampEventCampaignsToNewEnd,
   clampEventCampaignsToNewStart,
+  isScheduleChangeAlertsEnabled,
   requiresStrictScheduleConfirm,
   scheduleEndChanged,
   scheduleStartChanged,
@@ -661,7 +662,9 @@ export async function updateEventAction(formData: FormData) {
     );
   }
 
+  const alertsEnabled = isScheduleChangeAlertsEnabled();
   const notifyBuyers =
+    alertsEnabled &&
     startChanged &&
     scheduleChangeConfirmed &&
     (requiresStrictScheduleConfirm(event.status) || ticketsSold > 0);
@@ -820,8 +823,13 @@ export async function updateEventAction(formData: FormData) {
           : "presale_active"
       : null;
 
+  // While alerts kill switch is off: still allow start edits, but do not stamp scheduleChangedAt.
   const scheduleChangedAt =
-    startChanged && scheduleChangeConfirmed ? new Date() : event.scheduleChangedAt;
+    alertsEnabled && startChanged && scheduleChangeConfirmed
+      ? new Date()
+      : event.scheduleChangedAt;
+  const stampScheduleChangedAt =
+    alertsEnabled && startChanged && scheduleChangeConfirmed;
 
   const oldStartsAt = event.eventStartsAt;
   const oldEndsAt = event.eventEndsAt;
@@ -856,7 +864,7 @@ export async function updateEventAction(formData: FormData) {
       administrationFeeCustomTaxRateBasisPoints,
       showRemainingAvailability,
       sepaMinDaysBeforeEvent,
-      ...(startChanged && scheduleChangeConfirmed ? { scheduleChangedAt } : {}),
+      ...(stampScheduleChangedAt ? { scheduleChangedAt } : {}),
       organizerName: String(formData.get("organizerName") ?? "").trim() || null,
       organizerContact: String(formData.get("organizerContact") ?? "").trim() || null,
       organizerStreet: String(formData.get("organizerStreet") ?? "").trim() || null,
@@ -964,7 +972,8 @@ export async function updateEventAction(formData: FormData) {
       ...(becomingOnSale ? { presaleStartsAt } : {}),
       ...(startChanged && scheduleChangeConfirmed
         ? {
-            scheduleChangedAt,
+            ...(stampScheduleChangedAt ? { scheduleChangedAt } : {}),
+            scheduleChangeAlertsEnabled: alertsEnabled,
             campaignsAdjusted,
             buyersEmailed,
           }
@@ -999,7 +1008,7 @@ export async function updateEventAction(formData: FormData) {
     eventId: event.id,
     venuePlanId,
     seatingBookingMode,
-    scheduleChanged: Boolean(startChanged && scheduleChangeConfirmed),
+    scheduleChanged: Boolean(stampScheduleChangedAt),
     buyersEmailed,
     campaignsAdjusted,
     coverMissing: !hasValidEventCover({

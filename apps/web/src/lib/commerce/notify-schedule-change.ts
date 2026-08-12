@@ -12,6 +12,7 @@ import {
   withOrderAccessQuery,
 } from "@/lib/commerce/order-access";
 import { writeAudit } from "@/lib/audit";
+import { isScheduleChangeAlertsEnabled } from "@/lib/commerce/schedule-change";
 
 function labelFor(date: Date | null | undefined): string | null {
   if (!date) return null;
@@ -42,6 +43,10 @@ export async function notifyBuyersOfScheduleChange(input: {
   oldDoorsOpenAt: Date | null;
   newDoorsOpenAt: Date | null;
 }): Promise<{ emailed: number; skipped: number }> {
+  if (!isScheduleChangeAlertsEnabled()) {
+    return { emailed: 0, skipped: 0 };
+  }
+
   const items = await prisma.orderItem.findMany({
     where: {
       eventId: input.eventId,

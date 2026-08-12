@@ -42,6 +42,7 @@ import {
 import { ensureWeihnachtstraum2026Venues } from "@/lib/commerce/ensure-weihnachtstraum-venues";
 import { formatLocationPlaceDisplay } from "@/lib/commerce/location-display";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
+import { shouldShowScheduleChangedBanner } from "@/lib/commerce/schedule-change";
 
 export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
@@ -422,7 +423,7 @@ export default async function EventPage({ params }: Props) {
                 </p>
               ) : null}
             </div>
-            {event.scheduleChangedAt ? (
+            {shouldShowScheduleChangedBanner(event.scheduleChangedAt) ? (
               <div className="mt-4 max-w-xl">
                 <ScheduleChangedBanner />
               </div>
