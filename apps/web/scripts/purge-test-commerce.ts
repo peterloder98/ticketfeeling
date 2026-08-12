@@ -6,7 +6,7 @@
  *   cd apps/web && npx tsx scripts/purge-test-commerce.ts --dry-run
  *   cd apps/web && npx tsx scripts/purge-test-commerce.ts
  *
- * Prefer Admin → System → Aufräumen in production (uses Vercel DATABASE_URL).
+ * Run against production only with Vercel DATABASE_URL pulled locally.
  */
 import { PrismaClient } from "@prisma/client";
 import { purgeTestCommerce } from "../src/lib/admin/purge-test-commerce";

@@ -165,13 +165,29 @@ function StorageOverview({ snapshot }: { snapshot: StorageUsageSnapshot }) {
             </thead>
             <tbody>
               {snapshot.categories.map((cat) => (
-                <tr key={cat.id} className="border-t border-[var(--tf-line)]">
+                <tr key={cat.id} className="border-t border-[var(--tf-line)] align-top">
                   <td className="px-4 py-3">
                     <p className="font-medium text-[var(--tf-navy)]">{cat.label}</p>
+                    <p className="mt-0.5 text-xs text-[var(--tf-text-secondary)]">{cat.description}</p>
                     {cat.id === "uploads" && snapshot.uploads.count > 0 ? (
                       <p className="mt-0.5 text-xs text-[var(--tf-text-secondary)]">
                         {snapshot.uploads.count.toLocaleString("de-DE")} Dateien
                       </p>
+                    ) : null}
+                    {cat.id === "other" && cat.breakdown && cat.breakdown.length > 0 ? (
+                      <ul className="mt-3 space-y-2 border-t border-[var(--tf-line)] pt-3">
+                        {cat.breakdown.map((item) => (
+                          <li key={item.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium text-[var(--tf-navy)]">{item.label}</p>
+                              <p className="text-xs text-[var(--tf-text-secondary)]">{item.description}</p>
+                            </div>
+                            <p className="shrink-0 tabular-nums text-xs text-[var(--tf-navy)]">
+                              {formatBytes(item.bytes)}
+                            </p>
+                          </li>
+                        ))}
+                      </ul>
                     ) : null}
                   </td>
                   <td className="px-4 py-3 tabular-nums text-[var(--tf-navy)]">
@@ -186,7 +202,13 @@ function StorageOverview({ snapshot }: { snapshot: StorageUsageSnapshot }) {
           </table>
         </div>
         <p className="text-xs text-[var(--tf-text-secondary)]">
-          Gemessen über Postgres (Tabellengrößen). Limit:{" "}
+          Gemessen über Postgres (Tabellen inkl. Indizes und TOAST). Daten:{" "}
+          {formatBytes(snapshot.structure.heapBytes)} · Indizes:{" "}
+          {formatBytes(snapshot.structure.indexBytes)}
+          {snapshot.structure.toastBytes > 0
+            ? ` · TOAST: ${formatBytes(snapshot.structure.toastBytes)}`
+            : null}
+          . Limit:{" "}
           {snapshot.limitSource === "STORAGE_LIMIT_BYTES"
             ? "STORAGE_LIMIT_BYTES"
             : snapshot.limitSource === "NEON_STORAGE_LIMIT_GB"
