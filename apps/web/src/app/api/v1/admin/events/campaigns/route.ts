@@ -305,8 +305,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: { code: "CATEGORY_MISMATCH" } }, { status: 400 });
     }
 
-    let validFrom = body.validFrom;
-    let validUntil = body.validUntil;
+    const validFrom = body.validFrom;
+    const validUntil = body.validUntil;
     if (Number.isNaN(validFrom.getTime()) || Number.isNaN(validUntil.getTime())) {
       return NextResponse.json(
         {
