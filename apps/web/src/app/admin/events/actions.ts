@@ -489,7 +489,14 @@ async function createEventFromFormData(
         membership.organizationId,
         created.id,
         artistDrafts,
+        { asTourOverride: Boolean(tourId) },
       );
+    } else if (tourId) {
+      // Empty line-up on a tour date → inherit tour artists
+      await tx.event.update({
+        where: { id: created.id },
+        data: { artistsUseTourDefaults: true },
+      });
     }
 
     return created;
@@ -701,6 +708,7 @@ export async function updateEventAction(formData: FormData) {
 
   // Cover is owned by CoverImageField (upload API). Only sync when tour link changes.
   let nextCoverUrl = event.coverImageUrl;
+  let artistsUseTourDefaults = event.artistsUseTourDefaults;
   if ((event.tourId ?? null) !== tourId) {
     if (tourId) {
       const previousTourCover = event.tourId
@@ -717,6 +725,14 @@ export async function updateEventAction(formData: FormData) {
       nextCoverUrl = wasInheriting
         ? await resolveCoverForTourEvent({ tourId, coverImageUrl: null })
         : event.coverImageUrl;
+      const eventArtistCount = await prisma.eventArtist.count({
+        where: { eventId: event.id },
+      });
+      // Keep existing event line-up as override when joining a tour; otherwise inherit.
+      artistsUseTourDefaults = eventArtistCount === 0;
+    } else {
+      // Leaving a tour: keep any event artists as the sole line-up.
+      artistsUseTourDefaults = true;
     }
   }
   const statusReadyInput = {
@@ -801,6 +817,7 @@ export async function updateEventAction(formData: FormData) {
       shortDescription,
       description,
       coverImageUrl: nextCoverUrl,
+      artistsUseTourDefaults,
       eventStartsAt,
       eventEndsAt,
       doorsOpenAt,

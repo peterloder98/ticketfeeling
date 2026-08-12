@@ -5,6 +5,7 @@ import {
 } from "@/lib/commerce/inventory-availability";
 import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { resolveEffectiveListingArtists } from "@/lib/commerce/effective-event-artists";
 
 export type ListingEvent = {
   id: string;
@@ -18,6 +19,7 @@ export type ListingEvent = {
   showRemainingAvailability: boolean;
   coverImageUrl: string | null;
   tourId: string | null;
+  artistsUseTourDefaults?: boolean;
   location: { name: string; city: string | null } | null;
   tour: {
     id: string;
@@ -26,6 +28,9 @@ export type ListingEvent = {
     coverImageUrl: string | null;
     description: string | null;
     visibility?: string;
+    artists?: {
+      artist: { name: string; profileImageUrl: string | null };
+    }[];
   } | null;
   ticketCategories: {
     id: string;
@@ -167,10 +172,7 @@ function cardFromDates(
       })),
     ),
     eventIds: ordered.map((d) => d.id),
-    artists: first.artists.map((a) => ({
-      name: a.artist.name,
-      imageUrl: a.artist.profileImageUrl,
-    })),
+    artists: resolveEffectiveListingArtists(first),
     dateCount: ordered.length,
   };
 }
@@ -196,10 +198,7 @@ function cardFromSingle(event: ListingEvent): PublicListingCard {
       pools: c.pools,
     })),
     eventIds: [event.id],
-    artists: event.artists.map((a) => ({
-      name: a.artist.name,
-      imageUrl: a.artist.profileImageUrl,
-    })),
+    artists: resolveEffectiveListingArtists(event),
     dateCount: 1,
   };
 }

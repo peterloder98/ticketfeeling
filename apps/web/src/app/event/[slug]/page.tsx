@@ -23,6 +23,7 @@ import {
 } from "@/lib/commerce/public-price";
 import { categoryNeedsSeats } from "@/lib/seating/types";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { resolveEffectiveArtistLinks } from "@/lib/commerce/effective-event-artists";
 import { channelAvailableQuantity } from "@/lib/commerce/inventory-availability";
 import {
   assignedUnlockedSeatCounts,
@@ -79,9 +80,23 @@ export default async function EventPage({ params }: Props) {
     include: {
       location: true,
       room: true,
-      tour: { select: { coverImageUrl: true, visibility: true } },
+      tour: {
+        select: {
+          coverImageUrl: true,
+          visibility: true,
+          artists: {
+            where: { announced: true, cancelled: false },
+            include: { artist: true },
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      },
       organization: { select: { name: true, settings: true } },
-      artists: { include: { artist: true }, orderBy: { sortOrder: "asc" } },
+      artists: {
+        where: { announced: true, cancelled: false },
+        include: { artist: true },
+        orderBy: { sortOrder: "asc" },
+      },
       ticketCategories: {
         where: { status: "active", onlineBookable: true },
         include: { pools: true },
@@ -91,6 +106,8 @@ export default async function EventPage({ params }: Props) {
   });
 
   if (!event) notFound();
+
+  const effectiveArtists = resolveEffectiveArtistLinks(event);
 
   // UI uses effective status; durable DB flip runs in background (cron + throttled batch).
   const { ensurePresaleAutoRelease } = await import("@/lib/commerce/ensure-presale-release");
@@ -461,7 +478,7 @@ export default async function EventPage({ params }: Props) {
           <div>
             <h2 className="tf-display text-2xl md:text-3xl">Line-up</h2>
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {event.artists.map((link) => {
+              {effectiveArtists.map((link) => {
                 const role = link.isHeadliner
                   ? "Headliner"
                   : link.role === "moderation"
@@ -494,7 +511,7 @@ export default async function EventPage({ params }: Props) {
                   </Link>
                 );
               })}
-              {event.artists.length === 0 ? (
+              {effectiveArtists.length === 0 ? (
                 <p className="text-base text-[var(--tf-text-secondary)]">Line-up folgt.</p>
               ) : null}
             </div>

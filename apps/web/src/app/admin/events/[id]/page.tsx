@@ -161,7 +161,30 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       include: {
         // Never `location: true` — Decimal lat/lng breaks Client Component serialization.
         location: { select: { id: true, name: true, city: true } },
-        tour: { select: { id: true, name: true, coverImageUrl: true, visibility: true } },
+        tour: {
+          select: {
+            id: true,
+            name: true,
+            coverImageUrl: true,
+            visibility: true,
+            artists: {
+              orderBy: { sortOrder: "asc" },
+              include: {
+                artist: {
+                  select: {
+                    id: true,
+                    name: true,
+                    homepage: true,
+                    youtube: true,
+                    shortBio: true,
+                    profileImageUrl: true,
+                    headerImageUrl: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         venuePlan: { select: { id: true, name: true, locationId: true } },
         ticketCategories: {
           orderBy: { sortOrder: "asc" },
@@ -192,6 +215,33 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
     );
   }
   if (!event) notFound();
+
+  const inheritsTourLineup = Boolean(
+    event.tourId && event.artistsUseTourDefaults !== false,
+  );
+  const tourLineupRows =
+    event.tour?.artists.map((link) => ({
+      key: link.id,
+      id: link.artist.id,
+      name: link.artist.name,
+      homepage: link.artist.homepage ?? "",
+      youtube: link.artist.youtube ?? "",
+      bio: link.artist.shortBio ?? "",
+      profileImageUrl: link.artist.profileImageUrl ?? "",
+      headerImageUrl: link.artist.headerImageUrl ?? "",
+      detailsOpen: false,
+    })) ?? [];
+  const effectiveAdminLineup = inheritsTourLineup ? tourLineupRows : event.artists.map((link) => ({
+    key: link.id,
+    id: link.artist.id,
+    name: link.artist.name,
+    homepage: link.artist.homepage ?? "",
+    youtube: link.artist.youtube ?? "",
+    bio: link.artist.shortBio ?? "",
+    profileImageUrl: link.artist.profileImageUrl ?? "",
+    headerImageUrl: link.artist.headerImageUrl ?? "",
+    detailsOpen: false,
+  }));
 
   let report;
   let locations: Array<{ id: string; name: string; city: string | null }> = [];
@@ -812,32 +862,53 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       <section id="lineup" className="tf-card !p-5 scroll-mt-24">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Line-up / Künstler</h2>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          Wer tritt auf? Namen reichen — Profile ergänzt du hier oder unter Künstler.
+          {event.tourId
+            ? "Standard: Tour-Line-up. Bei Bedarf nur für diesen Termin anpassen."
+            : "Wer tritt auf? Namen reichen — Profile ergänzt du hier oder unter Künstler."}
         </p>
         {canWrite ? (
           <EventLineupForm
             eventId={event.id}
             library={orgArtists}
-            initialLineup={event.artists.map((link) => ({
-              key: link.id,
-              id: link.artist.id,
-              name: link.artist.name,
-              homepage: link.artist.homepage ?? "",
-              youtube: link.artist.youtube ?? "",
-              bio: link.artist.shortBio ?? "",
-              profileImageUrl: link.artist.profileImageUrl ?? "",
-              headerImageUrl: link.artist.headerImageUrl ?? "",
-              detailsOpen: false,
-            }))}
+            initialLineup={
+              inheritsTourLineup
+                ? []
+                : event.artists.map((link) => ({
+                    key: link.id,
+                    id: link.artist.id,
+                    name: link.artist.name,
+                    homepage: link.artist.homepage ?? "",
+                    youtube: link.artist.youtube ?? "",
+                    bio: link.artist.shortBio ?? "",
+                    profileImageUrl: link.artist.profileImageUrl ?? "",
+                    headerImageUrl: link.artist.headerImageUrl ?? "",
+                    detailsOpen: false,
+                  }))
+            }
+            tour={
+              event.tour
+                ? {
+                    id: event.tour.id,
+                    name: event.tour.name,
+                    inherits: inheritsTourLineup,
+                    tourLineup: tourLineupRows,
+                  }
+                : null
+            }
           />
         ) : (
           <ul className="mt-4 space-y-1 text-sm">
-            {event.artists.length === 0 ? (
+            {effectiveAdminLineup.length === 0 ? (
               <li className="text-[var(--tf-text-secondary)]">Noch kein Line-up.</li>
             ) : (
-              event.artists.map((link) => (
-                <li key={link.id} className="font-medium text-[var(--tf-navy)]">
-                  {link.artist.name}
+              effectiveAdminLineup.map((row) => (
+                <li key={row.key} className="font-medium text-[var(--tf-navy)]">
+                  {row.name}
+                  {inheritsTourLineup ? (
+                    <span className="ml-2 text-xs font-normal text-[var(--tf-text-secondary)]">
+                      (Tour)
+                    </span>
+                  ) : null}
                 </li>
               ))
             )}

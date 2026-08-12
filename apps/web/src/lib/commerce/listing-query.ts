@@ -4,6 +4,15 @@ import { scheduleReleaseDuePresales } from "@/lib/commerce/ensure-presale-releas
 import type { ListingEvent } from "@/lib/commerce/public-listings";
 
 /** Slim include for public listing cards (homepage / events / embed). */
+export const publicListingArtistInclude = {
+  where: { announced: true, cancelled: false },
+  select: {
+    artist: { select: { name: true, profileImageUrl: true } },
+  },
+  orderBy: { sortOrder: "asc" as const },
+  take: 4,
+} as const;
+
 export const publicListingInclude = {
   location: { select: { name: true, city: true } },
   tour: {
@@ -14,6 +23,7 @@ export const publicListingInclude = {
       coverImageUrl: true,
       description: true,
       visibility: true,
+      artists: publicListingArtistInclude,
     },
   },
   ticketCategories: {
@@ -28,14 +38,7 @@ export const publicListingInclude = {
     },
     orderBy: { priceGrossCents: "asc" as const },
   },
-  artists: {
-    where: { announced: true, cancelled: false },
-    select: {
-      artist: { select: { name: true, profileImageUrl: true } },
-    },
-    orderBy: { sortOrder: "asc" as const },
-    take: 4,
-  },
+  artists: publicListingArtistInclude,
 } satisfies Prisma.EventInclude;
 
 export const PUBLIC_LISTING_STATUSES = [
@@ -56,6 +59,7 @@ const publicListingSelect = {
   showRemainingAvailability: true,
   coverImageUrl: true,
   tourId: true,
+  artistsUseTourDefaults: true,
   ...publicListingInclude,
 } satisfies Prisma.EventSelect;
 

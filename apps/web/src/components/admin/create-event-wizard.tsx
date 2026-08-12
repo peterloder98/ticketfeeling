@@ -1284,14 +1284,19 @@ export function CreateEventWizard({
           <div className="border-t border-[var(--tf-line)] pt-6">
             <h2 className="text-base font-semibold text-[var(--tf-navy)]">Künstler</h2>
             <p className="mt-1 mb-3 text-sm text-[var(--tf-text-secondary)]">
-              Wer steht auf der Bühne? Namen reichen erstmal — Bio, Homepage und YouTube kannst du
-              bei Bedarf gleich mitnehmen.
+              {selectedTour
+                ? "Leer lassen = Tour-Line-up übernehmen. Nur ausfüllen, wenn dieser Termin abweichen soll."
+                : "Wer steht auf der Bühne? Namen reichen erstmal — Bio, Homepage und YouTube kannst du bei Bedarf gleich mitnehmen."}
             </p>
             <ArtistLineupEditor
               value={lineup}
               onChange={setLineup}
               library={artistLibrary}
-              hint="Name tippen, Enter — fertig. Über „Details & Bild“ Profilbild und Infos ergänzen."
+              hint={
+                selectedTour
+                  ? "Optional für diesen Termin. Sonst gilt das Line-up der Tour."
+                  : "Name tippen, Enter — fertig. Über „Details & Bild“ Profilbild und Infos ergänzen."
+              }
             />
           </div>
         </div>

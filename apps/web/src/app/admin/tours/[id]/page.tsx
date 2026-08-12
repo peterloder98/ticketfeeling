@@ -9,7 +9,9 @@ import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { updateTourAction } from "@/app/admin/tours/actions";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
+import { TourLineupForm } from "@/components/admin/tour-lineup-form";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
+import { eventInheritsTourArtists } from "@/lib/commerce/effective-event-artists";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +48,22 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
   const tour = await prisma.tour.findFirst({
     where: { id, organizationId: membership.organizationId },
     include: {
+      artists: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          artist: {
+            select: {
+              id: true,
+              name: true,
+              homepage: true,
+              youtube: true,
+              shortBio: true,
+              profileImageUrl: true,
+              headerImageUrl: true,
+            },
+          },
+        },
+      },
       events: {
         orderBy: { eventStartsAt: "asc" },
         include: { location: { select: { name: true, city: true } } },
@@ -54,8 +72,33 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
   });
   if (!tour) notFound();
 
+  const orgArtists = await prisma.artist.findMany({
+    where: { organizationId: membership.organizationId },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      homepage: true,
+      youtube: true,
+      shortBio: true,
+      profileImageUrl: true,
+      headerImageUrl: true,
+    },
+  });
+
   const dateValue = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : "");
   const hasCover = Boolean(tour.coverImageUrl?.trim());
+  const tourLineup = tour.artists.map((link) => ({
+    key: link.id,
+    id: link.artist.id,
+    name: link.artist.name,
+    homepage: link.artist.homepage ?? "",
+    youtube: link.artist.youtube ?? "",
+    bio: link.artist.shortBio ?? "",
+    profileImageUrl: link.artist.profileImageUrl ?? "",
+    headerImageUrl: link.artist.headerImageUrl ?? "",
+    detailsOpen: false,
+  }));
 
   return (
     <div className="space-y-6">
@@ -166,12 +209,40 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
         </form>
       ) : null}
 
+      <section className="tf-card space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold text-[var(--tf-navy)]">1b. Tour-Line-up</h2>
+          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+            Zentrale Künstler für alle Termine. Einzeltermine können bei Bedarf abweichen.
+          </p>
+        </div>
+        {canWrite ? (
+          <TourLineupForm
+            tourId={tour.id}
+            library={orgArtists}
+            initialLineup={tourLineup}
+          />
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {tour.artists.length === 0 ? (
+              <li className="text-[var(--tf-text-secondary)]">Noch kein Line-up.</li>
+            ) : (
+              tour.artists.map((link) => (
+                <li key={link.id} className="font-medium text-[var(--tf-navy)]">
+                  {link.artist.name}
+                </li>
+              ))
+            )}
+          </ul>
+        )}
+      </section>
+
       <section className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-[var(--tf-navy)]">2. Einzeltermine</h2>
             <p className="text-sm text-[var(--tf-text-secondary)]">
-              Jeder Termin = Ort + Datum. Cover standardmäßig vom Tour-Plakat.
+              Jeder Termin = Ort + Datum. Cover und Line-up standardmäßig von der Tour.
               Sichtbarkeit und Verkauf steuerst du pro Termin über den Status (z. B. Entwurf
               bleibt privat, auch wenn die Tour schon öffentlich ist).
             </p>
@@ -229,6 +300,9 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
                 </p>
                 <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
                   Cover: {usesTour ? "Tour-Plakat" : event.coverImageUrl ? "eigenes Termin-Cover" : "fehlt"}
+                  {" · "}
+                  Line-up:{" "}
+                  {eventInheritsTourArtists(event) ? "Tour" : "eigenes Termin-Line-up"}
                 </p>
               </div>
               <span className="text-xs text-[var(--tf-text-secondary)]">

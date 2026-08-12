@@ -279,10 +279,30 @@ async function loadPublicEvents(organizationId: string) {
         include: { artist: true },
         orderBy: { sortOrder: "asc" },
       },
+      tour: {
+        select: {
+          artists: {
+            where: { announced: true, cancelled: false },
+            include: { artist: true },
+            orderBy: { sortOrder: "asc" },
+          },
+        },
+      },
     },
     orderBy: { eventStartsAt: "asc" },
     take: 40,
   });
+}
+
+function eventArtistNames(event: EventWithCats) {
+  const inherit = Boolean(event.tourId && event.artistsUseTourDefaults !== false);
+  const links = inherit && event.tour?.artists ? event.tour.artists : event.artists;
+  return links.map((a) => a.artist.name);
+}
+
+function eventArtistLinks(event: EventWithCats) {
+  const inherit = Boolean(event.tourId && event.artistsUseTourDefaults !== false);
+  return inherit && event.tour?.artists ? event.tour.artists : event.artists;
 }
 
 function scoreEvent(event: EventWithCats, message: string) {
@@ -294,7 +314,7 @@ function scoreEvent(event: EventWithCats, message: string) {
       event.shortDescription ?? "",
       event.location?.name ?? "",
       event.location?.city ?? "",
-      ...event.artists.map((a) => a.artist.name),
+      ...eventArtistNames(event),
     ].join(" "),
   );
   const stop = new Set([
@@ -648,12 +668,13 @@ export async function handleSupportChat(input: {
     if (artists.length === 0) {
       // maybe they asked generically "wer ist dabei" about an event
       const matches = pickEvents(events, input.message, 2);
-      if (matches.length > 0 && matches[0].artists.length > 0) {
+      if (matches.length > 0 && eventArtistLinks(matches[0]).length > 0) {
         const event = matches[0];
-        const names = event.artists.map((a) => a.artist.name).join(", ");
+        const links = eventArtistLinks(event);
+        const names = links.map((a) => a.artist.name).join(", ");
         answer = `Beim Event „${event.name}“ sind u. a. dabei: ${names}.`;
         suggestedActions.push({ label: "Event öffnen", href: `/event/${event.slug}` });
-        for (const link of event.artists.slice(0, 3)) {
+        for (const link of links.slice(0, 3)) {
           suggestedActions.push({
             label: link.artist.name,
             href: `/kuenstler/${link.artist.slug}`,
@@ -667,37 +688,83 @@ export async function handleSupportChat(input: {
     } else {
       const blocks: string[] = [];
       for (const artist of artists) {
-        const links = await prisma.eventArtist.findMany({
-          where: {
-            artistId: artist.id,
-            cancelled: false,
-            event: { organizationId, status: { in: [...PUBLIC_STATUSES] } },
-          },
-          include: {
-            event: { include: { location: true } },
-          },
-          orderBy: { event: { eventStartsAt: "asc" } },
+        const [directLinks, tourLinks] = await Promise.all([
+          prisma.eventArtist.findMany({
+            where: {
+              artistId: artist.id,
+              cancelled: false,
+              event: {
+                organizationId,
+                status: { in: [...PUBLIC_STATUSES] },
+                OR: [{ tourId: null }, { artistsUseTourDefaults: false }],
+              },
+            },
+            include: {
+              event: { include: { location: true } },
+            },
+            orderBy: { event: { eventStartsAt: "asc" } },
+          }),
+          prisma.tourArtist.findMany({
+            where: {
+              artistId: artist.id,
+              cancelled: false,
+              tour: { organizationId },
+            },
+            include: {
+              tour: {
+                include: {
+                  events: {
+                    where: {
+                      organizationId,
+                      status: { in: [...PUBLIC_STATUSES] },
+                      artistsUseTourDefaults: true,
+                    },
+                    include: { location: true },
+                    orderBy: { eventStartsAt: "asc" },
+                  },
+                },
+              },
+            },
+          }),
+        ]);
+        const eventsById = new Map<
+          string,
+          | (typeof directLinks)[number]["event"]
+          | (typeof tourLinks)[number]["tour"]["events"][number]
+        >();
+        for (const link of directLinks) {
+          eventsById.set(link.event.id, link.event);
+        }
+        for (const link of tourLinks) {
+          for (const event of link.tour.events) {
+            if (!eventsById.has(event.id)) eventsById.set(event.id, event);
+          }
+        }
+        const linkedEvents = [...eventsById.values()].sort((a, b) => {
+          const at = a.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+          const bt = b.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+          return at - bt;
         });
-        if (links.length === 0) {
+        if (linkedEvents.length === 0) {
           blocks.push(`Zu ${artist.name} sind gerade keine öffentlichen Termine hinterlegt.`);
         } else {
-          const lines = links.map((link) => {
-            const when = link.event.eventStartsAt
-              ? link.event.eventStartsAt.toLocaleString("de-DE", {
+          const lines = linkedEvents.map((event) => {
+            const when = event.eventStartsAt
+              ? event.eventStartsAt.toLocaleString("de-DE", {
                   timeZone: "Europe/Berlin",
                   dateStyle: "medium",
                   timeStyle: "short",
                 })
               : "Termin folgt";
-            const where = link.event.location?.name ?? "Ort folgt";
-            return `• ${link.event.name} — ${when} · ${where}`;
+            const where = event.location?.name ?? "Ort folgt";
+            return `• ${event.name} — ${when} · ${where}`;
           });
           blocks.push(`${artist.name} ist dabei bei:\n${lines.join("\n")}`);
           suggestedActions.push({ label: artist.name, href: `/kuenstler/${artist.slug}` });
-          for (const link of links.slice(0, 2)) {
+          for (const event of linkedEvents.slice(0, 2)) {
             suggestedActions.push({
-              label: link.event.name.slice(0, 40),
-              href: `/event/${link.event.slug}`,
+              label: event.name.slice(0, 40),
+              href: `/event/${event.slug}`,
             });
           }
         }
@@ -717,10 +784,8 @@ export async function handleSupportChat(input: {
       const doors = event.doorsOpenAt
         ? event.doorsOpenAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })
         : "siehe Eventseite";
-      const lineup =
-        event.artists.length > 0
-          ? `\nLine-up: ${event.artists.map((a) => a.artist.name).join(", ")}`
-          : "";
+      const names = eventArtistNames(event);
+      const lineup = names.length > 0 ? `\nLine-up: ${names.join(", ")}` : "";
       const priceHint =
         event.ticketCategories.length > 0
           ? `\nTickets ab ${formatEuroFromCents(Math.min(...event.ticketCategories.map((c) => c.priceGrossCents)))}`

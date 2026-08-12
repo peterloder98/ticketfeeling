@@ -115,6 +115,7 @@ export async function syncEventArtistsInTx(
   organizationId: string,
   eventId: string,
   drafts: ArtistLineupDraft[],
+  opts?: { asTourOverride?: boolean },
 ) {
   const artistIds: string[] = [];
   for (const draft of drafts) {
@@ -153,4 +154,66 @@ export async function syncEventArtistsInTx(
       },
     });
   }
+
+  if (opts?.asTourOverride) {
+    await tx.event.update({
+      where: { id: eventId },
+      data: { artistsUseTourDefaults: false },
+    });
+  }
+}
+
+/** Create/update org artists and link them to a tour (order = array index). */
+export async function syncTourArtistsInTx(
+  tx: Tx,
+  organizationId: string,
+  tourId: string,
+  drafts: ArtistLineupDraft[],
+) {
+  const artistIds: string[] = [];
+  for (const draft of drafts) {
+    artistIds.push(await resolveArtistId(tx, organizationId, draft));
+  }
+
+  const existing = await tx.tourArtist.findMany({
+    where: { tourId },
+    select: { id: true, artistId: true },
+  });
+  const keep = new Set(artistIds);
+  const toRemove = existing.filter((e) => !keep.has(e.artistId));
+  if (toRemove.length > 0) {
+    await tx.tourArtist.deleteMany({
+      where: { id: { in: toRemove.map((e) => e.id) } },
+    });
+  }
+
+  for (let i = 0; i < artistIds.length; i += 1) {
+    const artistId = artistIds[i]!;
+    await tx.tourArtist.upsert({
+      where: { tourId_artistId: { tourId, artistId } },
+      update: {
+        sortOrder: i,
+        role: i === 0 ? "headliner" : "artist",
+        isHeadliner: i === 0,
+        announced: true,
+      },
+      create: {
+        tourId,
+        artistId,
+        sortOrder: i,
+        role: i === 0 ? "headliner" : "artist",
+        isHeadliner: i === 0,
+        announced: true,
+      },
+    });
+  }
+}
+
+/** Drop event override and inherit tour line-up again. */
+export async function clearEventArtistOverrideInTx(tx: Tx, eventId: string) {
+  await tx.eventArtist.deleteMany({ where: { eventId } });
+  await tx.event.update({
+    where: { id: eventId },
+    data: { artistsUseTourDefaults: true },
+  });
 }

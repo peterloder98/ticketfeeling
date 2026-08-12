@@ -68,11 +68,15 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
         include: { event: { select: { id: true, name: true, slug: true, eventStartsAt: true } } },
         orderBy: { sortOrder: "asc" },
       },
+      tourLinks: {
+        include: { tour: { select: { id: true, name: true, slug: true } } },
+        orderBy: { sortOrder: "asc" },
+      },
     },
   });
   if (!artist) notFound();
 
-  const linkedCount = artist.eventLinks.length;
+  const linkedCount = artist.eventLinks.length + artist.tourLinks.length;
   const deleteErrorMessage =
     deleteError === "name"
       ? "Bitte den exakten Künstlernamen zur Bestätigung eingeben."
@@ -335,10 +339,38 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
       )}
 
       <section className="tf-card space-y-3">
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Touren</h2>
+        {artist.tourLinks.length === 0 ? (
+          <p className="text-sm text-[var(--tf-text-secondary)]">
+            Noch keiner Tour zugeordnet — unter Tour → Line-up hinzufügen.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {artist.tourLinks.map((link) => (
+              <li key={link.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <Link
+                  href={`/admin/tours/${link.tour.id}`}
+                  className="font-medium text-[var(--tf-navy)] underline-offset-2 hover:underline"
+                >
+                  {link.tour.name}
+                </Link>
+                <Link
+                  href={`/admin/tours/${link.tour.id}`}
+                  className="tf-btn tf-btn-ghost !min-h-8 text-xs"
+                >
+                  Tour öffnen
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="tf-card space-y-3">
         <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Events</h2>
         {artist.eventLinks.length === 0 ? (
           <p className="text-sm text-[var(--tf-text-secondary)]">
-            Noch keinem Event zugeordnet — im Event unter Line-up hinzufügen.
+            Kein eigenes Termin-Line-up — Tour-Termine erscheinen über die Tour-Zuordnung.
           </p>
         ) : (
           <ul className="space-y-2">
@@ -379,9 +411,9 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
             <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
               {linkedCount === 0
                 ? "Löscht das Profil endgültig. Das lässt sich nicht rückgängig machen."
-                : `Dieser Künstler ist in ${linkedCount} Event${
+                : `Dieser Künstler ist in ${linkedCount} Line-up${
                     linkedCount === 1 ? "" : "s"
-                  } im Line-up. Beim Löschen wird er dort entfernt — die Events bleiben.`}
+                  } (Events/Touren). Beim Löschen wird er dort entfernt — Touren und Events bleiben.`}
             </p>
           </div>
           <form action={deleteArtistAction} className="space-y-3">
@@ -396,7 +428,7 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
                   required
                 />
                 <span>
-                  Ja, aus allen Event-Line-ups entfernen und diesen Künstler löschen.
+                  Ja, aus allen Event- und Tour-Line-ups entfernen und diesen Künstler löschen.
                 </span>
               </label>
             ) : null}

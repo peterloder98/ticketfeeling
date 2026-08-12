@@ -20,6 +20,8 @@ function safeEventSlug(raw: string | undefined): string | null {
   return slug;
 }
 
+const UPCOMING_STATUSES = ["announcement", "published", "presale_active", "planned"];
+
 export async function generateMetadata({ params }: Props) {
   const { slug } = await params;
   const artist = await prisma.artist.findFirst({ where: { slug } });
@@ -33,18 +35,44 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     where: { slug, visibility: "published" },
     include: {
       eventLinks: {
+        where: { cancelled: false },
         include: { event: true },
         orderBy: { sortOrder: "asc" },
+      },
+      tourLinks: {
+        where: { cancelled: false },
+        include: {
+          tour: {
+            include: {
+              events: {
+                where: { artistsUseTourDefaults: true },
+              },
+            },
+          },
+        },
       },
     },
   });
 
   if (!artist) notFound();
 
+  type LinkedEvent = (typeof artist.eventLinks)[number]["event"];
+  const eventsById = new Map<string, LinkedEvent>();
+  for (const link of artist.eventLinks) {
+    eventsById.set(link.event.id, link.event);
+  }
+  for (const link of artist.tourLinks) {
+    for (const event of link.tour.events) {
+      if (!eventsById.has(event.id)) {
+        eventsById.set(event.id, event);
+      }
+    }
+  }
+
   const fromEventSlug = safeEventSlug(sp.event);
   const backEvent =
     fromEventSlug &&
-    artist.eventLinks.find((link) => link.event.slug === fromEventSlug)?.event;
+    [...eventsById.values()].find((event) => event.slug === fromEventSlug);
 
   const homepage =
     artist.homepage && /^https?:\/\//i.test(artist.homepage) ? artist.homepage : null;
@@ -56,9 +84,13 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         : "Offizielle Website"
     : null;
 
-  const upcoming = artist.eventLinks.filter((link) =>
-    ["announcement", "published", "presale_active", "planned"].includes(link.event.status),
-  );
+  const upcoming = [...eventsById.values()]
+    .filter((event) => UPCOMING_STATUSES.includes(event.status))
+    .sort((a, b) => {
+      const at = a.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+      const bt = b.eventStartsAt?.getTime() ?? Number.POSITIVE_INFINITY;
+      return at - bt;
+    });
 
   return (
     <div>
@@ -140,15 +172,15 @@ export default async function ArtistPage({ params, searchParams }: Props) {
           <h2 className="tf-display text-2xl">Nächste Events</h2>
           {upcoming.length > 0 ? (
             <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {upcoming.map((link) => (
-                <li key={link.id}>
+              {upcoming.map((event) => (
+                <li key={event.id}>
                   <Link
-                    href={`/event/${link.event.slug}`}
+                    href={`/event/${event.slug}`}
                     className="tf-card tf-card-hover block !p-4"
                   >
-                    <p className="font-semibold text-[var(--tf-navy)]">{link.event.name}</p>
+                    <p className="font-semibold text-[var(--tf-navy)]">{event.name}</p>
                     <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-                      {link.event.eventStartsAt?.toLocaleString("de-DE", {
+                      {event.eventStartsAt?.toLocaleString("de-DE", {
                         timeZone: "Europe/Berlin",
                       }) ?? "Termin folgt"}
                     </p>

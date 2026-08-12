@@ -549,6 +549,7 @@ model Artist {
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   eventLinks   EventArtist[]
+  tourLinks    TourArtist[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, visibility])
@@ -658,9 +659,28 @@ model Tour {
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   events       Event[]
+  artists      TourArtist[]
 
   @@unique([organizationId, slug])
   @@map("tours")
+}
+
+/// Central tour line-up. Events with artistsUseTourDefaults inherit these.
+model TourArtist {
+  id          String  @id @default(uuid()) @db.Uuid
+  tourId      String  @map("tour_id") @db.Uuid
+  artistId    String  @map("artist_id") @db.Uuid
+  role        String  @default("artist")
+  isHeadliner Boolean @default(false) @map("is_headliner")
+  sortOrder   Int     @default(0) @map("sort_order")
+  announced   Boolean @default(true)
+  cancelled   Boolean @default(false)
+
+  tour   Tour   @relation(fields: [tourId], references: [id], onDelete: Cascade)
+  artist Artist @relation(fields: [artistId], references: [id], onDelete: Cascade)
+
+  @@unique([tourId, artistId])
+  @@map("tour_artists")
 }
 
 model Event {
@@ -765,6 +785,9 @@ model Event {
   room         LocationRoom? @relation(fields: [roomId], references: [id], onDelete: SetNull)
   venuePlan    VenuePlan?    @relation(fields: [venuePlanId], references: [id], onDelete: SetNull)
   tour         Tour?         @relation(fields: [tourId], references: [id], onDelete: SetNull)
+  /// When true and tourId is set, public/admin effective line-up comes from TourArtist.
+  /// When false, EventArtist rows are the override for this date.
+  artistsUseTourDefaults Boolean @default(true) @map("artists_use_tour_defaults")
   artists      EventArtist[]
   ticketCategories EventTicketCategory[]
   inventoryPools InventoryPool[]

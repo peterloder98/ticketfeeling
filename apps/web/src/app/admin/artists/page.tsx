@@ -37,7 +37,7 @@ export default async function AdminArtistsPage({ searchParams }: Props) {
 
   const artists = await prisma.artist.findMany({
     where: { organizationId: membership.organizationId },
-    include: { _count: { select: { eventLinks: true } } },
+    include: { _count: { select: { eventLinks: true, tourLinks: true } } },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
   });
 
@@ -166,9 +166,26 @@ export default async function AdminArtistsPage({ searchParams }: Props) {
                 <p className="text-sm text-[var(--tf-text-secondary)]">
                   {artist.visibility === "published" ? "Veröffentlicht" : "Entwurf"}
                   {" · "}
-                  {artist._count.eventLinks === 1
-                    ? "1 Event"
-                    : `${artist._count.eventLinks} Events`}
+                  {(() => {
+                    const n = artist._count.eventLinks + artist._count.tourLinks;
+                    if (n === 0) return "nicht verknüpft";
+                    const parts: string[] = [];
+                    if (artist._count.eventLinks > 0) {
+                      parts.push(
+                        artist._count.eventLinks === 1
+                          ? "1 Event"
+                          : `${artist._count.eventLinks} Events`,
+                      );
+                    }
+                    if (artist._count.tourLinks > 0) {
+                      parts.push(
+                        artist._count.tourLinks === 1
+                          ? "1 Tour"
+                          : `${artist._count.tourLinks} Touren`,
+                      );
+                    }
+                    return parts.join(" · ");
+                  })()}
                   {artist.homepage || artist.youtube || artist.shortBio
                     ? " · Profil mit Infos"
                     : " · nur Name"}
