@@ -30,6 +30,7 @@ import {
   ensureScheduleChangedAtColumn,
   isWeihnachtstraum2026Slug,
 } from "@/lib/commerce/ensure-schedule-changed";
+import { ensureWeihnachtstraum2026Venues } from "@/lib/commerce/ensure-weihnachtstraum-venues";
 
 export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
@@ -45,7 +46,10 @@ export async function generateMetadata({ params }: Props) {
 export default async function EmbedEventShopPage({ params }: Props) {
   const { slug } = await params;
   if (isWeihnachtstraum2026Slug(slug)) {
-    await clearWeihnachtstraum2026ScheduleNotices();
+    await Promise.all([
+      clearWeihnachtstraum2026ScheduleNotices(),
+      ensureWeihnachtstraum2026Venues(),
+    ]);
   }
   // Never block public embed GET on DDL ensures (prod is migrate-deploy).
   if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {

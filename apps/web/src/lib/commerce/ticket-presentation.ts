@@ -13,6 +13,10 @@ import {
   orderItemCustomerPaidCents,
 } from "@/lib/commerce/public-price";
 import {
+  formatLocationCityLine,
+  formatLocationStreetLine,
+} from "@/lib/commerce/location-display";
+import {
   formatProminentPlaceLabel,
   isVipCategory,
   resolvePlaceLabel,
@@ -74,8 +78,8 @@ function locationLines(location: {
   city?: string | null;
 } | null): string[] {
   if (!location) return ["—"];
-  const street = [location.street, location.houseNumber].filter(Boolean).join(" ");
-  const city = [location.postalCode, location.city].filter(Boolean).join(" ");
+  const street = formatLocationStreetLine(location);
+  const city = formatLocationCityLine(location);
   return [location.name, street, city].filter(Boolean) as string[];
 }
 

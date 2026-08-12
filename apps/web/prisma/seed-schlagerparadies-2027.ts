@@ -306,9 +306,10 @@ async function main() {
       name: "Bürgersaal Ergolding",
       city: "Ergolding",
       postalCode: "84030",
-      street: "Am Bürgersaal",
+      street: "Lindenstraße",
+      houseNumber: "40",
       country: "DE",
-      description: "Bürgersaal Ergolding — zentrale Location für große Schlagerabende.",
+      description: "Bürgersaal Ergolding, Lindenstraße 40, 84030 Ergolding, Deutschland.",
     },
     create: {
       organizationId: org.id,
@@ -316,10 +317,11 @@ async function main() {
       slug: "buergersaal-ergolding",
       city: "Ergolding",
       postalCode: "84030",
-      street: "Am Bürgersaal",
+      street: "Lindenstraße",
+      houseNumber: "40",
       country: "DE",
       maxCapacity: 1200,
-      description: "Bürgersaal Ergolding — zentrale Location für große Schlagerabende.",
+      description: "Bürgersaal Ergolding, Lindenstraße 40, 84030 Ergolding, Deutschland.",
     },
   });
 

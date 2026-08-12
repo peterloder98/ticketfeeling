@@ -39,6 +39,8 @@ import {
   ensureScheduleChangedAtColumn,
   isWeihnachtstraum2026Slug,
 } from "@/lib/commerce/ensure-schedule-changed";
+import { ensureWeihnachtstraum2026Venues } from "@/lib/commerce/ensure-weihnachtstraum-venues";
+import { formatLocationPlaceDisplay } from "@/lib/commerce/location-display";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 
 export const preferredRegion = "fra1";
@@ -77,9 +79,12 @@ function formatEventDate(date: Date) {
 
 export default async function EventPage({ params }: Props) {
   const { slug } = await params;
-  // WT 2026 dates are final — clear stale public banner (data fix; safe in prod).
+  // WT 2026: clear stale schedule banner + fix venue streets (data only; safe in prod).
   if (isWeihnachtstraum2026Slug(slug)) {
-    await clearWeihnachtstraum2026ScheduleNotices();
+    await Promise.all([
+      clearWeihnachtstraum2026ScheduleNotices(),
+      ensureWeihnachtstraum2026Venues(),
+    ]);
   }
   // Production skips DDL ensure* (migrate-deploy). Never await DDL probes on public GET.
   if (process.env.NODE_ENV !== "production" && process.env.VERCEL !== "1") {
@@ -322,16 +327,11 @@ export default async function EventPage({ params }: Props) {
   ];
   const eventStartsIso = event.eventStartsAt?.toISOString() ?? null;
 
-  const placeName = event.location?.name ?? null;
-  const placeAddress = event.location
-    ? [
-        [event.location.street, event.location.houseNumber].filter(Boolean).join(" "),
-        [event.location.postalCode, event.location.city].filter(Boolean).join(" "),
-      ]
-        .filter(Boolean)
-        .join(", ")
-    : null;
-  const place = [placeName, placeAddress || event.location?.city].filter(Boolean).join(" · ") || null;
+  const {
+    name: placeName,
+    addressLine: placeAddress,
+    label: place,
+  } = formatLocationPlaceDisplay(event.location);
 
   const hasVipCategory = event.ticketCategories.some(
     (c) => c.categoryKind === "vip" || /^vip/i.test(c.name),
