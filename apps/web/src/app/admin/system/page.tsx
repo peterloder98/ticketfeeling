@@ -12,7 +12,7 @@ export default function SystemHubPage() {
         </p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight text-[var(--tf-navy)]">System</h1>
         <p className="mt-2 text-[var(--tf-text-secondary)]">
-          Benutzer, Speicher, Support und Audit-Protokoll.
+          Benutzer, Speicher, Aufräumen, Support und Audit-Protokoll.
         </p>
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.system} />

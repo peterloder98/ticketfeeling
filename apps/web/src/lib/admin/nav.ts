@@ -156,6 +156,11 @@ export const ADMIN_SUBNAV = {
       description: "Belegung, Freiraum & Warnung",
     },
     {
+      href: "/admin/system/aufraeumen",
+      label: "Aufräumen",
+      description: "Testdaten löschen (Gefahrenzone)",
+    },
+    {
       href: "/admin/benutzer",
       label: "Benutzerverwaltung",
       description: "Admin, Vorverkauf, Scanner",
