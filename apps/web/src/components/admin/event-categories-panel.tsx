@@ -104,8 +104,10 @@ function CategoryColorField({
           value={color}
           onChange={(e) => setColor(e.target.value)}
           placeholder="#14B8A6"
-          pattern="^$|^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
           title="Hex-Farbe, z. B. #14B8A6 — leer = Standard"
+          inputMode="text"
+          autoComplete="off"
+          spellCheck={false}
         />
         <div className="flex flex-wrap gap-1.5">
           {COLOR_PRESETS.slice(0, 6).map((preset) => (
@@ -390,6 +392,11 @@ export function EventCategoriesPanel({
       return;
     }
     const fd = new FormData(form);
+    const colorRaw = String(fd.get("color") ?? "").trim();
+    if (colorRaw && !/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(colorRaw)) {
+      setError("Farbe bitte als Hex angeben, z. B. #14B8A6 — oder leer lassen.");
+      return;
+    }
     setSavingId(categoryId ?? "new");
     setError(null);
     setMessage(null);
@@ -407,7 +414,7 @@ export function EventCategoriesPanel({
           maxPerOrder: Number(fd.get("maxPerOrder") ?? 10),
           categoryKind: String(fd.get("categoryKind") ?? "standard"),
           companionFree: fd.get("companionFree") === "on",
-          color: String(fd.get("color") ?? "").trim() || null,
+          color: colorRaw || null,
           ...(fd.has("doorsOpenAt")
             ? { doorsOpenAt: String(fd.get("doorsOpenAt") ?? "").trim() || null }
             : {}),
@@ -526,6 +533,7 @@ export function EventCategoriesPanel({
               {canWrite ? (
                 <form
                   className="grid grid-cols-2 gap-x-2 gap-y-2 text-sm"
+                  noValidate
                   onSubmit={(e) => {
                     e.preventDefault();
                     void saveCategory(e.currentTarget, cat.id);
@@ -638,6 +646,7 @@ export function EventCategoriesPanel({
         <form
           key={newFormKey}
           className="tf-card grid max-w-xl gap-3 text-sm"
+          noValidate
           onSubmit={(e) => {
             e.preventDefault();
             void saveCategory(e.currentTarget);

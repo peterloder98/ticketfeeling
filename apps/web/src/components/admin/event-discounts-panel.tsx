@@ -1,12 +1,21 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { SmartDateTimeInput } from "@/components/admin/smart-datetime-input";
 import { parseDatetimeLocalBerlin, toDatetimeLocalValue } from "@/lib/admin/event-form";
 import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { formatEuroFromCents } from "@/lib/money";
 
 type CategoryOpt = { id: string; name: string; priceGrossCents: number };
+
+type TourSibling = {
+  id: string;
+  name: string;
+  eventStartsAt: string | null;
+  locationName: string | null;
+  city: string | null;
+};
 
 type CampaignRow = {
   id: string;
@@ -32,6 +41,22 @@ type AccessibilityState = {
   valueDisplay: number;
 };
 
+type CampaignDraft = {
+  campaignId?: string;
+  name: string;
+  active: boolean;
+  validFrom: string;
+  validUntil: string;
+  type: "percent" | "fixed";
+  valueDisplay: number;
+  channels: "online" | "box_office" | "both";
+  applyMode: "unit" | "order";
+  minQuantity: number;
+  badgeLabel: string;
+  badgeDisclaimer: string;
+  categoryIds: string[];
+};
+
 const CAMPAIGN_END_CLAMP_MSG =
   "Aktionsende lag nach dem Eventende und wurde auf das Eventende gesetzt.";
 
@@ -45,6 +70,24 @@ function fromLocalInput(local: string) {
   const d = parseDatetimeLocalBerlin(local);
   if (!d) throw new Error("Bitte gültige Daten für Von und Bis angeben.");
   return d.toISOString();
+}
+
+function siblingLabel(s: TourSibling): string {
+  const when = s.eventStartsAt
+    ? formatDeDateTime(new Date(s.eventStartsAt), {
+        weekday: "short",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  const place = [s.locationName, s.city].filter(Boolean).join(", ") || null;
+  if (when && place) return `${when} · ${place}`;
+  if (when) return when;
+  if (place) return place;
+  return s.name;
 }
 
 export function EventDiscountsPanel({
@@ -64,6 +107,7 @@ export function EventDiscountsPanel({
   const [warnMsg, setWarnMsg] = useState<string | null>(null);
   const [categories, setCategories] = useState<CategoryOpt[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
+  const [tourSiblings, setTourSiblings] = useState<TourSibling[]>([]);
   const [eventEndsAt, setEventEndsAt] = useState<string | null>(eventEndsAtProp ?? null);
   const [access, setAccess] = useState<AccessibilityState>({
     enabled: false,
@@ -73,21 +117,11 @@ export function EventDiscountsPanel({
     valueDisplay: 10,
   });
 
-  const [draft, setDraft] = useState<{
-    campaignId?: string;
-    name: string;
-    active: boolean;
-    validFrom: string;
-    validUntil: string;
-    type: "percent" | "fixed";
-    valueDisplay: number;
-    channels: "online" | "box_office" | "both";
-    applyMode: "unit" | "order";
-    minQuantity: number;
-    badgeLabel: string;
-    badgeDisclaimer: string;
-    categoryIds: string[];
-  } | null>(null);
+  const [draft, setDraft] = useState<CampaignDraft | null>(null);
+  const [tourScopeOpen, setTourScopeOpen] = useState(false);
+  const [tourScopeMode, setTourScopeMode] = useState<"this" | "multi">("this");
+  const [selectedSiblingIds, setSelectedSiblingIds] = useState<string[]>([]);
+  const tourDialogTitleId = useId();
 
   const eventBoundDate = (() => {
     if (!eventEndsAt) return null;
@@ -166,6 +200,7 @@ export function EventDiscountsPanel({
           badgeDisclaimer: c.badgeDisclaimer ?? null,
         })),
       );
+      setTourSiblings(Array.isArray(data.tourSiblings) ? data.tourSiblings : []);
       if (data.eventEndsAt || data.eventStartsAt) {
         setEventEndsAt(data.eventEndsAt ?? data.eventStartsAt ?? null);
       } else if (eventEndsAtProp) {
@@ -188,6 +223,15 @@ export function EventDiscountsPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!tourScopeOpen) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape" && !saving) setTourScopeOpen(false);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [tourScopeOpen, saving]);
 
   async function saveAccessibility() {
     if (!canWrite) return;
@@ -219,25 +263,20 @@ export function EventDiscountsPanel({
     }
   }
 
-  async function saveCampaign() {
-    if (!canWrite || !draft) return;
-    if (draft.categoryIds.length < 1) {
-      setError("Bitte mindestens eine Preiskategorie wählen.");
-      return;
-    }
+  async function persistCampaign(nextDraft: CampaignDraft, alsoEventIds: string[]) {
     setSaving(true);
     setError(null);
     setOkMsg(null);
     setWarnMsg(null);
     try {
-      const clamped = clampDraftDates(draft.validFrom, draft.validUntil);
-      const nextDraft = {
-        ...draft,
+      const clamped = clampDraftDates(nextDraft.validFrom, nextDraft.validUntil);
+      const clampedDraft = {
+        ...nextDraft,
         validFrom: clamped.validFrom,
         validUntil: clamped.validUntil,
       };
       if (clamped.clamped) {
-        setDraft(nextDraft);
+        setDraft(clampedDraft);
         setWarnMsg(CAMPAIGN_END_CLAMP_MSG);
       }
 
@@ -246,19 +285,20 @@ export function EventDiscountsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           eventId,
-          campaignId: nextDraft.campaignId,
-          name: nextDraft.name,
-          active: nextDraft.active,
-          validFrom: fromLocalInput(nextDraft.validFrom),
-          validUntil: fromLocalInput(nextDraft.validUntil),
-          type: nextDraft.type,
-          valueDisplay: nextDraft.valueDisplay,
-          channels: nextDraft.channels,
-          applyMode: nextDraft.applyMode,
-          minQuantity: nextDraft.minQuantity,
-          badgeLabel: nextDraft.badgeLabel.trim() || null,
-          badgeDisclaimer: nextDraft.badgeDisclaimer.trim() || null,
-          categoryIds: nextDraft.categoryIds,
+          campaignId: clampedDraft.campaignId,
+          name: clampedDraft.name,
+          active: clampedDraft.active,
+          validFrom: fromLocalInput(clampedDraft.validFrom),
+          validUntil: fromLocalInput(clampedDraft.validUntil),
+          type: clampedDraft.type,
+          valueDisplay: clampedDraft.valueDisplay,
+          channels: clampedDraft.channels,
+          applyMode: clampedDraft.applyMode,
+          minQuantity: clampedDraft.minQuantity,
+          badgeLabel: clampedDraft.badgeLabel.trim() || null,
+          badgeDisclaimer: clampedDraft.badgeDisclaimer.trim() || null,
+          categoryIds: clampedDraft.categoryIds,
+          alsoEventIds,
         }),
       });
       const data = await res.json();
@@ -268,18 +308,60 @@ export function EventDiscountsPanel({
         );
       }
       setDraft(null);
+      setTourScopeOpen(false);
+      const warnParts: string[] = [];
       if (data.clampedToEventEnd || clamped.clamped) {
-        setWarnMsg(data.message || CAMPAIGN_END_CLAMP_MSG);
-        setOkMsg("Preisaktion gespeichert.");
-      } else {
-        setOkMsg("Preisaktion gespeichert.");
+        warnParts.push(data.message || CAMPAIGN_END_CLAMP_MSG);
       }
+      if (Array.isArray(data.warnings) && data.warnings.length > 0) {
+        warnParts.push(...data.warnings);
+      }
+      setWarnMsg(warnParts.length > 0 ? warnParts.join(" ") : null);
+      const extra = Math.max(0, Number(data.appliedCount ?? 1) - 1);
+      setOkMsg(
+        extra > 0
+          ? extra === 1
+            ? "Preisaktion gespeichert und auf einen weiteren Termin übernommen."
+            : `Preisaktion gespeichert und auf ${extra} weitere Termine übernommen.`
+          : "Preisaktion gespeichert.",
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
     } finally {
       setSaving(false);
     }
+  }
+
+  function requestSaveCampaign() {
+    if (!canWrite || !draft) return;
+    if (draft.categoryIds.length < 1) {
+      setError("Bitte mindestens eine Preiskategorie wählen.");
+      return;
+    }
+    if (!draft.name.trim()) {
+      setError("Bitte einen Namen für die Aktion angeben.");
+      return;
+    }
+    setError(null);
+    if (tourSiblings.length > 0) {
+      setTourScopeMode("this");
+      setSelectedSiblingIds([]);
+      setTourScopeOpen(true);
+      return;
+    }
+    void persistCampaign(draft, []);
+  }
+
+  function confirmTourScopeSave() {
+    if (!draft) return;
+    if (tourScopeMode === "multi" && selectedSiblingIds.length < 1) {
+      setError("Bitte mindestens einen weiteren Termin wählen — oder nur dieses Event.");
+      return;
+    }
+    const also =
+      tourScopeMode === "multi" ? selectedSiblingIds.filter((id) => id !== eventId) : [];
+    void persistCampaign(draft, also);
   }
 
   async function removeCampaign(campaignId: string) {
@@ -531,7 +613,14 @@ export function EventDiscountsPanel({
         </ul>
 
         {draft ? (
-          <div className="space-y-3 rounded-xl border border-[var(--tf-teal)]/40 bg-[var(--tf-surface)] p-4">
+          <form
+            className="space-y-3 rounded-xl border border-[var(--tf-teal)]/40 bg-[var(--tf-surface)] p-4"
+            noValidate
+            onSubmit={(e) => {
+              e.preventDefault();
+              requestSaveCampaign();
+            }}
+          >
             <p className="text-sm font-semibold text-[var(--tf-navy)]">
               {draft.campaignId ? "Aktion bearbeiten" : "Neue Aktion"}
             </p>
@@ -542,6 +631,7 @@ export function EventDiscountsPanel({
                   className="tf-input mt-1 w-full"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                  required
                 />
               </label>
               <div className="sm:col-span-1">
@@ -710,10 +800,9 @@ export function EventDiscountsPanel({
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                type="button"
+                type="submit"
                 className="tf-btn tf-btn-primary !min-h-10 text-sm"
                 disabled={saving}
-                onClick={() => void saveCampaign()}
               >
                 Aktion speichern
               </button>
@@ -723,14 +812,150 @@ export function EventDiscountsPanel({
                 onClick={() => {
                   setDraft(null);
                   setWarnMsg(null);
+                  setTourScopeOpen(false);
                 }}
               >
                 Abbrechen
               </button>
             </div>
-          </div>
+          </form>
         ) : null}
       </div>
+
+      {tourScopeOpen && draft && tourSiblings.length > 0 ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(15,39,71,0.45)] p-4"
+          role="presentation"
+          onClick={() => {
+            if (!saving) setTourScopeOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={tourDialogTitleId}
+            className="relative w-full max-w-md rounded-2xl border border-[var(--tf-line)] bg-white p-5 shadow-[0_20px_50px_rgba(15,39,71,0.25)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id={tourDialogTitleId} className="text-lg font-semibold text-[var(--tf-navy)]">
+              Aktion für welche Termine?
+            </h2>
+            <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+              Dieses Event gehört zu einer Tour. Du kannst die Aktion nur hier speichern oder
+              auf weitere Termine übernehmen.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] p-3">
+                <input
+                  type="radio"
+                  className="mt-1"
+                  name="tourScope"
+                  checked={tourScopeMode === "this"}
+                  onChange={() => {
+                    setTourScopeMode("this");
+                    setSelectedSiblingIds([]);
+                    setError(null);
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                    Nur dieses Event
+                  </span>
+                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                    Standard — andere Termine bleiben unverändert
+                  </span>
+                </span>
+              </label>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] p-3">
+                <input
+                  type="radio"
+                  className="mt-1"
+                  name="tourScope"
+                  checked={tourScopeMode === "multi"}
+                  onChange={() => {
+                    setTourScopeMode("multi");
+                    setError(null);
+                  }}
+                />
+                <span>
+                  <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                    Weitere Termine der Tour
+                  </span>
+                  <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                    Gleiche Einstellungen (Preis, Badge, Zeitraum, …) auf gewählte Termine
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {tourScopeMode === "multi" ? (
+              <div className="mt-4 max-h-56 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-3">
+                <div className="mb-1 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-[var(--tf-teal)] hover:underline"
+                    onClick={() => setSelectedSiblingIds(tourSiblings.map((s) => s.id))}
+                  >
+                    Alle wählen
+                  </button>
+                  <button
+                    type="button"
+                    className="text-xs font-medium text-[var(--tf-text-secondary)] hover:underline"
+                    onClick={() => setSelectedSiblingIds([])}
+                  >
+                    Auswahl leeren
+                  </button>
+                </div>
+                {tourSiblings.map((s) => {
+                  const checked = selectedSiblingIds.includes(s.id);
+                  return (
+                    <label
+                      key={s.id}
+                      className="flex cursor-pointer items-start gap-2 text-sm text-[var(--tf-navy)]"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={checked}
+                        onChange={() => {
+                          setSelectedSiblingIds((prev) =>
+                            checked ? prev.filter((id) => id !== s.id) : [...prev, s.id],
+                          );
+                          setError(null);
+                        }}
+                      />
+                      <span>{siblingLabel(s)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {error ? <p className="mt-3 text-sm text-[var(--danger)]">{error}</p> : null}
+
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                className="tf-btn tf-btn-secondary !min-h-10 text-sm"
+                disabled={saving}
+                onClick={() => setTourScopeOpen(false)}
+              >
+                Zurück
+              </button>
+              <button
+                type="button"
+                className="tf-btn tf-btn-primary !min-h-10 text-sm"
+                disabled={saving}
+                onClick={confirmTourScopeSave}
+              >
+                {saving ? "Speichert…" : "Speichern"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

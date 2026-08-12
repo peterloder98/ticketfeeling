@@ -68,11 +68,50 @@ const campaignSchema = z.object({
   minQuantity: z.number().int().min(1).max(99).default(1),
   badgeLabel: z.string().max(80).optional().nullable(),
   badgeDisclaimer: z.string().max(160).optional().nullable(),
+  /** Extra tour-sibling event IDs to receive the same campaign settings */
+  alsoEventIds: z.array(z.string().uuid()).max(40).optional().default([]),
 });
 
 function toStoredValue(type: "percent" | "fixed", valueDisplay: number) {
   if (type === "percent") return Math.round(valueDisplay * 100); // 10% → 1000 bps
   return Math.round(valueDisplay * 100); // euros → cents
+}
+
+function normalizeCategoryName(name: string) {
+  return name.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** Map selected source category IDs onto a sibling event by category name (then kind). */
+function mapCategoriesToSibling(args: {
+  sourceSelected: { id: string; name: string; categoryKind: string }[];
+  siblingCategories: { id: string; name: string; categoryKind: string }[];
+}): string[] {
+  const byName = new Map(
+    args.siblingCategories.map((c) => [normalizeCategoryName(c.name), c.id] as const),
+  );
+  const byKind = new Map<string, string[]>();
+  for (const c of args.siblingCategories) {
+    const kind = c.categoryKind || "standard";
+    const list = byKind.get(kind) ?? [];
+    list.push(c.id);
+    byKind.set(kind, list);
+  }
+
+  const mapped: string[] = [];
+  const seen = new Set<string>();
+  for (const src of args.sourceSelected) {
+    const byNameId = byName.get(normalizeCategoryName(src.name));
+    let id = byNameId;
+    if (!id) {
+      const kindMatches = byKind.get(src.categoryKind || "standard") ?? [];
+      if (kindMatches.length === 1) id = kindMatches[0];
+    }
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      mapped.push(id);
+    }
+  }
+  return mapped;
 }
 
 export async function GET(request: Request) {
@@ -90,6 +129,7 @@ export async function GET(request: Request) {
     where: { id: eventId, organizationId: membership.organizationId },
     select: {
       id: true,
+      tourId: true,
       eventEndsAt: true,
       eventStartsAt: true,
       accessibilityDiscountEnabled: true,
@@ -111,9 +151,42 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
   }
 
+  let tourSiblings: Array<{
+    id: string;
+    name: string;
+    eventStartsAt: string | null;
+    locationName: string | null;
+    city: string | null;
+  }> = [];
+  if (event.tourId) {
+    const siblings = await prisma.event.findMany({
+      where: {
+        organizationId: membership.organizationId,
+        tourId: event.tourId,
+        id: { not: event.id },
+      },
+      orderBy: { eventStartsAt: "asc" },
+      select: {
+        id: true,
+        name: true,
+        eventStartsAt: true,
+        location: { select: { name: true, city: true } },
+      },
+    });
+    tourSiblings = siblings.map((s) => ({
+      id: s.id,
+      name: s.name,
+      eventStartsAt: s.eventStartsAt?.toISOString() ?? null,
+      locationName: s.location?.name ?? null,
+      city: s.location?.city ?? null,
+    }));
+  }
+
   return NextResponse.json({
     eventEndsAt: event.eventEndsAt?.toISOString() ?? null,
     eventStartsAt: event.eventStartsAt?.toISOString() ?? null,
+    tourId: event.tourId,
+    tourSiblings,
     accessibility: {
       enabled: event.accessibilityDiscountEnabled,
       label: event.accessibilityDiscountLabel,
@@ -211,17 +284,24 @@ export async function PUT(request: Request) {
     const body = campaignSchema.parse(await request.json());
     const event = await prisma.event.findFirst({
       where: { id: body.eventId, organizationId: membership.organizationId },
-      select: { id: true, eventEndsAt: true, eventStartsAt: true },
+      select: {
+        id: true,
+        tourId: true,
+        eventEndsAt: true,
+        eventStartsAt: true,
+        ticketCategories: {
+          select: { id: true, name: true, categoryKind: true },
+        },
+      },
     });
     if (!event) {
       return NextResponse.json({ error: { code: "EVENT_NOT_FOUND" } }, { status: 404 });
     }
 
-    const cats = await prisma.eventTicketCategory.findMany({
-      where: { eventId: event.id, id: { in: body.categoryIds } },
-      select: { id: true },
-    });
-    if (cats.length !== body.categoryIds.length) {
+    const sourceSelected = event.ticketCategories.filter((c) =>
+      body.categoryIds.includes(c.id),
+    );
+    if (sourceSelected.length !== body.categoryIds.length) {
       return NextResponse.json({ error: { code: "CATEGORY_MISMATCH" } }, { status: 400 });
     }
 
@@ -239,41 +319,119 @@ export async function PUT(request: Request) {
       );
     }
 
-    const eventBound = event.eventEndsAt ?? event.eventStartsAt;
-    let clampedToEventEnd = false;
-    if (eventBound) {
-      const clamped = clampCampaignToEventEnd({
-        validFrom,
-        validUntil,
-        eventEndsAt: eventBound,
+    const alsoEventIds = [...new Set((body.alsoEventIds ?? []).filter((id) => id !== event.id))];
+    let siblingEvents: Array<{
+      id: string;
+      eventEndsAt: Date | null;
+      eventStartsAt: Date | null;
+      ticketCategories: { id: string; name: string; categoryKind: string }[];
+    }> = [];
+    if (alsoEventIds.length > 0) {
+      if (!event.tourId) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "NOT_ON_TOUR",
+              message: "Weitere Termine nur bei Events einer Tour möglich.",
+            },
+          },
+          { status: 400 },
+        );
+      }
+      siblingEvents = await prisma.event.findMany({
+        where: {
+          id: { in: alsoEventIds },
+          organizationId: membership.organizationId,
+          tourId: event.tourId,
+        },
+        select: {
+          id: true,
+          eventEndsAt: true,
+          eventStartsAt: true,
+          ticketCategories: {
+            select: { id: true, name: true, categoryKind: true },
+          },
+        },
       });
-      if (clamped.changed) {
-        validFrom = clamped.validFrom;
-        validUntil = clamped.validUntil;
-        clampedToEventEnd = true;
+      if (siblingEvents.length !== alsoEventIds.length) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "SIBLING_MISMATCH",
+              message: "Einige Termine gehören nicht zur gleichen Tour.",
+            },
+          },
+          { status: 400 },
+        );
       }
     }
 
-    if (!(validFrom < validUntil)) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "INVALID_WINDOW",
-            message: "Aktionsende muss nach dem Aktionsbeginn liegen.",
-          },
-        },
-        { status: 400 },
-      );
+    type TargetApply = {
+      eventId: string;
+      categoryIds: string[];
+      eventBound: Date | null;
+      campaignId?: string;
+    };
+
+    const targets: TargetApply[] = [
+      {
+        eventId: event.id,
+        categoryIds: body.categoryIds,
+        eventBound: event.eventEndsAt ?? event.eventStartsAt,
+        campaignId: body.campaignId,
+      },
+    ];
+
+    const siblingWarnings: string[] = [];
+    const siblingTargets: TargetApply[] = [];
+    for (const sib of siblingEvents) {
+      const mapped = mapCategoriesToSibling({
+        sourceSelected,
+        siblingCategories: sib.ticketCategories,
+      });
+      if (mapped.length < 1) {
+        siblingWarnings.push(`Termin ohne passende Preiskategorie übersprungen.`);
+        continue;
+      }
+      if (mapped.length < sourceSelected.length) {
+        siblingWarnings.push(
+          `Bei einem Termin wurden nicht alle Kategorien gefunden — nur passende übernommen.`,
+        );
+      }
+      siblingTargets.push({
+        eventId: sib.id,
+        categoryIds: mapped,
+        eventBound: sib.eventEndsAt ?? sib.eventStartsAt,
+      });
     }
 
-    const value = toStoredValue(body.type, body.valueDisplay);
+    if (siblingTargets.length > 0) {
+      const existingByEvent = await prisma.eventPriceCampaign.findMany({
+        where: {
+          eventId: { in: siblingTargets.map((t) => t.eventId) },
+          name: body.name.trim(),
+        },
+        select: { id: true, eventId: true, updatedAt: true },
+        orderBy: { updatedAt: "desc" },
+      });
+      const latestByEvent = new Map<string, string>();
+      for (const row of existingByEvent) {
+        if (!latestByEvent.has(row.eventId)) latestByEvent.set(row.eventId, row.id);
+      }
+      for (const t of siblingTargets) {
+        targets.push({
+          ...t,
+          campaignId: latestByEvent.get(t.eventId),
+        });
+      }
+    }
+
     const applyMode = body.applyMode === "order" ? "order" : "unit";
     const minQuantity = Math.max(1, body.minQuantity ?? 1);
-    const data = {
+    const value = toStoredValue(body.type, body.valueDisplay);
+    const baseData = {
       name: body.name.trim(),
       active: body.active,
-      validFrom,
-      validUntil,
       type: body.type,
       value,
       channels: body.channels,
@@ -283,54 +441,102 @@ export async function PUT(request: Request) {
       badgeDisclaimer: body.badgeDisclaimer?.trim() || null,
     };
 
-    let campaignId = body.campaignId;
-    if (campaignId) {
-      const existing = await prisma.eventPriceCampaign.findFirst({
-        where: { id: campaignId, eventId: event.id },
-      });
-      if (!existing) {
-        return NextResponse.json({ error: { code: "CAMPAIGN_NOT_FOUND" } }, { status: 404 });
-      }
-      await prisma.$transaction(async (tx) => {
-        await tx.eventPriceCampaign.update({ where: { id: campaignId! }, data });
-        await tx.eventPriceCampaignCategory.deleteMany({ where: { campaignId: campaignId! } });
-        await tx.eventPriceCampaignCategory.createMany({
-          data: body.categoryIds.map((categoryId) => ({
-            campaignId: campaignId!,
-            categoryId,
-          })),
+    let primaryCampaignId = body.campaignId;
+    let clampedToEventEnd = false;
+    const appliedEventIds: string[] = [];
+
+    for (const target of targets) {
+      let from = validFrom;
+      let until = validUntil;
+      if (target.eventBound) {
+        const clamped = clampCampaignToEventEnd({
+          validFrom: from,
+          validUntil: until,
+          eventEndsAt: target.eventBound,
         });
-      });
-    } else {
-      const created = await prisma.eventPriceCampaign.create({
-        data: {
-          eventId: event.id,
-          ...data,
-          categories: {
-            create: body.categoryIds.map((categoryId) => ({ categoryId })),
+        if (clamped.changed) {
+          from = clamped.validFrom;
+          until = clamped.validUntil;
+          if (target.eventId === event.id) clampedToEventEnd = true;
+        }
+      }
+      if (!(from < until)) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "INVALID_WINDOW",
+              message: "Aktionsende muss nach dem Aktionsbeginn liegen.",
+            },
           },
+          { status: 400 },
+        );
+      }
+
+      const data = { ...baseData, validFrom: from, validUntil: until };
+      let campaignId = target.campaignId;
+
+      if (campaignId) {
+        const existing = await prisma.eventPriceCampaign.findFirst({
+          where: { id: campaignId, eventId: target.eventId },
+        });
+        if (!existing) {
+          return NextResponse.json({ error: { code: "CAMPAIGN_NOT_FOUND" } }, { status: 404 });
+        }
+        await prisma.$transaction(async (tx) => {
+          await tx.eventPriceCampaign.update({ where: { id: campaignId! }, data });
+          await tx.eventPriceCampaignCategory.deleteMany({ where: { campaignId: campaignId! } });
+          await tx.eventPriceCampaignCategory.createMany({
+            data: target.categoryIds.map((categoryId) => ({
+              campaignId: campaignId!,
+              categoryId,
+            })),
+          });
+        });
+      } else {
+        const created = await prisma.eventPriceCampaign.create({
+          data: {
+            eventId: target.eventId,
+            ...data,
+            categories: {
+              create: target.categoryIds.map((categoryId) => ({ categoryId })),
+            },
+          },
+        });
+        campaignId = created.id;
+      }
+
+      if (target.eventId === event.id) primaryCampaignId = campaignId;
+      appliedEventIds.push(target.eventId);
+
+      await writeAudit({
+        organizationId: membership.organizationId,
+        actorUserId: session.user.id,
+        action: "event.price_campaign.upsert",
+        entityType: "event_price_campaign",
+        entityId: campaignId,
+        after: {
+          ...data,
+          categoryIds: target.categoryIds,
+          clampedToEventEnd: target.eventId === event.id ? clampedToEventEnd : undefined,
+          sourceEventId: event.id,
         },
       });
-      campaignId = created.id;
     }
 
-    await writeAudit({
-      organizationId: membership.organizationId,
-      actorUserId: session.user.id,
-      action: "event.price_campaign.upsert",
-      entityType: "event_price_campaign",
-      entityId: campaignId,
-      after: { ...data, categoryIds: body.categoryIds, clampedToEventEnd },
-    });
-
+    const extraCount = Math.max(0, appliedEventIds.length - 1);
     return NextResponse.json({
       ok: true,
-      campaignId,
+      campaignId: primaryCampaignId,
       clampedToEventEnd,
+      appliedEventIds,
+      appliedCount: appliedEventIds.length,
       validUntil: validUntil.toISOString(),
+      warnings: siblingWarnings.length > 0 ? siblingWarnings : undefined,
       message: clampedToEventEnd
         ? "Aktionsende lag nach dem Eventende und wurde auf das Eventende gesetzt."
-        : undefined,
+        : extraCount > 0
+          ? `Preisaktion auf ${appliedEventIds.length} Termine übernommen.`
+          : undefined,
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
