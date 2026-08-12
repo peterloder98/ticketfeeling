@@ -57,4 +57,14 @@ describe("effective-event-artists", () => {
     });
     expect(links).toEqual([{ name: "Guest", imageUrl: null }]);
   });
+
+  it("falls back to event artists when tour line-up is empty", () => {
+    const links = resolveEffectiveArtistLinks({
+      tourId: "t1",
+      artistsUseTourDefaults: true,
+      artists: eventArtists,
+      tour: { artists: [] },
+    });
+    expect(links[0]?.artist.name).toBe("Guest");
+  });
 });

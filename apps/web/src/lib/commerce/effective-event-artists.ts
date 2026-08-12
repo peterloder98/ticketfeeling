@@ -22,8 +22,10 @@ export function resolveEffectiveArtistLinks<
   artists: TEventLink[];
   tour?: { artists?: TTourLink[] | null } | null;
 }): Array<TEventLink | TTourLink> {
-  if (eventInheritsTourArtists(event) && event.tour?.artists) {
-    return event.tour.artists;
+  const tourArtists = event.tour?.artists;
+  // Empty tour line-up (e.g. schema seeded without copy) must not wipe event artists.
+  if (eventInheritsTourArtists(event) && tourArtists && tourArtists.length > 0) {
+    return tourArtists;
   }
   return event.artists;
 }

@@ -7,7 +7,80 @@ const { PrismaClient } = require("@prisma/client");
 
 const DDL_TIMEOUT_MS = 20_000;
 
+/**
+ * Critical DDL that must land even when later statements time out on Neon pooler.
+ * Keep newest production-breaking migrations here, first.
+ */
+const CRITICAL_FALLBACK_STATEMENTS = [
+  // Tour-central artists (migration 20260812190000) — missing table/column caused
+  // digest 2063598619 Application errors on / and /events (P2022/P2021).
+  `CREATE TABLE IF NOT EXISTS "tour_artists" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "tour_id" UUID NOT NULL,
+    "artist_id" UUID NOT NULL,
+    "role" TEXT NOT NULL DEFAULT 'artist',
+    "is_headliner" BOOLEAN NOT NULL DEFAULT false,
+    "sort_order" INTEGER NOT NULL DEFAULT 0,
+    "announced" BOOLEAN NOT NULL DEFAULT true,
+    "cancelled" BOOLEAN NOT NULL DEFAULT false,
+    CONSTRAINT "tour_artists_pkey" PRIMARY KEY ("id")
+  )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS "tour_artists_tour_id_artist_id_key" ON "tour_artists"("tour_id", "artist_id")`,
+  `DO $$ BEGIN
+    ALTER TABLE "tour_artists" ADD CONSTRAINT "tour_artists_tour_id_fkey"
+      FOREIGN KEY ("tour_id") REFERENCES "tours"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `DO $$ BEGIN
+    ALTER TABLE "tour_artists" ADD CONSTRAINT "tour_artists_artist_id_fkey"
+      FOREIGN KEY ("artist_id") REFERENCES "artists"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+  EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "artists_use_tour_defaults" BOOLEAN NOT NULL DEFAULT true`,
+  // Seed tour artists once from earliest lined-up date (idempotent).
+  `INSERT INTO "tour_artists" ("id", "tour_id", "artist_id", "role", "is_headliner", "sort_order", "announced", "cancelled")
+   SELECT gen_random_uuid(), src.tour_id, src.artist_id, src.role, src.is_headliner, src.sort_order, src.announced, src.cancelled
+   FROM (
+     SELECT DISTINCT ON (e.tour_id, ea.artist_id)
+       e.tour_id,
+       ea.artist_id,
+       ea.role,
+       ea.is_headliner,
+       ea.sort_order,
+       ea.announced,
+       ea.cancelled
+     FROM "events" e
+     INNER JOIN "event_artists" ea ON ea.event_id = e.id
+     WHERE e.tour_id IS NOT NULL
+       AND e.id = (
+         SELECT e2.id
+         FROM "events" e2
+         INNER JOIN "event_artists" ea2 ON ea2.event_id = e2.id
+         WHERE e2.tour_id = e.tour_id
+         ORDER BY e2.event_starts_at ASC NULLS LAST, e2.created_at ASC
+         LIMIT 1
+       )
+     ORDER BY e.tour_id, ea.artist_id, ea.sort_order
+   ) src
+   WHERE NOT EXISTS (
+     SELECT 1 FROM "tour_artists" ta WHERE ta.tour_id = src.tour_id
+   )`,
+  // Keep per-event overrides as overrides; empty event line-ups inherit tour.
+  `UPDATE "events" e
+   SET "artists_use_tour_defaults" = false
+   WHERE e.tour_id IS NOT NULL
+     AND EXISTS (SELECT 1 FROM "event_artists" ea WHERE ea.event_id = e.id)`,
+  `UPDATE "events" e
+   SET "artists_use_tour_defaults" = true
+   WHERE e.tour_id IS NOT NULL
+     AND NOT EXISTS (SELECT 1 FROM "event_artists" ea WHERE ea.event_id = e.id)`,
+  // Campaign order-threshold fields (migration 20260812150000)
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "apply_mode" TEXT NOT NULL DEFAULT 'unit'`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
+];
+
 const FALLBACK_STATEMENTS = [
+  ...CRITICAL_FALLBACK_STATEMENTS,
   `ALTER TABLE "organization_settings" ADD COLUMN IF NOT EXISTS "payment_ui_config" JSONB NOT NULL DEFAULT '{}'`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "sepa_min_days_before_event" INTEGER`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "status_before_pause" TEXT`,
@@ -476,24 +549,63 @@ async function applyFallbackSchema() {
     return;
   }
 
-  const prisma = new PrismaClient({ datasources: { db: { url } } });
+  // Prefer a single connection with a longer pool wait — Neon pooler stalls
+  // leave zombie clients and then every later statement fails with pool timeout.
+  const ddlUrl = (() => {
+    try {
+      const u = new URL(url);
+      u.searchParams.set("connection_limit", "1");
+      u.searchParams.set("pool_timeout", "30");
+      u.searchParams.set("connect_timeout", "15");
+      return u.toString();
+    } catch {
+      return url;
+    }
+  })();
+
+  let prisma = new PrismaClient({ datasources: { db: { url: ddlUrl } } });
+  let failures = 0;
   try {
-    for (const sql of FALLBACK_STATEMENTS) {
+    for (let i = 0; i < FALLBACK_STATEMENTS.length; i++) {
+      const sql = FALLBACK_STATEMENTS[i];
+      const critical = i < CRITICAL_FALLBACK_STATEMENTS.length;
       const result = await withTimeout(
         prisma.$executeRawUnsafe(sql),
-        DDL_TIMEOUT_MS,
+        critical ? 45_000 : DDL_TIMEOUT_MS,
         sql.slice(0, 60),
       );
       if (!result.ok) {
+        failures += 1;
         if (result.error) {
           console.warn(
             "[migrate-deploy] statement skipped:",
             result.error instanceof Error ? result.error.message : result.error,
           );
         }
+        // Recreate client after pool/timeout failures so later critical DDL can proceed.
+        await prisma.$disconnect().catch(() => undefined);
+        prisma = new PrismaClient({ datasources: { db: { url: ddlUrl } } });
+        if (critical) {
+          // One immediate retry for production-breaking statements.
+          const retry = await withTimeout(
+            prisma.$executeRawUnsafe(sql),
+            45_000,
+            `retry ${sql.slice(0, 50)}`,
+          );
+          if (!retry.ok && retry.error) {
+            console.warn(
+              "[migrate-deploy] critical statement failed:",
+              retry.error instanceof Error ? retry.error.message : retry.error,
+            );
+          } else if (retry.ok) {
+            failures -= 1;
+          }
+        }
       }
     }
-    console.log("[migrate-deploy] fallback schema patch finished");
+    console.log(
+      `[migrate-deploy] fallback schema patch finished (failures=${failures})`,
+    );
   } finally {
     await prisma.$disconnect().catch(() => undefined);
   }
