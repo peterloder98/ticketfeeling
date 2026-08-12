@@ -7,6 +7,7 @@ import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
 import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
+import { parseDatetimeLocalBerlin } from "@/lib/admin/event-form";
 
 async function requireWrite() {
   const session = await getServerSession(authOptions);
@@ -38,13 +39,26 @@ const accessibilitySchema = z.object({
   valueDisplay: z.number().min(0),
 });
 
+/** Accept ISO, datetime-local, or DE display — always store as Date. */
+const campaignInstantSchema = z.string().min(1).transform((raw, ctx) => {
+  const d = parseDatetimeLocalBerlin(raw);
+  if (!d) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Bitte gültiges Datum und Uhrzeit für Von/Bis wählen.",
+    });
+    return z.NEVER;
+  }
+  return d;
+});
+
 const campaignSchema = z.object({
   eventId: z.string().uuid(),
   campaignId: z.string().uuid().optional(),
   name: z.string().min(1).max(120),
   active: z.boolean().default(true),
-  validFrom: z.string().datetime({ offset: true }).or(z.string().min(8)),
-  validUntil: z.string().datetime({ offset: true }).or(z.string().min(8)),
+  validFrom: campaignInstantSchema,
+  validUntil: campaignInstantSchema,
   type: z.enum(["percent", "fixed"]),
   valueDisplay: z.number().min(0),
   channels: z.enum(["online", "box_office", "both"]).default("both"),
@@ -211,10 +225,18 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: { code: "CATEGORY_MISMATCH" } }, { status: 400 });
     }
 
-    let validFrom = new Date(body.validFrom);
-    let validUntil = new Date(body.validUntil);
+    let validFrom = body.validFrom;
+    let validUntil = body.validUntil;
     if (Number.isNaN(validFrom.getTime()) || Number.isNaN(validUntil.getTime())) {
-      return NextResponse.json({ error: { code: "INVALID_WINDOW" } }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: {
+            code: "INVALID_WINDOW",
+            message: "Bitte gültige Daten für Von und Bis angeben.",
+          },
+        },
+        { status: 400 },
+      );
     }
 
     const eventBound = event.eventEndsAt ?? event.eventStartsAt;
@@ -312,7 +334,17 @@ export async function PUT(request: Request) {
     });
   } catch (err) {
     if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: { code: "VALIDATION", details: err.flatten() } }, { status: 400 });
+      const first = err.issues[0]?.message;
+      return NextResponse.json(
+        {
+          error: {
+            code: "VALIDATION",
+            message: first || "Aktion konnte nicht gespeichert werden — bitte Eingaben prüfen.",
+            details: err.flatten(),
+          },
+        },
+        { status: 400 },
+      );
     }
     console.error("[campaigns PUT]", err);
     return NextResponse.json({ error: { code: "SERVER_ERROR" } }, { status: 500 });

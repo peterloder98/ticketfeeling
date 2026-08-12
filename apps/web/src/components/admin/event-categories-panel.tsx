@@ -6,6 +6,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { DEFAULT_CATEGORY_COLORS, resolveCategoryColor } from "@/lib/seating/layout-config";
 import { isPlanBackedTicketCategory } from "@/lib/seating/sync-category-capacity";
 import { toDatetimeLocalValue } from "@/lib/admin/event-form";
+import { SmartDateTimeField } from "@/components/admin/smart-datetime-input";
 
 export type EventCategoryRow = {
   id: string;
@@ -103,7 +104,8 @@ function CategoryColorField({
           value={color}
           onChange={(e) => setColor(e.target.value)}
           placeholder="#14B8A6"
-          pattern="^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
+          pattern="^$|^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$"
+          title="Hex-Farbe, z. B. #14B8A6 — leer = Standard"
         />
         <div className="flex flex-wrap gap-1.5">
           {COLOR_PRESETS.slice(0, 6).map((preset) => (
@@ -134,18 +136,38 @@ function CategoryColorField({
 function CategoryKindFields({
   defaultKind = "standard",
   defaultCompanionFree = false,
+  defaultDoorsOpenAt = null,
+  defaultDoorsNote = null,
+  showDoors = true,
+  compact = false,
 }: {
   defaultKind?: string;
   defaultCompanionFree?: boolean;
+  defaultDoorsOpenAt?: string | Date | null;
+  defaultDoorsNote?: string | null;
+  showDoors?: boolean;
+  compact?: boolean;
 }) {
   const [kind, setKind] = useState(defaultKind);
+  const isVip = kind === "vip";
+  const showDoorsFields =
+    showDoors && (isVip || Boolean(defaultDoorsOpenAt) || Boolean(defaultDoorsNote));
+  const doorsLabel = isVip ? "VIP-Einlass" : "Sonder-Einlass (optional)";
+  const doorsHint = isVip
+    ? "Steht auf VIP-Tickets & Check-in. Leer = normaler Event-Einlass. Oft 30 Min. früher."
+    : "Leer = Event-Einlass.";
+  const labelClass = compact
+    ? "text-[11px] text-[var(--tf-text-secondary)]"
+    : undefined;
+  const inputClass = compact ? "tf-input !min-h-9 !py-1.5 text-sm" : "tf-input";
+
   return (
     <>
-      <label className="grid gap-0.5">
-        <span className="text-[11px] text-[var(--tf-text-secondary)]">Art</span>
+      <label className={`grid ${compact ? "gap-0.5" : "gap-1"}`}>
+        <span className={labelClass}>{compact ? "Art" : "Art"}</span>
         <select
           name="categoryKind"
-          className="tf-input !min-h-9 !py-1.5 text-sm"
+          className={inputClass}
           value={kind}
           onChange={(e) => setKind(e.target.value)}
         >
@@ -157,10 +179,46 @@ function CategoryKindFields({
         </select>
       </label>
       {kind === "wheelchair" ? (
-        <label className="flex items-center gap-2 text-[11px] text-[var(--tf-text-secondary)]">
+        <label
+          className={`flex items-center gap-2 ${
+            compact
+              ? "text-[11px] text-[var(--tf-text-secondary)]"
+              : "text-xs text-[var(--tf-text-secondary)]"
+          }`}
+        >
           <input type="checkbox" name="companionFree" defaultChecked={defaultCompanionFree} />
           Begleitung frei
         </label>
+      ) : null}
+      {showDoorsFields ? (
+        <>
+          <div className={compact ? "col-span-2" : undefined}>
+            <SmartDateTimeField
+              name="doorsOpenAt"
+              label={doorsLabel}
+              hint={doorsHint}
+              defaultValue={toDatetimeLocalValue(
+                defaultDoorsOpenAt ? new Date(defaultDoorsOpenAt) : null,
+              )}
+            />
+          </div>
+          <label className={`grid ${compact ? "col-span-2 gap-0.5" : "gap-1"}`}>
+            <span className={labelClass ?? "text-sm text-[var(--tf-text-secondary)]"}>
+              Einlass-Hinweis (optional)
+            </span>
+            <input
+              name="doorsNote"
+              className={inputClass}
+              maxLength={200}
+              defaultValue={defaultDoorsNote ?? ""}
+              placeholder={
+                isVip
+                  ? "z. B. VIP-Einlass über den Haupteingang"
+                  : "z. B. Einlass über den Nebeneingang"
+              }
+            />
+          </label>
+        </>
       ) : null}
     </>
   );
@@ -226,6 +284,7 @@ function NewCategoryCapacityFields({ seatingEnabled }: { seatingEnabled: boolean
       categoryKind: kind,
       seatingEnabled,
     });
+  const isVip = kind === "vip";
 
   return (
     <>
@@ -268,6 +327,25 @@ function NewCategoryCapacityFields({ seatingEnabled }: { seatingEnabled: boolean
           planBacked={planBacked}
         />
       </div>
+      {isVip ? (
+        <>
+          <SmartDateTimeField
+            name="doorsOpenAt"
+            label="VIP-Einlass"
+            hint="Steht auf VIP-Tickets & Check-in. Leer = normaler Event-Einlass. Oft 30 Min. früher."
+            defaultValue=""
+          />
+          <label className="grid gap-1">
+            <span>Einlass-Hinweis (optional)</span>
+            <input
+              name="doorsNote"
+              className="tf-input"
+              maxLength={200}
+              placeholder="z. B. VIP-Einlass über den Haupteingang"
+            />
+          </label>
+        </>
+      ) : null}
     </>
   );
 }
@@ -330,8 +408,12 @@ export function EventCategoriesPanel({
           categoryKind: String(fd.get("categoryKind") ?? "standard"),
           companionFree: fd.get("companionFree") === "on",
           color: String(fd.get("color") ?? "").trim() || null,
-          doorsOpenAt: String(fd.get("doorsOpenAt") ?? "").trim() || null,
-          doorsNote: String(fd.get("doorsNote") ?? "").trim() || null,
+          ...(fd.has("doorsOpenAt")
+            ? { doorsOpenAt: String(fd.get("doorsOpenAt") ?? "").trim() || null }
+            : {}),
+          ...(fd.has("doorsNote")
+            ? { doorsNote: String(fd.get("doorsNote") ?? "").trim() || null }
+            : {}),
         }),
       });
       const data = await response.json();
@@ -487,37 +569,12 @@ export function EventCategoriesPanel({
                     />
                   </label>
                   <CategoryKindFields
+                    compact
                     defaultKind={cat.categoryKind ?? "standard"}
                     defaultCompanionFree={Boolean(cat.companionFree)}
+                    defaultDoorsOpenAt={cat.doorsOpenAt}
+                    defaultDoorsNote={cat.doorsNote}
                   />
-                  <label className="col-span-2 grid gap-0.5">
-                    <span className="text-[11px] text-[var(--tf-text-secondary)]">
-                      Sonder-Einlass (optional)
-                    </span>
-                    <input
-                      name="doorsOpenAt"
-                      type="datetime-local"
-                      className="tf-input !min-h-9 !py-1.5 text-sm"
-                      defaultValue={toDatetimeLocalValue(
-                        cat.doorsOpenAt ? new Date(cat.doorsOpenAt) : null,
-                      )}
-                    />
-                    <span className="text-[10px] text-[var(--tf-text-secondary)]">
-                      Leer = Event-Einlass. Sonst z. B. VIP früher.
-                    </span>
-                  </label>
-                  <label className="col-span-2 grid gap-0.5">
-                    <span className="text-[11px] text-[var(--tf-text-secondary)]">
-                      Einlass-Hinweis (optional)
-                    </span>
-                    <input
-                      name="doorsNote"
-                      className="tf-input !min-h-9 !py-1.5 text-sm"
-                      maxLength={200}
-                      defaultValue={cat.doorsNote ?? ""}
-                      placeholder="z. B. VIP-Einlass über den Haupteingang"
-                    />
-                  </label>
                   <div className="col-span-2 flex flex-wrap items-center justify-between gap-2">
                     <CategoryColorSwatches defaultColor={cat.color} />
                     <p className="text-[11px] tabular-nums text-[var(--tf-text-secondary)]">
@@ -601,22 +658,6 @@ export function EventCategoriesPanel({
           <label className="grid gap-1">
             <span>Max. / Bestellung</span>
             <input name="maxPerOrder" type="number" className="tf-input" defaultValue="10" required />
-          </label>
-          <label className="grid gap-1">
-            <span>Sonder-Einlass (optional)</span>
-            <input name="doorsOpenAt" type="datetime-local" className="tf-input" />
-            <span className="text-xs text-[var(--tf-text-secondary)]">
-              Leer = Event-Einlass.
-            </span>
-          </label>
-          <label className="grid gap-1">
-            <span>Einlass-Hinweis (optional)</span>
-            <input
-              name="doorsNote"
-              className="tf-input"
-              maxLength={200}
-              placeholder="z. B. VIP-Einlass über den Haupteingang"
-            />
           </label>
           <button type="submit" className="tf-btn tf-btn-primary w-fit" disabled={savingId === "new"}>
             {savingId === "new" ? "…" : "Anlegen"}

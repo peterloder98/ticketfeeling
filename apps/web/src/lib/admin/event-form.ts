@@ -131,6 +131,21 @@ export function parseDatetimeLocalBerlin(raw: string): Date | null {
     );
   }
 
+  // German display / pasted values: "29.11.2026, 16:03" or "29.11.2026 16:03 Uhr"
+  const de = trimmed.match(
+    /^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?(?:\s*Uhr)?$/i,
+  );
+  if (de) {
+    return berlinWallToUtc(
+      Number(de[3]),
+      Number(de[2]),
+      Number(de[1]),
+      Number(de[4] ?? "0"),
+      Number(de[5] ?? "0"),
+      Number(de[6] ?? "0"),
+    );
+  }
+
   const match = trimmed.match(
     /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?/,
   );

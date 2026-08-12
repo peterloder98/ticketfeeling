@@ -546,14 +546,14 @@ export function EventDiscountsPanel({
               </label>
               <div className="sm:col-span-1">
                 <SmartDateTimeInput
-                  label="Von"
+                  label="Aktionsbeginn"
                   value={draft.validFrom}
                   onChange={updateDraftFrom}
                 />
               </div>
               <div className="sm:col-span-1">
                 <SmartDateTimeInput
-                  label="Bis"
+                  label="Aktionsende"
                   value={draft.validUntil}
                   onChange={updateDraftUntil}
                 />

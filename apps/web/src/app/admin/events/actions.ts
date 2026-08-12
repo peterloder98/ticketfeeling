@@ -613,7 +613,8 @@ export async function updateEventAction(formData: FormData) {
   const eventStartsAt = parseDt(formData, "eventStartsAt");
   let eventEndsAt = parseDt(formData, "eventEndsAt");
   let doorsOpenAt = parseDt(formData, "doorsOpenAt");
-  let vipDoorsOpenAt = parseDt(formData, "vipDoorsOpenAt");
+  // VIP-Einlass is edited on the VIP category only; keep stored value unless start moves.
+  let vipDoorsOpenAt = event.vipDoorsOpenAt;
   const formPresaleStartsAt = parseDt(formData, "presaleStartsAt");
   const scheduleChangeConfirmed =
     String(formData.get("scheduleChangeConfirmed") ?? "") === "1";

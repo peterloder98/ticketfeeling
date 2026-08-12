@@ -234,7 +234,6 @@ export function EventEditForm({
     formData.set("eventStartsAt", startsAt);
     formData.set("eventEndsAt", endsAt);
     formData.set("doorsOpenAt", doorsOpenAt);
-    formData.set("vipDoorsOpenAt", vipDoorsOpenAt);
     formData.set("presaleStartsAt", presaleStartsAt);
 
     const nextStart = parseDatetimeLocalBerlin(startsAt);
@@ -275,7 +274,6 @@ export function EventEditForm({
     fd.set("eventStartsAt", startsAt);
     fd.set("eventEndsAt", nextEnds);
     fd.set("doorsOpenAt", nextDoors);
-    fd.set("vipDoorsOpenAt", nextVipDoors);
     fd.set("presaleStartsAt", presaleStartsAt);
     fd.set("scheduleChangeConfirmed", "1");
     submitFormData(fd);
@@ -477,21 +475,15 @@ export function EventEditForm({
             onChange={setDoorsOpenAt}
           />
           <SmartDateTimeInput
-            name="vipDoorsOpenAt"
-            label="VIP-Einlass (optional)"
-            value={vipDoorsOpenAt}
-            onChange={setVipDoorsOpenAt}
-          />
-          <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
-            VIP-Einlass gilt für VIP-Kategorien (Tickets & Check-in). Leer = regulärer Einlass.
-            Standard oft 30 Minuten vor dem normalen Einlass.
-          </p>
-          <SmartDateTimeInput
             name="presaleStartsAt"
             label="Vorverkaufsstart"
             value={presaleStartsAt}
             onChange={setPresaleStartsAt}
           />
+          <p className="md:col-span-2 text-xs text-[var(--tf-text-secondary)]">
+            VIP-Einlass legst du bei der VIP-Preiskategorie fest (Feld „VIP-Einlass“) — nicht hier.
+            Bei Terminverschiebung wird ein hinterlegter VIP-Einlass automatisch mitverschoben.
+          </p>
         </div>
 
         <fieldset className="md:col-span-2 grid gap-3 rounded-xl border border-[var(--tf-line)] bg-[rgba(15,39,71,0.02)] p-4">

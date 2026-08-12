@@ -36,10 +36,13 @@ const upsertSchema = z.object({
   companionFree: z.boolean().optional(),
   color: z
     .string()
-    .regex(/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/)
     .optional()
-    .nullable(),
-  /** ISO datetime, datetime-local, or null to clear */
+    .nullable()
+    .refine(
+      (v) => v == null || v === "" || /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(v),
+      { message: "Farbe muss ein Hex-Wert sein (z. B. #14B8A6)." },
+    ),
+  /** ISO datetime, datetime-local, DE display, or null to clear */
   doorsOpenAt: z.string().nullable().optional(),
   doorsNote: z.string().max(200).nullable().optional(),
 });
@@ -53,6 +56,26 @@ function parseOptionalDoorsAt(raw: string | null | undefined): Date | null | und
   const d = new Date(trimmed);
   if (Number.isNaN(d.getTime())) throw new Error("INVALID_DOORS_OPEN_AT");
   return d;
+}
+
+function isVipCategory(kind: string, name: string) {
+  return kind === "vip" || name.trim().toLowerCase().startsWith("vip");
+}
+
+async function syncEventVipDoorsFromCategory(
+  eventId: string,
+  categoryKind: string,
+  name: string,
+  doorsOpenAt: Date | null | undefined,
+) {
+  if (doorsOpenAt === undefined) return;
+  if (!isVipCategory(categoryKind, name)) return;
+  await prisma.event.update({
+    where: { id: eventId },
+    data: {
+      vipDoorsOpenAt: doorsOpenAt,
+    },
+  });
 }
 
 async function requireWrite() {
@@ -107,6 +130,12 @@ export async function PUT(request: Request) {
         : body.doorsNote?.trim()
           ? body.doorsNote.trim().slice(0, 200)
           : null;
+    const color =
+      body.color === undefined
+        ? undefined
+        : body.color == null || body.color.trim() === ""
+          ? null
+          : body.color.trim();
 
     if (body.categoryId) {
       const category = await prisma.eventTicketCategory.findFirst({
@@ -132,7 +161,7 @@ export async function PUT(request: Request) {
             categoryKind,
             companionFree,
             freeSeating,
-            color: body.color === undefined ? undefined : body.color,
+            color: color === undefined ? undefined : color,
             ...(doorsOpenAt !== undefined ? { doorsOpenAt } : {}),
             ...(doorsNote !== undefined ? { doorsNote } : {}),
           },
@@ -147,6 +176,8 @@ export async function PUT(request: Request) {
           }
         }
       });
+
+      await syncEventVipDoorsFromCategory(event.id, categoryKind, body.name, doorsOpenAt);
 
       if (standingPlanBacked) {
         try {
@@ -205,7 +236,7 @@ export async function PUT(request: Request) {
           freeSeating,
           categoryKind,
           companionFree,
-          color: body.color ?? null,
+          color: color ?? null,
           doorsOpenAt: doorsOpenAt ?? null,
           doorsNote: doorsNote ?? null,
           sortOrder,
@@ -235,14 +266,40 @@ export async function PUT(request: Request) {
       return cat;
     });
 
+    await syncEventVipDoorsFromCategory(event.id, categoryKind, body.name, doorsOpenAt ?? null);
+
     const full = await prisma.eventTicketCategory.findUniqueOrThrow({
       where: { id: created.id },
       include: { pools: true },
     });
     return NextResponse.json({ ok: true, category: full });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      const first = error.issues[0]?.message;
+      return NextResponse.json(
+        {
+          error: {
+            code: "VALIDATION",
+            message: first || "Eingabe ungültig.",
+            details: error.flatten(),
+          },
+        },
+        { status: 400 },
+      );
+    }
     const message = error instanceof Error ? error.message : "ERROR";
-    return NextResponse.json({ error: { code: message } }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: {
+          code: message,
+          message:
+            message === "INVALID_DOORS_OPEN_AT"
+              ? "VIP-/Sonder-Einlass: bitte Datum und Uhrzeit prüfen."
+              : undefined,
+        },
+      },
+      { status: 400 },
+    );
   }
 }
 

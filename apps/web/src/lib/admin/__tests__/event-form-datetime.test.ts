@@ -33,4 +33,15 @@ describe("parseDatetimeLocalBerlin", () => {
     const d = parseDatetimeLocalBerlin("2026-12-12T19:00:00+01:00");
     expect(d?.toISOString()).toBe("2026-12-12T18:00:00.000Z");
   });
+
+  it("parses German display datetime as Berlin wall", () => {
+    const d = parseDatetimeLocalBerlin("29.11.2026, 16:03");
+    expect(d?.toISOString()).toBe("2026-11-29T15:03:00.000Z");
+    expect(toDatetimeLocalValue(d)).toBe("2026-11-29T16:03");
+  });
+
+  it("parses German display with Uhr suffix", () => {
+    const d = parseDatetimeLocalBerlin("29.11.2026 15:30 Uhr");
+    expect(toDatetimeLocalValue(d)).toBe("2026-11-29T15:30");
+  });
 });
