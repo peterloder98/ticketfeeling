@@ -142,9 +142,6 @@ export function EventEditForm({
   const [startsAt, setStartsAt] = useState(toDatetimeLocalValue(event.eventStartsAt));
   const [endsAt, setEndsAt] = useState(toDatetimeLocalValue(event.eventEndsAt));
   const [doorsOpenAt, setDoorsOpenAt] = useState(toDatetimeLocalValue(event.doorsOpenAt));
-  const [vipDoorsOpenAt, setVipDoorsOpenAt] = useState(
-    toDatetimeLocalValue(event.vipDoorsOpenAt),
-  );
   const [presaleStartsAt, setPresaleStartsAt] = useState(
     toDatetimeLocalValue(event.presaleStartsAt),
   );
@@ -261,14 +258,8 @@ export function EventEditForm({
       event.eventStartsAt,
       startsAt,
     );
-    const nextVipDoors = shiftLocalByStoredOffset(
-      event.vipDoorsOpenAt,
-      event.eventStartsAt,
-      startsAt,
-    );
     setEndsAt(nextEnds);
     setDoorsOpenAt(nextDoors);
-    setVipDoorsOpenAt(nextVipDoors);
 
     const fd = pendingFormData;
     fd.set("eventStartsAt", startsAt);
