@@ -17,8 +17,30 @@ export type EventOrganizerFields = {
   organizerWebsite?: string | null;
 };
 
+const PLATFORM_BRAND_RE = /^ticketfeeling$/i;
+
+/** Public Veranstalter label: "Peter Loder (SCHLAGERfeeling)" — never the platform brand. */
+export function formatOrganizerDisplayName(person: string | null | undefined, brand: string | null | undefined) {
+  const p = person?.trim() || "";
+  const b = brand?.trim() || "";
+  if (p && b && p !== b) {
+    if (p.includes("(")) return p;
+    return `${p} (${b})`;
+  }
+  return p || b || "Veranstalter";
+}
+
+/** Prefer brandName; never surface Ticketfeeling as Veranstalter brand. */
+export function resolveOrganizerBrandName(identity: Pick<SellerIdentity, "brandName" | "tradeName">) {
+  const brand = identity.brandName?.trim() || "";
+  if (brand && !PLATFORM_BRAND_RE.test(brand)) return brand;
+  const trade = identity.tradeName?.trim() || "";
+  if (trade && !PLATFORM_BRAND_RE.test(trade)) return trade;
+  return "SCHLAGERfeeling";
+}
+
 /**
- * Veranstalter for tickets: OrganizationSettings (seller identity) as default,
+ * Veranstalter for tickets / event page: OrganizationSettings as default,
  * with optional per-event overrides. Ticketfeeling is never the Veranstalter.
  */
 export function buildEventOrganizerIdentity(
@@ -27,7 +49,12 @@ export function buildEventOrganizerIdentity(
   event?: EventOrganizerFields | null,
 ): SellerIdentity {
   const base = buildSellerIdentity(org, settings);
-  if (!event) return base;
+  const defaultBrand = resolveOrganizerBrandName(base);
+  const defaultDisplay = formatOrganizerDisplayName(base.legalPersonName, defaultBrand);
+
+  if (!event) {
+    return { ...base, brandName: defaultBrand, displayName: defaultDisplay };
+  }
 
   const name = event.organizerName?.trim() || null;
   const contact = event.organizerContact?.trim() || null;
@@ -42,25 +69,29 @@ export function buildEventOrganizerIdentity(
   const hasOverride = Boolean(
     name || contact || street || houseNumber || postalCode || city || email || phone || website,
   );
-  if (!hasOverride) return base;
+  if (!hasOverride) {
+    return { ...base, brandName: defaultBrand, displayName: defaultDisplay };
+  }
 
   const legalPersonName = contact || name || base.legalPersonName;
-  const tradeName = name || base.tradeName;
+  const tradeName =
+    name && !PLATFORM_BRAND_RE.test(name) ? name : defaultBrand;
+  const brandName = tradeName;
   const displayName =
     name && contact && name !== contact
-      ? `${contact} – ${name}`
+      ? formatOrganizerDisplayName(contact, name)
       : name
         ? name
         : contact
-          ? `${contact} – ${tradeName}`
-          : base.displayName;
+          ? formatOrganizerDisplayName(contact, defaultBrand)
+          : defaultDisplay;
 
   return {
     ...base,
     legalPersonName,
     tradeName,
     displayName,
-    brandName: name || base.brandName,
+    brandName,
     legalPersonLine: contact
       ? contact.includes("(")
         ? contact

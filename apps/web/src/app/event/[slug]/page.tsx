@@ -43,6 +43,8 @@ import { ensureWeihnachtstraum2026Venues } from "@/lib/commerce/ensure-weihnacht
 import { formatLocationPlaceDisplay } from "@/lib/commerce/location-display";
 import { ensureTicketSponsorLogoColumns } from "@/lib/commerce/ensure-ticket-sponsor-logos";
 import { shouldShowScheduleChangedBanner } from "@/lib/commerce/schedule-change";
+import { buildEventOrganizerIdentity } from "@/lib/legal/event-organizer";
+import { ensureSchlagerfeelingOrganizerBrand } from "@/lib/legal/ensure-organizer-brand";
 
 export const preferredRegion = "fra1";
 export const dynamic = "force-dynamic";
@@ -80,6 +82,8 @@ function formatEventDate(date: Date) {
 
 export default async function EventPage({ params }: Props) {
   const { slug } = await params;
+  // Soft data fixes before load (idempotent; safe in prod).
+  await ensureSchlagerfeelingOrganizerBrand();
   // WT 2026: clear stale schedule banner + fix venue streets (data only; safe in prod).
   if (isWeihnachtstraum2026Slug(slug)) {
     await Promise.all([
@@ -117,7 +121,7 @@ export default async function EventPage({ params }: Props) {
           },
         },
       },
-      organization: { select: { name: true, settings: true } },
+      organization: { select: { id: true, name: true, slug: true, settings: true } },
       artists: {
         where: { announced: true, cancelled: false },
         include: { artist: true },
@@ -132,6 +136,9 @@ export default async function EventPage({ params }: Props) {
   });
 
   if (!event) notFound();
+
+  const organizer = buildEventOrganizerIdentity(event.organization, event.organization.settings, event);
+  const organizerLabel = organizer.displayName;
 
   const effectiveArtists = resolveEffectiveArtistLinks(event);
   const effectiveDetails = resolveEffectiveEventDetails(event);
@@ -544,7 +551,7 @@ export default async function EventPage({ params }: Props) {
 
           <div className="rounded-[20px] border border-[var(--tf-line)] bg-[rgba(15,39,71,0.03)] p-5">
             <p className="text-base font-semibold text-[var(--tf-navy)]">
-              Veranstaltet von {event.organization.name}
+              Veranstaltet von {organizerLabel}
             </p>
             <p className="mt-1 text-base text-[var(--tf-text-secondary)]">
               Die Tickets werden direkt über Ticketfeeling verkauft.

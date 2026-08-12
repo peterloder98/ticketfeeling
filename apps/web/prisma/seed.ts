@@ -110,7 +110,8 @@ async function main() {
 
   const orgSettingsData = {
     legalPersonName: "Peter Loder",
-    tradeName: "Ticketfeeling",
+    /** Veranstalter brand (not the Ticketfeeling platform name) */
+    tradeName: "SCHLAGERfeeling",
     brandName: "SCHLAGERfeeling",
     taxOffice: "Finanzamt Landshut (ergänzen)",
     publicCompanyAddress,
