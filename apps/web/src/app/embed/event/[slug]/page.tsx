@@ -170,9 +170,12 @@ export default async function EmbedEventShopPage({ params }: Props) {
   const { loadEventPriceCampaigns, accessibilityOfferFromEvent } = await import(
     "@/lib/commerce/load-event-pricing"
   );
-  const { resolveTicketUnitPrice, pickActiveOrderCampaignBadge } = await import(
-    "@/lib/commerce/event-pricing"
-  );
+  const {
+    resolveTicketUnitPrice,
+    pickActiveOrderCampaignBadge,
+    formatOrderCampaignBadge,
+    formatOrderCampaignDisclaimer,
+  } = await import("@/lib/commerce/event-pricing");
   const [seatCounts, campaigns] = await Promise.all([
     hasReservedSeating
       ? assignedUnlockedSeatCounts(prisma, event.id, planBackedIds)
@@ -189,11 +192,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
   });
   const orderPromo = orderCampaignBadge
     ? {
-        badgeLabel:
-          orderCampaignBadge.badgeLabel?.trim() ||
-          orderCampaignBadge.name ||
-          "Aktion",
-        disclaimer: orderCampaignBadge.badgeDisclaimer?.trim() || null,
+        badgeLabel: formatOrderCampaignBadge(orderCampaignBadge),
+        disclaimer: formatOrderCampaignDisclaimer(orderCampaignBadge),
         campaignName: orderCampaignBadge.name,
       }
     : null;

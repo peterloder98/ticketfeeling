@@ -62,14 +62,97 @@ export function campaignApplyMode(campaign: Pick<PriceCampaignInput, "applyMode"
   return campaign.applyMode === "order" ? "order" : "unit";
 }
 
+/**
+ * Infer order vs unit from stored fields.
+ *
+ * Important: minQuantity > 1 on a row labeled "unit" is almost always a leftover from
+ * switching modes (or a bad heal that forced unit). That is order-threshold intent —
+ * never treat it as €X off every ticket.
+ *
+ * Badges like „10 EUR sparen“ / „beim Kauf von 2 Tickets“ likewise mark order promos,
+ * even if a previous heal already forced minQuantity back to 1.
+ */
+export function inferCampaignApplyMode(row: {
+  applyMode?: string | null;
+  minQuantity?: number | null;
+  badgeLabel?: string | null;
+  badgeDisclaimer?: string | null;
+}): { applyMode: PriceCampaignApplyMode; minQuantity: number; healed: boolean } {
+  const rawMode: PriceCampaignApplyMode = row.applyMode === "order" ? "order" : "unit";
+  const rawMin = Math.max(1, Math.floor(Number(row.minQuantity ?? 1)) || 1);
+  const tip = `${row.badgeDisclaimer ?? ""}\n${row.badgeLabel ?? ""}`;
+
+  if (rawMode === "order") {
+    return { applyMode: "order", minQuantity: rawMin, healed: false };
+  }
+
+  if (rawMin > 1) {
+    return { applyMode: "order", minQuantity: rawMin, healed: true };
+  }
+
+  const ticketMatch =
+    tip.match(/(?:ab|von)\s*(\d+)\s*Tickets?/i) || tip.match(/(\d+)\s*Tickets?/i);
+  if (ticketMatch) {
+    const n = Math.max(2, parseInt(ticketMatch[1]!, 10) || 2);
+    return { applyMode: "order", minQuantity: n, healed: true };
+  }
+
+  // „10 EUR sparen“ / „10 € sparen“ without ticket count — order-threshold copy, not unit Aktionspreis.
+  if (/\d+[\s.,]*\s*(?:EUR|€|Euro)\s*sparen/i.test(tip)) {
+    return { applyMode: "order", minQuantity: 2, healed: true };
+  }
+
+  return { applyMode: "unit", minQuantity: 1, healed: false };
+}
+
 export function campaignMinQuantity(
   campaign: Pick<PriceCampaignInput, "minQuantity" | "applyMode">,
 ): number {
-  // Unit = Aktionspreis pro Ticket — minQuantity > 1 is a leftover from switching
-  // applyMode in admin and must not hide the strike price on the event page.
   if (campaignApplyMode(campaign) === "unit") return 1;
   const n = campaign.minQuantity ?? 1;
-  return Number.isFinite(n) && n > 1 ? Math.floor(n) : 1;
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : 1;
+}
+
+/** Public badge for order-threshold promos (no unit strike). */
+export function formatOrderCampaignBadge(
+  campaign: Pick<PriceCampaignInput, "type" | "value" | "name" | "badgeLabel" | "minQuantity" | "applyMode">,
+): string {
+  const minQ = campaignMinQuantity(campaign);
+  const custom = campaign.badgeLabel?.trim() || "";
+  // Rewrite misleading unit-style savings lines that omit the ticket threshold.
+  if (
+    custom &&
+    !/\d+\s*Tickets?/i.test(custom) &&
+    /\d+[\s.,]*\s*(?:EUR|€|Euro)\s*sparen/i.test(custom)
+  ) {
+    if (campaign.type === "fixed" && campaign.value > 0) {
+      const euros = (campaign.value / 100).toLocaleString("de-DE", {
+        maximumFractionDigits: campaign.value % 100 === 0 ? 0 : 2,
+      });
+      return `${euros} € Rabatt ab ${minQ} Tickets`;
+    }
+  }
+  if (custom) return custom;
+  if (campaign.type === "fixed" && campaign.value > 0) {
+    const euros = (campaign.value / 100).toLocaleString("de-DE", {
+      maximumFractionDigits: campaign.value % 100 === 0 ? 0 : 2,
+    });
+    return `${euros} € Rabatt ab ${minQ} Tickets`;
+  }
+  if (campaign.type === "percent" && campaign.value > 0) {
+    return `${Math.round(campaign.value / 100)} % Rabatt ab ${minQ} Tickets`;
+  }
+  return campaign.name.trim() || "Aktion";
+}
+
+export function formatOrderCampaignDisclaimer(
+  campaign: Pick<PriceCampaignInput, "badgeDisclaimer" | "minQuantity" | "applyMode">,
+): string | null {
+  const custom = campaign.badgeDisclaimer?.trim();
+  if (custom) return custom;
+  const minQ = campaignMinQuantity(campaign);
+  if (minQ > 1) return `* beim Kauf von ${minQ} Tickets`;
+  return null;
 }
 
 /** Apply percent (bps) or fixed cents off a gross price. */
@@ -343,7 +426,7 @@ export function mapCampaignRow(row: {
   badgeDisclaimer?: string | null;
   categories: { categoryId: string }[];
 }): PriceCampaignInput {
-  const applyMode = row.applyMode === "order" ? "order" : "unit";
+  const inferred = inferCampaignApplyMode(row);
   return {
     id: row.id,
     name: row.name,
@@ -353,9 +436,8 @@ export function mapCampaignRow(row: {
     type: row.type,
     value: row.value,
     channels: row.channels,
-    applyMode,
-    // Unit campaigns are always per-ticket; ignore leftover order thresholds.
-    minQuantity: applyMode === "unit" ? 1 : Math.max(1, row.minQuantity ?? 1),
+    applyMode: inferred.applyMode,
+    minQuantity: inferred.applyMode === "unit" ? 1 : Math.max(1, inferred.minQuantity),
     badgeLabel: row.badgeLabel ?? null,
     badgeDisclaimer: row.badgeDisclaimer ?? null,
     categoryIds: row.categories.map((c) => c.categoryId),

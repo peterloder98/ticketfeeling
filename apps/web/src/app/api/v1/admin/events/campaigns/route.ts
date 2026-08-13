@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { campaignsMatch } from "@/lib/commerce/campaign-sibling-match";
+import { inferCampaignApplyMode } from "@/lib/commerce/event-pricing";
 import {
   ensureCriticalCampaignColumns,
   ensureEventPricingSchema,
@@ -338,15 +339,26 @@ export async function GET(request: Request) {
       }
     }
 
-    // Unit = Aktionspreis: leftover order minQuantity must not hide public prices.
-    if (c.applyMode !== "order" && (c.minQuantity ?? 1) > 1) {
+    // Unit + threshold leftovers (or „10 EUR sparen“ badges) are order promos — never force minQty 1.
+    const inferred = inferCampaignApplyMode(c);
+    if (
+      inferred.healed ||
+      (inferred.applyMode === "order" &&
+        (c.applyMode !== "order" || (c.minQuantity ?? 1) !== inferred.minQuantity))
+    ) {
       await prisma.eventPriceCampaign.update({
         where: { id: c.id },
-        data: { minQuantity: 1 },
+        data: {
+          applyMode: inferred.applyMode,
+          minQuantity: inferred.minQuantity,
+        },
       });
-      c.minQuantity = 1;
+      c.applyMode = inferred.applyMode;
+      c.minQuantity = inferred.minQuantity;
       healedNotes.push(
-        `„${c.name}“ ist Pro-Ticket — Mindestmenge wurde auf 1 korrigiert.`,
+        inferred.applyMode === "order"
+          ? `„${c.name}“ ist Bestell-Rabatt (einmalig ab ${inferred.minQuantity} Tickets) — Anwendung wurde korrigiert.`
+          : `„${c.name}“ ist Pro-Ticket — Mindestmenge wurde auf 1 korrigiert.`,
       );
     }
   }

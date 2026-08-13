@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import {
   mapCampaignRow,
+  inferCampaignApplyMode,
   type AccessibilityOfferInput,
   type PriceCampaignInput,
 } from "@/lib/commerce/event-pricing";
@@ -46,6 +47,37 @@ function withCategoryFallback(
   return mapped;
 }
 
+/** Persist misclassified order promos (unit + threshold / „10 EUR sparen“) — fire-and-forget. */
+function persistInferredApplyMode(row: {
+  id: string;
+  applyMode?: string | null;
+  minQuantity?: number | null;
+  badgeLabel?: string | null;
+  badgeDisclaimer?: string | null;
+}) {
+  const inferred = inferCampaignApplyMode(row);
+  if (
+    !inferred.healed &&
+    !(
+      inferred.applyMode === "order" &&
+      (row.applyMode !== "order" || (row.minQuantity ?? 1) !== inferred.minQuantity)
+    )
+  ) {
+    return;
+  }
+  void prisma.eventPriceCampaign
+    .update({
+      where: { id: row.id },
+      data: {
+        applyMode: inferred.applyMode,
+        minQuantity: inferred.minQuantity,
+      },
+    })
+    .catch((err) => {
+      console.warn("[loadEventPriceCampaigns] applyMode heal failed", row.id, err);
+    });
+}
+
 async function loadCampaignRowsForEvents(eventIds: string[]) {
   return prisma.eventPriceCampaign.findMany({
     where: { eventId: { in: eventIds } },
@@ -64,6 +96,7 @@ export async function loadEventPriceCampaigns(eventId: string): Promise<PriceCam
       }),
     ]);
     const fallback = categories.map((c) => c.id);
+    for (const row of rows) persistInferredApplyMode(row);
     return rows.map((row) => withCategoryFallback(row, fallback));
   } catch (err) {
     console.error("[loadEventPriceCampaigns]", eventId, err);
@@ -78,6 +111,7 @@ export async function loadEventPriceCampaigns(eventId: string): Promise<PriceCam
         }),
       ]);
       const fallback = categories.map((c) => c.id);
+      for (const row of rows) persistInferredApplyMode(row);
       return rows.map((row) => withCategoryFallback(row, fallback));
     } catch (retryErr) {
       console.error("[loadEventPriceCampaigns] retry failed", eventId, retryErr);
@@ -114,6 +148,7 @@ export async function loadPriceCampaignsForEvents(
       fallbackByEvent.set(cat.eventId, list);
     }
     for (const row of rows) {
+      persistInferredApplyMode(row);
       const list = map.get(row.eventId) ?? [];
       list.push(withCategoryFallback(row, fallbackByEvent.get(row.eventId) ?? []));
       map.set(row.eventId, list);
@@ -140,6 +175,7 @@ export async function loadPriceCampaignsForEvents(
         fallbackByEvent.set(cat.eventId, list);
       }
       for (const row of rows) {
+        persistInferredApplyMode(row);
         const list = map.get(row.eventId) ?? [];
         list.push(withCategoryFallback(row, fallbackByEvent.get(row.eventId) ?? []));
         map.set(row.eventId, list);

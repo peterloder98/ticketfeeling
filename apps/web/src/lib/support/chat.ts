@@ -620,7 +620,7 @@ export async function handleSupportChat(input: {
   const history = await loadSessionHistory(session.id);
   const followUp = resolveFollowUpIntent(input.message, history);
   let intent = followUp?.intent ?? detectIntent(input.message);
-  let scoringMessage = followUp?.scoringMessage ?? input.message;
+  const scoringMessage = followUp?.scoringMessage ?? input.message;
 
   // Follow-up without prior topic → treat as help menu or faq
   if (!followUp && isFollowUpMessage(input.message) && intent === "faq_general") {

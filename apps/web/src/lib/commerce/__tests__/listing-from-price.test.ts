@@ -62,11 +62,41 @@ describe("resolveListingFromPrice", () => {
         "ev1",
         [
           campaign({
+            id: "early",
+            name: "Frühbucher",
+            type: "percent",
+            value: 2000,
+            applyMode: "unit",
+            badgeLabel: "Frühbucher",
+            categoryIds: ["cat-a"],
+          }),
+        ],
+      ],
+    ]);
+    const from = resolveListingFromPrice({
+      categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 10000 }],
+      campaignsByEventId: map,
+      feeConfig: feeOff,
+      formatEuro: (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`,
+      now,
+    });
+    expect(from?.unitCents).toBe(8000);
+    expect(from?.saleBadge).toBe("Frühbucher");
+    expect(from?.campaignName).toBe("Frühbucher");
+  });
+
+  it("shows Sommer-Rabatt order promo without striking 49→39", () => {
+    const map = new Map([
+      [
+        "ev1",
+        [
+          campaign({
             id: "sommer",
             name: "Sommer-Rabatt",
             type: "fixed",
             value: 1000,
-            applyMode: "unit",
+            applyMode: "order",
+            minQuantity: 2,
             badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
             categoryIds: ["cat-a"],
           }),
@@ -80,8 +110,10 @@ describe("resolveListingFromPrice", () => {
       formatEuro: (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`,
       now,
     });
-    expect(from?.unitCents).toBe(3900);
-    expect(from?.saleBadge).toBe("Sommer-Rabatt - 10 EUR sparen");
+    expect(from?.unitCents).toBe(4900);
+    expect(from?.listPriceLabel).toBeNull();
+    expect(from?.saleBadge).toBe("10 € Rabatt ab 2 Tickets");
+    expect(from?.saleDisclaimer).toBe("* beim Kauf von 2 Tickets");
     expect(from?.campaignName).toBe("Sommer-Rabatt");
   });
 
@@ -113,7 +145,7 @@ describe("resolveListingFromPrice", () => {
     });
     expect(from?.unitCents).toBe(4900);
     expect(from?.listPriceLabel).toBeNull();
-    expect(from?.saleBadge).toBe("10 € sparen");
+    expect(from?.saleBadge).toBe("10 € Rabatt ab 2 Tickets");
     expect(from?.saleDisclaimer).toBe("* beim Kauf von 2 Tickets");
     expect(from?.campaignName).toBe("10 € sparen");
   });

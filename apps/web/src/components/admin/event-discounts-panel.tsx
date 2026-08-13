@@ -207,8 +207,12 @@ export function EventDiscountsPanel({
     setLoading(true);
     setError(null);
     setWarnMsg(null);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 20_000);
     try {
-      const res = await fetch(`/api/v1/admin/events/campaigns?eventId=${eventId}`);
+      const res = await fetch(`/api/v1/admin/events/campaigns?eventId=${eventId}`, {
+        signal: controller.signal,
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.code ?? "LOAD_FAILED");
       setCategories(
@@ -263,8 +267,18 @@ export function EventDiscountsPanel({
         valueDisplay: Number(data.accessibility?.valueDisplay ?? 10),
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Laden fehlgeschlagen");
+      const aborted =
+        (typeof DOMException !== "undefined" && e instanceof DOMException && e.name === "AbortError") ||
+        (e instanceof Error && e.name === "AbortError");
+      setError(
+        aborted
+          ? "Laden dauerte zu lange. Bitte Seite neu laden oder erneut versuchen."
+          : e instanceof Error
+            ? e.message
+            : "Laden fehlgeschlagen",
+      );
     } finally {
+      window.clearTimeout(timer);
       setLoading(false);
     }
   }, [
@@ -406,12 +420,13 @@ export function EventDiscountsPanel({
                 : `Preisaktion gespeichert und von ${removed} weiteren Terminen entfernt.`
               : "Preisaktion gespeichert.",
       );
-      await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Speichern fehlgeschlagen");
     } finally {
       setSaving(false);
     }
+    // Reload after save — never keep the Speichern-Button blocked if load hangs.
+    void load();
   }
 
   /** Event context: sibling IDs only (current event is always applied). */

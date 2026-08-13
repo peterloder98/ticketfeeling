@@ -4,6 +4,8 @@ import {
   pickBestCampaign,
   resolveOrderCampaignDiscount,
   resolveTicketUnitPrice,
+  mapCampaignRow,
+  formatOrderCampaignBadge,
   type PriceCampaignInput,
 } from "@/lib/commerce/event-pricing";
 
@@ -94,28 +96,55 @@ describe("pickBestCampaign", () => {
     expect(best?.id).toBe("orphan");
   });
 
-  it("applies unit campaign even when leftover order minQuantity is > 1", () => {
+  it("treats unit+minQuantity>1 leftover as order — no unit strike", () => {
+    const mapped = mapCampaignRow({
+      id: "sommer",
+      name: "Sommer-Rabatt",
+      active: true,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      validUntil: new Date("2026-12-31T23:59:59.000Z"),
+      type: "fixed",
+      value: 1000,
+      channels: "both",
+      applyMode: "unit",
+      minQuantity: 2,
+      badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
+      badgeDisclaimer: null,
+      categories: [{ categoryId: "cat-a" }],
+    });
+    expect(mapped.applyMode).toBe("order");
+    expect(mapped.minQuantity).toBe(2);
+
     const priced = resolveTicketUnitPrice({
       listCents: 4900,
       categoryId: "cat-a",
       channel: "online",
       now,
-      campaigns: [
-        campaign({
-          id: "sommer",
-          name: "Sommer-Rabatt",
-          type: "fixed",
-          value: 1000,
-          applyMode: "unit",
-          minQuantity: 2,
-          badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
-          categoryIds: ["cat-a"],
-        }),
-      ],
+      campaigns: [mapped],
     });
-    expect(priced.unitCents).toBe(3900);
-    expect(priced.campaignName).toBe("Sommer-Rabatt");
-    expect(priced.campaignBadgeLabel).toBe("Sommer-Rabatt - 10 EUR sparen");
+    expect(priced.unitCents).toBe(4900);
+    expect(priced.campaignId).toBeNull();
+  });
+
+  it("heals unit + „10 EUR sparen“ badge (after bad minQuantity=1 heal) to order", () => {
+    const mapped = mapCampaignRow({
+      id: "sommer",
+      name: "Sommer-Rabatt",
+      active: true,
+      validFrom: new Date("2026-01-01T00:00:00.000Z"),
+      validUntil: new Date("2026-12-31T23:59:59.000Z"),
+      type: "fixed",
+      value: 1000,
+      channels: "both",
+      applyMode: "unit",
+      minQuantity: 1,
+      badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
+      badgeDisclaimer: null,
+      categories: [{ categoryId: "cat-a" }],
+    });
+    expect(mapped.applyMode).toBe("order");
+    expect(mapped.minQuantity).toBe(2);
+    expect(formatOrderCampaignBadge(mapped)).toBe("10 € Rabatt ab 2 Tickets");
   });
 
   it("ignores order-mode leftover minQuantity only for unit applyMode", () => {

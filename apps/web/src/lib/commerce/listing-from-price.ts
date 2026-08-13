@@ -1,6 +1,8 @@
 import {
   resolveTicketUnitPrice,
   pickActiveOrderCampaignBadge,
+  formatOrderCampaignBadge,
+  formatOrderCampaignDisclaimer,
   type PriceCampaignInput,
 } from "@/lib/commerce/event-pricing";
 import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
@@ -92,8 +94,8 @@ export function resolveListingFromPrice(input: {
         campaigns: campaignsByEventId.get(eventId) ?? [],
       });
       if (!orderBadge) continue;
-      saleBadge = orderBadge.badgeLabel?.trim() || orderBadge.name || "Aktion";
-      saleDisclaimer = orderBadge.badgeDisclaimer?.trim() || null;
+      saleBadge = formatOrderCampaignBadge(orderBadge);
+      saleDisclaimer = formatOrderCampaignDisclaimer(orderBadge);
       campaignName = orderBadge.name;
       campaignValidUntil = orderBadge.validUntil.toISOString();
       break;
