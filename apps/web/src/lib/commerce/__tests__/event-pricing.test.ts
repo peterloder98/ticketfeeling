@@ -75,6 +75,25 @@ describe("pickBestCampaign", () => {
     expect(best).toBeNull();
   });
 
+  it("applies unit campaign with empty categoryIds (orphan links)", () => {
+    const best = pickBestCampaign({
+      listCents: 10000,
+      categoryId: "cat-a",
+      channel: "online",
+      now,
+      campaigns: [
+        campaign({
+          id: "orphan",
+          name: "Sommer-Rabatt",
+          type: "percent",
+          value: 1000,
+          categoryIds: [],
+        }),
+      ],
+    });
+    expect(best?.id).toBe("orphan");
+  });
+
   it("respects channel filter", () => {
     const best = pickBestCampaign({
       listCents: 10000,

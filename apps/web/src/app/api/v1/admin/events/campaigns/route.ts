@@ -294,11 +294,33 @@ export async function GET(request: Request) {
     siblingCampaigns = siblings.flatMap((s) => s.priceCampaigns);
   }
 
+  /** Heal orphaned category links (next admin load). Tour copies: re-save with Termine. */
+  const healedNotes: string[] = [];
+  const allSourceCategoryIds = event.ticketCategories.map((c) => c.id);
+
+  for (const c of event.priceCampaigns) {
+    const categoryIds = c.categories.map((x) => x.categoryId);
+    if (categoryIds.length < 1 && allSourceCategoryIds.length > 0) {
+      await prisma.eventPriceCampaignCategory.createMany({
+        data: allSourceCategoryIds.map((categoryId) => ({
+          campaignId: c.id,
+          categoryId,
+        })),
+        skipDuplicates: true,
+      });
+      c.categories = allSourceCategoryIds.map((categoryId) => ({ categoryId }));
+      healedNotes.push(
+        `Preiskategorien für „${c.name}“ waren nicht verknüpft und wurden wiederhergestellt.`,
+      );
+    }
+  }
+
   return NextResponse.json({
     eventEndsAt: event.eventEndsAt?.toISOString() ?? null,
     eventStartsAt: event.eventStartsAt?.toISOString() ?? null,
     tourId: event.tourId,
     tourSiblings,
+    healNotes: healedNotes.length > 0 ? healedNotes : undefined,
     accessibility: {
       enabled: event.accessibilityDiscountEnabled,
       label: event.accessibilityDiscountLabel,
@@ -663,12 +685,14 @@ export async function PUT(request: Request) {
           siblingCategories: sib.ticketCategories,
         });
         if (mapped.length < 1) {
-          siblingWarnings.push(`Termin ohne passende Preiskategorie übersprungen.`);
+          siblingWarnings.push(
+            `Termin „${sib.name || sib.id.slice(0, 8)}“: keine passende Preiskategorie — bitte Kategorienamen angleichen.`,
+          );
           continue;
         }
         if (mapped.length < sourceSelected.length) {
           siblingWarnings.push(
-            `Bei einem Termin wurden nicht alle Kategorien gefunden — nur passende übernommen.`,
+            `Bei „${sib.name || "einem Termin"}“ wurden nicht alle Kategorien gefunden — nur passende übernommen.`,
           );
         }
         targets.push({
@@ -679,6 +703,28 @@ export async function PUT(request: Request) {
         });
       } else if (isEdit && matched) {
         removeCampaignIds.push(matched.id);
+      }
+    }
+
+    // Selected tour dates without mappable categories must not silently save only the template.
+    if (selectedSiblingSet.size > 0) {
+      const appliedSiblingIds = new Set(
+        targets.filter((t) => t.eventId !== event.id).map((t) => t.eventId),
+      );
+      const failedSelected = [...selectedSiblingSet].filter((id) => !appliedSiblingIds.has(id));
+      if (failedSelected.length > 0) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "SIBLING_CATEGORY_MISMATCH",
+              message:
+                siblingWarnings[0] ||
+                "Bei einem gewählten Termin fehlen passende Preiskategorien. Bitte Kategorienamen angleichen oder den Termin abwählen.",
+              details: { failedEventIds: failedSelected, warnings: siblingWarnings },
+            },
+          },
+          { status: 400 },
+        );
       }
     }
 

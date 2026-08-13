@@ -6,9 +6,10 @@ import { ExpandableText } from "@/components/expandable-text";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
-import { formatCustomerPriceLabel } from "@/lib/commerce/public-price";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { loadPriceCampaignsForEvents } from "@/lib/commerce/load-event-pricing";
+import { resolveListingFromPrice } from "@/lib/commerce/listing-from-price";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,6 @@ export default async function PublicTourPage({ params }: Props) {
           ticketCategories: {
             where: { status: "active", onlineBookable: true },
             orderBy: { priceGrossCents: "asc" },
-            take: 1,
           },
         },
         orderBy: { eventStartsAt: "asc" },
@@ -55,19 +55,20 @@ export default async function PublicTourPage({ params }: Props) {
     tour.events.map((e) => resolveEventCoverUrl({ ...e, tour })).find(Boolean) ||
     null;
 
-  const cheapest = Math.min(
-    ...tour.events.flatMap((e) => e.ticketCategories.map((c) => c.priceGrossCents)),
-    Number.POSITIVE_INFINITY,
+  const campaignsByEventId = await loadPriceCampaignsForEvents(tour.events.map((e) => e.id));
+  const allListingCats = tour.events.flatMap((e) =>
+    e.ticketCategories.map((c) => ({
+      id: c.id,
+      eventId: e.id,
+      priceGrossCents: c.priceGrossCents,
+    })),
   );
-  const priced =
-    Number.isFinite(cheapest) && cheapest < Number.POSITIVE_INFINITY
-      ? formatCustomerPriceLabel({
-          ticketGrossCents: cheapest,
-          feeConfig,
-          formatEuro: formatEuroFromCents,
-          prefix: "ab",
-        })
-      : null;
+  const tourFrom = resolveListingFromPrice({
+    categories: allListingCats,
+    campaignsByEventId,
+    feeConfig,
+    formatEuro: formatEuroFromCents,
+  });
 
   return (
     <div className="tf-container py-8 md:py-10">
@@ -99,15 +100,45 @@ export default async function PublicTourPage({ params }: Props) {
               className="mt-3 max-w-[60ch] [&_p]:text-base"
             />
           ) : null}
-          {priced ? (
-            <p className="mt-4 text-lg font-semibold text-[var(--tf-navy)]">
-              {priced.totalLabel}
-              {priced.surchargeLabel ? (
-                <span className="ml-2 text-sm font-normal text-[var(--tf-text-secondary)]">
-                  {priced.surchargeLabel}
-                </span>
+          {tourFrom ? (
+            <div className="mt-4">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                {tourFrom.listPriceLabel ? (
+                  <span className="text-sm tabular-nums text-[var(--tf-text-secondary)] line-through">
+                    {tourFrom.listPriceLabel}
+                  </span>
+                ) : null}
+                {tourFrom.saleBadge ? (
+                  <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
+                    {tourFrom.saleBadge}
+                  </span>
+                ) : null}
+                <p
+                  className={`text-lg font-semibold ${
+                    tourFrom.listPriceLabel || tourFrom.saleBadge
+                      ? "text-[var(--tf-sale)]"
+                      : "text-[var(--tf-navy)]"
+                  }`}
+                >
+                  {tourFrom.priceLabel}
+                  {tourFrom.surchargeLabel ? (
+                    <span className="ml-2 text-sm font-normal text-[var(--tf-text-secondary)]">
+                      {tourFrom.surchargeLabel}
+                    </span>
+                  ) : null}
+                </p>
+              </div>
+              {tourFrom.campaignName ? (
+                <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
+                  {tourFrom.campaignName}
+                </p>
               ) : null}
-            </p>
+              {tourFrom.saleDisclaimer ? (
+                <p className="mt-0.5 text-xs text-[var(--tf-text-secondary)]">
+                  {tourFrom.saleDisclaimer}
+                </p>
+              ) : null}
+            </div>
           ) : null}
 
           <h2 className="mt-8 text-xl font-semibold text-[var(--tf-navy)]">Termin wählen</h2>
@@ -130,14 +161,16 @@ export default async function PublicTourPage({ params }: Props) {
               const place = event.location
                 ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
                 : null;
-              const eventPrice = event.ticketCategories[0]
-                ? formatCustomerPriceLabel({
-                    ticketGrossCents: event.ticketCategories[0].priceGrossCents,
-                    feeConfig,
-                    formatEuro: formatEuroFromCents,
-                    prefix: "ab",
-                  })
-                : null;
+              const eventFrom = resolveListingFromPrice({
+                categories: event.ticketCategories.map((c) => ({
+                  id: c.id,
+                  eventId: event.id,
+                  priceGrossCents: c.priceGrossCents,
+                })),
+                campaignsByEventId,
+                feeConfig,
+                formatEuro: formatEuroFromCents,
+              });
 
               return (
                 <li key={event.id}>
@@ -164,11 +197,31 @@ export default async function PublicTourPage({ params }: Props) {
                           <span className="min-w-0 break-words">{place}</span>
                         </p>
                       ) : null}
+                      {eventFrom?.saleBadge || eventFrom?.campaignName ? (
+                        <p className="flex flex-wrap items-center gap-1.5 pl-6 text-xs">
+                          {eventFrom.saleBadge ? (
+                            <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
+                              {eventFrom.saleBadge}
+                            </span>
+                          ) : null}
+                          {eventFrom.campaignName ? (
+                            <span className="font-medium text-[var(--tf-navy)]">
+                              {eventFrom.campaignName}
+                            </span>
+                          ) : null}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-2 pt-0.5 sm:flex-row sm:items-center">
-                      {eventPrice ? (
-                        <span className="text-sm font-semibold tabular-nums text-[var(--tf-navy)]">
-                          {eventPrice.totalLabel}
+                      {eventFrom ? (
+                        <span
+                          className={`text-sm font-semibold tabular-nums ${
+                            eventFrom.saleBadge || eventFrom.listPriceLabel
+                              ? "text-[var(--tf-sale)]"
+                              : "text-[var(--tf-navy)]"
+                          }`}
+                        >
+                          {eventFrom.priceLabel}
                         </span>
                       ) : null}
                       <span className="tf-btn tf-btn-primary !min-h-10 !px-4 text-sm">

@@ -95,6 +95,27 @@ export function isCampaignActiveAt(
 }
 
 /**
+ * Category eligibility. Empty `categoryIds` = orphaned links after category
+ * recreate — treat as “all categories on this event” so the Aktion still shows.
+ */
+export function campaignAppliesToCategory(
+  campaign: Pick<PriceCampaignInput, "categoryIds">,
+  categoryId: string,
+): boolean {
+  if (!campaign.categoryIds || campaign.categoryIds.length === 0) return true;
+  return campaign.categoryIds.includes(categoryId);
+}
+
+export function campaignAppliesToAnyCategory(
+  campaign: Pick<PriceCampaignInput, "categoryIds">,
+  categoryIds: string[],
+): boolean {
+  if (categoryIds.length === 0) return false;
+  if (!campaign.categoryIds || campaign.categoryIds.length === 0) return true;
+  return campaign.categoryIds.some((id) => categoryIds.includes(id));
+}
+
+/**
  * Among matching **unit** campaigns, pick the one with the largest absolute discount in cents.
  * Unit campaigns do not stack. Order-mode campaigns are ignored here.
  */
@@ -116,7 +137,7 @@ export function pickBestCampaign(input: {
     if (campaignApplyMode(c) !== "unit") continue;
     if (!isCampaignActiveAt(c, now)) continue;
     if (!campaignMatchesChannel(c.channels, channel)) continue;
-    if (!c.categoryIds.includes(categoryId)) continue;
+    if (!campaignAppliesToCategory(c, categoryId)) continue;
     if (quantity < campaignMinQuantity(c)) continue;
     const after = applyDiscountOff(listCents, c.type, c.value);
     const off = listCents - after;
@@ -198,7 +219,7 @@ export function pickActiveOrderCampaignBadge(input: {
     if (campaignApplyMode(c) !== "order") continue;
     if (!isCampaignActiveAt(c, now)) continue;
     if (!campaignMatchesChannel(c.channels, channel)) continue;
-    if (!c.categoryIds.some((id) => categoryIds.includes(id))) continue;
+    if (!campaignAppliesToAnyCategory(c, categoryIds)) continue;
     if (!best || (c.badgeLabel && !best.badgeLabel)) best = c;
   }
   return best;
@@ -232,7 +253,7 @@ export function resolveOrderCampaignDiscount(input: {
       if (!isCampaignActiveAt(c, now)) continue;
       if (!campaignMatchesChannel(c.channels, input.channel)) continue;
 
-      const eligibleLines = eventLines.filter((l) => c.categoryIds.includes(l.categoryId));
+      const eligibleLines = eventLines.filter((l) => campaignAppliesToCategory(c, l.categoryId));
       const eligibleQty = eligibleLines.reduce((s, l) => s + l.quantity, 0);
       if (eligibleQty < campaignMinQuantity(c)) continue;
 
@@ -290,7 +311,7 @@ export function cartHasActivePriceCampaign(input: {
     for (const c of campaigns) {
       if (!isCampaignActiveAt(c, now)) continue;
       if (!campaignMatchesChannel(c.channels, input.channel)) continue;
-      if (!c.categoryIds.includes(line.categoryId)) continue;
+      if (!campaignAppliesToCategory(c, line.categoryId)) continue;
       return true;
     }
   }

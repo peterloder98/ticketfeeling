@@ -206,6 +206,7 @@ export function EventDiscountsPanel({
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setWarnMsg(null);
     try {
       const res = await fetch(`/api/v1/admin/events/campaigns?eventId=${eventId}`);
       const data = await res.json();
@@ -229,6 +230,9 @@ export function EventDiscountsPanel({
             : [],
         })),
       );
+      if (Array.isArray(data.healNotes) && data.healNotes.length > 0) {
+        setWarnMsg(data.healNotes.join(" "));
+      }
       const siblings: TourSibling[] = Array.isArray(data.tourSiblings)
         ? (data.tourSiblings as TourSibling[])
         : [];
@@ -363,6 +367,8 @@ export function EventDiscountsPanel({
           data?.error?.message ||
           (code === "SCHEMA_OUTDATED"
             ? "Datenbank-Schema für Preisaktionen ist noch nicht aktuell. Bitte erneut speichern."
+            : code === "SIBLING_CATEGORY_MISMATCH"
+              ? "Bei einem gewählten Termin fehlen passende Preiskategorien. Bitte Kategorienamen angleichen."
             : code === "SERVER_ERROR"
               ? "Preisaktion konnte nicht gespeichert werden. Bitte erneut versuchen."
               : code === "VALIDATION"

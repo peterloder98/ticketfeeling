@@ -4,18 +4,74 @@ import {
   type AccessibilityOfferInput,
   type PriceCampaignInput,
 } from "@/lib/commerce/event-pricing";
-import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
+import {
+  ensureCriticalCampaignColumns,
+  ensureEventPricingSchema,
+} from "@/lib/commerce/ensure-event-pricing-schema";
+
+/** Fill empty category links (orphaned after category recreate) with all event categories. */
+function withCategoryFallback(
+  row: {
+    id: string;
+    name: string;
+    active: boolean;
+    validFrom: Date;
+    validUntil: Date;
+    type: string;
+    value: number;
+    channels: string;
+    applyMode?: string | null;
+    minQuantity?: number | null;
+    badgeLabel?: string | null;
+    badgeDisclaimer?: string | null;
+    categories: { categoryId: string }[];
+  },
+  fallbackCategoryIds: string[],
+): PriceCampaignInput {
+  const mapped = mapCampaignRow(row);
+  if (mapped.categoryIds.length === 0 && fallbackCategoryIds.length > 0) {
+    mapped.categoryIds = fallbackCategoryIds;
+  }
+  return mapped;
+}
+
+async function loadCampaignRowsForEvents(eventIds: string[]) {
+  return prisma.eventPriceCampaign.findMany({
+    where: { eventId: { in: eventIds } },
+    include: { categories: { select: { categoryId: true } } },
+  });
+}
 
 export async function loadEventPriceCampaigns(eventId: string): Promise<PriceCampaignInput[]> {
   await ensureEventPricingSchema(prisma);
   try {
-    const rows = await prisma.eventPriceCampaign.findMany({
-      where: { eventId },
-      include: { categories: { select: { categoryId: true } } },
-    });
-    return rows.map(mapCampaignRow);
-  } catch {
-    return [];
+    const [rows, categories] = await Promise.all([
+      loadCampaignRowsForEvents([eventId]),
+      prisma.eventTicketCategory.findMany({
+        where: { eventId, status: "active" },
+        select: { id: true },
+      }),
+    ]);
+    const fallback = categories.map((c) => c.id);
+    return rows.map((row) => withCategoryFallback(row, fallback));
+  } catch (err) {
+    console.error("[loadEventPriceCampaigns]", eventId, err);
+    // Schema lag (P2022): land critical columns and retry once.
+    try {
+      await ensureCriticalCampaignColumns(prisma);
+      const [rows, categories] = await Promise.all([
+        loadCampaignRowsForEvents([eventId]),
+        prisma.eventTicketCategory.findMany({
+          where: { eventId, status: "active" },
+          select: { id: true },
+        }),
+      ]);
+      const fallback = categories.map((c) => c.id);
+      return rows.map((row) => withCategoryFallback(row, fallback));
+    } catch (retryErr) {
+      console.error("[loadEventPriceCampaigns] retry failed", eventId, retryErr);
+      return [];
+    }
   }
 }
 
@@ -29,18 +85,43 @@ export async function loadPriceCampaignsForEvents(
 
   await ensureEventPricingSchema(prisma);
   try {
-    const rows = await prisma.eventPriceCampaign.findMany({
-      where: { eventId: { in: unique } },
-      include: { categories: { select: { categoryId: true } } },
-    });
-    for (const id of unique) map.set(id, []);
+    const [rows, categories] = await Promise.all([
+      loadCampaignRowsForEvents(unique),
+      prisma.eventTicketCategory.findMany({
+        where: { eventId: { in: unique }, status: "active" },
+        select: { id: true, eventId: true },
+      }),
+    ]);
+    const fallbackByEvent = new Map<string, string[]>();
+    for (const id of unique) {
+      map.set(id, []);
+      fallbackByEvent.set(id, []);
+    }
+    for (const cat of categories) {
+      const list = fallbackByEvent.get(cat.eventId) ?? [];
+      list.push(cat.id);
+      fallbackByEvent.set(cat.eventId, list);
+    }
     for (const row of rows) {
       const list = map.get(row.eventId) ?? [];
-      list.push(mapCampaignRow(row));
+      list.push(withCategoryFallback(row, fallbackByEvent.get(row.eventId) ?? []));
       map.set(row.eventId, list);
     }
-  } catch {
-    for (const id of unique) map.set(id, []);
+  } catch (err) {
+    console.error("[loadPriceCampaignsForEvents]", err);
+    try {
+      await ensureCriticalCampaignColumns(prisma);
+      const rows = await loadCampaignRowsForEvents(unique);
+      for (const id of unique) map.set(id, []);
+      for (const row of rows) {
+        const list = map.get(row.eventId) ?? [];
+        list.push(mapCampaignRow(row));
+        map.set(row.eventId, list);
+      }
+    } catch (retryErr) {
+      console.error("[loadPriceCampaignsForEvents] retry failed", retryErr);
+      for (const id of unique) map.set(id, []);
+    }
   }
   return map;
 }

@@ -89,6 +89,35 @@ describe("resolveListingFromPrice", () => {
     expect(from?.campaignName).toBe("10 € sparen");
   });
 
+  it("still shows order badge when campaign category links are empty (orphan)", () => {
+    const map = new Map([
+      [
+        "ev1",
+        [
+          campaign({
+            id: "orphan",
+            name: "Sommer-Rabatt",
+            type: "fixed",
+            value: 1000,
+            applyMode: "order",
+            minQuantity: 2,
+            badgeLabel: "Sommer-Rabatt",
+            categoryIds: [],
+          }),
+        ],
+      ],
+    ]);
+    const from = resolveListingFromPrice({
+      categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 4900 }],
+      campaignsByEventId: map,
+      feeConfig: feeOff,
+      formatEuro: (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`,
+      now,
+    });
+    expect(from?.saleBadge).toBe("Sommer-Rabatt");
+    expect(from?.campaignName).toBe("Sommer-Rabatt");
+  });
+
   it("returns plain from-price without campaign", () => {
     const from = resolveListingFromPrice({
       categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 5000 }],
