@@ -56,6 +56,35 @@ describe("resolveListingFromPrice", () => {
     expect(from?.listPriceLabel).toContain("100,00");
   });
 
+  it("prefers unit campaign badgeLabel over percent badge", () => {
+    const map = new Map([
+      [
+        "ev1",
+        [
+          campaign({
+            id: "sommer",
+            name: "Sommer-Rabatt",
+            type: "fixed",
+            value: 1000,
+            applyMode: "unit",
+            badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
+            categoryIds: ["cat-a"],
+          }),
+        ],
+      ],
+    ]);
+    const from = resolveListingFromPrice({
+      categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 4900 }],
+      campaignsByEventId: map,
+      feeConfig: feeOff,
+      formatEuro: (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`,
+      now,
+    });
+    expect(from?.unitCents).toBe(3900);
+    expect(from?.saleBadge).toBe("Sommer-Rabatt - 10 EUR sparen");
+    expect(from?.campaignName).toBe("Sommer-Rabatt");
+  });
+
   it("shows order-threshold badge without lowering unit price", () => {
     const map = new Map([
       [

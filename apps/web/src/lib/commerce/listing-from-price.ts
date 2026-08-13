@@ -67,9 +67,10 @@ export function resolveListingFromPrice(input: {
       campaignValidUntil = priced.campaignValidUntil;
       saleBadge =
         priced.listCents > priced.unitCents
-          ? discountBadgeLabel(priced.listCents, priced.unitCents)
+          ? priced.campaignBadgeLabel ||
+            discountBadgeLabel(priced.listCents, priced.unitCents)
           : null;
-      saleDisclaimer = null;
+      saleDisclaimer = priced.campaignBadgeDisclaimer;
     }
   }
 

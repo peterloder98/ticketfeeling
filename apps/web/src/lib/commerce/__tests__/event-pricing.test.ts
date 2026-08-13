@@ -94,6 +94,52 @@ describe("pickBestCampaign", () => {
     expect(best?.id).toBe("orphan");
   });
 
+  it("applies unit campaign even when leftover order minQuantity is > 1", () => {
+    const priced = resolveTicketUnitPrice({
+      listCents: 4900,
+      categoryId: "cat-a",
+      channel: "online",
+      now,
+      campaigns: [
+        campaign({
+          id: "sommer",
+          name: "Sommer-Rabatt",
+          type: "fixed",
+          value: 1000,
+          applyMode: "unit",
+          minQuantity: 2,
+          badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
+          categoryIds: ["cat-a"],
+        }),
+      ],
+    });
+    expect(priced.unitCents).toBe(3900);
+    expect(priced.campaignName).toBe("Sommer-Rabatt");
+    expect(priced.campaignBadgeLabel).toBe("Sommer-Rabatt - 10 EUR sparen");
+  });
+
+  it("ignores order-mode leftover minQuantity only for unit applyMode", () => {
+    const best = pickBestCampaign({
+      listCents: 4900,
+      categoryId: "cat-a",
+      channel: "online",
+      now,
+      quantity: 1,
+      campaigns: [
+        campaign({
+          id: "pair",
+          name: "Pair",
+          type: "fixed",
+          value: 1000,
+          applyMode: "order",
+          minQuantity: 2,
+          categoryIds: ["cat-a"],
+        }),
+      ],
+    });
+    expect(best).toBeNull();
+  });
+
   it("respects channel filter", () => {
     const best = pickBestCampaign({
       listCents: 10000,

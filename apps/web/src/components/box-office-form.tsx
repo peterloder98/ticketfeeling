@@ -31,6 +31,8 @@ type Category = {
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
+  campaignBadgeLabel?: string | null;
+  campaignBadgeDisclaimer?: string | null;
   campaignValidUntil?: string | null;
   available: number;
   maxPerOrder?: number;
@@ -694,6 +696,8 @@ export function BoxOfficeForm({
                             ? selectedEvent.accessibilityOffer.label
                             : category.campaignName
                         }
+                        saleBadge={category.campaignBadgeLabel ?? null}
+                        saleDisclaimer={category.campaignBadgeDisclaimer ?? null}
                         validUntil={
                           accessibilitySelected && selectedEvent?.accessibilityOffer
                             ? null

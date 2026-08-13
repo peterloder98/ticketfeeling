@@ -35,6 +35,9 @@ export type ResolvedTicketPrice = {
   accessibilityDiscountCents: number;
   campaignId: string | null;
   campaignName: string | null;
+  /** Public badge e.g. „Sommer-Rabatt - 10 EUR sparen“ */
+  campaignBadgeLabel: string | null;
+  campaignBadgeDisclaimer: string | null;
   /** ISO end of active campaign — for countdown UI */
   campaignValidUntil: string | null;
   accessibilityApplied: boolean;
@@ -59,7 +62,12 @@ export function campaignApplyMode(campaign: Pick<PriceCampaignInput, "applyMode"
   return campaign.applyMode === "order" ? "order" : "unit";
 }
 
-export function campaignMinQuantity(campaign: Pick<PriceCampaignInput, "minQuantity">): number {
+export function campaignMinQuantity(
+  campaign: Pick<PriceCampaignInput, "minQuantity" | "applyMode">,
+): number {
+  // Unit = Aktionspreis pro Ticket — minQuantity > 1 is a leftover from switching
+  // applyMode in admin and must not hide the strike price on the event page.
+  if (campaignApplyMode(campaign) === "unit") return 1;
   const n = campaign.minQuantity ?? 1;
   return Number.isFinite(n) && n > 1 ? Math.floor(n) : 1;
 }
@@ -197,6 +205,8 @@ export function resolveTicketUnitPrice(input: {
     accessibilityDiscountCents,
     campaignId: best?.id ?? null,
     campaignName: best?.name ?? null,
+    campaignBadgeLabel: best?.badgeLabel?.trim() || null,
+    campaignBadgeDisclaimer: best?.badgeDisclaimer?.trim() || null,
     campaignValidUntil: best?.validUntil ? best.validUntil.toISOString() : null,
     accessibilityApplied: wantAccess && accessibilityDiscountCents > 0,
     accessibilityLabel: wantAccess ? offer?.label ?? null : null,
@@ -333,6 +343,7 @@ export function mapCampaignRow(row: {
   badgeDisclaimer?: string | null;
   categories: { categoryId: string }[];
 }): PriceCampaignInput {
+  const applyMode = row.applyMode === "order" ? "order" : "unit";
   return {
     id: row.id,
     name: row.name,
@@ -342,8 +353,9 @@ export function mapCampaignRow(row: {
     type: row.type,
     value: row.value,
     channels: row.channels,
-    applyMode: row.applyMode === "order" ? "order" : "unit",
-    minQuantity: Math.max(1, row.minQuantity ?? 1),
+    applyMode,
+    // Unit campaigns are always per-ticket; ignore leftover order thresholds.
+    minQuantity: applyMode === "unit" ? 1 : Math.max(1, row.minQuantity ?? 1),
     badgeLabel: row.badgeLabel ?? null,
     badgeDisclaimer: row.badgeDisclaimer ?? null,
     categoryIds: row.categories.map((c) => c.categoryId),

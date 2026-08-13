@@ -37,6 +37,8 @@ type Category = {
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
+  campaignBadgeLabel?: string | null;
+  campaignBadgeDisclaimer?: string | null;
   campaignValidUntil?: string | null;
   available: number;
   maxPerOrder: number;
@@ -51,6 +53,12 @@ type AccessibilityOfferProp = {
   value: number;
 };
 
+type OrderPromoProp = {
+  badgeLabel: string;
+  disclaimer?: string | null;
+  campaignName?: string | null;
+};
+
 type Props = {
   eventId: string;
   bookingMode: "best_available" | "seat_map_and_best" | "none";
@@ -63,6 +71,7 @@ type Props = {
   mapHostId?: string;
   cartScrollId?: string;
   accessibilityOffer?: AccessibilityOfferProp | null;
+  orderPromo?: OrderPromoProp | null;
 };
 
 function scrollToId(id: string) {
@@ -136,6 +145,7 @@ export function SeatBookingPanel({
   mapHostId,
   cartScrollId = "tickets",
   accessibilityOffer = null,
+  orderPromo = null,
 }: Props) {
   const { bump } = useCart();
   /** Numbered seats / wheelchair etc. — Bestplatz + Saalplan dropdown */
@@ -767,7 +777,17 @@ export function SeatBookingPanel({
                         promoLabel={
                           accessibilitySelected && accessibilityOffer
                             ? accessibilityOffer.label
-                            : c.campaignName
+                            : c.campaignName || orderPromo?.campaignName || null
+                        }
+                        saleBadge={
+                          list > unit
+                            ? c.campaignBadgeLabel ?? null
+                            : orderPromo?.badgeLabel ?? null
+                        }
+                        saleDisclaimer={
+                          list > unit
+                            ? c.campaignBadgeDisclaimer ?? null
+                            : orderPromo?.disclaimer ?? null
                         }
                         validUntil={
                           accessibilitySelected && accessibilityOffer
@@ -855,7 +875,17 @@ export function SeatBookingPanel({
                         promoLabel={
                           accessibilitySelected && accessibilityOffer
                             ? accessibilityOffer.label
-                            : line.category.campaignName
+                            : line.category.campaignName || orderPromo?.campaignName || null
+                        }
+                        saleBadge={
+                          listPriceFor(line.category) > unitPriceFor(line.category)
+                            ? line.category.campaignBadgeLabel ?? null
+                            : orderPromo?.badgeLabel ?? null
+                        }
+                        saleDisclaimer={
+                          listPriceFor(line.category) > unitPriceFor(line.category)
+                            ? line.category.campaignBadgeDisclaimer ?? null
+                            : orderPromo?.disclaimer ?? null
                         }
                         validUntil={
                           accessibilitySelected && accessibilityOffer
@@ -942,7 +972,17 @@ export function SeatBookingPanel({
                       promoLabel={
                         accessibilitySelected && accessibilityOffer
                           ? accessibilityOffer.label
-                          : category.campaignName
+                          : category.campaignName || orderPromo?.campaignName || null
+                      }
+                      saleBadge={
+                        listPriceFor(category) > unitPriceFor(category)
+                          ? category.campaignBadgeLabel ?? null
+                          : orderPromo?.badgeLabel ?? null
+                      }
+                      saleDisclaimer={
+                        listPriceFor(category) > unitPriceFor(category)
+                          ? category.campaignBadgeDisclaimer ?? null
+                          : orderPromo?.disclaimer ?? null
                       }
                       validUntil={
                         accessibilitySelected && accessibilityOffer

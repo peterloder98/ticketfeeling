@@ -9,7 +9,12 @@ import {
   ensureEventPricingSchema,
 } from "@/lib/commerce/ensure-event-pricing-schema";
 
-/** Fill empty category links (orphaned after category recreate) with all event categories. */
+/**
+ * Heal category links after category recreate/replace:
+ * - empty links → all active categories
+ * - only stale IDs (no overlap with active) → all active categories
+ * - mixed → keep only IDs that still exist on the event
+ */
 function withCategoryFallback(
   row: {
     id: string;
@@ -29,8 +34,14 @@ function withCategoryFallback(
   fallbackCategoryIds: string[],
 ): PriceCampaignInput {
   const mapped = mapCampaignRow(row);
-  if (mapped.categoryIds.length === 0 && fallbackCategoryIds.length > 0) {
+  if (fallbackCategoryIds.length === 0) return mapped;
+
+  const fallbackSet = new Set(fallbackCategoryIds);
+  const valid = mapped.categoryIds.filter((id) => fallbackSet.has(id));
+  if (valid.length === 0) {
     mapped.categoryIds = fallbackCategoryIds;
+  } else if (valid.length !== mapped.categoryIds.length) {
+    mapped.categoryIds = valid;
   }
   return mapped;
 }
@@ -111,11 +122,26 @@ export async function loadPriceCampaignsForEvents(
     console.error("[loadPriceCampaignsForEvents]", err);
     try {
       await ensureCriticalCampaignColumns(prisma);
-      const rows = await loadCampaignRowsForEvents(unique);
-      for (const id of unique) map.set(id, []);
+      const [rows, categories] = await Promise.all([
+        loadCampaignRowsForEvents(unique),
+        prisma.eventTicketCategory.findMany({
+          where: { eventId: { in: unique }, status: "active" },
+          select: { id: true, eventId: true },
+        }),
+      ]);
+      const fallbackByEvent = new Map<string, string[]>();
+      for (const id of unique) {
+        map.set(id, []);
+        fallbackByEvent.set(id, []);
+      }
+      for (const cat of categories) {
+        const list = fallbackByEvent.get(cat.eventId) ?? [];
+        list.push(cat.id);
+        fallbackByEvent.set(cat.eventId, list);
+      }
       for (const row of rows) {
         const list = map.get(row.eventId) ?? [];
-        list.push(mapCampaignRow(row));
+        list.push(withCategoryFallback(row, fallbackByEvent.get(row.eventId) ?? []));
         map.set(row.eventId, list);
       }
     } catch (retryErr) {

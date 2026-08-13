@@ -19,6 +19,8 @@ type Category = {
   priceGrossCents: number;
   listPriceGrossCents?: number;
   campaignName?: string | null;
+  campaignBadgeLabel?: string | null;
+  campaignBadgeDisclaimer?: string | null;
   campaignValidUntil?: string | null;
   available: number;
   maxPerOrder: number;
@@ -231,11 +233,13 @@ export function AddToCartPanel({
                   }
                   saleBadge={
                     price.list > price.unit
-                      ? null
+                      ? category.campaignBadgeLabel ?? null
                       : orderPromo?.badgeLabel ?? null
                   }
                   saleDisclaimer={
-                    price.list > price.unit ? null : orderPromo?.disclaimer ?? null
+                    price.list > price.unit
+                      ? category.campaignBadgeDisclaimer ?? null
+                      : orderPromo?.disclaimer ?? null
                   }
                   validUntil={
                     accessibilitySelected && accessibilityOffer

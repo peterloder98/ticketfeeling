@@ -284,6 +284,8 @@ export default async function EventPage({ params }: Props) {
       priceGrossCents: priced.unitCents,
       listPriceGrossCents: priced.listCents,
       campaignName: priced.campaignName,
+      campaignBadgeLabel: priced.campaignBadgeLabel,
+      campaignBadgeDisclaimer: priced.campaignBadgeDisclaimer,
       campaignValidUntil: priced.campaignValidUntil,
       available,
       maxPerOrder: category.maxPerOrder,
@@ -630,6 +632,7 @@ export default async function EventPage({ params }: Props) {
                     showRemainingAvailability={event.showRemainingAvailability}
                     mapHostId="saalplan-map"
                     cartScrollId="tickets"
+                    orderPromo={orderPromo}
                     accessibilityOffer={
                       accessibilityOffer.enabled
                         ? {

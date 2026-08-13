@@ -220,6 +220,7 @@ export async function GET(request: Request) {
       accessibilityDiscountType: true,
       accessibilityDiscountValue: true,
       ticketCategories: {
+        where: { status: "active" },
         orderBy: { sortOrder: "asc" },
         select: { id: true, name: true, priceGrossCents: true },
       },
@@ -294,13 +295,22 @@ export async function GET(request: Request) {
     siblingCampaigns = siblings.flatMap((s) => s.priceCampaigns);
   }
 
-  /** Heal orphaned category links (next admin load). Tour copies: re-save with Termine. */
+  /** Heal empty or fully-stale category links (next admin load). Tour copies: re-save with Termine. */
   const healedNotes: string[] = [];
   const allSourceCategoryIds = event.ticketCategories.map((c) => c.id);
+  const activeCategorySet = new Set(allSourceCategoryIds);
 
   for (const c of event.priceCampaigns) {
     const categoryIds = c.categories.map((x) => x.categoryId);
-    if (categoryIds.length < 1 && allSourceCategoryIds.length > 0) {
+    const validIds = categoryIds.filter((id) => activeCategorySet.has(id));
+    const needsHeal =
+      allSourceCategoryIds.length > 0 &&
+      (categoryIds.length < 1 || validIds.length === 0);
+
+    if (needsHeal) {
+      await prisma.eventPriceCampaignCategory.deleteMany({
+        where: { campaignId: c.id },
+      });
       await prisma.eventPriceCampaignCategory.createMany({
         data: allSourceCategoryIds.map((categoryId) => ({
           campaignId: c.id,
@@ -310,7 +320,33 @@ export async function GET(request: Request) {
       });
       c.categories = allSourceCategoryIds.map((categoryId) => ({ categoryId }));
       healedNotes.push(
-        `Preiskategorien für „${c.name}“ waren nicht verknüpft und wurden wiederhergestellt.`,
+        categoryIds.length < 1
+          ? `Preiskategorien für „${c.name}“ waren nicht verknüpft und wurden wiederhergestellt.`
+          : `Preiskategorien für „${c.name}“ verwiesen auf alte Kategorien und wurden neu verknüpft.`,
+      );
+    } else if (validIds.length !== categoryIds.length) {
+      // Drop stale IDs, keep valid subset.
+      const stale = categoryIds.filter((id) => !activeCategorySet.has(id));
+      if (stale.length > 0) {
+        await prisma.eventPriceCampaignCategory.deleteMany({
+          where: { campaignId: c.id, categoryId: { in: stale } },
+        });
+        c.categories = validIds.map((categoryId) => ({ categoryId }));
+        healedNotes.push(
+          `Veraltete Kategorie-Links bei „${c.name}“ wurden entfernt.`,
+        );
+      }
+    }
+
+    // Unit = Aktionspreis: leftover order minQuantity must not hide public prices.
+    if (c.applyMode !== "order" && (c.minQuantity ?? 1) > 1) {
+      await prisma.eventPriceCampaign.update({
+        where: { id: c.id },
+        data: { minQuantity: 1 },
+      });
+      c.minQuantity = 1;
+      healedNotes.push(
+        `„${c.name}“ ist Pro-Ticket — Mindestmenge wurde auf 1 korrigiert.`,
       );
     }
   }
@@ -747,7 +783,8 @@ export async function PUT(request: Request) {
       (targets.length > 1 ? randomUUID() : null);
 
     const applyMode = body.applyMode === "order" ? "order" : "unit";
-    const minQuantity = Math.max(1, body.minQuantity ?? 1);
+    const minQuantity =
+      applyMode === "unit" ? 1 : Math.max(1, body.minQuantity ?? 1);
     const value = toStoredValue(body.type, body.valueDisplay);
     const baseData = {
       name: body.name.trim(),

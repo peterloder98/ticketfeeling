@@ -352,7 +352,8 @@ export function EventDiscountsPanel({
           valueDisplay: clampedDraft.valueDisplay,
           channels: clampedDraft.channels,
           applyMode: clampedDraft.applyMode,
-          minQuantity: clampedDraft.minQuantity,
+          minQuantity:
+            clampedDraft.applyMode === "unit" ? 1 : clampedDraft.minQuantity,
           badgeLabel: clampedDraft.badgeLabel.trim() || null,
           badgeDisclaimer: clampedDraft.badgeDisclaimer.trim() || null,
           categoryIds: clampedDraft.categoryIds,
@@ -1035,9 +1036,11 @@ export function EventDiscountsPanel({
                       ...draft,
                       applyMode: e.target.value === "order" ? "order" : "unit",
                       minQuantity:
-                        e.target.value === "order" && draft.minQuantity < 2
-                          ? 2
-                          : draft.minQuantity,
+                        e.target.value === "order"
+                          ? draft.minQuantity < 2
+                            ? 2
+                            : draft.minQuantity
+                          : 1,
                     })
                   }
                 >

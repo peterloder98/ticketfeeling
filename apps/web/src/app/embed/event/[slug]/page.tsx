@@ -226,6 +226,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
       priceGrossCents: priced.unitCents,
       listPriceGrossCents: priced.listCents,
       campaignName: priced.campaignName,
+      campaignBadgeLabel: priced.campaignBadgeLabel,
+      campaignBadgeDisclaimer: priced.campaignBadgeDisclaimer,
       campaignValidUntil: priced.campaignValidUntil,
       available,
       maxPerOrder: category.maxPerOrder,
@@ -368,6 +370,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
                   showRemainingAvailability={event.showRemainingAvailability}
                   cartHref="/embed/warenkorb"
                   checkoutHref="/embed/checkout"
+                  orderPromo={orderPromo}
                   accessibilityOffer={
                     accessibilityOffer.enabled
                       ? {

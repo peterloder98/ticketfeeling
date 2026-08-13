@@ -374,6 +374,8 @@ export default async function BoxOfficePage({ searchParams }: Props) {
           priceGrossCents: priced.unitCents,
           listPriceGrossCents: priced.listCents,
           campaignName: priced.campaignName,
+          campaignBadgeLabel: priced.campaignBadgeLabel,
+          campaignBadgeDisclaimer: priced.campaignBadgeDisclaimer,
           campaignValidUntil: priced.campaignValidUntil,
           available,
           maxPerOrder: category.maxPerOrder,
