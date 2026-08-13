@@ -19,7 +19,7 @@ import { getPaymentProvider } from "@/lib/payments";
 import { isStripeTestMode } from "@/lib/payments/mode";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
-import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
+import { FeeInfoIconButton } from "@/components/fee-info-dialog";
 import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { PromotionBadge } from "@/components/promotion-badge";
@@ -236,45 +236,31 @@ export default async function CheckoutPage() {
                 <span className="tabular-nums">{formatEuroFromCents(summary.ticketsGrossCents)}</span>
               </p>
               {summary.discountCents > 0 ? (
-                <div className="space-y-0.5">
-                  <PromotionBadge
-                    type="promotion"
-                    variant="checkout"
-                    campaignName={summary.discountLabel?.trim() || "Rabatt"}
-                    amountLabel={`−${formatEuroFromCents(summary.discountCents)}`}
-                  />
-                  {summary.orderCampaignDisclaimer ? (
-                    <p className="text-[11px] font-normal text-[var(--tf-text-secondary)]">
-                      {summary.orderCampaignDisclaimer}
-                    </p>
-                  ) : null}
-                </div>
+                <PromotionBadge
+                  type="promotion"
+                  variant="checkout"
+                  campaignName={summary.discountLabel?.trim() || "Rabatt"}
+                  amountLabel={`−${formatEuroFromCents(summary.discountCents)}`}
+                  saleDisclaimer={summary.orderCampaignDisclaimer}
+                />
               ) : null}
               {summary.feeGrossCents > 0 ? (
-                <div className="space-y-1">
-                  <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                    <span className="inline-flex items-center gap-1">
-                      <span>
-                        {summary.feeLabel.includes("%")
-                          ? summary.feeLabel
-                          : `${summary.feeLabel}${feePercentLabel ? ` ${feePercentLabel} %` : ""}`}
-                      </span>
-                      <FeeInfoIconButton
-                        feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
-                        className="-m-0.5 p-0.5"
-                      />
+                <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
+                  <span className="inline-flex items-center gap-1">
+                    <span>
+                      {summary.feeLabel.includes("%")
+                        ? summary.feeLabel
+                        : `${summary.feeLabel}${feePercentLabel ? ` ${feePercentLabel} %` : ""}`}
                     </span>
-                    <span className="tabular-nums">
-                      {formatEuroFromCents(summary.feeGrossCents)}
-                    </span>
-                  </p>
-                  <div className="pl-0">
-                    <FeeInfoDialog
+                    <FeeInfoIconButton
                       feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
-                      description={summary.feeCustomerDescription}
+                      className="-m-0.5 p-0.5"
                     />
-                  </div>
-                </div>
+                  </span>
+                  <span className="tabular-nums">
+                    {formatEuroFromCents(summary.feeGrossCents)}
+                  </span>
+                </p>
               ) : null}
               {summary.giftCardAppliedCents > 0 ? (
                 <p className="flex justify-between gap-4 text-[var(--tf-teal-hover)]">

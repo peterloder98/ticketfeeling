@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { formatEuroFromCents } from "@/lib/money";
-import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
+import { FeeInfoIconButton } from "@/components/fee-info-dialog";
 import { PromotionBadge } from "@/components/promotion-badge";
 
 type Props = {
@@ -10,6 +10,7 @@ type Props = {
   orderCampaignDisclaimer?: string | null;
   feeGrossCents?: number;
   feeLabel?: string | null;
+  /** @deprecated Kept for callers; explanation is icon/modal only. */
   feeCustomerDescription?: string | null;
   administrationFeePercentageBasisPoints?: number;
   giftCardAppliedCents?: number;
@@ -30,7 +31,6 @@ export function CartOrderSummary({
   orderCampaignDisclaimer = null,
   feeGrossCents = 0,
   feeLabel = null,
-  feeCustomerDescription = null,
   administrationFeePercentageBasisPoints,
   giftCardAppliedCents = 0,
   grossCents,
@@ -50,41 +50,27 @@ export function CartOrderSummary({
         <span className="tabular-nums">{formatEuroFromCents(ticketsGrossCents)}</span>
       </p>
       {discountCents > 0 ? (
-        <div className="space-y-0.5">
-          <PromotionBadge
-            type="promotion"
-            variant="checkout"
-            campaignName={discountLabel?.trim() || "Rabatt"}
-            amountLabel={`−${formatEuroFromCents(discountCents)}`}
-          />
-          {orderCampaignDisclaimer ? (
-            <p className="text-[11px] font-normal text-[var(--tf-text-secondary)]">
-              {orderCampaignDisclaimer}
-            </p>
-          ) : null}
-        </div>
+        <PromotionBadge
+          type="promotion"
+          variant="checkout"
+          campaignName={discountLabel?.trim() || "Rabatt"}
+          amountLabel={`−${formatEuroFromCents(discountCents)}`}
+          saleDisclaimer={orderCampaignDisclaimer}
+        />
       ) : null}
       {feeGrossCents > 0 ? (
-        <div className="space-y-1">
-          <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
-            <span className="inline-flex items-center gap-1">
-              <span>{feeLabel ?? "Gebühren"}</span>
-              {typeof administrationFeePercentageBasisPoints === "number" ? (
-                <FeeInfoIconButton
-                  feePercentageBasisPoints={administrationFeePercentageBasisPoints}
-                  className="-m-0.5 p-0.5"
-                />
-              ) : null}
-            </span>
-            <span className="tabular-nums">{formatEuroFromCents(feeGrossCents)}</span>
-          </p>
-          {typeof administrationFeePercentageBasisPoints === "number" ? (
-            <FeeInfoDialog
-              feePercentageBasisPoints={administrationFeePercentageBasisPoints}
-              description={feeCustomerDescription}
-            />
-          ) : null}
-        </div>
+        <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
+          <span className="inline-flex items-center gap-1">
+            <span>{feeLabel ?? "Gebühren"}</span>
+            {typeof administrationFeePercentageBasisPoints === "number" ? (
+              <FeeInfoIconButton
+                feePercentageBasisPoints={administrationFeePercentageBasisPoints}
+                className="-m-0.5 p-0.5"
+              />
+            ) : null}
+          </span>
+          <span className="tabular-nums">{formatEuroFromCents(feeGrossCents)}</span>
+        </p>
       ) : null}
       {giftCardAppliedCents > 0 ? (
         <p className="flex justify-between gap-3 text-[var(--tf-teal-hover)]">

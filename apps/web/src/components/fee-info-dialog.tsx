@@ -13,7 +13,6 @@ import { Info, X } from "lucide-react";
 import {
   DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS,
   PLATFORM_FEE_INFO_BULLETS,
-  buildDefaultPlatformFeeCustomerDescription,
   buildPlatformFeeInfoClosing,
 } from "@/lib/commerce/platform-fee";
 
@@ -223,52 +222,6 @@ export function FeeSurchargeNote({
         className="-m-0.5 p-0.5"
       />
     </Tag>
-  );
-}
-
-/**
- * Visible Verwaltungsgebühr explanation for buyers (cart / checkout / embed).
- * Always shows human prose + a calm dialog with the full list.
- */
-export function FeeInfoDialog({
-  feePercentageBasisPoints,
-  description,
-}: {
-  feePercentageBasisPoints: number;
-  /** Optional customer-facing prose; falls back to the default explanation. */
-  description?: string | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const close = useCallback(() => setOpen(false), []);
-  const bps = Math.max(0, feePercentageBasisPoints);
-  const prose =
-    typeof description === "string" && description.trim()
-      ? description.trim()
-      : buildDefaultPlatformFeeCustomerDescription(bps || DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS);
-
-  function openDialog(e: MouseEvent) {
-    stopAll(e);
-    setOpen(true);
-  }
-
-  return (
-    <div className="rounded-xl border border-[rgba(20,184,166,0.28)] bg-[rgba(20,184,166,0.06)] px-3 py-2.5">
-      <p className="text-sm leading-relaxed text-[var(--tf-navy)]">{prose}</p>
-      <button
-        type="button"
-        onClick={openDialog}
-        onMouseDown={stopAll}
-        onPointerDown={stopAll}
-        className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--tf-teal-hover)] underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tf-teal)]"
-        aria-haspopup="dialog"
-        aria-expanded={open}
-      >
-        <Info className="h-4 w-4 shrink-0" aria-hidden />
-        Was ist die Verwaltungsgebühr?
-      </button>
-
-      <FeeInfoModal open={open} onClose={close} feePercentageBasisPoints={bps} />
-    </div>
   );
 }
 

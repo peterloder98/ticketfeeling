@@ -99,7 +99,7 @@ export function PromotionBadge({
     );
   }
 
-  // Checkout confirmation: „Sommer-Rabatt: −10,00 €“ (or split row in cart)
+  // Checkout / cart line: name (+ optional condition) left, amount right
   if (variant === "checkout") {
     const name =
       campaignName?.trim() ||
@@ -108,16 +108,27 @@ export function PromotionBadge({
       label?.trim() ||
       "Rabatt";
     const amount = amountLabel?.trim();
+    const condition =
+      saleDisclaimer?.trim() ||
+      partsProp?.condition?.trim() ||
+      null;
     return (
-      <p
-        className={`tf-promotion-badge tf-promotion-badge--checkout flex w-full items-baseline justify-between gap-3 text-sm font-medium ${className}`}
+      <div
+        className={`tf-promotion-badge tf-promotion-badge--checkout text-sm font-medium ${className}`}
         role="status"
       >
-        <span className="tf-promotion-badge__name min-w-0">{name}</span>
+        <div className="min-w-0">
+          <p className="tf-promotion-badge__name">{name}</p>
+          {condition ? (
+            <p className="mt-0.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
+              {condition}
+            </p>
+          ) : null}
+        </div>
         {amount ? (
           <span className="tf-promotion-badge__savings shrink-0 tabular-nums">{amount}</span>
         ) : null}
-      </p>
+      </div>
     );
   }
 
