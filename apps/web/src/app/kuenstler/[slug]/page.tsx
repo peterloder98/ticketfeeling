@@ -181,25 +181,27 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                   <li key={event.id}>
                     <Link
                       href={`/event/${event.slug}`}
-                      className="tf-card tf-card-hover flex h-full flex-col overflow-hidden !p-0"
+                      className="tf-card tf-card-hover flex h-full overflow-hidden !p-0"
                     >
-                      <div className="flex flex-1 flex-col p-4">
-                        <p className="font-semibold text-[var(--tf-navy)]">
-                          {formatEventTitleWithCity(event.name, event.location)}
-                        </p>
-                        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-                          {event.eventStartsAt
-                            ? formatDeDateTime(event.eventStartsAt)
-                            : "Termin folgt"}
-                        </p>
-                      </div>
-                      <div className="relative mt-auto aspect-[2/1] w-full overflow-hidden bg-[var(--tf-navy)]">
-                        <ResponsiveImage
-                          src={coverUrl}
-                          alt=""
-                          className="h-full w-full"
-                          fallback="event"
-                        />
+                      <div className="flex items-center gap-3 p-3 sm:gap-4 sm:p-4">
+                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-[var(--tf-navy)] sm:h-20 sm:w-20">
+                          <ResponsiveImage
+                            src={coverUrl}
+                            alt=""
+                            className="h-full w-full"
+                            fallback="event"
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-semibold text-[var(--tf-navy)]">
+                            {formatEventTitleWithCity(event.name, event.location)}
+                          </p>
+                          <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+                            {event.eventStartsAt
+                              ? formatDeDateTime(event.eventStartsAt)
+                              : "Termin folgt"}
+                          </p>
+                        </div>
                       </div>
                     </Link>
                   </li>
