@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatEventTitleWithCity,
   formatLocationAddressLine,
   formatLocationPlaceDisplay,
   formatLocationStreetLine,
@@ -81,5 +82,32 @@ describe("formatLocationPlaceDisplay", () => {
         city: "Landshut",
       }).label,
     ).toBe("Halle · 84028 Landshut");
+  });
+});
+
+describe("formatEventTitleWithCity", () => {
+  it("appends city in parentheses", () => {
+    expect(
+      formatEventTitleWithCity("SCHLAGERfeeling Weihnachtstraum", {
+        city: "Löwenberger Land",
+        name: "Bürgerhaus Löwenberg",
+      }),
+    ).toBe("SCHLAGERfeeling Weihnachtstraum (Löwenberger Land)");
+  });
+
+  it("falls back to venue name when city missing", () => {
+    expect(
+      formatEventTitleWithCity("Open Air", { city: null, name: "Kent Club" }),
+    ).toBe("Open Air (Kent Club)");
+  });
+
+  it("leaves title unchanged without location", () => {
+    expect(formatEventTitleWithCity("Solo Abend", null)).toBe("Solo Abend");
+  });
+
+  it("does not double-append an existing place suffix", () => {
+    expect(
+      formatEventTitleWithCity("Tour (Hamburg)", { city: "Hamburg", name: "Kent Club" }),
+    ).toBe("Tour (Hamburg)");
   });
 });

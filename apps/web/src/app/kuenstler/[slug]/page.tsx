@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ExternalLink, Globe } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { ArtistYoutubeEmbed } from "@/components/artist-youtube-embed";
+import { formatEventTitleWithCity } from "@/lib/commerce/location-display";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,11 @@ export default async function ArtistPage({ params, searchParams }: Props) {
     include: {
       eventLinks: {
         where: { cancelled: false },
-        include: { event: true },
+        include: {
+          event: {
+            include: { location: { select: { city: true, name: true } } },
+          },
+        },
         orderBy: { sortOrder: "asc" },
       },
       tourLinks: {
@@ -46,6 +51,7 @@ export default async function ArtistPage({ params, searchParams }: Props) {
             include: {
               events: {
                 where: { artistsUseTourDefaults: true },
+                include: { location: { select: { city: true, name: true } } },
               },
             },
           },
@@ -178,7 +184,9 @@ export default async function ArtistPage({ params, searchParams }: Props) {
                     href={`/event/${event.slug}`}
                     className="tf-card tf-card-hover block !p-4"
                   >
-                    <p className="font-semibold text-[var(--tf-navy)]">{event.name}</p>
+                    <p className="font-semibold text-[var(--tf-navy)]">
+                      {formatEventTitleWithCity(event.name, event.location)}
+                    </p>
                     <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
                       {event.eventStartsAt?.toLocaleString("de-DE", {
                         timeZone: "Europe/Berlin",

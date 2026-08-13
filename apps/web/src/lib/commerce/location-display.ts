@@ -57,3 +57,31 @@ export function formatLocationPlaceDisplay(location: LocationAddressFields | nul
   const label = [name, addressLine].filter(Boolean).join(" · ") || null;
   return { name, addressLine, label };
 }
+
+/**
+ * Short place for disambiguating tour dates: city, else venue name.
+ * Never returns both; never repeats when city equals venue name.
+ */
+export function formatEventPlaceShort(
+  location: Pick<LocationAddressFields, "city" | "name"> | null | undefined,
+): string | null {
+  if (!location) return null;
+  const city = norm(location.city);
+  const venue = norm(location.name);
+  if (city) return city;
+  return venue || null;
+}
+
+/**
+ * Listing title: „Eventname (Stadt)“ — city preferred, venue name as fallback.
+ */
+export function formatEventTitleWithCity(
+  eventName: string,
+  location?: Pick<LocationAddressFields, "city" | "name"> | null,
+): string {
+  const title = norm(eventName) || eventName;
+  const place = formatEventPlaceShort(location);
+  if (!place) return title;
+  if (title.endsWith(`(${place})`)) return title;
+  return `${title} (${place})`;
+}
