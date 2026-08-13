@@ -100,6 +100,8 @@ export async function GET(request: Request) {
         id: item.id,
         quantity: item.quantity,
         unitPriceGrossCents: item.unitPriceGrossCents,
+        unitListGrossCents: item.unitListGrossCents,
+        priceCampaignName: item.priceCampaignName,
         categoryName: item.category.name,
         eventName: item.category.event.name,
         eventSlug: item.category.event.slug,

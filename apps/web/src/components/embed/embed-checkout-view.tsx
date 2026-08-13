@@ -7,7 +7,7 @@ import { CheckoutForm } from "@/components/checkout-form";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
-import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
+import { CartOrderSummary } from "@/components/cart-order-summary";
 import { useCart } from "@/components/cart-context";
 import type { CheckoutPaymentOption } from "@/lib/commerce/payment-fees";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
@@ -21,6 +21,8 @@ type Bootstrap = {
     id: string;
     quantity: number;
     unitPriceGrossCents: number;
+    unitListGrossCents?: number;
+    priceCampaignName?: string | null;
     categoryName: string;
     eventName: string;
     eventSlug?: string;
@@ -32,10 +34,14 @@ type Bootstrap = {
     grossCents: number;
     grossFormatted?: string | null;
     ticketsGrossCents?: number;
+    discountCents?: number;
+    discountLabel?: string | null;
+    orderCampaignDisclaimer?: string | null;
     feeGrossCents?: number;
     feeLabel?: string | null;
     feeCustomerDescription?: string | null;
     administrationFeePercentageBasisPoints?: number;
+    giftCardAppliedCents?: number;
   } | null;
   paymentOptions: CheckoutPaymentOption[];
   customerTotalCents: number;
@@ -128,78 +134,76 @@ export function EmbedCheckoutView() {
         </p>
         <ul className="mt-2 space-y-2">
           {mergeSameCategoryLines(
-            data.items.map((item) => ({
-              quantity: item.quantity,
-              categoryLabel: item.categoryName,
-              unitPriceCents: item.unitPriceGrossCents,
-              lineGrossCents: item.quantity * item.unitPriceGrossCents,
-              eventKey: item.eventName,
-              eventName: item.eventName,
-              eventStartsAt: item.eventStartsAt,
-              locationName: item.locationName,
-              locationCity: item.locationCity,
-            })),
-          ).map((line, idx) => (
-            <li
-              key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
-              className="flex justify-between gap-2 text-xs"
-            >
-              <span className="min-w-0 text-[var(--tf-navy)]">
-                {line.quantity}× {line.categoryLabel}
-                <span className="mt-0.5 block font-medium">{line.eventName}</span>
-                <CartItemEventMeta
-                  eventStartsAt={line.eventStartsAt}
-                  locationName={line.locationName}
-                  locationCity={line.locationCity}
-                />
-              </span>
-              <span className="shrink-0 tabular-nums font-medium">
-                {formatEuroFromCents(line.lineGrossCents)}
-              </span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-2 space-y-1.5 border-t border-[var(--tf-line)] pt-2 text-xs">
-          {typeof data.summary?.ticketsGrossCents === "number" ? (
-            <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
-              <span>Tickets</span>
-              <span className="tabular-nums">
-                {formatEuroFromCents(data.summary.ticketsGrossCents)}
-              </span>
-            </p>
-          ) : null}
-          {(data.summary?.feeGrossCents ?? 0) > 0 ? (
-            <div className="space-y-1.5">
-              <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
-                <span className="inline-flex items-center gap-1">
-                  <span>{data.summary?.feeLabel ?? "Verwaltungsgebühr"}</span>
-                  <FeeInfoIconButton
-                    feePercentageBasisPoints={
-                      data.summary?.administrationFeePercentageBasisPoints ??
-                      DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
-                    }
-                    className="-m-0.5 p-0.5"
+            data.items.map((item) => {
+              const listUnit = item.unitListGrossCents || item.unitPriceGrossCents;
+              return {
+                quantity: item.quantity,
+                categoryLabel: item.categoryName,
+                unitPriceCents: item.unitPriceGrossCents,
+                lineGrossCents: item.quantity * item.unitPriceGrossCents,
+                lineListCents: item.quantity * listUnit,
+                priceCampaignName: item.priceCampaignName,
+                eventKey: item.eventName,
+                eventName: item.eventName,
+                eventStartsAt: item.eventStartsAt,
+                locationName: item.locationName,
+                locationCity: item.locationCity,
+              };
+            }),
+          ).map((line, idx) => {
+            const onUnitSale =
+              typeof line.lineListCents === "number" &&
+              line.lineListCents > line.lineGrossCents;
+            return (
+              <li
+                key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
+                className="flex justify-between gap-2 text-xs"
+              >
+                <span className="min-w-0 text-[var(--tf-navy)]">
+                  {line.quantity}× {line.categoryLabel}
+                  <span className="mt-0.5 block font-medium">{line.eventName}</span>
+                  <CartItemEventMeta
+                    eventStartsAt={line.eventStartsAt}
+                    locationName={line.locationName}
+                    locationCity={line.locationCity}
                   />
+                  {onUnitSale && line.priceCampaignName ? (
+                    <span className="mt-0.5 block text-[11px] font-medium text-[var(--tf-teal-hover)]">
+                      {line.priceCampaignName}
+                    </span>
+                  ) : null}
                 </span>
-                <span className="tabular-nums">
-                  {formatEuroFromCents(data.summary!.feeGrossCents!)}
+                <span className="shrink-0 text-right">
+                  {onUnitSale ? (
+                    <span className="block text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through">
+                      {formatEuroFromCents(line.lineListCents!)}
+                    </span>
+                  ) : null}
+                  <span className="tabular-nums font-medium">
+                    {formatEuroFromCents(line.lineGrossCents)}
+                  </span>
                 </span>
-              </p>
-              <FeeInfoDialog
-                feePercentageBasisPoints={
-                  data.summary?.administrationFeePercentageBasisPoints ??
-                  DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
-                }
-                description={data.summary?.feeCustomerDescription}
-              />
-            </div>
-          ) : null}
-          <p className="flex justify-between gap-3 pt-1 text-sm font-semibold text-[var(--tf-navy)]">
-            <span>Gesamtbetrag</span>
-            <span className="tabular-nums">
-              {formatEuroFromCents(data.customerTotalCents)}
-            </span>
-          </p>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-2 border-t border-[var(--tf-line)] pt-2">
+          <CartOrderSummary
+            compact
+            ticketsGrossCents={data.summary?.ticketsGrossCents ?? data.customerTotalCents}
+            discountCents={data.summary?.discountCents ?? 0}
+            discountLabel={data.summary?.discountLabel}
+            orderCampaignDisclaimer={data.summary?.orderCampaignDisclaimer}
+            feeGrossCents={data.summary?.feeGrossCents ?? 0}
+            feeLabel={data.summary?.feeLabel ?? "Verwaltungsgebühr"}
+            feeCustomerDescription={data.summary?.feeCustomerDescription}
+            administrationFeePercentageBasisPoints={
+              data.summary?.administrationFeePercentageBasisPoints ??
+              DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
+            }
+            giftCardAppliedCents={data.summary?.giftCardAppliedCents ?? 0}
+            grossCents={data.customerTotalCents}
+          />
         </div>
       </div>
 

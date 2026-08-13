@@ -36,7 +36,19 @@ type OrderPromoProp = {
   badgeLabel: string;
   disclaimer?: string | null;
   campaignName?: string | null;
+  /** Empty / omitted = all categories; otherwise only these IDs show the badge */
+  categoryIds?: string[];
 };
+
+function orderPromoForCategory(
+  orderPromo: OrderPromoProp | null | undefined,
+  categoryId: string,
+): OrderPromoProp | null {
+  if (!orderPromo) return null;
+  const ids = orderPromo.categoryIds;
+  if (!ids || ids.length === 0) return orderPromo;
+  return ids.includes(categoryId) ? orderPromo : null;
+}
 
 export function AddToCartPanel({
   categories,
@@ -229,17 +241,19 @@ export function AddToCartPanel({
                   promoLabel={
                     accessibilitySelected && accessibilityOffer
                       ? accessibilityOffer.label
-                      : category.campaignName || orderPromo?.campaignName || null
+                      : category.campaignName ||
+                        orderPromoForCategory(orderPromo, category.id)?.campaignName ||
+                        null
                   }
                   saleBadge={
                     price.list > price.unit
                       ? category.campaignBadgeLabel ?? null
-                      : orderPromo?.badgeLabel ?? null
+                      : orderPromoForCategory(orderPromo, category.id)?.badgeLabel ?? null
                   }
                   saleDisclaimer={
                     price.list > price.unit
                       ? category.campaignBadgeDisclaimer ?? null
-                      : orderPromo?.disclaimer ?? null
+                      : orderPromoForCategory(orderPromo, category.id)?.disclaimer ?? null
                   }
                   validUntil={
                     accessibilitySelected && accessibilityOffer

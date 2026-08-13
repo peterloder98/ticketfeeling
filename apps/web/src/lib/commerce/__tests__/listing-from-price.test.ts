@@ -179,6 +179,39 @@ describe("resolveListingFromPrice", () => {
     expect(from?.campaignName).toBe("Sommer-Rabatt");
   });
 
+  it("hides order badge on listing when cheapest category is not in campaign", () => {
+    const map = new Map([
+      [
+        "ev1",
+        [
+          campaign({
+            id: "normal-only",
+            name: "Sommer-Rabatt",
+            type: "fixed",
+            value: 1000,
+            applyMode: "order",
+            minQuantity: 2,
+            badgeLabel: "Sommer-Rabatt",
+            categoryIds: ["cat-normal"],
+          }),
+        ],
+      ],
+    ]);
+    const from = resolveListingFromPrice({
+      categories: [
+        { id: "cat-vip", eventId: "ev1", priceGrossCents: 3900 },
+        { id: "cat-normal", eventId: "ev1", priceGrossCents: 4900 },
+      ],
+      campaignsByEventId: map,
+      feeConfig: feeOff,
+      formatEuro: (c) => `${(c / 100).toFixed(2).replace(".", ",")} €`,
+      now,
+    });
+    expect(from?.unitCents).toBe(3900);
+    expect(from?.saleBadge).toBeNull();
+    expect(from?.campaignName).toBeNull();
+  });
+
   it("returns plain from-price without campaign", () => {
     const from = resolveListingFromPrice({
       categories: [{ id: "cat-a", eventId: "ev1", priceGrossCents: 5000 }],

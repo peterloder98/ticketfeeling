@@ -47,6 +47,8 @@ export function resolveListingFromPrice(input: {
 
   let bestUnit = Number.POSITIVE_INFINITY;
   let bestList = Number.POSITIVE_INFINITY;
+  let bestCategoryId: string | null = null;
+  let bestEventId: string | null = null;
   let campaignName: string | null = null;
   let campaignValidUntil: string | null = null;
   let saleBadge: string | null = null;
@@ -65,6 +67,8 @@ export function resolveListingFromPrice(input: {
     if (priced.unitCents < bestUnit) {
       bestUnit = priced.unitCents;
       bestList = priced.listCents;
+      bestCategoryId = cat.id;
+      bestEventId = cat.eventId;
       campaignName = priced.campaignName;
       campaignValidUntil = priced.campaignValidUntil;
       saleBadge =
@@ -78,27 +82,20 @@ export function resolveListingFromPrice(input: {
 
   if (!Number.isFinite(bestUnit)) return null;
 
-  // Order-mode promos: keep „ab“ list price, show badge + fair disclaimer
-  if (!saleBadge) {
-    const byEvent = new Map<string, string[]>();
-    for (const cat of categories) {
-      const list = byEvent.get(cat.eventId) ?? [];
-      list.push(cat.id);
-      byEvent.set(cat.eventId, list);
-    }
-    for (const [eventId, categoryIds] of byEvent) {
-      const orderBadge = pickActiveOrderCampaignBadge({
-        categoryIds,
-        channel: "online",
-        now,
-        campaigns: campaignsByEventId.get(eventId) ?? [],
-      });
-      if (!orderBadge) continue;
+  // Order-mode promos: keep „ab“ list price, show badge + fair disclaimer —
+  // only if the cheapest category is in the campaign’s category selection.
+  if (!saleBadge && bestCategoryId && bestEventId) {
+    const orderBadge = pickActiveOrderCampaignBadge({
+      categoryIds: [bestCategoryId],
+      channel: "online",
+      now,
+      campaigns: campaignsByEventId.get(bestEventId) ?? [],
+    });
+    if (orderBadge) {
       saleBadge = formatOrderCampaignBadge(orderBadge);
       saleDisclaimer = formatOrderCampaignDisclaimer(orderBadge);
       campaignName = orderBadge.name;
       campaignValidUntil = orderBadge.validUntil.toISOString();
-      break;
     }
   }
 

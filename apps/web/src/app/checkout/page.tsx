@@ -138,11 +138,15 @@ export default async function CheckoutPage() {
               {mergeSameCategoryLines(
                 cart.items.map((item) => {
                   const ev = item.category.event;
+                  const listUnit = item.unitListGrossCents || item.unitPriceGrossCents;
                   return {
                     quantity: item.quantity,
                     categoryLabel: item.category.name,
                     unitPriceCents: item.unitPriceGrossCents,
+                    unitListCents: listUnit,
                     lineGrossCents: item.quantity * item.unitPriceGrossCents,
+                    lineListCents: item.quantity * listUnit,
+                    priceCampaignName: item.priceCampaignName,
                     eventKey: item.eventId,
                     eventName: ev.name,
                     eventStartsAt: ev.eventStartsAt,
@@ -155,6 +159,9 @@ export default async function CheckoutPage() {
                 }),
               ).map((line, idx) => {
                 const seats = Array.isArray(line.seats) ? line.seats : [];
+                const onUnitSale =
+                  typeof line.lineListCents === "number" &&
+                  line.lineListCents > line.lineGrossCents;
                 return (
                   <li
                     key={`${line.eventKey}-${line.categoryLabel}-${line.unitPriceCents}-${idx}`}
@@ -173,6 +180,11 @@ export default async function CheckoutPage() {
                           locationName={line.locationName}
                           locationCity={line.locationCity}
                         />
+                        {onUnitSale && line.priceCampaignName ? (
+                          <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
+                            {line.priceCampaignName}
+                          </p>
+                        ) : null}
                         {line.categoryKind === "wheelchair" && line.companionFree ? (
                           <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
                             Inkl. Begleitperson kostenfrei
@@ -201,9 +213,16 @@ export default async function CheckoutPage() {
                           </ul>
                         ) : null}
                       </div>
-                      <p className="shrink-0 text-sm font-medium tabular-nums text-[var(--tf-navy)]">
-                        {formatEuroFromCents(line.lineGrossCents)}
-                      </p>
+                      <div className="shrink-0 text-right">
+                        {onUnitSale ? (
+                          <p className="text-xs tabular-nums text-[var(--tf-text-secondary)] line-through">
+                            {formatEuroFromCents(line.lineListCents)}
+                          </p>
+                        ) : null}
+                        <p className="text-sm font-medium tabular-nums text-[var(--tf-navy)]">
+                          {formatEuroFromCents(line.lineGrossCents)}
+                        </p>
+                      </div>
                     </div>
                   </li>
                 );
@@ -217,14 +236,14 @@ export default async function CheckoutPage() {
               </p>
               {summary.discountCents > 0 ? (
                 <div className="space-y-0.5">
-                  <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
+                  <p className="flex justify-between gap-4 font-medium text-[var(--tf-teal-hover)]">
                     <span>{summary.discountLabel?.trim() || "Rabatt"}</span>
                     <span className="tabular-nums">
                       −{formatEuroFromCents(summary.discountCents)}
                     </span>
                   </p>
                   {summary.orderCampaignDisclaimer ? (
-                    <p className="text-[11px] text-[var(--tf-text-secondary)]">
+                    <p className="text-[11px] font-normal text-[var(--tf-text-secondary)]">
                       {summary.orderCampaignDisclaimer}
                     </p>
                   ) : null}

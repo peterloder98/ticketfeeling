@@ -57,7 +57,19 @@ type OrderPromoProp = {
   badgeLabel: string;
   disclaimer?: string | null;
   campaignName?: string | null;
+  /** Empty / omitted = all categories; otherwise only these IDs show the badge */
+  categoryIds?: string[];
 };
+
+function orderPromoForCategory(
+  orderPromo: OrderPromoProp | null | undefined,
+  categoryId: string,
+): OrderPromoProp | null {
+  if (!orderPromo) return null;
+  const ids = orderPromo.categoryIds;
+  if (!ids || ids.length === 0) return orderPromo;
+  return ids.includes(categoryId) ? orderPromo : null;
+}
 
 type Props = {
   eventId: string;
@@ -777,17 +789,19 @@ export function SeatBookingPanel({
                         promoLabel={
                           accessibilitySelected && accessibilityOffer
                             ? accessibilityOffer.label
-                            : c.campaignName || orderPromo?.campaignName || null
+                            : c.campaignName ||
+                              orderPromoForCategory(orderPromo, c.id)?.campaignName ||
+                              null
                         }
                         saleBadge={
                           list > unit
                             ? c.campaignBadgeLabel ?? null
-                            : orderPromo?.badgeLabel ?? null
+                            : orderPromoForCategory(orderPromo, c.id)?.badgeLabel ?? null
                         }
                         saleDisclaimer={
                           list > unit
                             ? c.campaignBadgeDisclaimer ?? null
-                            : orderPromo?.disclaimer ?? null
+                            : orderPromoForCategory(orderPromo, c.id)?.disclaimer ?? null
                         }
                         validUntil={
                           accessibilitySelected && accessibilityOffer
@@ -879,17 +893,21 @@ export function SeatBookingPanel({
                         promoLabel={
                           accessibilitySelected && accessibilityOffer
                             ? accessibilityOffer.label
-                            : line.category.campaignName || orderPromo?.campaignName || null
+                            : line.category.campaignName ||
+                              orderPromoForCategory(orderPromo, line.category.id)?.campaignName ||
+                              null
                         }
                         saleBadge={
                           listPriceFor(line.category) > unitPriceFor(line.category)
                             ? line.category.campaignBadgeLabel ?? null
-                            : orderPromo?.badgeLabel ?? null
+                            : orderPromoForCategory(orderPromo, line.category.id)?.badgeLabel ??
+                              null
                         }
                         saleDisclaimer={
                           listPriceFor(line.category) > unitPriceFor(line.category)
                             ? line.category.campaignBadgeDisclaimer ?? null
-                            : orderPromo?.disclaimer ?? null
+                            : orderPromoForCategory(orderPromo, line.category.id)?.disclaimer ??
+                              null
                         }
                         validUntil={
                           accessibilitySelected && accessibilityOffer
@@ -975,17 +993,19 @@ export function SeatBookingPanel({
                       promoLabel={
                         accessibilitySelected && accessibilityOffer
                           ? accessibilityOffer.label
-                          : category.campaignName || orderPromo?.campaignName || null
+                          : category.campaignName ||
+                            orderPromoForCategory(orderPromo, category.id)?.campaignName ||
+                            null
                       }
                       saleBadge={
                         listPriceFor(category) > unitPriceFor(category)
                           ? category.campaignBadgeLabel ?? null
-                          : orderPromo?.badgeLabel ?? null
+                          : orderPromoForCategory(orderPromo, category.id)?.badgeLabel ?? null
                       }
                       saleDisclaimer={
                         listPriceFor(category) > unitPriceFor(category)
                           ? category.campaignBadgeDisclaimer ?? null
-                          : orderPromo?.disclaimer ?? null
+                          : orderPromoForCategory(orderPromo, category.id)?.disclaimer ?? null
                       }
                       validUntil={
                         accessibilitySelected && accessibilityOffer

@@ -195,6 +195,7 @@ export default async function EmbedEventShopPage({ params }: Props) {
         badgeLabel: formatOrderCampaignBadge(orderCampaignBadge),
         disclaimer: formatOrderCampaignDisclaimer(orderCampaignBadge),
         campaignName: orderCampaignBadge.name,
+        categoryIds: orderCampaignBadge.categoryIds,
       }
     : null;
 

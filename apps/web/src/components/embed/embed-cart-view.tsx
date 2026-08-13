@@ -9,13 +9,15 @@ import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { EmbedBackLink } from "@/components/embed/embed-back-link";
 import { useCart } from "@/components/cart-context";
-import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
+import { CartOrderSummary } from "@/components/cart-order-summary";
 import { DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS } from "@/lib/commerce/platform-fee";
 
 type CartItem = {
   id: string;
   quantity: number;
   unitPriceGrossCents: number;
+  unitListGrossCents?: number;
+  priceCampaignName?: string | null;
   categoryName: string;
   eventName: string;
   eventSlug: string;
@@ -37,10 +39,14 @@ type CartPayload = {
   summary: {
     itemCount: number;
     ticketsGrossCents?: number;
+    discountCents?: number;
+    discountLabel?: string | null;
+    orderCampaignDisclaimer?: string | null;
     feeGrossCents?: number;
     feeLabel?: string | null;
     feeCustomerDescription?: string | null;
     administrationFeePercentageBasisPoints?: number;
+    giftCardAppliedCents?: number;
     grossCents?: number;
     grossFormatted?: string | null;
   };
@@ -144,49 +150,63 @@ export function EmbedCartView() {
       ) : null}
 
       <div className="space-y-2">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-semibold text-[var(--tf-navy)]">
-                  {item.quantity}× {item.categoryName}
-                </p>
-                <p className="mt-0.5 text-xs font-medium text-[var(--tf-navy)]">{item.eventName}</p>
-                <CartItemEventMeta
-                  eventStartsAt={item.eventStartsAt}
-                  locationName={item.locationName}
-                  locationCity={item.locationCity}
-                />
-                {item.seats && item.seats.length > 0 ? (
-                  <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--tf-teal-hover)]">
-                    {item.seats.map((s) => (
-                      <li key={s.id}>
-                        {s.blockLabel} · R{s.rowLabel} · Pl. {s.seatNumber}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </div>
-              <div className="shrink-0 text-right">
-                <p className="font-medium tabular-nums">
-                  {formatEuroFromCents(item.quantity * item.unitPriceGrossCents)}
-                </p>
-                <div className="mt-1">
-                  <CartRemoveButton
-                    itemId={item.id}
-                    onRemoved={() => {
-                      void load();
-                      void refresh({ full: true });
-                    }}
+        {items.map((item) => {
+          const listUnit = item.unitListGrossCents || item.unitPriceGrossCents;
+          const onUnitSale = listUnit > item.unitPriceGrossCents;
+          const lineList = item.quantity * listUnit;
+          const linePaid = item.quantity * item.unitPriceGrossCents;
+          return (
+            <div
+              key={item.id}
+              className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-2.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-[var(--tf-navy)]">
+                    {item.quantity}× {item.categoryName}
+                  </p>
+                  <p className="mt-0.5 text-xs font-medium text-[var(--tf-navy)]">{item.eventName}</p>
+                  <CartItemEventMeta
+                    eventStartsAt={item.eventStartsAt}
+                    locationName={item.locationName}
+                    locationCity={item.locationCity}
                   />
+                  {onUnitSale && item.priceCampaignName ? (
+                    <p className="mt-1 text-[11px] font-medium text-[var(--tf-teal-hover)]">
+                      {item.priceCampaignName}
+                    </p>
+                  ) : null}
+                  {item.seats && item.seats.length > 0 ? (
+                    <ul className="mt-1 space-y-0.5 text-[11px] text-[var(--tf-teal-hover)]">
+                      {item.seats.map((s) => (
+                        <li key={s.id}>
+                          {s.blockLabel} · R{s.rowLabel} · Pl. {s.seatNumber}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+                <div className="shrink-0 text-right">
+                  {onUnitSale ? (
+                    <p className="text-[11px] tabular-nums text-[var(--tf-text-secondary)] line-through">
+                      {formatEuroFromCents(lineList)}
+                    </p>
+                  ) : null}
+                  <p className="font-medium tabular-nums">{formatEuroFromCents(linePaid)}</p>
+                  <div className="mt-1">
+                    <CartRemoveButton
+                      itemId={item.id}
+                      onRemoved={() => {
+                        void load();
+                        void refresh({ full: true });
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         {items.length === 0 ? (
           <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-6 text-center text-[var(--tf-text-secondary)]">
             Warenkorb ist leer.
@@ -199,40 +219,22 @@ export function EmbedCartView() {
 
       {items.length > 0 ? (
         <div className="space-y-3 rounded-xl border border-[var(--tf-line)] p-3">
-          <div className="space-y-1 text-xs">
-            <p className="flex justify-between gap-3">
-              <span className="text-[var(--tf-text-secondary)]">Tickets</span>
-              <span className="tabular-nums">{formatEuroFromCents(tickets)}</span>
-            </p>
-            {fee > 0 ? (
-              <div className="space-y-1">
-                <p className="flex justify-between gap-3">
-                  <span className="inline-flex items-center gap-1 text-[var(--tf-text-secondary)]">
-                    <span>{feeLabel}</span>
-                    <FeeInfoIconButton
-                      feePercentageBasisPoints={
-                        data?.summary?.administrationFeePercentageBasisPoints ??
-                        DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
-                      }
-                      className="-m-0.5 p-0.5"
-                    />
-                  </span>
-                  <span className="tabular-nums">{formatEuroFromCents(fee)}</span>
-                </p>
-                <FeeInfoDialog
-                  feePercentageBasisPoints={
-                    data?.summary?.administrationFeePercentageBasisPoints ??
-                    DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
-                  }
-                  description={data?.summary?.feeCustomerDescription}
-                />
-              </div>
-            ) : null}
-            <p className="flex justify-between gap-3 pt-1 text-base font-semibold text-[var(--tf-navy)]">
-              <span>Gesamt</span>
-              <span className="tabular-nums">{formatEuroFromCents(gross)}</span>
-            </p>
-          </div>
+          <CartOrderSummary
+            compact
+            ticketsGrossCents={tickets}
+            discountCents={data?.summary?.discountCents ?? 0}
+            discountLabel={data?.summary?.discountLabel}
+            orderCampaignDisclaimer={data?.summary?.orderCampaignDisclaimer}
+            feeGrossCents={fee}
+            feeLabel={feeLabel}
+            feeCustomerDescription={data?.summary?.feeCustomerDescription}
+            administrationFeePercentageBasisPoints={
+              data?.summary?.administrationFeePercentageBasisPoints ??
+              DEFAULT_PLATFORM_FEE_PERCENTAGE_BPS
+            }
+            giftCardAppliedCents={data?.summary?.giftCardAppliedCents ?? 0}
+            grossCents={gross}
+          />
           <Link href="/embed/checkout" className="tf-btn tf-btn-primary w-full !min-h-11">
             Zur Kasse
           </Link>

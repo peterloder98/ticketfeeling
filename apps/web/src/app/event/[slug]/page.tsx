@@ -253,6 +253,7 @@ export default async function EventPage({ params }: Props) {
         badgeLabel: formatOrderCampaignBadge(orderCampaignBadge),
         disclaimer: formatOrderCampaignDisclaimer(orderCampaignBadge),
         campaignName: orderCampaignBadge.name,
+        categoryIds: orderCampaignBadge.categoryIds,
       }
     : null;
 
@@ -311,6 +312,16 @@ export default async function EventPage({ params }: Props) {
       ? categories.find((c) => c.priceGrossCents === fromTicket && c.campaignName)?.campaignName ??
         null
       : null;
+  const fromCategoryIds =
+    fromTicket != null
+      ? categories.filter((c) => c.priceGrossCents === fromTicket).map((c) => c.id)
+      : [];
+  const fromOrderPromo =
+    orderPromo &&
+    (orderPromo.categoryIds.length === 0 ||
+      fromCategoryIds.some((id) => orderPromo.categoryIds.includes(id)))
+      ? orderPromo
+      : null;
   const fromPrice =
     fromTicket != null
       ? formatCustomerPriceLabel({
@@ -326,8 +337,8 @@ export default async function EventPage({ params }: Props) {
       fromListTicket != null &&
       fromListTicket > fromTicket
       ? `Tickets ${fromPrice.totalLabel} · ${fromCampaignName}`
-      : orderPromo
-        ? `Tickets ${fromPrice.totalLabel} · ${orderPromo.badgeLabel}`
+      : fromOrderPromo
+        ? `Tickets ${fromPrice.totalLabel} · ${fromOrderPromo.badgeLabel}`
         : `Tickets ${fromPrice.totalLabel}`
     : "Tickets";
 

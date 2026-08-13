@@ -287,4 +287,74 @@ describe("resolveOrderCampaignDiscount", () => {
     });
     expect(three?.discountCents).toBe(1000);
   });
+
+  it("uses campaign name as cart label (amount shown separately)", () => {
+    const campaigns = [
+      campaign({
+        id: "summer",
+        name: "Sommer-Rabatt",
+        type: "fixed",
+        value: 1000,
+        applyMode: "order",
+        minQuantity: 2,
+        badgeLabel: "Sommer-Rabatt - 10 EUR sparen",
+      }),
+    ];
+    const applied = resolveOrderCampaignDiscount({
+      lines: [{ eventId: "ev1", categoryId: "cat-a", quantity: 2, unitGrossCents: 4900 }],
+      campaignsByEventId: new Map([["ev1", campaigns]]),
+      channel: "online",
+      now,
+    });
+    expect(applied?.label).toBe("Sommer-Rabatt");
+    expect(applied?.discountCents).toBe(1000);
+    expect(applied?.badgeDisclaimer).toBe("* beim Kauf von 2 Tickets");
+  });
+
+  it("only counts eligible categories toward order promo", () => {
+    const campaigns = [
+      campaign({
+        id: "normal-only",
+        name: "Sommer-Rabatt",
+        type: "fixed",
+        value: 1000,
+        applyMode: "order",
+        minQuantity: 2,
+        categoryIds: ["cat-normal"],
+      }),
+    ];
+    const map = new Map([["ev1", campaigns]]);
+    expect(
+      resolveOrderCampaignDiscount({
+        lines: [
+          { eventId: "ev1", categoryId: "cat-vip", quantity: 2, unitGrossCents: 9900 },
+        ],
+        campaignsByEventId: map,
+        channel: "online",
+        now,
+      }),
+    ).toBeNull();
+    expect(
+      resolveOrderCampaignDiscount({
+        lines: [
+          { eventId: "ev1", categoryId: "cat-normal", quantity: 1, unitGrossCents: 4900 },
+          { eventId: "ev1", categoryId: "cat-vip", quantity: 1, unitGrossCents: 9900 },
+        ],
+        campaignsByEventId: map,
+        channel: "online",
+        now,
+      }),
+    ).toBeNull();
+    expect(
+      resolveOrderCampaignDiscount({
+        lines: [
+          { eventId: "ev1", categoryId: "cat-normal", quantity: 2, unitGrossCents: 4900 },
+          { eventId: "ev1", categoryId: "cat-vip", quantity: 1, unitGrossCents: 9900 },
+        ],
+        campaignsByEventId: map,
+        channel: "online",
+        now,
+      })?.discountCents,
+    ).toBe(1000);
+  });
 });

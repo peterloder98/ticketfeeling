@@ -367,9 +367,12 @@ export function resolveOrderCampaignDiscount(input: {
       }
       if (discountCents <= 0) continue;
 
+      // Cart/checkout: human campaign name (+ threshold badge as fallback).
+      // Amount is shown separately as „−10,00 €“ — do not bake euros into the label.
+      const name = c.name.trim();
       const label =
-        c.badgeLabel?.trim() ||
-        c.name.trim() ||
+        name ||
+        formatOrderCampaignBadge(c) ||
         "Aktion";
 
       if (!best || discountCents > best.discountCents) {
@@ -379,7 +382,8 @@ export function resolveOrderCampaignDiscount(input: {
           campaignName: c.name,
           label,
           badgeLabel: c.badgeLabel ?? null,
-          badgeDisclaimer: c.badgeDisclaimer ?? null,
+          badgeDisclaimer:
+            c.badgeDisclaimer?.trim() || formatOrderCampaignDisclaimer(c),
           validUntil: c.validUntil.toISOString(),
         };
       }

@@ -16,6 +16,9 @@ export type MergeableCategoryLine = {
   lineTaxCents?: number;
   /** Optional seat rows — concatenated when merging (checkout summary) */
   seats?: unknown[];
+  /** Optional list (pre-discount) line total — summed when merging */
+  lineListCents?: number;
+  priceCampaignName?: string | null;
 };
 
 function lineKey(line: {
@@ -51,6 +54,9 @@ export function mergeSameCategoryLines<T extends MergeableCategoryLine>(
     }
     if (typeof prev.lineTaxCents === "number" && typeof line.lineTaxCents === "number") {
       next.lineTaxCents = prev.lineTaxCents + line.lineTaxCents;
+    }
+    if (typeof prev.lineListCents === "number" && typeof line.lineListCents === "number") {
+      next.lineListCents = prev.lineListCents + line.lineListCents;
     }
     if (Array.isArray(prev.seats) || Array.isArray(line.seats)) {
       next.seats = [

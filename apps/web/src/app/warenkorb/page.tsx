@@ -7,7 +7,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { CartRemoveButton } from "@/components/cart-remove-button";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
-import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
+import { CartOrderSummary } from "@/components/cart-order-summary";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Warenkorb" };
@@ -56,50 +56,66 @@ export default async function CartPage() {
       ) : null}
 
       <div className="mt-8 space-y-3">
-        {items.map((item) => (
-          <div key={item.id} className="tf-card flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="font-semibold text-[var(--tf-navy)]">
-                {item.quantity}× {item.category.name}
-              </p>
-              <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
-                {item.category.event.name}
-              </p>
-              <CartItemEventMeta
-                eventStartsAt={item.category.event.eventStartsAt}
-                locationName={item.category.event.location?.name}
-                locationCity={item.category.event.location?.city}
-              />
-              {item.category.categoryKind === "wheelchair" && item.category.companionFree ? (
-                <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
-                  Inkl. Begleitperson kostenfrei
+        {items.map((item) => {
+          const listUnit = item.unitListGrossCents || item.unitPriceGrossCents;
+          const onUnitSale = listUnit > item.unitPriceGrossCents;
+          const lineList = item.quantity * listUnit;
+          const linePaid = item.quantity * item.unitPriceGrossCents;
+          return (
+            <div key={item.id} className="tf-card flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-[var(--tf-navy)]">
+                  {item.quantity}× {item.category.name}
                 </p>
-              ) : null}
-              {item.seats.length > 0 ? (
-                <ul className="mt-2 space-y-0.5 text-sm text-[var(--tf-teal-hover)]">
-                  {item.seats.map((s, idx) => (
-                    <li key={s.id}>
-                      {s.blockLabel} · Reihe {s.rowLabel} · Platz {s.seatNumber}
-                      {item.category.categoryKind === "wheelchair" &&
-                      item.category.companionFree &&
-                      idx % 2 === 1
-                        ? " (Begleitung)"
-                        : ""}
-                    </li>
-                  ))}
-                </ul>
-              ) : item.seatingMode === "best_available" ? (
-                <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">Bestplätze reserviert</p>
-              ) : null}
+                <p className="mt-0.5 text-sm font-medium text-[var(--tf-navy)]">
+                  {item.category.event.name}
+                </p>
+                <CartItemEventMeta
+                  eventStartsAt={item.category.event.eventStartsAt}
+                  locationName={item.category.event.location?.name}
+                  locationCity={item.category.event.location?.city}
+                />
+                {onUnitSale && item.priceCampaignName ? (
+                  <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
+                    {item.priceCampaignName}
+                  </p>
+                ) : null}
+                {item.category.categoryKind === "wheelchair" && item.category.companionFree ? (
+                  <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
+                    Inkl. Begleitperson kostenfrei
+                  </p>
+                ) : null}
+                {item.seats.length > 0 ? (
+                  <ul className="mt-2 space-y-0.5 text-sm text-[var(--tf-teal-hover)]">
+                    {item.seats.map((s, idx) => (
+                      <li key={s.id}>
+                        {s.blockLabel} · Reihe {s.rowLabel} · Platz {s.seatNumber}
+                        {item.category.categoryKind === "wheelchair" &&
+                        item.category.companionFree &&
+                        idx % 2 === 1
+                          ? " (Begleitung)"
+                          : ""}
+                      </li>
+                    ))}
+                  </ul>
+                ) : item.seatingMode === "best_available" ? (
+                  <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">Bestplätze reserviert</p>
+                ) : null}
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="text-right">
+                  {onUnitSale ? (
+                    <p className="text-xs tabular-nums text-[var(--tf-text-secondary)] line-through">
+                      {formatEuroFromCents(lineList)}
+                    </p>
+                  ) : null}
+                  <p className="font-medium tabular-nums">{formatEuroFromCents(linePaid)}</p>
+                </div>
+                <CartRemoveButton itemId={item.id} />
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <p className="font-medium tabular-nums">
-                {formatEuroFromCents(item.quantity * item.unitPriceGrossCents)}
-              </p>
-              <CartRemoveButton itemId={item.id} />
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {items.length === 0 ? (
           <div className="tf-card mt-2 space-y-4 p-6 text-center sm:text-left">
             <p className="text-base text-[var(--tf-text-secondary)]">
@@ -114,29 +130,20 @@ export default async function CartPage() {
 
       {items.length > 0 && summary ? (
         <div className="tf-card mt-6 flex flex-wrap items-center justify-between gap-3">
-          <div className="space-y-1 text-sm">
-            <p>Tickets: {formatEuroFromCents(summary.ticketsGrossCents)}</p>
-            {summary.feeGrossCents > 0 ? (
-              <div className="space-y-1">
-                <p className="text-[var(--muted)] inline-flex items-center gap-1">
-                  <span>
-                    {summary.feeLabel}: {formatEuroFromCents(summary.feeGrossCents)}
-                  </span>
-                  <FeeInfoIconButton
-                    feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
-                    className="-m-0.5 p-0.5"
-                  />
-                </p>
-                <FeeInfoDialog
-                  feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
-                  description={summary.feeCustomerDescription}
-                />
-              </div>
-            ) : null}
-            <p className="text-lg">
-              Gesamt: <strong>{formatEuroFromCents(summary.grossCents)}</strong>
-            </p>
-          </div>
+          <CartOrderSummary
+            ticketsGrossCents={summary.ticketsGrossCents}
+            discountCents={summary.discountCents}
+            discountLabel={summary.discountLabel}
+            orderCampaignDisclaimer={summary.orderCampaignDisclaimer}
+            feeGrossCents={summary.feeGrossCents}
+            feeLabel={summary.feeLabel}
+            feeCustomerDescription={summary.feeCustomerDescription}
+            administrationFeePercentageBasisPoints={
+              summary.administrationFeePercentageBasisPoints
+            }
+            giftCardAppliedCents={summary.giftCardAppliedCents}
+            grossCents={summary.grossCents}
+          />
           <Link href="/checkout" className="tf-btn tf-btn-primary">
             Zur Kasse
           </Link>
