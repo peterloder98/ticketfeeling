@@ -209,7 +209,8 @@ function CategoryKindFields({
             placeholder="z. B. Welcome-Drink & Meet and Greet"
           />
           <span className="text-[10px] leading-snug text-[var(--tf-text-secondary)]">
-            Kurzer Hinweis, was zusätzlich dabei ist — neben der längeren Vorteils-Liste.
+            Kurzer VIP-Hinweis auf der Eventseite („Separat dabei“). Hat Vorrang vor der
+            Kategorie-Beschreibung.
           </span>
         </label>
       ) : null}

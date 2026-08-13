@@ -261,8 +261,7 @@ export function AddToCartPanel({
               <p className="mt-2 text-sm font-medium text-[var(--tf-navy)]">
                 Separat dabei: {category.extrasShortText}
               </p>
-            ) : null}
-            {category.description && !compact ? (
+            ) : category.description && !compact ? (
               <p className="mt-2 text-sm leading-relaxed text-[var(--tf-text-secondary)]">
                 {category.description}
               </p>

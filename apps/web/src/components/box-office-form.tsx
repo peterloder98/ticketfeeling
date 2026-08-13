@@ -681,8 +681,7 @@ export function BoxOfficeForm({
                         <p className="mt-1 text-sm font-medium text-[var(--tf-navy)]">
                           Separat dabei: {category.extrasShortText}
                         </p>
-                      ) : null}
-                      {category.description ? (
+                      ) : category.description ? (
                         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
                           {category.description}
                         </p>

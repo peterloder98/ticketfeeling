@@ -796,7 +796,11 @@ export function SeatBookingPanel({
                         }
                         size="sm"
                       />
-                      {c.description ? (
+                      {c.extrasShortText ? (
+                        <p className="mt-1 text-xs font-medium text-[var(--tf-navy)]">
+                          Separat dabei: {c.extrasShortText}
+                        </p>
+                      ) : c.description ? (
                         <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">{c.description}</p>
                       ) : null}
                       {selected && c.companionFree ? (
@@ -959,8 +963,7 @@ export function SeatBookingPanel({
                       <p className="mt-1 text-sm font-medium text-[var(--tf-navy)]">
                         Separat dabei: {category.extrasShortText}
                       </p>
-                    ) : null}
-                    {category.description ? (
+                    ) : category.description ? (
                       <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
                         {category.description}
                       </p>
