@@ -27,7 +27,18 @@ import { effectiveEventStatus } from "@/lib/commerce/event-sale";
 import { canCreateEventCategories } from "@/lib/commerce/event-sale-inventory";
 import { ensurePresaleAutoRelease } from "@/lib/commerce/ensure-presale-release";
 import { EventSalesReadiness } from "@/components/admin/event-sales-readiness";
+import {
+  EventTicketPreviewPanel,
+  type TicketPreviewVariant,
+} from "@/components/admin/event-ticket-preview-panel";
 import { BuyerHeatmap } from "@/components/admin/buyer-heatmap";
+import { buildTicketFaceEmbed } from "@/lib/commerce/ticket-document";
+import {
+  buildEventTicketPreviewPresentation,
+  pickTicketPreviewCategories,
+  TICKET_PREVIEW_QR_PAYLOAD,
+} from "@/lib/commerce/ticket-preview";
+import { qrDataUrl } from "@/lib/qr-server";
 import { loadBuyerHeatmapPoints } from "@/lib/admin/load-buyer-heatmap";
 import { Suspense } from "react";
 import { cmToMetersLabel } from "@/lib/saalplan/types";
@@ -164,7 +175,17 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
       where: { id, organizationId: orgId },
       include: {
         // Never `location: true` — Decimal lat/lng breaks Client Component serialization.
-        location: { select: { id: true, name: true, city: true } },
+        // No lat/lng — Decimal breaks Client Component serialization.
+        location: {
+          select: {
+            id: true,
+            name: true,
+            street: true,
+            houseNumber: true,
+            postalCode: true,
+            city: true,
+          },
+        },
         tour: {
           select: {
             id: true,
@@ -494,6 +515,61 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   });
   const ownCover = Boolean(event.coverImageUrl?.trim()) && !usesTourCover;
 
+  const previewEventInput = {
+    name: event.name,
+    eventStartsAt: event.eventStartsAt,
+    doorsOpenAt: event.doorsOpenAt,
+    ticketHeroImageUrl: event.ticketHeroImageUrl,
+    coverImageUrl: event.coverImageUrl,
+    tour: event.tour,
+    ticketSponsorLogoAboveUrl: event.ticketSponsorLogoAboveUrl,
+    ticketSponsorLogoBelowUrl: event.ticketSponsorLogoBelowUrl,
+    ticketSponsorLogoAboveScale: event.ticketSponsorLogoAboveScale,
+    ticketSponsorLogoBelowScale: event.ticketSponsorLogoBelowScale,
+    organizerName: event.organizerName,
+    location: event.location,
+  };
+  const { standard: previewStandardCat, vip: previewVipCat } =
+    pickTicketPreviewCategories(event.ticketCategories);
+  const previewQr = await qrDataUrl(TICKET_PREVIEW_QR_PAYLOAD, 280);
+  const ticketPreviewVariants: TicketPreviewVariant[] = [];
+  const pushPreviewVariant = (
+    key: "standard" | "vip",
+    label: string,
+    category: (typeof event.ticketCategories)[number] | null,
+  ) => {
+    const data = buildEventTicketPreviewPresentation({
+      event: previewEventInput,
+      category: category
+        ? {
+            name: category.name,
+            categoryKind: category.categoryKind,
+            freeSeating: category.freeSeating,
+            extrasShortText: category.extrasShortText,
+            doorsOpenAt: category.doorsOpenAt,
+            doorsNote: category.doorsNote,
+            priceGrossCents: category.priceGrossCents,
+          }
+        : null,
+    });
+    ticketPreviewVariants.push({
+      key,
+      label,
+      categoryName: data.categoryName,
+      face: buildTicketFaceEmbed(data, previewQr, { absoluteAssets: false }),
+    });
+  };
+  if (previewStandardCat || !previewVipCat) {
+    pushPreviewVariant(
+      "standard",
+      "Normal",
+      previewStandardCat ?? event.ticketCategories[0] ?? null,
+    );
+  }
+  if (previewVipCat) {
+    pushPreviewVariant("vip", "VIP", previewVipCat);
+  }
+
   const planOptions = venuePlans.map((p) => ({
     id: p.id,
     name: p.name,
@@ -711,6 +787,10 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
           </div>
         )}
       </section>
+
+      {ticketPreviewVariants.length > 0 ? (
+        <EventTicketPreviewPanel variants={ticketPreviewVariants} />
+      ) : null}
 
       {/* Verkaufsbereitschaft + Ticketbild side by side on desktop */}
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start">

@@ -127,22 +127,24 @@ export function EventSalesReadiness({ event, previewTicketId }: Props) {
         </div>
       ) : null}
 
-      {previewTicketId ? (
-        <p className="text-sm">
-          <Link
-            href={`/ticket/${previewTicketId}`}
-            className="tf-link underline"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Ticketvorschau anzeigen
-          </Link>
-        </p>
-      ) : ready.ok ? (
-        <p className="text-xs text-[var(--tf-text-secondary)]">
-          Ticketvorschau erscheint, sobald mindestens ein Ticket verkauft wurde.
-        </p>
-      ) : null}
+      <p className="text-sm">
+        <a href="#ticketvorschau" className="tf-link underline">
+          Ticketvorschau (Beispieldaten)
+        </a>
+        {previewTicketId ? (
+          <>
+            {" · "}
+            <Link
+              href={`/ticket/${previewTicketId}`}
+              className="tf-link underline"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Echtes Ticket öffnen
+            </Link>
+          </>
+        ) : null}
+      </p>
     </section>
   );
 }
