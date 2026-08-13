@@ -31,12 +31,12 @@ export async function SiteFooter() {
     <footer className="mt-12 border-t border-white/10 bg-[var(--tf-navy)] text-white">
       <div className="tf-container grid gap-10 py-12 md:grid-cols-2 lg:grid-cols-4">
         <div className="max-w-sm space-y-4">
-          <div className="inline-flex rounded-2xl bg-white px-3 py-2">
-            <BrandLogo variant="full" href="/" className="!h-14" />
-          </div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--tf-teal)]">
-            Mehr als ein Ticket.
-          </p>
+          <BrandLogo
+            variant="full"
+            tone="dark"
+            href="/"
+            className="!h-[4.75rem] sm:!h-[5.25rem] md:!h-24"
+          />
           <p className="text-base leading-relaxed text-white/80">
             Events persönlich, sicher und direkt beim Veranstalter buchen.
           </p>

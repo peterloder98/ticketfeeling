@@ -20,21 +20,29 @@ function escapeHtml(value: string) {
 const EMAIL_FONT =
   "Inter,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif";
 
-/** Small hosted logo for e-mail clients that allow remote images (transparent / light). */
+/**
+ * Sharp TF mark for e-mail (not the soft JPEG-derived lockup PNG).
+ * Display ~72×44; source is 535×329 (retina).
+ */
+const EMAIL_MARK = {
+  path: "/brand/icon-tf.png",
+  displayW: 72,
+  displayH: 44,
+} as const;
+
+/** Hosted mark URL for clients that load remote images / CID fallback. */
 export function emailLogoRemoteUrl() {
-  return `${appBaseUrl()}/brand/logo-email.png`;
+  return `${appBaseUrl()}${EMAIL_MARK.path}`;
 }
 
 /**
- * Prefer a compact, freigestelltes PNG for CID embedding (heller Hintergrund, kein Schwarz).
- * CID shows in most clients without "load remote images".
+ * Prefer the official sharp mark PNG for CID embedding.
+ * Never use soft `logo-ticketfeeling.png` / `logo-email.png` as the mail header.
  */
 export function loadEmailLogoBuffer(): Buffer | null {
   const candidates = [
-    path.join(process.cwd(), "public/brand/logo-email.png"),
-    path.join(process.cwd(), "public/brand/logo-lockup-1x.png"),
-    path.join(process.cwd(), "apps/web/public/brand/logo-email.png"),
-    path.join(process.cwd(), "apps/web/public/brand/logo-lockup-1x.png"),
+    path.join(process.cwd(), "public/brand/icon-tf.png"),
+    path.join(process.cwd(), "apps/web/public/brand/icon-tf.png"),
   ];
   for (const file of candidates) {
     if (existsSync(file)) {
@@ -50,13 +58,40 @@ export function loadEmailLogoBuffer(): Buffer | null {
 
 export const EMAIL_LOGO_CID = "ticketfeeling-logo";
 
+/** Centered mark + crisp HTML wordmark (avoids soft lockup raster). */
+export function emailBrandHeaderHtml(logoSrc = `cid:${EMAIL_LOGO_CID}`) {
+  const logoFallback = emailLogoRemoteUrl();
+  const { displayW, displayH } = EMAIL_MARK;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:0 auto">
+  <tr>
+    <td align="center" style="padding:0 0 10px">
+      <img src="${logoSrc}" alt="Ticketfeeling" width="${displayW}" height="${displayH}" style="display:block;width:${displayW}px;height:${displayH}px;border:0;outline:none" />
+      <!--[if !mso]><!-- -->
+      <div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
+        <img src="${escapeHtml(logoFallback)}" alt="" width="1" height="1" />
+      </div>
+      <!--<![endif]-->
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:0;font-family:${EMAIL_FONT};font-weight:700;font-size:22px;letter-spacing:-0.02em;line-height:1.15">
+      <span style="color:#0F2747">ticket</span><span style="color:#14B8A6">feeling</span>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" style="padding:6px 0 0;font-family:${EMAIL_FONT};font-weight:600;font-size:11px;letter-spacing:0.14em;line-height:1.3;color:#14B8A6">
+      MEHR ALS EIN TICKET.
+    </td>
+  </tr>
+</table>`;
+}
+
 /**
  * Shared HTML shell for transactional buyer mail.
  * No company / Impressum address here — that belongs on invoices and legal pages only.
  */
 function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
   const logoSrc = `cid:${EMAIL_LOGO_CID}`;
-  const logoFallback = emailLogoRemoteUrl();
   const body = paragraphs
     .map((p) => {
       if (!p) return "<br/>";
@@ -76,12 +111,7 @@ function wrapHtml(paragraphs: string[], opts?: { hasAttachment?: boolean }) {
   <div style="padding:28px 16px">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #E2E8F0">
     <div style="background:#ffffff;padding:22px 28px 16px;text-align:center;border-bottom:1px solid #E2E8F0">
-      <img src="${logoSrc}" alt="Ticketfeeling" width="200" height="auto" style="display:inline-block;max-width:200px;height:auto;border:0;background:transparent" />
-      <!--[if !mso]><!-- -->
-      <div style="display:none;max-height:0;overflow:hidden">
-        <img src="${escapeHtml(logoFallback)}" alt="" width="1" height="1" />
-      </div>
-      <!--<![endif]-->
+      ${emailBrandHeaderHtml(logoSrc)}
     </div>
     <div style="height:4px;background:#14B8A6"></div>
     <div style="padding:28px 28px 8px">

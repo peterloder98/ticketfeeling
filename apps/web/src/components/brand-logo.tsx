@@ -6,6 +6,8 @@ import { BRAND_GOLD, BRAND_NAVY, BRAND_TEAL } from "@/components/brand-logo-mark
 type BrandLogoProps = {
   href?: string | null;
   variant?: "full" | "mark" | "app";
+  /** `dark` = light wordmark for navy/dark backgrounds (mark raster unchanged). */
+  tone?: "light" | "dark";
   className?: string;
   priority?: boolean;
   /** When set (e.g. ticket face), overrides default responsive height classes. */
@@ -41,17 +43,22 @@ const LOCKUP_VB = { w: 520, h: 360 } as const;
  * Root cause of blur: `/brand/logo-ticketfeeling.png` is a soft-knockout from a
  * JPEG plate (~544×381). Thin wordmark/tagline glyphs stay fuzzy at footer size.
  * Mark/app keep the same `icon-tf.png` path (already sharp).
- * Email/PDF still use the PNG master via make-logo-master / ticket assets.
+ * Email headers use `icon-tf.png` + HTML wordmark (see ticket-mail), not the soft PNG.
  */
 function FullLockup({
   className = "",
   style,
+  tone = "light",
 }: {
   className?: string;
   style?: CSSProperties;
+  tone?: "light" | "dark";
 }) {
   const sizedByStyle = style?.height != null || style?.width != null;
   const markHref = MARK.src;
+  const ticketFill = tone === "dark" ? "#FFFFFF" : BRAND_NAVY;
+  const feelingFill = BRAND_TEAL;
+  const taglineFill = tone === "dark" ? BRAND_TEAL : BRAND_GOLD;
 
   return (
     <svg
@@ -83,14 +90,14 @@ function FullLockup({
           letterSpacing: "-0.02em",
         }}
       >
-        <tspan fill={BRAND_NAVY}>ticket</tspan>
-        <tspan fill={BRAND_TEAL}>feeling</tspan>
+        <tspan fill={ticketFill}>ticket</tspan>
+        <tspan fill={feelingFill}>feeling</tspan>
       </text>
       <text
         x={LOCKUP_VB.w / 2}
         y={318}
         textAnchor="middle"
-        fill={BRAND_GOLD}
+        fill={taglineFill}
         style={{
           fontFamily: "var(--font-body), Inter, system-ui, sans-serif",
           fontWeight: 600,
@@ -111,12 +118,13 @@ function FullLockup({
 export function BrandLogo({
   href = "/",
   variant = "full",
+  tone = "light",
   className = "",
   priority = false,
   style,
 }: BrandLogoProps) {
   if (variant === "full") {
-    const graphic = <FullLockup className={className} style={style} />;
+    const graphic = <FullLockup className={className} style={style} tone={tone} />;
     if (!href) return graphic;
     return (
       <Link href={href} className="inline-flex items-center" aria-label="Ticketfeeling Startseite">

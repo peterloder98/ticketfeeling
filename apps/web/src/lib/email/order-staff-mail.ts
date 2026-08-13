@@ -2,7 +2,7 @@ import { promises as dns } from "dns";
 import { prisma } from "@/lib/db";
 import { paymentMethodLabel, channelLabel } from "@/lib/commerce/channels";
 import { formatEuroFromCents } from "@/lib/money";
-import { EMAIL_LOGO_CID, emailLogoRemoteUrl } from "@/lib/email/ticket-mail";
+import { EMAIL_LOGO_CID, emailBrandHeaderHtml } from "@/lib/email/ticket-mail";
 import { resolveOutboundSmtp } from "@/lib/email/accounts";
 
 import { getPublicAppUrl } from "@/lib/embed/public-url";
@@ -237,17 +237,11 @@ export type TicketMailContent = {
 
 function wrapStaffHtml(bodyInner: string) {
   const logoSrc = `cid:${EMAIL_LOGO_CID}`;
-  const logoFallback = emailLogoRemoteUrl();
   return `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#EEF2F7">
   <div style="padding:28px 16px">
   <div style="max-width:600px;margin:0 auto;background:#ffffff;border-radius:20px;overflow:hidden;border:1px solid #E2E8F0">
     <div style="background:#ffffff;padding:22px 28px 16px;text-align:center;border-bottom:1px solid #E2E8F0">
-      <img src="${logoSrc}" alt="Ticketfeeling" width="200" height="auto" style="display:inline-block;max-width:200px;height:auto;border:0;background:transparent" />
-      <!--[if !mso]><!-- -->
-      <div style="display:none;max-height:0;overflow:hidden">
-        <img src="${escapeHtml(logoFallback)}" alt="" width="1" height="1" />
-      </div>
-      <!--<![endif]-->
+      ${emailBrandHeaderHtml(logoSrc)}
     </div>
     <div style="height:4px;background:#14B8A6"></div>
     <div style="padding:28px 28px 8px">

@@ -78,5 +78,10 @@ describe("ticket-mail", () => {
     expectNoCompanyImprint(mail.text);
     expect(mail.html).not.toMatch(/Peter Loder/);
     expect(mail.html).toContain("Fragen?");
+    expect(mail.html).toContain("/brand/icon-tf.png");
+    expect(mail.html).not.toContain("logo-email.png");
+    expect(mail.html).not.toContain("logo-ticketfeeling.png");
+    expect(mail.html).toContain("ticket");
+    expect(mail.html).toContain("feeling");
   });
 });
