@@ -21,6 +21,13 @@ type Props = {
   children?: ReactNode;
 };
 
+/** Customer summary line: name only — percent lives in the (i) dialog. */
+function feeDisplayName(feeLabel?: string | null): string {
+  const raw = feeLabel?.trim();
+  if (!raw) return "Verwaltungsgebühr";
+  return raw.replace(/\s*\d+([.,]\d+)?\s*%/g, "").trim() || "Verwaltungsgebühr";
+}
+
 /**
  * Ticket → Rabatt → Gebühr → Gesamt breakdown for cart / checkout summaries.
  */
@@ -39,15 +46,17 @@ export function CartOrderSummary({
   children,
 }: Props) {
   const text = compact ? "text-xs" : "text-sm";
+  const amountClass = "shrink-0 tabular-nums text-[var(--tf-navy)]";
+  const rowClass = "flex items-baseline justify-between gap-4";
   const totalClass = compact
-    ? "pt-1 text-base font-semibold text-[var(--tf-navy)]"
-    : "text-lg text-[var(--tf-navy)]";
+    ? "pt-2 text-base font-semibold text-[var(--tf-navy)]"
+    : "pt-2 text-lg font-semibold text-[var(--tf-navy)]";
 
   return (
-    <div className={`space-y-1 ${text} ${className}`}>
-      <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
+    <div className={`space-y-2.5 ${text} ${className}`}>
+      <p className={`${rowClass} text-[var(--tf-text-secondary)]`}>
         <span>Tickets</span>
-        <span className="tabular-nums">{formatEuroFromCents(ticketsGrossCents)}</span>
+        <span className={amountClass}>{formatEuroFromCents(ticketsGrossCents)}</span>
       </p>
       {discountCents > 0 ? (
         <PromotionBadge
@@ -59,9 +68,9 @@ export function CartOrderSummary({
         />
       ) : null}
       {feeGrossCents > 0 ? (
-        <p className="flex justify-between gap-3 text-[var(--tf-text-secondary)]">
-          <span className="inline-flex items-center gap-1">
-            <span>{feeLabel ?? "Gebühren"}</span>
+        <p className={`${rowClass} text-[var(--tf-text-secondary)]`}>
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <span>{feeDisplayName(feeLabel)}</span>
             {typeof administrationFeePercentageBasisPoints === "number" ? (
               <FeeInfoIconButton
                 feePercentageBasisPoints={administrationFeePercentageBasisPoints}
@@ -69,20 +78,18 @@ export function CartOrderSummary({
               />
             ) : null}
           </span>
-          <span className="tabular-nums">{formatEuroFromCents(feeGrossCents)}</span>
+          <span className={amountClass}>{formatEuroFromCents(feeGrossCents)}</span>
         </p>
       ) : null}
       {giftCardAppliedCents > 0 ? (
-        <p className="flex justify-between gap-3 text-[var(--tf-teal-hover)]">
+        <p className={`${rowClass} text-[var(--tf-teal-hover)]`}>
           <span>Gutschein</span>
-          <span className="tabular-nums">−{formatEuroFromCents(giftCardAppliedCents)}</span>
+          <span className="shrink-0 tabular-nums">−{formatEuroFromCents(giftCardAppliedCents)}</span>
         </p>
       ) : null}
-      <p className={`flex justify-between gap-3 ${totalClass}`}>
+      <p className={`${rowClass} border-t border-[var(--tf-line)] ${totalClass}`}>
         <span>Gesamt</span>
-        <span className="tabular-nums">
-          <strong className="font-semibold">{formatEuroFromCents(grossCents)}</strong>
-        </span>
+        <span className="shrink-0 tabular-nums">{formatEuroFromCents(grossCents)}</span>
       </p>
       {children}
     </div>

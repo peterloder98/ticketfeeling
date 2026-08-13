@@ -129,8 +129,9 @@ export default async function CartPage() {
       </div>
 
       {items.length > 0 && summary ? (
-        <div className="tf-card mt-6 flex flex-wrap items-center justify-between gap-3">
+        <div className="tf-card mt-6 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between sm:gap-8">
           <CartOrderSummary
+            className="min-w-0 w-full sm:max-w-md sm:flex-1"
             ticketsGrossCents={summary.ticketsGrossCents}
             discountCents={summary.discountCents}
             discountLabel={summary.discountLabel}
@@ -144,7 +145,10 @@ export default async function CartPage() {
             giftCardAppliedCents={summary.giftCardAppliedCents}
             grossCents={summary.grossCents}
           />
-          <Link href="/checkout" className="tf-btn tf-btn-primary">
+          <Link
+            href="/checkout"
+            className="tf-btn tf-btn-primary w-full shrink-0 sm:w-auto sm:min-w-[10.5rem]"
+          >
             Zur Kasse
           </Link>
         </div>

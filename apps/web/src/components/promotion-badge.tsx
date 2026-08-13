@@ -99,7 +99,7 @@ export function PromotionBadge({
     );
   }
 
-  // Checkout / cart line: name (+ optional condition) left, amount right
+  // Checkout / cart line: name (+ optional condition) left, amount right (action accent only)
   if (variant === "checkout") {
     const name =
       campaignName?.trim() ||
@@ -114,19 +114,21 @@ export function PromotionBadge({
       null;
     return (
       <div
-        className={`tf-promotion-badge tf-promotion-badge--checkout text-sm font-medium ${className}`}
+        className={`tf-promotion-badge tf-promotion-badge--checkout text-sm ${className}`}
         role="status"
       >
         <div className="min-w-0">
           <p className="tf-promotion-badge__name">{name}</p>
           {condition ? (
-            <p className="mt-0.5 text-[11px] font-normal text-[var(--tf-text-secondary)]">
+            <p className="mt-0.5 text-[11px] font-normal leading-snug text-[var(--tf-text-secondary)]">
               {condition}
             </p>
           ) : null}
         </div>
         {amount ? (
-          <span className="tf-promotion-badge__savings shrink-0 tabular-nums">{amount}</span>
+          <span className="tf-promotion-badge__savings shrink-0 self-start tabular-nums">
+            {amount}
+          </span>
         ) : null}
       </div>
     );

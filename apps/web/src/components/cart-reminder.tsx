@@ -175,9 +175,9 @@ export function CartReminder() {
           href="/warenkorb"
           className={`pointer-events-auto mt-2 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-semibold shadow-[0_8px_24px_rgba(15,39,71,0.12)] transition hover:scale-[1.02] ${
             countdown?.critical
-              ? "border-[#fecaca] bg-[#fef2f2] text-[#b91c1c]"
+              ? "border-[var(--tf-action-border)] bg-[var(--tf-action-bg)] text-[var(--tf-navy)]"
               : countdown?.urgent
-                ? "border-[#fed7aa] bg-[#fff7ed] text-[#c2410c]"
+                ? "border-[rgba(15,39,71,0.14)] bg-white text-[var(--tf-navy)]"
                 : "border-[var(--tf-line)] bg-white text-[var(--tf-navy)]"
           }`}
           aria-live="polite"

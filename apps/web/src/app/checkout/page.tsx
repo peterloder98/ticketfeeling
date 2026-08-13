@@ -19,10 +19,9 @@ import { getPaymentProvider } from "@/lib/payments";
 import { isStripeTestMode } from "@/lib/payments/mode";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
-import { FeeInfoIconButton } from "@/components/fee-info-dialog";
 import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
-import { PromotionBadge } from "@/components/promotion-badge";
+import { CartOrderSummary } from "@/components/cart-order-summary";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
@@ -230,59 +229,29 @@ export default async function CheckoutPage() {
               })}
             </ul>
 
-            <div className="mt-4 space-y-2 border-t border-[var(--tf-line)] pt-4 text-sm">
-              <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                <span>Tickets</span>
-                <span className="tabular-nums">{formatEuroFromCents(summary.ticketsGrossCents)}</span>
-              </p>
-              {summary.discountCents > 0 ? (
-                <PromotionBadge
-                  type="promotion"
-                  variant="checkout"
-                  campaignName={summary.discountLabel?.trim() || "Rabatt"}
-                  amountLabel={`−${formatEuroFromCents(summary.discountCents)}`}
-                  saleDisclaimer={summary.orderCampaignDisclaimer}
-                />
-              ) : null}
-              {summary.feeGrossCents > 0 ? (
-                <p className="flex justify-between gap-4 text-[var(--tf-text-secondary)]">
-                  <span className="inline-flex items-center gap-1">
-                    <span>
-                      {summary.feeLabel.includes("%")
-                        ? summary.feeLabel
-                        : `${summary.feeLabel}${feePercentLabel ? ` ${feePercentLabel} %` : ""}`}
-                    </span>
-                    <FeeInfoIconButton
-                      feePercentageBasisPoints={summary.administrationFeePercentageBasisPoints}
-                      className="-m-0.5 p-0.5"
-                    />
-                  </span>
-                  <span className="tabular-nums">
-                    {formatEuroFromCents(summary.feeGrossCents)}
-                  </span>
-                </p>
-              ) : null}
-              {summary.giftCardAppliedCents > 0 ? (
-                <p className="flex justify-between gap-4 text-[var(--tf-teal-hover)]">
-                  <span>Gutschein</span>
-                  <span className="tabular-nums">
-                    −{formatEuroFromCents(summary.giftCardAppliedCents)}
-                  </span>
-                </p>
-              ) : null}
-              <div className="border-t border-[var(--tf-line)] pt-3">
-                <p className="flex justify-between gap-4 text-lg font-semibold text-[var(--tf-navy)]">
-                  <span>Gesamtbetrag</span>
-                  <span className="tabular-nums">{formatEuroFromCents(summary.grossCents)}</span>
-                </p>
-                <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+            <div className="mt-4 border-t border-[var(--tf-line)] pt-4">
+              <CartOrderSummary
+                ticketsGrossCents={summary.ticketsGrossCents}
+                discountCents={summary.discountCents}
+                discountLabel={summary.discountLabel}
+                orderCampaignDisclaimer={summary.orderCampaignDisclaimer}
+                feeGrossCents={summary.feeGrossCents}
+                feeLabel={summary.feeLabel}
+                administrationFeePercentageBasisPoints={
+                  summary.administrationFeePercentageBasisPoints
+                }
+                giftCardAppliedCents={summary.giftCardAppliedCents}
+                grossCents={summary.grossCents}
+              />
+              <div className="mt-3 space-y-2">
+                <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                   inkl. gesetzlicher Umsatzsteuer
                 </p>
-                <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+                <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                   Die gewählte Zahlungsart verändert den Gesamtpreis nicht.
                 </p>
                 {feePercentLabel ? (
-                  <p className="mt-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
+                  <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                     Unsere Verwaltungsgebühr beträgt nur {feePercentLabel}&nbsp;% — deutlich
                     günstiger als bei vielen klassischen Ticketplattformen.
                   </p>

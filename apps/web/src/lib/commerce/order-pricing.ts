@@ -2,7 +2,6 @@ import { splitGrossToNetTax } from "@/lib/money";
 import {
   PLATFORM_FEE_CALCULATION_VERSION,
   computePlatformFeeGrossCents,
-  feePercentLabel,
   resolveActivePlatformFeeConfig,
   type PlatformFeeConfig,
 } from "@/lib/commerce/platform-fee";
@@ -173,11 +172,8 @@ export function computeOrderPricing(input: {
   const taxCents = ticketTax + administrationFeeTaxCents;
   const grossCents = customerTotalCents;
 
-  const pctLabel = feePercentLabel(config.percentageBasisPoints);
-  const feeLabel =
-    administrationFeeGrossCents === 0
-      ? `${config.displayName} (0,00 €)`
-      : `${config.displayName} ${pctLabel}`;
+  // Percent lives in the (i) dialog — keep the line label calm: „Verwaltungsgebühr“.
+  const feeLabel = config.displayName;
 
   const feeSnapshot = {
     kind: "administration_fee",
