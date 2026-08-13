@@ -5,6 +5,7 @@ import { PUBLIC_SLUG_TO_TYPE } from "@/lib/legal/document-types";
 import {
   findPublishedLegalVersion,
   getSeedLegalVersion,
+  syncLegalCatalog,
 } from "@/lib/legal/sync-catalog";
 
 export const dynamic = "force-dynamic";
@@ -81,6 +82,13 @@ export default async function LegalPage({ params }: Props) {
     if (org) {
       const seller = buildSellerIdentity(org, org.settings);
       sellerName = seller.displayName;
+
+      // Publish catalog versions (e.g. address / AGB fixes) so prod matches seed.
+      try {
+        await syncLegalCatalog(org.id);
+      } catch (error) {
+        console.error("[legal] syncLegalCatalog on page load failed", error);
+      }
 
       const fromDb = await findPublishedLegalVersion(org.id, docType);
       if (fromDb && !isPlaceholder(fromDb.content)) {

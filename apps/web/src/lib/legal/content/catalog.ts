@@ -42,9 +42,9 @@ Hinweis: Dieses Impressum gilt für die Ticketfeeling-Plattform. Soweit einzelne
   },
   {
     type: "terms",
-    version: "1.0.0",
+    version: "1.0.2",
     title: "Allgemeine Geschäftsbedingungen (AGB)",
-    changelog: "Erstveröffentlichung Ticketfeeling AGB",
+    changelog: "Wallet-Hinweis §10.2 entfernt; Entwurfshinweis entfernt",
     content: `Allgemeine Geschäftsbedingungen der Ticketfeeling-Plattform
 Stand: August 2026
 
@@ -100,8 +100,7 @@ ${SELLER}
 
 10. Digitale Tickets
 10.1 Tickets können als PDF, Ausdruck, Anzeige auf dem Smartphone oder als Screenshot genutzt werden, sofern der QR-Code vollständig und gut lesbar ist.
-10.2 Soweit technisch angeboten, können Tickets zusätzlich in Apple Wallet und Google Wallet hinterlegt werden. Bei Storno oder Ungültigkeit kann der Wallet-Pass aktualisiert bzw. deaktiviert werden.
-10.3 Maßgeblich für den Einlass ist der gültige, nicht entwertete QR-Code.
+10.2 Maßgeblich für den Einlass ist der gültige, nicht entwertete QR-Code.
 
 11. Ticketübertragung
 11.1 Tickets dürfen privat übertragen oder verschenkt werden.
@@ -164,9 +163,7 @@ ${SELLER}
 23.2 Gegenüber Verbrauchern gelten die gesetzlichen Gerichtsstände.
 23.3 Gegenüber Kaufleuten, juristischen Personen des öffentlichen Rechts und öffentlich-rechtlichen Sondervermögen ist – soweit gesetzlich zulässig – Landshut Gerichtsstand.
 23.4 Sollten einzelne Bestimmungen unwirksam sein, bleibt die Wirksamkeit der übrigen Bestimmungen unberührt.
-23.5 Foto-, Film- und Tonaufnahmen während Veranstaltungen sind möglich; Besucher können als Teil der Veranstaltung erkennbar sein. Die Nutzung erfolgt im Rahmen der gesetzlichen und datenschutzrechtlichen Vorgaben (Berichterstattung, Dokumentation, Werbung, Social Media, zukünftige Veranstaltungen).
-
-Hinweis: Diese AGB sind ein eigenständiger Entwurf für Ticketfeeling und vor Produktivstart fachlich zu prüfen.`,
+23.5 Foto-, Film- und Tonaufnahmen während Veranstaltungen sind möglich; Besucher können als Teil der Veranstaltung erkennbar sein. Die Nutzung erfolgt im Rahmen der gesetzlichen und datenschutzrechtlichen Vorgaben (Berichterstattung, Dokumentation, Werbung, Social Media, zukünftige Veranstaltungen).`,
   },
   {
     type: "event_terms",
@@ -232,9 +229,9 @@ Hinweis: Entwurf für Ticketfeeling – vor Produktivstart fachlich prüfen.`,
   },
   {
     type: "withdrawal",
-    version: "1.0.0",
+    version: "1.0.2",
     title: "Widerrufsbelehrung",
-    changelog: "Erstveröffentlichung",
+    changelog: "Empfängeranschrift bestätigt; Entwurfshinweis entfernt",
     content: `Widerrufsbelehrung
 Stand: August 2026
 
@@ -248,10 +245,8 @@ Unberührt bleiben Ansprüche bei Absage, Verlegung oder in sonstigen gesetzlich
 
 Für später angebotene Waren oder Dienstleistungen, bei denen ein Widerrufsrecht besteht, gelten die gesetzlichen Regelungen; ein Muster-Widerrufsformular wird gesondert bereitgestellt.
 
-Unternehmer
-${SELLER}
-
-Hinweis: Entwurf für Ticketfeeling – vor Produktivstart fachlich prüfen.`,
+Widerrufsempfänger / Unternehmer
+${SELLER}`,
   },
   {
     type: "withdrawal_form",
@@ -338,9 +333,9 @@ ${SELLER}`,
   },
   {
     type: "privacy",
-    version: "1.0.1",
+    version: "1.0.2",
     title: "Datenschutzerklärung",
-    changelog: "Öffentliche Anschrift Landshut (Verantwortlicher)",
+    changelog: "Anschrift Innere Münchener Str. 36 bestätigt; Entwurfshinweis entfernt",
     content: `Datenschutzerklärung – Ticketfeeling
 Stand: August 2026
 
@@ -433,8 +428,6 @@ Das Angebot richtet sich nicht gezielt an Kinder. Wer unter 16 Jahren personenbe
 22. Änderungen
 Diese Datenschutzerklärung wird versioniert. Die jeweils gültige Fassung wird veröffentlicht; beim Ticketkauf wird die dann gültige Version mit der Bestellung gespeichert.
 
-Kontakt für Datenschutzanfragen: support@ticketfeeling.de
-
-Hinweis: Eigenständiger Entwurf für Ticketfeeling – vor Produktivstart fachlich zu prüfen.`,
+Kontakt für Datenschutzanfragen: support@ticketfeeling.de`,
   },
 ];

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
+import { BRAND_GOLD, BRAND_NAVY, BRAND_TEAL } from "@/components/brand-logo-mark";
 
 type BrandLogoProps = {
   href?: string | null;
@@ -12,28 +13,11 @@ type BrandLogoProps = {
 };
 
 /** Cache-bust so browsers pick up the latest artwork. */
-const V = "20260805-tfmark";
-
-/**
- * Full lockup = soft-knockout from black-plate JPEG, native content resolution.
- * Intrinsic pixels match `public/brand/logo-ticketfeeling.png`.
- * Height-driven `w-auto object-contain` — never stretch / never SVG lockup.
- *
- * Display guidance (2× screens): CSS height ≲ half of source height.
- * Master is 381px tall → keep CSS height ≤ ~190px (hero ≤88px / footer 56px are safe).
- */
-const FULL = {
-  src: `/brand/logo-ticketfeeling.png?v=${V}`,
-  width: 544,
-  height: 381,
-  className: "h-14 w-auto sm:h-16 md:h-[4.5rem]",
-} as const;
+const V = "20260813-tfsharp";
 
 /**
  * TF mark = soft-knockout from original icon plate (`make-icon-master.ts`).
  * Intrinsic matches `public/brand/icon-tf.png` / `icon-mark-clear.png` (535×329).
- * Mark/app share the same raster; app chrome uses the same aspect for UI consistency.
- * Favicon/apple use square `icon-app-clear.png` separately.
  */
 const MARK = {
   src: `/brand/icon-tf.png?v=${V}`,
@@ -49,9 +33,80 @@ const APP = {
   className: "aspect-[535/329] h-9 w-auto md:h-10",
 } as const;
 
+const LOCKUP_VB = { w: 520, h: 360 } as const;
+
+/**
+ * Full lockup: official sharp raster mark + crisp Inter wordmark/tagline in SVG.
+ *
+ * Root cause of blur: `/brand/logo-ticketfeeling.png` is a soft-knockout from a
+ * JPEG plate (~544×381). Thin wordmark/tagline glyphs stay fuzzy at footer size.
+ * Mark/app keep the same `icon-tf.png` path (already sharp).
+ * Email/PDF still use the PNG master via make-logo-master / ticket assets.
+ */
+function FullLockup({
+  className = "",
+  style,
+}: {
+  className?: string;
+  style?: CSSProperties;
+}) {
+  const sizedByStyle = style?.height != null || style?.width != null;
+  const markHref = MARK.src;
+
+  return (
+    <svg
+      viewBox={`0 0 ${LOCKUP_VB.w} ${LOCKUP_VB.h}`}
+      className={`${sizedByStyle ? "w-auto" : "h-14 w-auto sm:h-16 md:h-[4.5rem]"} ${className}`}
+      style={style}
+      xmlns="http://www.w3.org/2000/svg"
+      role="img"
+      aria-label="Ticketfeeling"
+    >
+      <title>Ticketfeeling</title>
+      {/* Official mark raster — same asset as BrandLogo mark/app */}
+      <image
+        href={markHref}
+        x={70}
+        y={6}
+        width={380}
+        height={234}
+        preserveAspectRatio="xMidYMid meet"
+      />
+      <text
+        x={LOCKUP_VB.w / 2}
+        y={268}
+        textAnchor="middle"
+        style={{
+          fontFamily: "var(--font-body), Inter, system-ui, sans-serif",
+          fontWeight: 700,
+          fontSize: 44,
+          letterSpacing: "-0.02em",
+        }}
+      >
+        <tspan fill={BRAND_NAVY}>ticket</tspan>
+        <tspan fill={BRAND_TEAL}>feeling</tspan>
+      </text>
+      <text
+        x={LOCKUP_VB.w / 2}
+        y={318}
+        textAnchor="middle"
+        fill={BRAND_GOLD}
+        style={{
+          fontFamily: "var(--font-body), Inter, system-ui, sans-serif",
+          fontWeight: 600,
+          fontSize: 15,
+          letterSpacing: "0.14em",
+        }}
+      >
+        MEHR ALS EIN TICKET.
+      </text>
+    </svg>
+  );
+}
+
 /**
  * Official Ticketfeeling artwork — never distort / recolor / outline / shadow / 3D.
- * Full lockup + mark/app all use original rasters (not SVG recreations).
+ * Full = sharp mark raster + Inter type; mark/app = icon-tf.png only.
  */
 export function BrandLogo({
   href = "/",
@@ -60,7 +115,17 @@ export function BrandLogo({
   priority = false,
   style,
 }: BrandLogoProps) {
-  const asset = variant === "full" ? FULL : variant === "app" ? APP : MARK;
+  if (variant === "full") {
+    const graphic = <FullLockup className={className} style={style} />;
+    if (!href) return graphic;
+    return (
+      <Link href={href} className="inline-flex items-center" aria-label="Ticketfeeling Startseite">
+        {graphic}
+      </Link>
+    );
+  }
+
+  const asset = variant === "app" ? APP : MARK;
   const sizedByStyle = style?.height != null || style?.width != null;
 
   const graphic = (

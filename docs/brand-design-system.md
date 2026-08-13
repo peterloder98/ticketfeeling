@@ -31,15 +31,15 @@ Nur **Inter** (`next/font`). Weights: 400 / 500 / 600 / 700.
 | `.tf-btn-secondary` | Weiß, Navy-Border |
 | `.tf-card` | Weiß, Soft Shadow, Radius 20 |
 | `.tf-input` | Radius 14, großer Touch |
-| `BrandLogo` | Offizielles Lockup (Raster: `/brand/logo-ticketfeeling.png`); Mark/App: Raster `/brand/icon-tf.png` |
+| `BrandLogo` | Full: Mark-Raster `/brand/icon-tf.png` + Inter-Wortmarke; Mark/App: `/brand/icon-tf.png` |
 | `EventCard` | Event-Kachel mit Bild, Datum, Ort, CTA |
 
 ## Logo-Regeln
 
 - Nur das offizielle Artwork
 - Nicht verzerren, nicht umfärben, keine Outline/Schatten/3D
-- Web full lockup: original Raster (`BrandLogo` → `/brand/logo-ticketfeeling.png`), gebaut mit `npx tsx scripts/make-logo-master.ts`
-- E-Mail/PDF: PNGs aus demselben Master (nicht aus der SVG-Rekonstruktion)
+- Web full lockup (`BrandLogo` full): offizielles Mark-Raster `/brand/icon-tf.png` + scharfe Inter-Wortmarke/Tagline (kein JPEG-Lockup — der soft-knockout PNG-Wordmark war unscharf)
+- E-Mail/PDF: weiterhin `/brand/logo-ticketfeeling.png` aus `npx tsx scripts/make-logo-master.ts` (nicht aus der SVG-Mark-Rekonstruktion)
 - Transparenter Hintergrund (soft-knockout der schwarzen Plate)
 - Mark/App (Nav/Admin): original Raster (`BrandLogo` mark/app → `/brand/icon-tf.png`), gebaut mit `npx tsx scripts/make-icon-master.ts` — nicht die SVG-Rekonstruktion
 
