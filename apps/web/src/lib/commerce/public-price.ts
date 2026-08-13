@@ -63,12 +63,15 @@ export function formatFeeSurchargeNote(
   return `zzgl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`;
 }
 
-/** Note when the main amount already includes Verwaltungsgebühr. */
+/**
+ * Calm note when the shown amount already includes Verwaltungsgebühr.
+ * No percent on purpose (ticket face / paid totals) — listings use formatFeeSurchargeNote.
+ */
 export function formatFeeIncludedNote(
   feeConfig: Pick<PlatformFeeConfig, "enabled" | "percentageBasisPoints" | "displayName">,
 ): string {
   if (!feeConfig.enabled || feeConfig.percentageBasisPoints <= 0) return "";
-  return `inkl. ${formatFeePercentageLabel(feeConfig.percentageBasisPoints)} ${feeConfig.displayName}`;
+  return `inkl. ${feeConfig.displayName}`;
 }
 
 /**

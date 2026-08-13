@@ -10,6 +10,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import {
   customerUnitPriceCents,
+  formatFeeIncludedNote,
   orderItemCustomerPaidCents,
 } from "@/lib/commerce/public-price";
 import {
@@ -154,6 +155,10 @@ export async function loadTicketPresentation(
   const isVip = isVipCategory(categoryName, categoryKind);
   const unitTicketCents = ticket.orderItem?.unitPaidGrossCents;
   const feeBps = ticket.order.administrationFeePercentageBasisPoints ?? 0;
+  const orderFeeGross = Math.max(
+    0,
+    ticket.order.administrationFeeGrossCents || ticket.order.feeGrossCents || 0,
+  );
   /** Amount the buyer paid for this ticket (ticket + Verwaltungsgebühr share). */
   let priceCents: number | null = null;
   if (typeof unitTicketCents === "number" && unitTicketCents >= 0) {
@@ -171,9 +176,34 @@ export async function loadTicketPresentation(
       priceCents = unitTicketCents;
     }
   }
-  const priceLabel =
+  const feeSnap =
+    ticket.order.feeSnapshot &&
+    typeof ticket.order.feeSnapshot === "object" &&
+    !Array.isArray(ticket.order.feeSnapshot)
+      ? (ticket.order.feeSnapshot as {
+          config?: { displayName?: string };
+          label?: string;
+        })
+      : null;
+  const feeDisplayName =
+    feeSnap?.config?.displayName?.trim() ||
+    feeSnap?.label?.trim() ||
+    "Verwaltungsgebühr";
+  const feeNote = formatFeeIncludedNote({
+    enabled: feeBps > 0 || orderFeeGross > 0,
+    // Legacy orders may have fee gross without bps — still show the calm note.
+    percentageBasisPoints: feeBps > 0 ? feeBps : orderFeeGross > 0 ? 1 : 0,
+    displayName: feeDisplayName,
+  });
+  const amountLabel =
     priceCents != null
       ? formatEuroFromCents(priceCents, ticket.order.currency || "EUR")
+      : null;
+  const priceLabel =
+    amountLabel != null
+      ? feeNote
+        ? `${amountLabel} ${feeNote}`
+        : amountLabel
       : null;
   const placeLabel = resolvePlaceLabel({
     seatLabel: ticket.seatLabel,

@@ -88,4 +88,15 @@ describe("buildTicketFaceEmbed", () => {
     expect(face.html).not.toContain("Schlagerhitparade");
     expect(face.html).toContain("Test Event");
   });
+
+  it("keeps fee-included note outside bold price amount", () => {
+    const face = buildTicketFaceEmbed(
+      mockData({ priceLabel: "45,76 € inkl. Verwaltungsgebühr" }),
+      "data:image/png;base64,xx",
+    );
+    expect(face.html).toContain(
+      "Preis <strong>45,76 €</strong> inkl. Verwaltungsgebühr",
+    );
+    expect(face.html).not.toContain("<strong>45,76 € inkl. Verwaltungsgebühr</strong>");
+  });
 });

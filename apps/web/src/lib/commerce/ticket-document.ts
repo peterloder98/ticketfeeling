@@ -139,13 +139,20 @@ export function buildTicketFaceEmbed(
           .join("")}</div>`
       : `<p class="tf-place">${escapeHtml(seat.text)}</p>`;
 
+  let priceFooterHtml = "";
+  if (data.priceLabel) {
+    // Keep amount bold; calm „inkl. …“ note stays regular weight for a tidy face.
+    const m = data.priceLabel.match(/^(.*?)( inkl\. .+)$/);
+    priceFooterHtml = m
+      ? `<span>Preis <strong>${escapeHtml(m[1]!)}</strong>${escapeHtml(m[2]!)}</span>`
+      : `<span>Preis <strong>${escapeHtml(data.priceLabel)}</strong></span>`;
+  }
+
   const footerBits = [
     data.holderName
       ? `<span>Inhaber <strong>${escapeHtml(data.holderName)}</strong></span>`
       : "",
-    data.priceLabel
-      ? `<span>Preis <strong>${escapeHtml(data.priceLabel)}</strong></span>`
-      : "",
+    priceFooterHtml,
   ]
     .filter(Boolean)
     .join("");

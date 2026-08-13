@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   customerUnitPriceCents,
   formatCustomerPriceLabel,
+  formatFeeIncludedNote,
   orderItemCustomerPaidCents,
 } from "@/lib/commerce/public-price";
 
@@ -87,5 +88,34 @@ describe("formatCustomerPriceLabel", () => {
     });
     expect(labeled.totalLabel).toBe("ab 50,00 €");
     expect(labeled.surchargeLabel).toBe("");
+  });
+});
+
+describe("formatFeeIncludedNote", () => {
+  it("returns calm inkl. note without percent", () => {
+    expect(
+      formatFeeIncludedNote({
+        enabled: true,
+        percentageBasisPoints: 400,
+        displayName: "Verwaltungsgebühr",
+      }),
+    ).toBe("inkl. Verwaltungsgebühr");
+  });
+
+  it("returns empty when fee is off", () => {
+    expect(
+      formatFeeIncludedNote({
+        enabled: false,
+        percentageBasisPoints: 400,
+        displayName: "Verwaltungsgebühr",
+      }),
+    ).toBe("");
+    expect(
+      formatFeeIncludedNote({
+        enabled: true,
+        percentageBasisPoints: 0,
+        displayName: "Verwaltungsgebühr",
+      }),
+    ).toBe("");
   });
 });
