@@ -7,6 +7,7 @@ import { getDefaultOrganization } from "@/lib/commerce/org";
 import { buildPublicListingCards } from "@/lib/commerce/public-listings";
 import { listingCardsToEventCardData } from "@/lib/commerce/listing-card-data";
 import { loadPublicListingEvents } from "@/lib/commerce/listing-query";
+import { listingGridClassName } from "@/lib/commerce/listing-grid";
 
 /** Live flip of due Vorverkaufsstart must not wait on ISR cache. */
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export default async function HomePage() {
             </Link>
           </div>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          <div className={listingGridClassName(gridCards.length)}>
             {gridCards.map((card) => (
               <EventCard key={card.id} event={card} quiet />
             ))}

@@ -37,8 +37,9 @@ export async function SiteFooter() {
             href="/"
             className="!h-[4.75rem] sm:!h-[5.25rem] md:!h-24"
           />
-          <p className="text-base leading-relaxed text-white/80">
-            Events persönlich, sicher und direkt beim Veranstalter buchen.
+          <p className="text-base leading-relaxed text-white/70">
+            Ticketfeeling macht Ticketkauf einfach: direkt, sicher und persönlich beim
+            Veranstalter.
           </p>
           <p className="whitespace-pre-line text-sm leading-relaxed text-white/55">
             {publicAddressBlock}

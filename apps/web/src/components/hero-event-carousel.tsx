@@ -55,10 +55,10 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
   const poster = (
     <Link
       href={primaryHref}
-      className="group relative block w-[min(92vw,28rem)] shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--tf-teal)] sm:w-[min(82vw,30rem)] md:w-full md:max-w-[min(100%,28rem)] lg:max-w-[30rem] xl:max-w-[32rem]"
+      className="group relative block w-[min(88vw,22rem)] shrink-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--tf-teal)] sm:w-[min(72vw,24rem)] md:w-full md:max-w-[min(100%,22rem)] lg:max-w-[24rem] xl:max-w-[26rem]"
       aria-label={slide ? `Zum Event: ${slide.name}` : "Zu den Events"}
     >
-      <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#0a1a30] shadow-[0_24px_64px_rgba(0,0,0,0.45)] ring-1 ring-white/15 transition duration-300 ease-out group-hover:ring-white/30">
+      <div className="relative aspect-square overflow-hidden rounded-2xl bg-[#0a1a30] shadow-[0_20px_48px_rgba(0,0,0,0.4)] ring-1 ring-white/12 transition duration-300 ease-out group-hover:ring-white/28">
         {hasSlides ? (
           slides.map((s, i) => (
             <div
@@ -148,7 +148,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
           }`}
         >
           <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-[3.35rem]">
-            Erlebnisse, die bleiben. Tickets, die einfach sind.
+            Tickets kaufen, wie es sein sollte.
           </h1>
 
           <p
@@ -156,7 +156,15 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
               ready ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
             }`}
           >
-            Direkt vom Veranstalter. Persönlich, sicher und ohne Umwege.
+            Einfach. Schnell. Sicher. Direkt vom Veranstalter.
+          </p>
+
+          <p
+            className={`max-w-lg text-sm leading-snug text-white/65 transition-all delay-100 duration-300 ease-out md:text-[0.9375rem] ${
+              ready ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
+            }`}
+          >
+            In wenigen Minuten gebucht · Ticket sofort erhalten · Sichere Zahlungsarten
           </p>
 
           {/* Desktop CTAs sit with copy; mobile CTAs move below poster */}
@@ -184,7 +192,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
             >
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
-                  Als Nächstes
+                  Als nächstes
                 </p>
                 <Link
                   href={primaryHref}
@@ -251,7 +259,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
             <div className="flex flex-col gap-3 border-t border-white/20 pt-5">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
-                  Als Nächstes
+                  Als nächstes
                 </p>
                 <Link
                   href={primaryHref}

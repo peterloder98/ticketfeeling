@@ -37,6 +37,8 @@ export type ListingEvent = {
   } | null;
   ticketCategories: {
     id: string;
+    name: string;
+    categoryKind: string;
     priceGrossCents: number;
     capacity: number;
     pools: { soldQuantity: number; heldQuantity: number; capacity: number }[];
@@ -62,6 +64,8 @@ export type PublicListingCard = {
   ticketCategories: {
     id: string;
     eventId: string;
+    name: string;
+    categoryKind: string;
     priceGrossCents: number;
     capacity: number;
     pools: { soldQuantity: number; heldQuantity: number; capacity: number }[];
@@ -169,6 +173,8 @@ function cardFromDates(
       d.ticketCategories.map((c) => ({
         id: c.id,
         eventId: d.id,
+        name: c.name,
+        categoryKind: c.categoryKind,
         priceGrossCents: c.priceGrossCents,
         capacity: c.capacity,
         pools: c.pools,
@@ -197,6 +203,8 @@ function cardFromSingle(event: ListingEvent): PublicListingCard {
     ticketCategories: event.ticketCategories.map((c) => ({
       id: c.id,
       eventId: event.id,
+      name: c.name,
+      categoryKind: c.categoryKind,
       priceGrossCents: c.priceGrossCents,
       capacity: c.capacity,
       pools: c.pools,

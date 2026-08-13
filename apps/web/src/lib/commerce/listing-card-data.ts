@@ -6,7 +6,21 @@ import {
   remainingForCategories,
   type PublicListingCard,
 } from "@/lib/commerce/public-listings";
+import { isVipCategory } from "@/lib/commerce/ticket-presentation-shared";
 import type { EventCardData } from "@/components/event-card";
+
+function vipNearlySoldOut(
+  categories: PublicListingCard["ticketCategories"],
+  showRemaining: boolean,
+): boolean {
+  if (!showRemaining) return false;
+  const vipCats = categories.filter((c) => isVipCategory(c.name, c.categoryKind));
+  if (vipCats.length === 0) return false;
+  const { remaining, capacity } = remainingForCategories(vipCats);
+  if (capacity <= 0) return false;
+  const ratio = remaining / capacity;
+  return remaining <= 10 || ratio <= 0.15;
+}
 
 /** Map listing cards → EventCardData with campaign from-price / Aktion badge. */
 export async function listingCardsToEventCardData(
@@ -24,6 +38,9 @@ export async function listingCardsToEventCardData(
       feeConfig,
       formatEuro: formatEuroFromCents,
     });
+    const hasCampaign = Boolean(
+      from?.saleBadge || from?.campaignName || from?.saleDisclaimer,
+    );
     return {
       id: card.key,
       slug: card.key,
@@ -44,9 +61,15 @@ export async function listingCardsToEventCardData(
       remainingTickets: remaining,
       capacity,
       showRemainingAvailability: card.showRemainingAvailability,
+      dateCount: card.dateCount,
+      vipNearlySoldOut: vipNearlySoldOut(
+        card.ticketCategories,
+        card.showRemainingAvailability,
+      ),
       artists: card.artists,
       href: card.href,
       ctaLabel: card.ctaLabel,
+      hasCampaign,
     };
   });
 }

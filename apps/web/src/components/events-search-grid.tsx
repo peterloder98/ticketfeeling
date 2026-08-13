@@ -1,4 +1,5 @@
 import { EventCard, type EventCardData } from "@/components/event-card";
+import { listingGridClassName } from "@/lib/commerce/listing-grid";
 
 /**
  * Event grid for /events. Filtering uses `?q=` from the site-header search
@@ -31,7 +32,7 @@ export function EventsSearchGrid({
 
   return (
     <>
-      <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+      <div className={listingGridClassName(filtered.length, { marginTopClass: "mt-8" })}>
         {filtered.map((card) => (
           <EventCard key={card.id} event={card} />
         ))}

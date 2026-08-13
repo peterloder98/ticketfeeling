@@ -31,6 +31,8 @@ export const publicListingInclude = {
     where: { status: "active", onlineBookable: true },
     select: {
       id: true,
+      name: true,
+      categoryKind: true,
       priceGrossCents: true,
       capacity: true,
       pools: {

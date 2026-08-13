@@ -5,6 +5,7 @@ import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
 import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import { FeeSurchargeNote } from "@/components/fee-info-dialog";
+import { resolveEventCardBadge } from "@/lib/commerce/event-card-badge";
 
 export type EventCardArtist = {
   name: string;
@@ -40,41 +41,17 @@ export type EventCardData = {
   capacity?: number | null;
   /** When false, scarcity badges based on remaining counts are hidden */
   showRemainingAvailability?: boolean;
+  /** Tour / multi-date count — drives „Mehrere Termine“ badge + CTA */
+  dateCount?: number;
+  /** VIP inventory near sold out (from real pools) */
+  vipNearlySoldOut?: boolean;
+  /** Active price campaign on this listing */
+  hasCampaign?: boolean;
   artists?: EventCardArtist[];
   /** Defaults to /event/[slug] */
   href?: string;
   ctaLabel?: string;
 };
-
-function urgencyBadge(
-  remaining: number | null | undefined,
-  capacity: number | null | undefined,
-  status: string,
-  showRemaining: boolean,
-) {
-  if (status === "sold_out" || (remaining != null && remaining <= 0 && (capacity ?? 0) > 0)) {
-    return { label: "Ausverkauft", className: "bg-white text-[var(--tf-navy)]" };
-  }
-  if (showRemaining && remaining != null && capacity != null && capacity > 0) {
-    const ratio = remaining / capacity;
-    if (remaining <= 25 || ratio <= 0.12) {
-      return { label: "Fast ausverkauft", className: "bg-[#fff4e8] text-[#9a4d0a]" };
-    }
-    if (remaining <= 80 || ratio <= 0.35) {
-      return {
-        label: "Nur noch wenige Tickets",
-        className: "bg-[rgba(20,184,166,0.95)] text-white",
-      };
-    }
-  }
-  if (status === "presale_active") {
-    return { label: "Tickets", className: "bg-[rgba(20,184,166,0.95)] text-white" };
-  }
-  if (status === "announcement") {
-    return { label: "Neu", className: "bg-white text-[var(--tf-navy)]" };
-  }
-  return { label: "Tickets", className: "bg-[rgba(20,184,166,0.95)] text-white" };
-}
 
 export function EventCard({
   event,
@@ -104,18 +81,26 @@ export function EventCard({
     event.locationCity === "Mehrere Orte"
       ? "Mehrere Orte"
       : [event.locationName, event.locationCity].filter(Boolean).join(", ");
-  const badge = urgencyBadge(
-    event.remainingTickets,
-    event.capacity,
-    event.status,
-    Boolean(event.showRemainingAvailability),
-  );
+  const hasCampaign =
+    event.hasCampaign ??
+    Boolean(event.saleBadge || event.campaignName || event.saleDisclaimer);
+  const badge = resolveEventCardBadge({
+    status: event.status,
+    remainingTickets: event.remainingTickets,
+    capacity: event.capacity,
+    showRemainingAvailability: Boolean(event.showRemainingAvailability),
+    dateCount: event.dateCount ?? 1,
+    hasCampaign,
+    campaignLabel: event.campaignName ?? event.saleBadge ?? null,
+    vipNearlySoldOut: Boolean(event.vipNearlySoldOut),
+  });
   const artists = event.artists?.slice(0, 4) ?? [];
   const href = event.href ?? `/event/${event.slug}`;
-  const cta = event.ctaLabel ?? "Event ansehen";
+  const multiDate = (event.dateCount ?? 1) > 1;
+  const cta =
+    event.ctaLabel ?? (multiDate ? "Termine wählen" : "Event ansehen");
   const onSale = Boolean(event.listPriceLabel && event.saleBadge);
-  const hasPromo =
-    Boolean(event.saleBadge) || Boolean(event.campaignName) || Boolean(event.saleDisclaimer);
+  const hasPromo = hasCampaign;
   const showFeeNote = Boolean(event.priceNote);
 
   return (
@@ -130,11 +115,13 @@ export function EventCard({
           className="h-full w-full transition duration-300 group-hover:scale-[1.02]"
           fallback="event"
         />
-        <span
-          className={`absolute left-2.5 top-2.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}
-        >
-          {badge.label}
-        </span>
+        {badge ? (
+          <span
+            className={`absolute left-2.5 top-2.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}
+          >
+            {badge.label}
+          </span>
+        ) : null}
       </div>
 
       <div className="flex flex-1 flex-col gap-1.5 p-3 md:p-4">
