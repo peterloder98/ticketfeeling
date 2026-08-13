@@ -44,11 +44,12 @@ export function resolveOrganizerBrandName(identity: Pick<SellerIdentity, "brandN
  * with optional per-event overrides. Ticketfeeling is never the Veranstalter.
  */
 export function buildEventOrganizerIdentity(
-  org: Organization,
+  org: Pick<Organization, "id" | "name" | "slug">,
   settings: OrganizationSettings | null | undefined,
   event?: EventOrganizerFields | null,
 ): SellerIdentity {
-  const base = buildSellerIdentity(org, settings);
+  // Event pages select a slim org; seller identity only needs name (+ settings).
+  const base = buildSellerIdentity(org as Organization, settings);
   const defaultBrand = resolveOrganizerBrandName(base);
   const defaultDisplay = formatOrganizerDisplayName(base.legalPersonName, defaultBrand);
 

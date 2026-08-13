@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 const SCHLAGERFEELING_SLUG = "schlagerfeeling";
@@ -54,7 +55,7 @@ export async function ensureSchlagerfeelingOrganizerBrand(): Promise<boolean> {
       where: { id: org.settings.id },
       data: {
         ...(legalNameDirty ? { legalName: DEFAULT_LEGAL_PERSON } : {}),
-        ...(dirty ? { data } : {}),
+        ...(dirty ? { data: data as Prisma.InputJsonValue } : {}),
       },
     });
     return true;
