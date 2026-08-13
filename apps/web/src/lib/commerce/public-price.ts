@@ -64,6 +64,19 @@ export function formatFeeSurchargeNote(
 }
 
 /**
+ * Calm public fee label when an (i) dialog exists: strip „4 %“ so percent lives in the dialog only.
+ * Seat-map tooltips and FeeSurchargeNote share this wording.
+ */
+export function formatFeeSurchargeDisplayLabel(note: string): string {
+  return (
+    note
+      .replace(/\s*\d+([.,]\d+)?\s*%/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trim() || "zzgl. Verwaltungsgebühr"
+  );
+}
+
+/**
  * Calm note when the shown amount already includes Verwaltungsgebühr.
  * No percent on purpose (ticket face / paid totals) — listings use formatFeeSurchargeNote.
  */

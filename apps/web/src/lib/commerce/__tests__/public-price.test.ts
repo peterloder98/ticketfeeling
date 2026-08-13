@@ -3,6 +3,7 @@ import {
   customerUnitPriceCents,
   formatCustomerPriceLabel,
   formatFeeIncludedNote,
+  formatFeeSurchargeDisplayLabel,
   orderItemCustomerPaidCents,
 } from "@/lib/commerce/public-price";
 
@@ -117,5 +118,16 @@ describe("formatFeeIncludedNote", () => {
         displayName: "Verwaltungsgebühr",
       }),
     ).toBe("");
+  });
+});
+
+describe("formatFeeSurchargeDisplayLabel", () => {
+  it("strips percent when an info dialog will explain the rate", () => {
+    expect(formatFeeSurchargeDisplayLabel("zzgl. 4 % Verwaltungsgebühr")).toBe(
+      "zzgl. Verwaltungsgebühr",
+    );
+    expect(formatFeeSurchargeDisplayLabel("zzgl. 4,5 % Verwaltungsgebühr")).toBe(
+      "zzgl. Verwaltungsgebühr",
+    );
   });
 });

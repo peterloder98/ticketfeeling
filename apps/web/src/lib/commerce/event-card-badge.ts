@@ -57,7 +57,7 @@ export function resolveEventCardBadge(input: {
       return { label: "Fast ausverkauft", kind: "availability" };
     }
     if (remainingTickets <= 80 || ratio <= 0.35) {
-      return { label: "Nur noch wenige Tickets", kind: "availability" };
+      return { label: "Wenige Tickets", kind: "availability" };
     }
   }
 

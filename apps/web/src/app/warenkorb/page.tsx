@@ -28,10 +28,8 @@ export default async function CartPage() {
 
   return (
     <div className="tf-container py-12">
-      <h1 className="font-[family-name:var(--font-display)] text-4xl text-[var(--gold-soft)]">
-        Warenkorb
-      </h1>
-      <p className="mt-2 text-sm text-[var(--muted)]">
+      <h1 className="tf-display text-3xl text-[var(--tf-navy)] md:text-4xl">Warenkorb</h1>
+      <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
         Tickets sind 10 Minuten für dich reserviert.
       </p>
       {scrubHint ? (
@@ -76,7 +74,7 @@ export default async function CartPage() {
                   locationCity={item.category.event.location?.city}
                 />
                 {onUnitSale && item.priceCampaignName ? (
-                  <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
+                  <p className="mt-1 text-xs font-medium text-[var(--tf-action-accent)]">
                     {item.priceCampaignName}
                   </p>
                 ) : null}

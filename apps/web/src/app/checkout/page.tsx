@@ -19,7 +19,6 @@ import { getPaymentProvider } from "@/lib/payments";
 import { isStripeTestMode } from "@/lib/payments/mode";
 import { CartCountdownDisplay } from "@/components/cart-countdown-display";
 import { CartItemEventMeta } from "@/components/cart-item-event-meta";
-import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { CartOrderSummary } from "@/components/cart-order-summary";
 
@@ -60,10 +59,6 @@ export default async function CheckoutPage() {
     allowDevTestCheckout: providerKey === "dev" || stripeTest,
     sepaDisabled,
   });
-  const feePercentLabel =
-    summary.administrationFeePercentageBasisPoints > 0
-      ? feePercentNumberLabel(summary.administrationFeePercentageBasisPoints)
-      : null;
 
   let isStaff = false;
   if (session?.user?.id) {
@@ -181,7 +176,7 @@ export default async function CheckoutPage() {
                           locationCity={line.locationCity}
                         />
                         {onUnitSale && line.priceCampaignName ? (
-                          <p className="mt-1 text-xs font-medium text-[var(--tf-teal-hover)]">
+                          <p className="mt-1 text-xs font-medium text-[var(--tf-action-accent)]">
                             {line.priceCampaignName}
                           </p>
                         ) : null}
@@ -250,12 +245,6 @@ export default async function CheckoutPage() {
                 <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
                   Die gewählte Zahlungsart verändert den Gesamtpreis nicht.
                 </p>
-                {feePercentLabel ? (
-                  <p className="text-xs leading-relaxed text-[var(--tf-text-secondary)]">
-                    Unsere Verwaltungsgebühr beträgt nur {feePercentLabel}&nbsp;% — deutlich
-                    günstiger als bei vielen klassischen Ticketplattformen.
-                  </p>
-                ) : null}
               </div>
             </div>
 

@@ -77,11 +77,21 @@ function Unit({
   );
 }
 
-function Sep({ size, variant }: { size: Size; variant: Variant }) {
+function Sep({
+  size,
+  variant,
+  kind,
+}: {
+  size: Size;
+  variant: Variant;
+  kind: UrgencyCountdownKind;
+}) {
+  const sepColor =
+    kind === "campaign" ? "text-[var(--tf-action-accent)]" : "text-[var(--tf-teal)]";
   return (
     <span
       aria-hidden
-      className={`shrink-0 self-start font-bold text-[var(--tf-teal)] ${
+      className={`shrink-0 self-start font-bold ${sepColor} ${
         variant === "compact"
           ? "pt-px text-sm"
           : variant === "heroText"
@@ -130,11 +140,11 @@ function CountdownFace({
         </p>
         <div className="flex items-start gap-0.5">
           <Unit value={parts.days} label="Tage" size={size} variant={variant} />
-          <Sep size={size} variant={variant} />
+          <Sep size={size} variant={variant} kind={kind} />
           <Unit value={parts.hours} label="Std" size={size} variant={variant} />
-          <Sep size={size} variant={variant} />
+          <Sep size={size} variant={variant} kind={kind} />
           <Unit value={parts.minutes} label="Min" size={size} variant={variant} />
-          <Sep size={size} variant={variant} />
+          <Sep size={size} variant={variant} kind={kind} />
           <Unit value={parts.seconds} label="Sek" size={size} variant={variant} />
         </div>
       </div>
@@ -158,11 +168,11 @@ function CountdownFace({
         </p>
         <div className="flex max-w-md items-start gap-1.5 sm:gap-2">
           <Unit value={parts.days} label="Tage" size={size} variant={variant} />
-          <Sep size={size} variant={variant} />
+          <Sep size={size} variant={variant} kind={kind} />
           <Unit value={parts.hours} label="Std" size={size} variant={variant} />
-          <Sep size={size} variant={variant} />
+          <Sep size={size} variant={variant} kind={kind} />
           <Unit value={parts.minutes} label="Min" size={size} variant={variant} />
-          <Sep size={size} variant={variant} />
+          <Sep size={size} variant={variant} kind={kind} />
           <Unit value={parts.seconds} label="Sek" size={size} variant={variant} />
         </div>
       </div>
@@ -192,11 +202,11 @@ function CountdownFace({
       </p>
       <div className="flex items-start justify-between gap-1">
         <Unit value={parts.days} label="Tage" size={size} variant={variant} />
-        <Sep size={size} variant={variant} />
+        <Sep size={size} variant={variant} kind={kind} />
         <Unit value={parts.hours} label="Std" size={size} variant={variant} />
-        <Sep size={size} variant={variant} />
+        <Sep size={size} variant={variant} kind={kind} />
         <Unit value={parts.minutes} label="Min" size={size} variant={variant} />
-        <Sep size={size} variant={variant} />
+        <Sep size={size} variant={variant} kind={kind} />
         <Unit value={parts.seconds} label="Sek" size={size} variant={variant} />
       </div>
     </div>

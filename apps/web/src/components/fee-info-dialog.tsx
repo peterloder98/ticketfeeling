@@ -15,6 +15,7 @@ import {
   PLATFORM_FEE_INFO_BULLETS,
   buildPlatformFeeInfoClosing,
 } from "@/lib/commerce/platform-fee";
+import { formatFeeSurchargeDisplayLabel } from "@/lib/commerce/public-price";
 
 /** Above saalplan tooltips (z-80), sticky Kaufleiste, zoom controls, chat widget. */
 const FEE_MODAL_Z_INDEX = 200;
@@ -195,16 +196,6 @@ export function FeeInfoIconButton({
   );
 }
 
-/** Display: calm label without „4 %“ — percent stays in the (i) dialog. */
-function feeNoteDisplayLabel(note: string): string {
-  return (
-    note
-      .replace(/\s*\d+([.,]\d+)?\s*%/g, "")
-      .replace(/\s{2,}/g, " ")
-      .trim() || "zzgl. Verwaltungsgebühr"
-  );
-}
-
 /**
  * Inline „zzgl. … Verwaltungsgebühr“ line with a clickable info icon.
  * Use beside ticket prices, listing cards, and booking panels.
@@ -225,7 +216,7 @@ export function FeeSurchargeNote({
   if (!note.trim()) return null;
   return (
     <Tag className={`inline-flex items-center gap-1 ${className}`}>
-      <span className={textClassName}>{feeNoteDisplayLabel(note)}</span>
+      <span className={textClassName}>{formatFeeSurchargeDisplayLabel(note)}</span>
       <FeeInfoIconButton
         note={note}
         feePercentageBasisPoints={feePercentageBasisPoints}

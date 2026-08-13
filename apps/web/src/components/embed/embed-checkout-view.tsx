@@ -168,7 +168,7 @@ export function EmbedCheckoutView() {
                     locationCity={line.locationCity}
                   />
                   {onUnitSale && line.priceCampaignName ? (
-                    <span className="mt-0.5 block text-[11px] font-medium text-[var(--tf-teal-hover)]">
+                    <span className="mt-0.5 block text-[11px] font-medium text-[var(--tf-action-accent)]">
                       {line.priceCampaignName}
                     </span>
                   ) : null}

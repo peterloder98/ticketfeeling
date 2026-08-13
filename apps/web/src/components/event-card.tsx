@@ -165,7 +165,6 @@ export function EventCard({
             className="py-0.5"
             variant="compact"
             size="sm"
-            eventStartsAt={event.eventStartsAt}
             campaignValidUntils={
               event.campaignValidUntil ? [event.campaignValidUntil] : []
             }

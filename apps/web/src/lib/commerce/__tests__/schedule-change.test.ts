@@ -120,7 +120,7 @@ describe("countdown copy", () => {
   it("shows event countdown German copy", () => {
     const now = Date.parse("2026-08-10T12:00:00.000Z");
     const start = new Date("2026-08-13T18:00:00.000Z");
-    expect(formatEventStartCountdown(start, now)).toMatch(/Nur noch/);
+    expect(formatEventStartCountdown(start, now)).toMatch(/Noch \d+ Tage/);
   });
 
   it("resolves live parts with seconds", () => {

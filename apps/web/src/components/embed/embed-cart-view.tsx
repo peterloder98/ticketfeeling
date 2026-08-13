@@ -172,7 +172,7 @@ export function EmbedCartView() {
                     locationCity={item.locationCity}
                   />
                   {onUnitSale && item.priceCampaignName ? (
-                    <p className="mt-1 text-[11px] font-medium text-[var(--tf-teal-hover)]">
+                    <p className="mt-1 text-[11px] font-medium text-[var(--tf-action-accent)]">
                       {item.priceCampaignName}
                     </p>
                   ) : null}

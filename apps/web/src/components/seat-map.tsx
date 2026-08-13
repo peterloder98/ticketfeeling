@@ -8,6 +8,7 @@ import { categoryFillRgba, resolveCategoryColor } from "@/lib/seating/layout-con
 import { useCanvasPan } from "@/lib/saalplan/use-canvas-pan";
 import { formatEuroFromCents } from "@/lib/money";
 import { discountBadgeLabel } from "@/lib/commerce/campaign-price-ui";
+import { formatFeeSurchargeDisplayLabel } from "@/lib/commerce/public-price";
 
 /** Public buy flow: two zoom steps further out than the previous 2.25 default. */
 const DEFAULT_BUY_ZOOM = 1.75;
@@ -47,7 +48,7 @@ type Props = {
   initialZoom?: number;
   /** Category prices for hover tooltips (campaign / sale aware). */
   categoryPrices?: SeatMapCategoryPrice[];
-  /** e.g. „zzgl. 4 % Verwaltungsgebühr“ */
+  /** e.g. „zzgl. 4 % Verwaltungsgebühr“ — tooltip strips % when shown (same as FeeSurchargeNote). */
   feeSurchargeNote?: string | null;
 };
 
@@ -230,7 +231,7 @@ export function SeatMap({
         });
       }
       if (feeSurchargeNote) {
-        lines.push({ kind: "fee", text: feeSurchargeNote });
+        lines.push({ kind: "fee", text: formatFeeSurchargeDisplayLabel(feeSurchargeNote) });
       }
       return;
     }

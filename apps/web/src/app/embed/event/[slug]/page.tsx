@@ -271,7 +271,6 @@ export default async function EmbedEventShopPage({ params }: Props) {
     : null;
 
   const campaignValidUntils = categories.map((c) => c.campaignValidUntil);
-  const eventStartsIso = event.eventStartsAt?.toISOString() ?? null;
 
   return (
     <>
@@ -332,12 +331,6 @@ export default async function EmbedEventShopPage({ params }: Props) {
               ) : null}
             </div>
           </div>
-          <EventPageUrgencyCountdown
-            className="mt-2"
-            size="sm"
-            eventStartsAt={eventStartsIso}
-            campaignValidUntils={campaignValidUntils}
-          />
         </div>
 
         {effectiveDetails.shortDescription ? (
@@ -353,7 +346,6 @@ export default async function EmbedEventShopPage({ params }: Props) {
           <EventPageUrgencyCountdown
             className="mt-2"
             size="sm"
-            eventStartsAt={eventStartsIso}
             campaignValidUntils={campaignValidUntils}
           />
           <div className="mt-2">

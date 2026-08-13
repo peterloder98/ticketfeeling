@@ -295,7 +295,7 @@ export function formatCampaignCountdown(
 
 /**
  * Event-start urgency when Beginn is within 7 days.
- * German copy: „Nur noch X Tage …“ / hours-minutes when closer.
+ * Calm German copy — no „Nur noch …!“ panic phrasing.
  */
 export function formatEventStartCountdown(
   eventStartsAt: Date | string,
@@ -305,13 +305,13 @@ export function formatEventStartCountdown(
   if (!parts) return null;
 
   if (parts.days >= 2) {
-    return `Nur noch ${parts.days} Tage bis zum Event`;
+    return `Noch ${parts.days} Tage bis zum Event`;
   }
   if (parts.days === 1) {
-    return `Nur noch 1 Tag · ${parts.hours} Std · ${pad2(parts.minutes)} Min`;
+    return `Noch 1 Tag · ${parts.hours} Std · ${pad2(parts.minutes)} Min`;
   }
   if (parts.hours >= 1) {
-    return `Nur noch ${parts.hours} Std · ${pad2(parts.minutes)} Min bis zum Beginn`;
+    return `Noch ${parts.hours} Std · ${pad2(parts.minutes)} Min bis zum Beginn`;
   }
-  return `Nur noch ${pad2(parts.minutes)} Min bis zum Beginn`;
+  return `Noch ${pad2(parts.minutes)} Min bis zum Beginn`;
 }
