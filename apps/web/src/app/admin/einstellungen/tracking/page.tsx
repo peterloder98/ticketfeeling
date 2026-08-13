@@ -7,6 +7,7 @@ import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
 import { mapToMeta } from "@/lib/tracking/events";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Tracking-Debug" };
@@ -234,7 +235,7 @@ export default async function TrackingDebugPage({
               {recentDeliveries.map((d) => (
                 <tr key={d.id} className="border-t border-[var(--tf-line)]">
                   <td className="py-2 whitespace-nowrap">
-                    {d.createdAt.toLocaleString("de-DE")}
+                    {formatDeDateTime(d.createdAt)}
                   </td>
                   <td>{d.channel}</td>
                   <td>{d.trackingEvent.name}</td>

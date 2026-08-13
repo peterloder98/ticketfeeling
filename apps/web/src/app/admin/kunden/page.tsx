@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { formatEuroFromCents } from "@/lib/money";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import {
   customerDisplayEmail,
   isAnonymousBoxOfficeCustomer,
@@ -202,16 +203,7 @@ export default async function AdminCustomersPage({ searchParams }: Props) {
                     {formatEuroFromCents(revenueCents)}
                   </td>
                   <td className="px-3 py-3 text-xs text-[var(--muted)] whitespace-nowrap">
-                    {lastOrderAt
-                      ? lastOrderAt.toLocaleString("de-DE", {
-                          timeZone: "Europe/Berlin",
-                          day: "2-digit",
-                          month: "2-digit",
-                          year: "numeric",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })
-                      : "—"}
+                    {lastOrderAt ? formatDeDateTime(lastOrderAt) : "—"}
                   </td>
                   <td className="px-3 py-3 text-right">
                     <Link

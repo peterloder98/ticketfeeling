@@ -24,6 +24,7 @@ import {
   isSupportLlmEnabled,
   polishSupportAnswerWithLlm,
 } from "@/lib/support/chat-llm";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type ChatResult = {
   sessionId: string;
@@ -898,8 +899,7 @@ export async function handleSupportChat(input: {
         } else {
           const lines = linkedEvents.map((event) => {
             const when = event.eventStartsAt
-              ? event.eventStartsAt.toLocaleString("de-DE", {
-                  timeZone: "Europe/Berlin",
+              ? formatDeDateTime(event.eventStartsAt, {
                   dateStyle: "medium",
                   timeStyle: "short",
                 })
@@ -925,13 +925,13 @@ export async function handleSupportChat(input: {
     if (matches.length === 1) {
       const event = matches[0];
       const when = event.eventStartsAt
-        ? event.eventStartsAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })
+        ? formatDeDateTime(event.eventStartsAt)
         : "Termin folgt";
       const where = event.location
         ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
         : "Location folgt";
       const doors = event.doorsOpenAt
-        ? event.doorsOpenAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })
+        ? formatDeDateTime(event.doorsOpenAt)
         : "siehe Eventseite";
       const names = eventArtistNames(event);
       const lineup = names.length > 0 ? `\nLine-up: ${names.join(", ")}` : "";
@@ -948,8 +948,7 @@ export async function handleSupportChat(input: {
         matches
           .map((event) => {
             const when = event.eventStartsAt
-              ? event.eventStartsAt.toLocaleString("de-DE", {
-                  timeZone: "Europe/Berlin",
+              ? formatDeDateTime(event.eventStartsAt, {
                   dateStyle: "medium",
                   timeStyle: "short",
                 })

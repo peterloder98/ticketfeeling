@@ -15,10 +15,10 @@ import {
   buildSepaProcessingMail,
 } from "@/lib/email/ticket-mail";
 import { formatEuroFromCents } from "@/lib/money";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { invalidateWalletPassesForOrder } from "@/lib/wallet/invalidate";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
 import type { Prisma } from "@prisma/client";
-import { formatDeDateTime } from "@/lib/datetime-de";
 
 function appBaseUrl() {
   return getPublicAppUrl();
@@ -175,7 +175,7 @@ async function sendSepaFailedEmail(orderId: string) {
     orderId: order.id,
     eventName: order.items[0]?.eventNameSnapshot ?? "dein Event",
     reservedUntilLabel: order.reservedUntil
-      ? order.reservedUntil.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })
+      ? formatDeDateTime(order.reservedUntil)
       : null,
     payUrl: `${appBaseUrl()}/checkout/pay/${order.id}`,
   });

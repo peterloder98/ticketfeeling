@@ -4,7 +4,9 @@ import { prisma } from "@/lib/db";
 import { ExternalLink, Globe } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { ArtistYoutubeEmbed } from "@/components/artist-youtube-embed";
+import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { formatEventTitleWithCity } from "@/lib/commerce/location-display";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +41,10 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         where: { cancelled: false },
         include: {
           event: {
-            include: { location: { select: { city: true, name: true } } },
+            include: {
+              location: { select: { city: true, name: true } },
+              tour: { select: { coverImageUrl: true } },
+            },
           },
         },
         orderBy: { sortOrder: "asc" },
@@ -51,7 +56,10 @@ export default async function ArtistPage({ params, searchParams }: Props) {
             include: {
               events: {
                 where: { artistsUseTourDefaults: true },
-                include: { location: { select: { city: true, name: true } } },
+                include: {
+                  location: { select: { city: true, name: true } },
+                  tour: { select: { coverImageUrl: true } },
+                },
               },
             },
           },
@@ -166,24 +174,37 @@ export default async function ArtistPage({ params, searchParams }: Props) {
         <section className="mt-12">
           <h2 className="tf-display text-2xl">Nächste Events</h2>
           {upcoming.length > 0 ? (
-            <ul className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {upcoming.map((event) => (
-                <li key={event.id}>
-                  <Link
-                    href={`/event/${event.slug}`}
-                    className="tf-card tf-card-hover block !p-4"
-                  >
-                    <p className="font-semibold text-[var(--tf-navy)]">
-                      {formatEventTitleWithCity(event.name, event.location)}
-                    </p>
-                    <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-                      {event.eventStartsAt?.toLocaleString("de-DE", {
-                        timeZone: "Europe/Berlin",
-                      }) ?? "Termin folgt"}
-                    </p>
-                  </Link>
-                </li>
-              ))}
+            <ul className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {upcoming.map((event) => {
+                const coverUrl = resolveEventCoverUrl(event);
+                return (
+                  <li key={event.id}>
+                    <Link
+                      href={`/event/${event.slug}`}
+                      className="tf-card tf-card-hover flex h-full flex-col overflow-hidden !p-0"
+                    >
+                      <div className="flex flex-1 flex-col p-4">
+                        <p className="font-semibold text-[var(--tf-navy)]">
+                          {formatEventTitleWithCity(event.name, event.location)}
+                        </p>
+                        <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
+                          {event.eventStartsAt
+                            ? formatDeDateTime(event.eventStartsAt)
+                            : "Termin folgt"}
+                        </p>
+                      </div>
+                      <div className="relative mt-auto aspect-[2/1] w-full overflow-hidden bg-[var(--tf-navy)]">
+                        <ResponsiveImage
+                          src={coverUrl}
+                          alt=""
+                          className="h-full w-full"
+                          fallback="event"
+                        />
+                      </div>
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="mt-4 text-[var(--tf-text-secondary)]">

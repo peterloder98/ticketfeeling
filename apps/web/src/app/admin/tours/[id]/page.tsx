@@ -13,6 +13,7 @@ import { TourLineupForm } from "@/components/admin/tour-lineup-form";
 import { EventDiscountsPanel } from "@/components/admin/event-discounts-panel";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventInheritsTourArtists } from "@/lib/commerce/effective-event-artists";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -319,14 +320,7 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
                 </p>
                 <p className="text-sm text-[var(--tf-text-secondary)]">
                   {event.eventStartsAt
-                    ? event.eventStartsAt.toLocaleString("de-DE", {
-                        timeZone: "Europe/Berlin",
-                        day: "2-digit",
-                        month: "2-digit",
-                        year: "numeric",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })
+                    ? formatDeDateTime(event.eventStartsAt)
                     : "Termin offen"}
                   {event.location
                     ? ` · ${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`

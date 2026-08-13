@@ -5,6 +5,7 @@ import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { formatEuroFromCents } from "@/lib/money";
+import { formatDeDateTime } from "@/lib/datetime-de";
 import { ChannelBadge } from "@/components/channel-badge";
 import { CustomerEditForm } from "@/components/admin/customer-edit-form";
 import {
@@ -107,15 +108,7 @@ export default async function AdminCustomerDetailPage({ params }: Props) {
         )
       : null;
 
-  const berlin = (d: Date) =>
-    d.toLocaleString("de-DE", {
-      timeZone: "Europe/Berlin",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const berlin = (d: Date) => formatDeDateTime(d);
 
   return (
     <div className="space-y-8">

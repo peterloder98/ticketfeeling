@@ -14,6 +14,7 @@ import {
   Settings2,
   X,
 } from "lucide-react";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 type ScanMode = "in" | "out" | "info";
 
@@ -525,8 +526,7 @@ function formatDoorsLabel(doorsOpenAt: string | null): string | null {
   if (!doorsOpenAt) return null;
   const d = new Date(doorsOpenAt);
   if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString("de-DE", {
-    timeZone: "Europe/Berlin",
+  return formatDeDateTime(d, {
     dateStyle: "medium",
     timeStyle: "short",
   });

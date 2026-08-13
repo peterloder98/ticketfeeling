@@ -14,6 +14,7 @@ import {
 import { deleteArtistAction, updateArtistAction } from "@/app/admin/artists/actions";
 import { ArtistImageField } from "@/components/admin/artist-image-field";
 import { CharacterCountedField } from "@/components/admin/character-counted-field";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -392,7 +393,7 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
                   </Link>
                   <p className="text-[var(--tf-text-secondary)]">
                     {link.event.eventStartsAt
-                      ? link.event.eventStartsAt.toLocaleString("de-DE", {
+                      ? formatDeDateTime(link.event.eventStartsAt, {
                           dateStyle: "medium",
                           timeStyle: "short",
                         })

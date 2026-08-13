@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ export default async function AdminAuditPage() {
               {log.action} · {log.entityType}
             </p>
             <p className="text-[var(--muted)]">
-              {log.createdAt.toLocaleString("de-DE")} · {log.actor?.email ?? "system"}
+              {formatDeDateTime(log.createdAt)} · {log.actor?.email ?? "system"}
             </p>
           </div>
         ))}

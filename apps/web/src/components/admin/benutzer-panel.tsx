@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 type RoleOpt = { key: string; name: string; description: string };
 
@@ -530,9 +531,7 @@ export function BenutzerPanel({
                     ) : null}
                   </td>
                   <td className="px-3 py-2 text-xs text-[var(--tf-text-secondary)]">
-                    {new Date(inv.invitedAt).toLocaleString("de-DE", {
-                      timeZone: "Europe/Berlin",
-                    })}
+                    {formatDeDateTime(new Date(inv.invitedAt))}
                   </td>
                 </tr>
               ))}

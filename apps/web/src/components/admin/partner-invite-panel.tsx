@@ -6,6 +6,7 @@ import {
   EventGrantPicker,
   type EventGrantOption,
 } from "@/components/admin/event-grant-picker";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 type InviteRow = {
   id: string;
@@ -525,7 +526,7 @@ export function PartnerInvitePanel({
                     ) : null}
                   </td>
                   <td className="px-3 py-2 text-xs text-[var(--tf-text-secondary)]">
-                    {new Date(inv.invitedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })}
+                    {formatDeDateTime(new Date(inv.invitedAt))}
                   </td>
                 </tr>
               ))}
@@ -767,9 +768,7 @@ export function PartnerInvitePanel({
                   <td className="px-3 py-2">
                     <p className="font-medium">{row.orderNumber}</p>
                     <p className="text-xs text-[var(--tf-text-secondary)]">
-                      {new Date(row.createdAt).toLocaleString("de-DE", {
-                        timeZone: "Europe/Berlin",
-                      })}
+                      {formatDeDateTime(new Date(row.createdAt))}
                     </p>
                   </td>
                   <td className="px-3 py-2">

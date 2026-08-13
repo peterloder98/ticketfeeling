@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatEuroFromCents } from "@/lib/money";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 type Session = {
   id: string;
@@ -82,8 +83,7 @@ export function BoxOfficeSessionPanel() {
       {session ? (
         <div className="space-y-2">
           <p className="text-[var(--ok)]">
-            Schicht offen seit{" "}
-            {new Date(session.openedAt).toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} ·
+            Schicht offen seit {formatDeDateTime(new Date(session.openedAt))} ·
             Anfang {formatEuroFromCents(session.openingCashCents)}
           </p>
           <label className="grid gap-1">

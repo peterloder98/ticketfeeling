@@ -17,6 +17,7 @@ import {
 import { canSellAllBoxOfficeEvents } from "@/lib/commerce/box-office-access";
 import { formatBoxOfficeTicketLines } from "@/lib/commerce/box-office-ticket-label";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 
@@ -128,7 +129,7 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
           Beleg {order.orderNumber} · {channelShortHint("box_office")}
         </p>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          {order.createdAt.toLocaleString("de-DE", { timeZone: "Europe/Berlin" })} · Zahlung:{" "}
+          {formatDeDateTime(order.createdAt)} · Zahlung:{" "}
           {paymentMethodLabel(payment?.method)}
           {order.soldByUser
             ? ` · Verkäufer: ${order.soldByUser.name ?? order.soldByUser.email}`

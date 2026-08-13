@@ -11,7 +11,7 @@ import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
 import { mergeOrderTicketPositions } from "@/lib/commerce/merge-category-lines";
-import { formatDeDateTime } from "@/lib/datetime-de";
+import { BERLIN_TZ, formatDeDateTime } from "@/lib/datetime-de";
 import { PurchaseTrackingBeacon } from "@/components/purchase-tracking-beacon";
 
 export const dynamic = "force-dynamic";
@@ -108,9 +108,11 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
       const doorsOpenAt = firstTicket?.event.doorsOpenAt ?? null;
       const doorsOpenLabel = doorsOpenAt
         ? doorsOpenAt.toLocaleTimeString("de-DE", {
-            timeZone: "Europe/Berlin",
+            timeZone: BERLIN_TZ,
             hour: "2-digit",
             minute: "2-digit",
+            hour12: false,
+            hourCycle: "h23",
           })
         : null;
       const startsAt =

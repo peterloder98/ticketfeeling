@@ -3,6 +3,7 @@ import { authorizeTicketWalletDownload } from "@/lib/wallet/access";
 import { prisma } from "@/lib/db";
 import { buildTicketIcs } from "@/lib/commerce/ticket-calendar";
 import { getPublicAppUrl } from "@/lib/embed/public-url";
+import { formatDeTime } from "@/lib/datetime-de";
 
 type Params = { params: Promise<{ ticketId: string }> };
 
@@ -45,17 +46,13 @@ export async function GET(request: Request, { params }: Params) {
     : `${appBase}/ticket/${ticket.id}`;
 
   const doorsOpen = ticket.event.doorsOpenAt
-    ? ticket.event.doorsOpenAt.toLocaleTimeString("de-DE", {
-        timeZone: "Europe/Berlin",
-        hour: "2-digit",
-        minute: "2-digit",
-      })
+    ? formatDeTime(ticket.event.doorsOpenAt)
     : null;
   const descriptionParts = [
     `Ticket ${ticket.ticketNumber}${
       ticket.seatLabel ? ` · ${ticket.seatLabel}` : ""
     } · ${ticket.categorySnapshot}`,
-    doorsOpen ? `Einlass ab ${doorsOpen} Uhr` : null,
+    doorsOpen ? `Einlass ab ${doorsOpen}` : null,
   ].filter(Boolean);
 
   const ics = buildTicketIcs({

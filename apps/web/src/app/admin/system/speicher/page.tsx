@@ -10,6 +10,7 @@ import {
   type StorageUsageSnapshot,
 } from "@/lib/admin/storage-usage";
 import { canAccessSystemStorage } from "@/lib/admin/system-access";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Speicher · System" };
@@ -214,7 +215,7 @@ function StorageOverview({ snapshot }: { snapshot: StorageUsageSnapshot }) {
             : snapshot.limitSource === "NEON_STORAGE_LIMIT_GB"
               ? "NEON_STORAGE_LIMIT_GB"
               : "Standard 0,5 GB (Neon Free)"}
-          . Stand {new Date(snapshot.measuredAt).toLocaleString("de-DE")}.
+          . Stand {formatDeDateTime(new Date(snapshot.measuredAt))}.
         </p>
       </section>
     </>

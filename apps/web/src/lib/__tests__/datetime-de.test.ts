@@ -1,5 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { formatDeDateTime, formatDeTime, withUhr } from "@/lib/datetime-de";
+import {
+  formatDeDateTime,
+  formatDeTime,
+  stripSecondsFromLabel,
+  withUhr,
+  withoutSeconds,
+} from "@/lib/datetime-de";
+
+describe("stripSecondsFromLabel", () => {
+  it("removes seconds from clock times", () => {
+    expect(stripSecondsFromLabel("29.11.2026, 17:00:00")).toBe("29.11.2026, 17:00");
+    expect(stripSecondsFromLabel("17:00:00")).toBe("17:00");
+  });
+
+  it("leaves HH:MM alone", () => {
+    expect(stripSecondsFromLabel("19:00 Uhr")).toBe("19:00 Uhr");
+  });
+});
 
 describe("withUhr", () => {
   it("appends Uhr to clock times", () => {
@@ -7,10 +24,33 @@ describe("withUhr", () => {
     expect(withUhr("Fr., 6. Aug. 2026, 18:00")).toBe("Fr., 6. Aug. 2026, 18:00 Uhr");
   });
 
+  it("strips seconds then appends Uhr", () => {
+    expect(withUhr("29.11.2026, 17:00:00")).toBe("29.11.2026, 17:00 Uhr");
+  });
+
   it("is idempotent and skips date-only labels", () => {
     expect(withUhr("18:00 Uhr")).toBe("18:00 Uhr");
     expect(withUhr("6. Aug. 2026")).toBe("6. Aug. 2026");
     expect(withUhr("Termin folgt")).toBe("Termin folgt");
+  });
+});
+
+describe("withoutSeconds", () => {
+  it("coerces medium timeStyle to short", () => {
+    expect(withoutSeconds({ dateStyle: "medium", timeStyle: "medium" })).toEqual({
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  });
+
+  it("defaults bare options to numeric date + HH:MM", () => {
+    expect(withoutSeconds({})).toEqual({
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   });
 });
 
@@ -51,5 +91,25 @@ describe("formatDeDateTime", () => {
       hour12: true,
     });
     expect(label).toBe("18:00 Uhr");
+  });
+
+  it("never shows seconds on default datetime", () => {
+    const d = new Date("2026-11-29T16:00:00.000Z"); // 17:00 CET
+    const label = formatDeDateTime(d);
+    expect(label).toBe("29.11.2026, 17:00 Uhr");
+    expect(label).not.toMatch(/:\d{2}:\d{2}/);
+  });
+
+  it("never shows seconds even if caller requests them", () => {
+    const d = new Date("2026-11-29T16:00:00.000Z");
+    const label = formatDeDateTime(d, {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    expect(label).toBe("29.11.2026, 17:00 Uhr");
   });
 });

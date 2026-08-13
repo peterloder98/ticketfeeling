@@ -757,8 +757,8 @@ export function EventDiscountsPanel({
                       : `${formatEuroFromCents(Math.round(c.valueDisplay * 100))} günstiger`}
                   {c.badgeLabel ? ` · „${c.badgeLabel}“` : ""}
                   {" · "}
-                  {new Date(c.validFrom).toLocaleString("de-DE")} –{" "}
-                  {new Date(c.validUntil).toLocaleString("de-DE")}
+                  {formatDeDateTime(new Date(c.validFrom))} –{" "}
+                  {formatDeDateTime(new Date(c.validUntil))}
                 </p>
               </div>
               {canWrite ? (

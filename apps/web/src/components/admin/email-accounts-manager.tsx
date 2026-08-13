@@ -10,6 +10,7 @@ import {
   updateEmailAccountAction,
   type SmtpTestState,
 } from "@/app/admin/einstellungen/email/actions";
+import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type EmailAccountRow = {
   id: string;
@@ -296,11 +297,8 @@ export function EmailAccountsManager({ accounts }: { accounts: EmailAccountRow[]
                     account.lastTestOk ? "text-[#15803d]" : "text-[#b91c1c]"
                   }`}
                 >
-                  Letzte Prüfung{" "}
-                  {new Date(account.lastTestedAt).toLocaleString("de-DE", {
-                    timeZone: "Europe/Berlin",
-                  })}
-                  : {account.lastTestMessage}
+                  Letzte Prüfung {formatDeDateTime(new Date(account.lastTestedAt))}:{" "}
+                  {account.lastTestMessage}
                 </p>
               ) : (
                 <p className="mt-2 text-xs text-[var(--tf-text-secondary)]">Noch nicht geprüft</p>
