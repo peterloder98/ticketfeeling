@@ -148,7 +148,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
           }`}
         >
           <h1 className="text-[1.85rem] font-bold leading-[1.08] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-[3.35rem]">
-            Events genau für dich gemacht...
+            Erlebnisse, die bleiben. Tickets, die einfach sind.
           </h1>
 
           <p
@@ -156,7 +156,7 @@ export function HeroEventCarousel({ slides }: { slides: HeroSlide[] }) {
               ready ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0"
             }`}
           >
-            Tickets direkt vom Veranstalter - sicher und ohne Umwege.
+            Direkt vom Veranstalter. Persönlich, sicher und ohne Umwege.
           </p>
 
           {/* Desktop CTAs sit with copy; mobile CTAs move below poster */}
