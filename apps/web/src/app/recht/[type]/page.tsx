@@ -35,13 +35,7 @@ export async function generateMetadata({ params }: Props) {
   }
 }
 
-function LegalDocumentView({
-  version,
-  sellerName,
-}: {
-  version: VersionView;
-  sellerName: string;
-}) {
+function LegalDocumentView({ version }: { version: VersionView }) {
   return (
     <div className="tf-container max-w-3xl py-12">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--tf-teal)]">
@@ -58,10 +52,6 @@ function LegalDocumentView({
       <div className="tf-card mt-6 whitespace-pre-wrap text-sm leading-relaxed text-[var(--tf-text-secondary)]">
         {version.content}
       </div>
-      <p className="mt-4 text-xs text-[var(--tf-text-secondary)]">
-        Verantwortlich: {sellerName}. Rechtstexte werden versioniert und beim Kauf
-        revisionssicher mit der Bestellung verknüpft.
-      </p>
     </div>
   );
 }
@@ -74,14 +64,12 @@ export default async function LegalPage({ params }: Props) {
   const seed = getSeedLegalVersion(docType);
   if (!seed) notFound();
 
-  let sellerName = "Peter Loder – Ticketfeeling";
   let version: VersionView = seed;
 
   try {
     const org = await getDefaultOrganization();
     if (org) {
       const seller = buildSellerIdentity(org, org.settings);
-      sellerName = seller.displayName;
 
       // Publish catalog versions (e.g. address / AGB fixes) so prod matches seed.
       try {
@@ -117,5 +105,5 @@ export default async function LegalPage({ params }: Props) {
     console.error("[legal] page load failed, using seed fallback", error);
   }
 
-  return <LegalDocumentView version={version} sellerName={sellerName} />;
+  return <LegalDocumentView version={version} />;
 }

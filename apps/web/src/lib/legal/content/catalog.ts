@@ -333,9 +333,9 @@ ${SELLER}`,
   },
   {
     type: "privacy",
-    version: "1.0.2",
+    version: "1.0.3",
     title: "Datenschutzerklärung",
-    changelog: "Anschrift Innere Münchener Str. 36 bestätigt; Entwurfshinweis entfernt",
+    changelog: "Änderungsklausel ohne Hinweis auf Bestell-Revisionbindung",
     content: `Datenschutzerklärung – Ticketfeeling
 Stand: August 2026
 
@@ -426,7 +426,7 @@ Wir setzen TLS-Verschlüsselung, gehashte Passwörter, Zugriffsbeschränkungen u
 Das Angebot richtet sich nicht gezielt an Kinder. Wer unter 16 Jahren personenbezogene Daten übermittelt, sollte die Einwilligung der Erziehungsberechtigten sicherstellen, soweit erforderlich.
 
 22. Änderungen
-Diese Datenschutzerklärung wird versioniert. Die jeweils gültige Fassung wird veröffentlicht; beim Ticketkauf wird die dann gültige Version mit der Bestellung gespeichert.
+Wir behalten uns vor, diese Datenschutzerklärung anzupassen, damit sie stets den aktuellen rechtlichen Anforderungen entspricht bzw. Änderungen unserer Leistungen widerspiegelt. Die jeweils aktuelle Fassung ist unter /recht/datenschutz abrufbar.
 
 Kontakt für Datenschutzanfragen: support@ticketfeeling.de`,
   },
