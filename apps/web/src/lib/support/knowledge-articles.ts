@@ -25,6 +25,7 @@ export const SUPPORT_KNOWLEDGE_HILFE_ORDER: string[] = [
   "einlass",
   "gastkauf-konto",
   "rechnung",
+  "rabatte-aktionen",
   "erstattung",
 ];
 
@@ -32,7 +33,7 @@ export const SUPPORT_KNOWLEDGE_HILFE_ORDER: string[] = [
  * Bump when article content or slug set changes — triggers one sync per process
  * after deploy without a full DB seed.
  */
-export const SUPPORT_KNOWLEDGE_SEED_VERSION = 3;
+export const SUPPORT_KNOWLEDGE_SEED_VERSION = 4;
 
 export const SUPPORT_KNOWLEDGE_ARTICLES_DE: SupportKnowledgeSeedArticle[] = [
   {
@@ -214,6 +215,29 @@ Nach dem Kauf steht die Rechnung als PDF zum Download bereit (und kommt in der R
 
 Ohne extra Häkchen hast du trotzdem deine Bestellbestätigung und Tickets — die Rechnung ist optional für deine Unterlagen.`,
     tags: ["rechnung", "beleg", "invoice", "ust", "firma", "pdf"],
+  },
+  {
+    slug: "rabatte-aktionen",
+    title: "Rabatte, Aktionen und Gutscheincodes",
+    body: `Manchmal gibt es Aktionspreise oder Rabattcodes — das steht klar auf der Eventseite (z. B. Aktionsbadge) und im Warenkorb.
+
+Kurz:
+• Laufende Preisaktionen siehst du direkt beim Ticket (durchgestrichener Preis / Badge).
+• Einen Rabatt- oder Gutscheincode kannst du im Warenkorb eingeben, wenn das Event das erlaubt.
+• Aktionspreise und Codes sind oft nicht kombinierbar — der Checkout zeigt dir, was gilt.
+• Die Verwaltungsgebühr bezieht sich auf den Ticketpreis laut Checkout; Details siehst du vor dem Bestellen.
+
+Konkrete aktuelle Rabatte erfinden wir hier nicht — am besten Event öffnen oder im Chat nach dem Eventnamen fragen.`,
+    tags: [
+      "rabatt",
+      "aktion",
+      "gutschein",
+      "promo",
+      "code",
+      "sparen",
+      "preisaktion",
+      "sommer",
+    ],
   },
   {
     slug: "erstattung",

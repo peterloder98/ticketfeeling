@@ -16,13 +16,14 @@ type ChatMessage = {
 type SuggestedAction = { label: string; href: string };
 
 const QUICK_PROMPTS = [
-  { label: "Welche Events gibt’s?", text: "Welche Events gibt es gerade?" },
-  { label: "Ticketpreise?", text: "Was kosten die Tickets?" },
+  { label: "Welche Events?", text: "Welche Events gibt es gerade?" },
+  { label: "Ticketpreise", text: "Was kosten die Tickets?" },
   { label: "Noch VIP?", text: "Gibt es noch VIP Karten?" },
-  { label: "Künstler suchen", text: "Bei welchen Events ist Anni Perka dabei?" },
-  { label: "Wie bestelle ich?", text: "Wie bestelle ich Tickets?" },
-  { label: "Wo sind meine Tickets?", text: "Wo finde ich meine Tickets?" },
+  { label: "Künstler", text: "Bei welchen Events ist Anni Perka dabei?" },
+  { label: "Wie bestellen?", text: "Wie bestelle ich Tickets?" },
+  { label: "Meine Tickets", text: "Wo finde ich meine Tickets?" },
   { label: "Ticket vergessen", text: "Ich habe mein Ticket vergessen" },
+  { label: "Zahlung", text: "Wie kann ich bezahlen?" },
 ];
 
 function Avatar() {
@@ -49,7 +50,7 @@ export function ChatWidget({ compact = false }: { compact?: boolean }) {
     {
       role: "assistant",
       content:
-        "Hallo! Ich bin der Ticketfeeling-Assistent. Frag mich zu Events, Bestellung, Zahlung, Tickets im Konto oder „Ticket vergessen“ — ich helfe, wo ich kann.",
+        "Hallo! Ich bin der Ticketfeeling-Assistent. Frag mich zu Events, Künstlern, Bestellung, Zahlung, QR-Tickets oder „Ticket vergessen“ — ich antworte konkret und bleibe am Thema.",
     },
   ]);
   const [actions, setActions] = useState<SuggestedAction[]>([
@@ -154,6 +155,8 @@ export function ChatWidget({ compact = false }: { compact?: boolean }) {
     );
   }
 
+  const showQuickPrompts = !loading && messages.filter((m) => m.role === "user").length === 0;
+
   return (
     <div
       className={
@@ -214,24 +217,25 @@ export function ChatWidget({ compact = false }: { compact?: boolean }) {
           <div className="mr-6 flex items-start gap-2">
             <Avatar />
             <div className="rounded-2xl border border-[var(--tf-line)] bg-white px-4 py-3 shadow-sm">
-              <span className="inline-flex gap-1">
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--tf-teal)] [animation-delay:0ms]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--tf-teal)] [animation-delay:150ms]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--tf-teal)] [animation-delay:300ms]" />
+              <span className="inline-flex items-center gap-1.5 text-xs text-[var(--tf-muted)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--tf-teal)] opacity-90 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--tf-teal)] opacity-70 animate-pulse [animation-delay:200ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--tf-teal)] opacity-50 animate-pulse [animation-delay:400ms]" />
+                <span className="ml-1">Schreibe …</span>
               </span>
             </div>
           </div>
         ) : null}
       </div>
 
-      {!loading && messages.length <= 2 ? (
+      {showQuickPrompts ? (
         <div className="flex flex-wrap gap-2 border-t border-[var(--tf-line)] bg-white px-3 py-2.5">
           {QUICK_PROMPTS.map((prompt) => (
             <button
               key={prompt.label}
               type="button"
               onClick={() => void sendMessage(prompt.text)}
-              className="rounded-full border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-1.5 text-xs font-medium text-[var(--tf-navy)] hover:border-[var(--tf-teal)] hover:text-[var(--tf-teal-hover)]"
+              className="rounded-full border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-1.5 text-xs font-medium text-[var(--tf-navy)] transition duration-200 hover:border-[var(--tf-teal)] hover:text-[var(--tf-teal-hover)]"
             >
               {prompt.label}
             </button>
@@ -245,7 +249,7 @@ export function ChatWidget({ compact = false }: { compact?: boolean }) {
             <Link
               key={action.href + action.label}
               href={action.href}
-              className="rounded-full border border-[var(--tf-line)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--tf-navy)] hover:border-[var(--tf-teal)] hover:text-[var(--tf-teal-hover)]"
+              className="rounded-full border border-[var(--tf-line)] bg-white px-3 py-1.5 text-xs font-medium text-[var(--tf-navy)] transition duration-200 hover:border-[var(--tf-teal)] hover:text-[var(--tf-teal-hover)]"
             >
               {action.label}
             </Link>
@@ -258,13 +262,13 @@ export function ChatWidget({ compact = false }: { compact?: boolean }) {
           className="tf-input !min-h-11 flex-1 !rounded-full !bg-[#f8fafc] !px-4 !text-[var(--tf-text)]"
           value={input}
           onChange={(event) => setInput(event.target.value)}
-          placeholder="Nachricht an den Chatbot…"
-          aria-label="Nachricht an den Chatbot"
+          placeholder="Schreib mir einfach …"
+          aria-label="Nachricht an den Chat"
           autoComplete="off"
         />
         <button
           type="submit"
-          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--tf-teal)] text-white hover:bg-[var(--tf-teal-hover)] disabled:opacity-50"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[var(--tf-teal)] text-white transition duration-200 hover:bg-[var(--tf-teal-hover)] disabled:opacity-50"
           disabled={loading || !input.trim()}
           aria-label="Senden"
         >

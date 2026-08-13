@@ -7,6 +7,23 @@ import {
 import { writeAudit } from "@/lib/audit";
 import { formatEuroFromCents } from "@/lib/money";
 import { ensureSupportKnowledge } from "@/lib/support/sync-knowledge";
+import {
+  answerGoodbye,
+  answerGreeting,
+  answerHelpMenu,
+  answerThanks,
+  detectConversationalIntent,
+  isFollowUpMessage,
+  KNOWLEDGE_SYNONYMS,
+  normalizeChatText,
+  resolveFollowUpIntent,
+  wrapConversationalAnswer,
+  type ChatHistoryItem,
+} from "@/lib/support/chat-conversation";
+import {
+  isSupportLlmEnabled,
+  polishSupportAnswerWithLlm,
+} from "@/lib/support/chat-llm";
 
 export type ChatResult = {
   sessionId: string;
@@ -19,13 +36,13 @@ export type ChatResult = {
 const PUBLIC_STATUSES = ["announcement", "published", "presale_active"] as const;
 
 function normalize(text: string) {
-  return text
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "");
+  return normalizeChatText(text);
 }
 
 function detectIntent(message: string): string {
+  const conversational = detectConversationalIntent(message);
+  if (conversational) return conversational;
+
   const m = normalize(message);
 
   if (
@@ -70,6 +87,7 @@ function detectIntent(message: string): string {
     m.includes("per post") ||
     m.includes("print@home") ||
     m.includes("print at home") ||
+    (m.includes("drucken") && (m.includes("ticket") || m.includes("pdf"))) ||
     (m.includes("digital") && m.includes("ticket")) ||
     (m.includes("qr") && (m.includes("ticket") || m.includes("pdf") || m.includes("code")))
   ) {
@@ -116,7 +134,7 @@ function detectIntent(message: string): string {
   if (
     m.includes("dabei") ||
     m.includes("tritt auf") ||
-    m.includes("line[- ]?up") ||
+    /line[- ]?up/.test(m) ||
     m.includes("lineup") ||
     m.includes("kuenstler") ||
     m.includes("künstler") ||
@@ -185,7 +203,9 @@ function detectIntent(message: string): string {
     m.includes("event") ||
     m.includes("konzert") ||
     m.includes("schlager") ||
-    m.includes("open air")
+    m.includes("open air") ||
+    m.includes("termin") ||
+    m.includes("venue")
   ) {
     return "event_info";
   }
@@ -241,14 +261,25 @@ async function findDefaultOrganizationId() {
   return org?.id ?? null;
 }
 
+function expandTokens(tokens: string[]) {
+  const out = new Set(tokens);
+  for (const token of tokens) {
+    const syns = KNOWLEDGE_SYNONYMS[token];
+    if (syns) for (const s of syns) out.add(s);
+  }
+  return [...out];
+}
+
 async function searchKnowledge(organizationId: string, message: string) {
   const articles = await prisma.supportKnowledgeArticle.findMany({
     where: { organizationId, status: "published", visibility: "public" },
     take: 50,
   });
-  const tokens = normalize(message)
-    .split(/[^a-z0-9äöüß]+/i)
-    .filter((t) => t.length > 2);
+  const tokens = expandTokens(
+    normalize(message)
+      .split(/[^a-z0-9äöüß]+/i)
+      .filter((t) => t.length > 2),
+  );
   return articles
     .map((article) => {
       const hay = normalize(`${article.title} ${article.body} ${article.tags.join(" ")}`);
@@ -402,7 +433,7 @@ async function findArtists(organizationId: string, message: string) {
       organizationId,
       OR: [
         { visibility: { in: ["public", "published", "visible"] } },
-        { visibility: "draft" }, // include if only drafts exist in early setups
+        { visibility: "draft" },
       ],
     },
     take: 80,
@@ -427,10 +458,58 @@ async function findArtists(organizationId: string, message: string) {
   return scored.slice(0, 3).map((x) => x.artist);
 }
 
+async function loadActiveCampaignHints(organizationId: string, message: string) {
+  const now = new Date();
+  const campaigns = await prisma.eventPriceCampaign.findMany({
+    where: {
+      active: true,
+      validFrom: { lte: now },
+      validUntil: { gte: now },
+      channels: { in: ["online", "both"] },
+      event: {
+        organizationId,
+        status: { in: [...PUBLIC_STATUSES] },
+      },
+    },
+    include: {
+      event: { select: { name: true, slug: true } },
+    },
+    orderBy: { validUntil: "asc" },
+    take: 12,
+  });
+  if (campaigns.length === 0) return [];
+
+  const m = normalize(message);
+  const scored = campaigns.map((c) => {
+    const hay = normalize(`${c.name} ${c.badgeLabel ?? ""} ${c.event.name}`);
+    let score = 1;
+    for (const token of m.split(/[^a-z0-9äöüß]+/i).filter((t) => t.length > 2)) {
+      if (hay.includes(token)) score += 2;
+    }
+    return { campaign: c, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 4).map((x) => x.campaign);
+}
+
+async function loadSessionHistory(sessionId: string): Promise<ChatHistoryItem[]> {
+  const rows = await prisma.supportChatMessage.findMany({
+    where: { sessionId },
+    orderBy: { createdAt: "asc" },
+    take: 16,
+    select: { role: true, content: true, intent: true },
+  });
+  return rows;
+}
+
+function buildGroundingPack(parts: string[]) {
+  return parts.filter(Boolean).join("\n\n---\n\n").slice(0, 7000);
+}
+
 const FALLBACKS: Record<string, { answer: string; actions: { label: string; href: string }[] }> = {
   order_howto: {
     answer:
-      "So bestellst du bei Ticketfeeling:\n1) Event öffnen, Kategorie wählen\n2) Bei Sitzplätzen: Bestplatzbuchung oder Saalplan — sonst Menge für Stehplatz / Freie Platzwahl\n3) In den Warenkorb (10 Minuten reserviert)\n4) Zur Kasse und zahlungspflichtig bestellen\nDanach Tickets per E-Mail (QR + PDF) — kein Postversand.",
+      "1) Event öffnen, Kategorie wählen\n2) Bei Sitzplätzen: Bestplatzbuchung oder Saalplan — sonst Menge für Stehplatz / Freie Platzwahl\n3) In den Warenkorb (10 Minuten reserviert)\n4) Zur Kasse und zahlungspflichtig bestellen\nDanach Tickets per E-Mail (QR + PDF) — kein Postversand.",
     actions: [
       { label: "Events ansehen", href: "/events" },
       { label: "Warenkorb", href: "/warenkorb" },
@@ -498,6 +577,14 @@ const FALLBACKS: Record<string, { answer: string; actions: { label: string; href
       { label: "Hilfe", href: "/hilfe" },
     ],
   },
+  discounts: {
+    answer:
+      "Aktionspreise und Rabattcodes siehst du auf der Eventseite bzw. im Warenkorb. Laufende Aktionen erscheinen oft als Badge/durchgestrichener Preis; Codes kannst du im Warenkorb einlösen, wenn das Event das erlaubt. Aktionspreis und Code sind oft nicht kombinierbar — der Checkout zeigt, was gilt.",
+    actions: [
+      { label: "Events", href: "/events" },
+      { label: "Warenkorb", href: "/warenkorb" },
+    ],
+  },
 };
 
 export async function handleSupportChat(input: {
@@ -513,8 +600,6 @@ export async function handleSupportChat(input: {
 
   await ensureSupportKnowledge(organizationId);
 
-  const intent = detectIntent(input.message);
-  const normalizedMessage = normalize(input.message);
   let session = input.sessionId
     ? await prisma.supportChatSession.findUnique({ where: { id: input.sessionId } })
     : null;
@@ -532,6 +617,18 @@ export async function handleSupportChat(input: {
     });
   }
 
+  const history = await loadSessionHistory(session.id);
+  const followUp = resolveFollowUpIntent(input.message, history);
+  let intent = followUp?.intent ?? detectIntent(input.message);
+  let scoringMessage = followUp?.scoringMessage ?? input.message;
+
+  // Follow-up without prior topic → treat as help menu or faq
+  if (!followUp && isFollowUpMessage(input.message) && intent === "faq_general") {
+    intent = "help_menu";
+  }
+
+  const normalizedMessage = normalize(input.message);
+
   await prisma.supportChatMessage.create({
     data: {
       sessionId: session.id,
@@ -544,9 +641,26 @@ export async function handleSupportChat(input: {
   const sources: { title: string; slug: string }[] = [];
   let answer = "";
   const suggestedActions: { label: string; href: string }[] = [];
+  const groundingParts: string[] = [];
   const events = await loadPublicEvents(organizationId);
 
-  if (intent === "forgotten_ticket") {
+  if (intent === "greeting") {
+    const g = answerGreeting();
+    answer = g.answer;
+    suggestedActions.push(...g.actions);
+  } else if (intent === "thanks") {
+    const g = answerThanks();
+    answer = g.answer;
+    suggestedActions.push(...g.actions);
+  } else if (intent === "goodbye") {
+    const g = answerGoodbye();
+    answer = g.answer;
+    suggestedActions.push(...g.actions);
+  } else if (intent === "help_menu") {
+    const g = answerHelpMenu();
+    answer = g.answer;
+    suggestedActions.push(...g.actions);
+  } else if (intent === "forgotten_ticket") {
     answer = await answerFromArticle(
       organizationId,
       "tickets-nicht-gefunden",
@@ -601,6 +715,33 @@ export async function handleSupportChat(input: {
       sources,
     );
     suggestedActions.push(...FALLBACKS.invoice.actions);
+  } else if (intent === "discounts") {
+    answer = await answerFromArticle(
+      organizationId,
+      "rabatte-aktionen",
+      FALLBACKS.discounts.answer,
+      sources,
+    );
+    const campaigns = await loadActiveCampaignHints(organizationId, scoringMessage);
+    if (campaigns.length > 0) {
+      const lines = campaigns.map((c) => {
+        const badge = c.badgeLabel?.trim() || c.name;
+        const until = c.validUntil.toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
+        return `• ${c.event.name}: ${badge} (bis ${until})`;
+      });
+      answer += `\n\nAktuell sichtbare Aktionen:\n${lines.join("\n")}\n\nDetails und Preise immer auf der Eventseite prüfen — Verfügbarkeit ändert sich.`;
+      groundingParts.push(`Aktive Aktionen:\n${lines.join("\n")}`);
+      for (const c of campaigns.slice(0, 3)) {
+        suggestedActions.push({
+          label: c.event.name.slice(0, 36),
+          href: `/event/${c.event.slug}`,
+        });
+      }
+    } else {
+      answer +=
+        "\n\nGerade sehe ich keine laufende Online-Aktion in der Übersicht — schau auf der Eventseite nach oder frag mit dem Eventnamen.";
+    }
+    suggestedActions.push(...FALLBACKS.discounts.actions);
   } else if (intent === "handoff_human") {
     answer =
       "Gerne — nutze das Kontaktformular. Ich selbst kann keine Erstattungen, Entwertungen oder Ticketänderungen ausführen.";
@@ -621,20 +762,25 @@ export async function handleSupportChat(input: {
       { label: "Kundenservice", href: "/hilfe#kontakt" },
     );
   } else if (intent === "ticket_prices") {
-    const matches = pickEvents(events, input.message, 2);
+    const matches = pickEvents(events, scoringMessage, 2);
     if (matches.length === 0) {
-      answer = "Gerade sind keine öffentlichen Events mit Preisen sichtbar. Schau unter Events vorbei.";
+      answer =
+        "Gerade sind keine öffentlichen Events mit Preisen sichtbar. Schau unter Events vorbei — oder nenne mir den Eventnamen.";
       suggestedActions.push({ label: "Events", href: "/events" });
     } else {
       answer = matches.map(formatPrices).join("\n\n");
       answer +=
         "\n\nPreise brutto, zzgl. 4 % Verwaltungsgebühr. Tickets legst du direkt auf der Eventseite in den Warenkorb.";
+      groundingParts.push(answer);
       for (const event of matches) {
-        suggestedActions.push({ label: `Tickets: ${event.name.slice(0, 36)}`, href: `/event/${event.slug}` });
+        suggestedActions.push({
+          label: `Tickets: ${event.name.slice(0, 36)}`,
+          href: `/event/${event.slug}`,
+        });
       }
     }
   } else if (intent === "vip_availability") {
-    const matches = pickEvents(events, input.message, 3);
+    const matches = pickEvents(events, scoringMessage, 3);
     const vipLines: string[] = [];
     for (const event of matches) {
       const vips = findVipCategories(event);
@@ -658,21 +804,23 @@ export async function handleSupportChat(input: {
       }
     }
     if (vipLines.length === 0) {
-      answer = "Ich finde gerade keine VIP-Infos. Öffne die Eventübersicht oder frage nach einem konkreten Eventnamen.";
+      answer =
+        "Ich finde gerade keine VIP-Infos. Öffne die Eventübersicht oder frage nach einem konkreten Eventnamen.";
       suggestedActions.push({ label: "Events", href: "/events" });
     } else {
       answer = `VIP-Status:\n${vipLines.join("\n")}\n\nVerfügbarkeit ändert sich live — am besten direkt buchen.`;
+      groundingParts.push(answer);
     }
   } else if (intent === "artist_events") {
-    const artists = await findArtists(organizationId, input.message);
+    const artists = await findArtists(organizationId, scoringMessage);
     if (artists.length === 0) {
-      // maybe they asked generically "wer ist dabei" about an event
-      const matches = pickEvents(events, input.message, 2);
+      const matches = pickEvents(events, scoringMessage, 2);
       if (matches.length > 0 && eventArtistLinks(matches[0]).length > 0) {
         const event = matches[0];
         const links = eventArtistLinks(event);
         const names = links.map((a) => a.artist.name).join(", ");
         answer = `Beim Event „${event.name}“ sind u. a. dabei: ${names}.`;
+        groundingParts.push(answer);
         suggestedActions.push({ label: "Event öffnen", href: `/event/${event.slug}` });
         for (const link of links.slice(0, 3)) {
           suggestedActions.push({
@@ -770,9 +918,10 @@ export async function handleSupportChat(input: {
         }
       }
       answer = blocks.join("\n\n");
+      groundingParts.push(answer);
     }
   } else if (intent === "event_info") {
-    const matches = pickEvents(events, input.message, 3);
+    const matches = pickEvents(events, scoringMessage, 3);
     if (matches.length === 1) {
       const event = matches[0];
       const when = event.eventStartsAt
@@ -791,6 +940,7 @@ export async function handleSupportChat(input: {
           ? `\nTickets ab ${formatEuroFromCents(Math.min(...event.ticketCategories.map((c) => c.priceGrossCents)))}`
           : "";
       answer = `„${event.name}“\nBeginn ${when}\nOrt ${where}\nEinlass ${doors}${lineup}${priceHint}`;
+      groundingParts.push(answer);
       suggestedActions.push({ label: "Event & Tickets", href: `/event/${event.slug}` });
     } else if (matches.length > 1) {
       answer =
@@ -804,14 +954,19 @@ export async function handleSupportChat(input: {
                   timeStyle: "short",
                 })
               : "Termin folgt";
-            return `• ${event.name} — ${when}`;
+            const where = event.location
+              ? `${event.location.name}${event.location.city ? `, ${event.location.city}` : ""}`
+              : "";
+            return `• ${event.name} — ${when}${where ? ` · ${where}` : ""}`;
           })
           .join("\n");
+      groundingParts.push(answer);
       for (const event of matches) {
         suggestedActions.push({ label: event.name.slice(0, 42), href: `/event/${event.slug}` });
       }
     } else {
-      answer = "Aktuell keine öffentlichen Eventzeiten. Schau auf die Eventübersicht.";
+      answer =
+        "Aktuell keine öffentlichen Eventzeiten. Schau auf die Eventübersicht — oder nenne mir Event bzw. Ort.";
       suggestedActions.push({ label: "Events", href: "/events" });
     }
   } else if (intent in FALLBACKS) {
@@ -839,21 +994,37 @@ export async function handleSupportChat(input: {
     }
     suggestedActions.push(...fb.actions);
   } else {
-    // creative fallback: try artist then event then knowledge
-    const artists = await findArtists(organizationId, input.message);
+    const artists = await findArtists(organizationId, scoringMessage);
     if (artists.length > 0) {
       const artist = artists[0];
       answer = `Meinst du ${artist.name}? Frag z. B. „Bei welchen Events ist ${artist.name} dabei?“ oder „Was kosten Tickets für …“.`;
       suggestedActions.push({ label: artist.name, href: `/kuenstler/${artist.slug}` });
       suggestedActions.push({ label: "Events", href: "/events" });
     } else {
-      const knowledge = await searchKnowledge(organizationId, input.message);
+      const knowledge = await searchKnowledge(organizationId, scoringMessage);
       if (knowledge.length > 0) {
         answer = knowledge[0].body;
         sources.push({ title: knowledge[0].title, slug: knowledge[0].slug });
+        groundingParts.push(`${knowledge[0].title}\n${knowledge[0].body}`);
       } else {
-        answer =
-          "Ich helfe bei konkreten Fragen — z. B.:\n• „Was kosten Tickets für die Schlagernacht?“\n• „Gibt’s noch VIP?“\n• „Wie funktioniert Bestplatzbuchung?“\n• „Was ist die Verwaltungsgebühr?“\n• „Ticket vergessen“ / Zahlung / Saalplan";
+        const upcoming = events.slice(0, 3);
+        if (upcoming.length > 0) {
+          answer =
+            "Dazu habe ich gerade keinen Treffer in der Hilfe. Du kannst z. B. fragen:\n• „Welche Events gibt es?“\n• „Was kosten Tickets für …?“\n• „Wie funktioniert Bestplatzbuchung?“\n• „Ticket vergessen“\n\nAktuell im Programm u. a.:\n" +
+            upcoming
+              .map((event) => {
+                const when = event.eventStartsAt
+                  ? event.eventStartsAt.toLocaleDateString("de-DE", {
+                      timeZone: "Europe/Berlin",
+                    })
+                  : "Termin folgt";
+                return `• ${event.name} (${when})`;
+              })
+              .join("\n");
+        } else {
+          answer =
+            "Ich helfe bei konkreten Fragen — z. B. Events, Preise, VIP, Bestellung, Zahlung, QR-Tickets, Verwaltungsgebühr oder Ticket vergessen. Oder schreib dem Kundenservice.";
+        }
       }
       suggestedActions.push(
         { label: "Events", href: "/events" },
@@ -872,6 +1043,28 @@ export async function handleSupportChat(input: {
       answer += `\n\n${einlass.body}`;
       sources.push({ title: einlass.title, slug: einlass.slug });
     }
+  }
+
+  // Conversational lead-in for fact answers (not small-talk)
+  if (!["greeting", "thanks", "goodbye", "help_menu"].includes(intent)) {
+    answer = wrapConversationalAnswer(intent, answer);
+  }
+
+  if (sources.length > 0) {
+    groundingParts.unshift(
+      sources.map((s) => `FAQ: ${s.title} (/hilfe#… ${s.slug})`).join("\n"),
+    );
+  }
+
+  if (isSupportLlmEnabled()) {
+    const polished = await polishSupportAnswerWithLlm({
+      userMessage: input.message,
+      history,
+      groundedFacts: buildGroundingPack([...groundingParts, answer]),
+      draftAnswer: answer,
+      intent,
+    });
+    if (polished) answer = polished;
   }
 
   await prisma.supportChatMessage.create({
