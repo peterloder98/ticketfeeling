@@ -2,10 +2,16 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Clock } from "lucide-react";
-
-function pad2(n: number) {
-  return String(n).padStart(2, "0");
-}
+import {
+  formatDateDraft,
+  formatTimeDraft,
+  isValidYmd,
+  pad2,
+  parseDateDraftLoose,
+  parseTimeDraft,
+  sanitizeDateDraft,
+  sanitizeTimeDraft,
+} from "@/lib/admin/smart-datetime-draft";
 
 /** Shift a datetime-local string by hours (handles day rollover). */
 export function shiftDateTimeLocal(value: string, hoursDelta: number): string {
@@ -33,17 +39,11 @@ function toLocalValue(y: number, m: number, d: number, h: number, min: number): 
   return `${y}-${pad2(m)}-${pad2(d)}T${pad2(h)}:${pad2(min)}`;
 }
 
-function isValidYmd(y: number, m: number, d: number) {
-  if (y < 1900 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return false;
-  const check = new Date(y, m - 1, d);
-  return check.getFullYear() === y && check.getMonth() === m - 1 && check.getDate() === d;
-}
-
 const WEEKDAYS = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"] as const;
 const HOURS = Array.from({ length: 24 }, (_, i) => pad2(i));
 const MINUTES = Array.from({ length: 60 }, (_, i) => pad2(i));
-const DEFAULT_HOUR = "18";
-const DEFAULT_MINUTE = "00";
+const DEFAULT_HOUR = 18;
+const DEFAULT_MINUTE = 0;
 
 function startOfMonth(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -65,12 +65,6 @@ function sameDay(a: Date, b: Date) {
   );
 }
 
-function onlyDigits(raw: string, maxLen: number) {
-  return raw.replace(/\D/g, "").slice(0, maxLen);
-}
-
-type FocusField = "day" | "month" | "year" | "hour" | "minute" | null;
-
 type Props = {
   name?: string;
   label: string;
@@ -80,68 +74,70 @@ type Props = {
   required?: boolean;
 };
 
+function selectAllSoon(el: HTMLInputElement | null) {
+  if (!el) return;
+  // Sync + rAF so select wins over browser caret placement after click.
+  el.select();
+  window.requestAnimationFrame(() => el.select());
+}
+
 export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props) {
   const datePanelId = useId();
   const timePanelId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const dayRef = useRef<HTMLInputElement>(null);
-  const monthRef = useRef<HTMLInputElement>(null);
-  const yearRef = useRef<HTMLInputElement>(null);
-  const hourRef = useRef<HTMLInputElement>(null);
-  const minuteRef = useRef<HTMLInputElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const timeRef = useRef<HTMLInputElement>(null);
   const hourBtnRef = useRef<HTMLButtonElement>(null);
   const minuteBtnRef = useRef<HTMLButtonElement>(null);
-  const focusFieldRef = useRef<FocusField>(null);
+  const dateFocusedRef = useRef(false);
+  const timeFocusedRef = useRef(false);
 
   const selected = useMemo(() => parseLocal(value), [value]);
   const hasValue = Boolean(selected);
 
-  const [day, setDay] = useState(() => (selected ? pad2(selected.getDate()) : ""));
-  const [month, setMonth] = useState(() => (selected ? pad2(selected.getMonth() + 1) : ""));
-  const [year, setYear] = useState(() => (selected ? String(selected.getFullYear()) : ""));
-  const [hour, setHour] = useState(() =>
-    selected ? pad2(selected.getHours()) : DEFAULT_HOUR,
-  );
-  const [minute, setMinute] = useState(() =>
-    selected ? pad2(selected.getMinutes()) : DEFAULT_MINUTE,
-  );
+  const committedDate = selected
+    ? formatDateDraft(selected.getFullYear(), selected.getMonth() + 1, selected.getDate())
+    : "";
+  const committedTime = selected
+    ? formatTimeDraft(selected.getHours(), selected.getMinutes())
+    : formatTimeDraft(DEFAULT_HOUR, DEFAULT_MINUTE);
+
+  const [dateDraft, setDateDraft] = useState(committedDate);
+  const [timeDraft, setTimeDraft] = useState(committedTime);
+  const [dateFocused, setDateFocused] = useState(false);
+  const [timeFocused, setTimeFocused] = useState(false);
   /** True once the user picked/typed a time (or an existing value was loaded). */
   const [timeChosen, setTimeChosen] = useState(() => hasValue);
-  const [focusField, setFocusField] = useState<FocusField>(null);
 
   const [dateOpen, setDateOpen] = useState(false);
   const [timeOpen, setTimeOpen] = useState(false);
   const [viewMonth, setViewMonth] = useState(() => startOfMonth(selected ?? new Date()));
 
-  const editingDate = focusField === "day" || focusField === "month" || focusField === "year";
-  const editingTime = focusField === "hour" || focusField === "minute";
-
   useEffect(() => {
-    focusFieldRef.current = focusField;
-  }, [focusField]);
+    dateFocusedRef.current = dateFocused;
+  }, [dateFocused]);
+  useEffect(() => {
+    timeFocusedRef.current = timeFocused;
+  }, [timeFocused]);
 
   // Sync from controlled value only while the user is not mid-typing.
   useEffect(() => {
-    if (editingDate || editingTime) return;
+    if (dateFocusedRef.current || timeFocusedRef.current) return;
     if (!selected) {
       if (!value) {
-        setDay("");
-        setMonth("");
-        setYear("");
-        setHour(DEFAULT_HOUR);
-        setMinute(DEFAULT_MINUTE);
+        setDateDraft("");
+        setTimeDraft(formatTimeDraft(DEFAULT_HOUR, DEFAULT_MINUTE));
         setTimeChosen(false);
       }
       return;
     }
-    setDay(pad2(selected.getDate()));
-    setMonth(pad2(selected.getMonth() + 1));
-    setYear(String(selected.getFullYear()));
-    setHour(pad2(selected.getHours()));
-    setMinute(pad2(selected.getMinutes()));
+    setDateDraft(
+      formatDateDraft(selected.getFullYear(), selected.getMonth() + 1, selected.getDate()),
+    );
+    setTimeDraft(formatTimeDraft(selected.getHours(), selected.getMinutes()));
     setTimeChosen(true);
     setViewMonth(startOfMonth(selected));
-  }, [value, selected, editingDate, editingTime]);
+  }, [value, selected]);
 
   useEffect(() => {
     if (!dateOpen && !timeOpen) return;
@@ -165,6 +161,15 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     };
   }, [dateOpen, timeOpen]);
 
+  const hourForList = (() => {
+    const p = parseTimeDraft(timeDraft);
+    return p ? pad2(p.hour) : pad2(DEFAULT_HOUR);
+  })();
+  const minuteForList = (() => {
+    const p = parseTimeDraft(timeDraft);
+    return p ? pad2(p.minute) : pad2(DEFAULT_MINUTE);
+  })();
+
   useEffect(() => {
     if (!timeOpen) return;
     const id = window.requestAnimationFrame(() => {
@@ -172,130 +177,52 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
       minuteBtnRef.current?.scrollIntoView({ block: "center" });
     });
     return () => window.cancelAnimationFrame(id);
-  }, [timeOpen, hour, minute]);
+  }, [timeOpen, hourForList, minuteForList]);
 
-  function commitParts(parts: {
-    day: string;
-    month: string;
-    year: string;
-    hour: string;
-    minute: string;
-    forceTime?: boolean;
-  }) {
-    const allowTime = parts.forceTime || timeChosen || hasValue;
+  function commitFromDrafts(nextDate: string, nextTime: string, forceTime = false) {
+    const allowTime = forceTime || timeChosen || hasValue;
     if (!allowTime) return false;
-    const d = parts.day.length === 1 ? pad2(Number(parts.day) || 0) : parts.day;
-    const m = parts.month.length === 1 ? pad2(Number(parts.month) || 0) : parts.month;
-    const y = parts.year;
-    const h = parts.hour.length === 1 ? pad2(Number(parts.hour) || 0) : parts.hour;
-    const min = parts.minute.length === 1 ? pad2(Number(parts.minute) || 0) : parts.minute;
-    if (d.length !== 2 || m.length !== 2 || y.length !== 4 || h.length !== 2 || min.length !== 2) {
-      return false;
-    }
-    const dn = Number(d);
-    const mn = Number(m);
-    const yn = Number(y);
-    const hn = Number(h);
-    const minn = Number(min);
-    if (!isValidYmd(yn, mn, dn) || hn > 23 || minn > 59) return false;
-    onChange(toLocalValue(yn, mn, dn, hn, minn));
+    const dateParts = parseDateDraftLoose(nextDate);
+    const timeParts = parseTimeDraft(nextTime);
+    if (!dateParts || !timeParts) return false;
+    if (!isValidYmd(dateParts.year, dateParts.month, dateParts.day)) return false;
+    onChange(
+      toLocalValue(
+        dateParts.year,
+        dateParts.month,
+        dateParts.day,
+        timeParts.hour,
+        timeParts.minute,
+      ),
+    );
     return true;
   }
 
-  function commitCurrent(forceTime = false) {
-    return commitParts({ day, month, year, hour, minute, forceTime });
-  }
-
-  function focusAndSelect(el: HTMLInputElement | null) {
-    el?.focus();
-    el?.select();
-  }
-
-  function beginFieldFocus(field: FocusField, el: HTMLInputElement | null) {
-    setFocusField(field);
-    // Defer select so it wins over browser caret placement.
-    window.requestAnimationFrame(() => el?.select());
-  }
-
-  function endFieldFocus(field: FocusField, related: EventTarget | null) {
-    // Stay in "editing" mode while tabbing between our own inputs.
-    const next = related instanceof HTMLElement ? related : null;
-    const stillInside = Boolean(next && rootRef.current?.contains(next));
-    const nextIsOurInput = Boolean(
-      next &&
-        (next === dayRef.current ||
-          next === monthRef.current ||
-          next === yearRef.current ||
-          next === hourRef.current ||
-          next === minuteRef.current),
-    );
-
-    if (field === "day" && day.length === 1) {
-      const nextDay = pad2(Number(day) || 0);
-      setDay(nextDay);
-      commitParts({ day: nextDay, month, year, hour, minute });
-    } else if (field === "month" && month.length === 1) {
-      const nextMonth = pad2(Number(month) || 0);
-      setMonth(nextMonth);
-      commitParts({ day, month: nextMonth, year, hour, minute });
-    } else if (field === "hour") {
-      const nextHour =
-        hour.length === 0 ? DEFAULT_HOUR : hour.length === 1 ? pad2(Number(hour) || 0) : hour;
-      const hn = Number(nextHour);
-      const clamped = Number.isFinite(hn) ? pad2(Math.min(23, Math.max(0, hn))) : DEFAULT_HOUR;
-      setHour(clamped);
-      setTimeChosen(true);
-      commitParts({ day, month, year, hour: clamped, minute, forceTime: true });
-    } else if (field === "minute") {
-      const nextMin =
-        minute.length === 0
-          ? DEFAULT_MINUTE
-          : minute.length === 1
-            ? pad2(Number(minute) || 0)
-            : minute;
-      const mn = Number(nextMin);
-      const clamped = Number.isFinite(mn) ? pad2(Math.min(59, Math.max(0, mn))) : DEFAULT_MINUTE;
-      setMinute(clamped);
-      setTimeChosen(true);
-      commitParts({ day, month, year, hour, minute: clamped, forceTime: true });
-    } else if (field === "year" || field === "day" || field === "month") {
-      commitCurrent();
+  function blurDate() {
+    const parsed = parseDateDraftLoose(dateDraft);
+    if (parsed) {
+      const padded = formatDateDraft(parsed.year, parsed.month, parsed.day);
+      setDateDraft(padded);
+      commitFromDrafts(padded, timeDraft);
+    } else if (selected) {
+      setDateDraft(committedDate);
     }
+    setDateFocused(false);
+  }
 
-    if (!stillInside || !nextIsOurInput) {
-      // Clear editing flag after commit so prop sync can catch up.
-      window.setTimeout(() => {
-        if (focusFieldRef.current === field) setFocusField(null);
-      }, 0);
+  function blurTime() {
+    const parsed = parseTimeDraft(timeDraft);
+    if (parsed) {
+      const padded = formatTimeDraft(parsed.hour, parsed.minute);
+      setTimeDraft(padded);
+      setTimeChosen(true);
+      commitFromDrafts(dateDraft, padded, true);
+    } else if (selected) {
+      setTimeDraft(committedTime);
+    } else {
+      setTimeDraft(formatTimeDraft(DEFAULT_HOUR, DEFAULT_MINUTE));
     }
-  }
-
-  function updateDay(raw: string) {
-    const digits = onlyDigits(raw, 2);
-    setDay(digits);
-    if (digits.length === 2) focusAndSelect(monthRef.current);
-  }
-
-  function updateMonth(raw: string) {
-    const digits = onlyDigits(raw, 2);
-    setMonth(digits);
-    if (digits.length === 2) focusAndSelect(yearRef.current);
-  }
-
-  function updateYear(raw: string) {
-    setYear(onlyDigits(raw, 4));
-  }
-
-  function updateHour(raw: string) {
-    const digits = onlyDigits(raw, 2);
-    setHour(digits);
-    setTimeChosen(true);
-    if (digits.length === 2) focusAndSelect(minuteRef.current);
-  }
-
-  function updateMinute(raw: string) {
-    setMinute(onlyDigits(raw, 2));
-    setTimeChosen(true);
+    setTimeFocused(false);
   }
 
   function openDatePanel() {
@@ -305,14 +232,10 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
   }
 
   function pickCalendarDay(date: Date) {
-    const d = pad2(date.getDate());
-    const m = pad2(date.getMonth() + 1);
-    const y = String(date.getFullYear());
-    setDay(d);
-    setMonth(m);
-    setYear(y);
-    setFocusField(null);
-    commitParts({ day: d, month: m, year: y, hour, minute });
+    const nextDate = formatDateDraft(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    setDateDraft(nextDate);
+    setDateFocused(false);
+    commitFromDrafts(nextDate, timeDraft.length > 0 ? timeDraft : formatTimeDraft(DEFAULT_HOUR, DEFAULT_MINUTE));
     setDateOpen(false);
     if (!timeChosen && !hasValue) {
       setTimeOpen(true);
@@ -320,11 +243,11 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
   }
 
   function pickTime(h: string, min: string) {
-    setHour(h);
-    setMinute(min);
+    const nextTime = `${h}:${min}`;
+    setTimeDraft(nextTime);
     setTimeChosen(true);
-    setFocusField(null);
-    commitParts({ day, month, year, hour: h, minute: min, forceTime: true });
+    setTimeFocused(false);
+    commitFromDrafts(dateDraft, nextTime, true);
     setTimeOpen(false);
   }
 
@@ -342,10 +265,8 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
     year: "numeric",
   });
   const today = new Date();
-  const cellClass =
-    "h-8 w-full rounded-lg border border-[var(--tf-line)] bg-white px-1 text-center text-sm tabular-nums text-[var(--tf-navy)] outline-none transition focus:border-[var(--tf-teal)] focus:shadow-[0_0_0_2px_rgba(20,184,166,0.18)]";
-  const timeCellClass =
-    "h-8 w-[2.25rem] rounded-lg border border-[var(--tf-line)] bg-white px-1 text-center text-sm tabular-nums text-[var(--tf-navy)] outline-none transition focus:border-[var(--tf-teal)] focus:shadow-[0_0_0_2px_rgba(20,184,166,0.18)]";
+  const fieldClass =
+    "h-9 w-full rounded-lg border border-[var(--tf-line)] bg-white px-2 text-sm tabular-nums text-[var(--tf-navy)] outline-none transition focus:border-[var(--tf-teal)] focus:shadow-[0_0_0_2px_rgba(20,184,166,0.18)]";
 
   return (
     <div ref={rootRef} className="relative grid gap-1">
@@ -372,72 +293,40 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               }
               e.preventDefault();
               openDatePanel();
-              focusAndSelect(dayRef.current);
+              dateRef.current?.focus();
+              selectAllSoon(dateRef.current);
             }}
           >
-            <label className="grid w-[2.25rem] gap-0">
-              <span className="sr-only">TT</span>
-              <input
-                ref={dayRef}
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="TT"
-                maxLength={2}
-                className={cellClass}
-                value={day}
-                onChange={(e) => updateDay(e.target.value)}
-                onFocus={() => {
-                  openDatePanel();
-                  beginFieldFocus("day", dayRef.current);
-                }}
-                onBlur={(e) => endFieldFocus("day", e.relatedTarget)}
-                aria-label={`${label} Tag`}
-              />
-            </label>
-            <span className="select-none text-sm text-[var(--tf-text-secondary)]">.</span>
-            <label className="grid w-[2.25rem] gap-0">
-              <span className="sr-only">MM</span>
-              <input
-                ref={monthRef}
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="MM"
-                maxLength={2}
-                className={cellClass}
-                value={month}
-                onChange={(e) => updateMonth(e.target.value)}
-                onFocus={() => {
-                  openDatePanel();
-                  beginFieldFocus("month", monthRef.current);
-                }}
-                onBlur={(e) => endFieldFocus("month", e.relatedTarget)}
-                aria-label={`${label} Monat`}
-              />
-            </label>
-            <span className="select-none text-sm text-[var(--tf-text-secondary)]">.</span>
-            <label className="grid w-[3.25rem] gap-0">
-              <span className="sr-only">JJJJ</span>
-              <input
-                ref={yearRef}
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="JJJJ"
-                maxLength={4}
-                className={cellClass}
-                value={year}
-                onChange={(e) => updateYear(e.target.value)}
-                onFocus={() => {
-                  openDatePanel();
-                  beginFieldFocus("year", yearRef.current);
-                }}
-                onBlur={(e) => endFieldFocus("year", e.relatedTarget)}
-                aria-label={`${label} Jahr`}
-              />
-            </label>
+            <input
+              ref={dateRef}
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="TT.MM.JJJJ"
+              className={fieldClass}
+              value={dateDraft}
+              onChange={(e) => setDateDraft(sanitizeDateDraft(e.target.value))}
+              onFocus={() => {
+                openDatePanel();
+                setDateFocused(true);
+                // Seed from committed value, then select-all so typing replaces.
+                if (committedDate) setDateDraft(committedDate);
+                selectAllSoon(dateRef.current);
+              }}
+              onMouseUp={(e) => {
+                // Keep select-all after click focus (browser otherwise drops selection).
+                if (dateFocusedRef.current && dateRef.current === e.currentTarget) {
+                  e.preventDefault();
+                }
+              }}
+              onBlur={blurDate}
+              aria-label={`${label} Datum`}
+            />
           </div>
         </div>
 
-        <div className="shrink-0">
+        <div className="shrink-0 basis-[9.5rem]">
           <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
             Uhrzeit
           </span>
@@ -450,39 +339,36 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
           >
             <Clock className="h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" aria-hidden />
             <input
-              ref={hourRef}
+              ref={timeRef}
+              type="text"
               inputMode="numeric"
               autoComplete="off"
-              placeholder="HH"
-              maxLength={2}
-              className={timeCellClass}
-              value={hour}
-              onChange={(e) => updateHour(e.target.value)}
+              spellCheck={false}
+              placeholder="HH:MM"
+              className={`${fieldClass} !w-[4.5rem]`}
+              value={timeChosen || hasValue || timeFocused ? timeDraft : ""}
+              onChange={(e) => {
+                setTimeDraft(sanitizeTimeDraft(e.target.value));
+                setTimeChosen(true);
+              }}
               onFocus={() => {
                 setDateOpen(false);
                 setTimeOpen(true);
-                beginFieldFocus("hour", hourRef.current);
+                setTimeFocused(true);
+                if (timeChosen || hasValue) {
+                  setTimeDraft(committedTime || timeDraft);
+                } else {
+                  setTimeDraft(formatTimeDraft(DEFAULT_HOUR, DEFAULT_MINUTE));
+                }
+                selectAllSoon(timeRef.current);
               }}
-              onBlur={(e) => endFieldFocus("hour", e.relatedTarget)}
-              aria-label={`${label} Stunde`}
-            />
-            <span className="select-none text-sm text-[var(--tf-text-secondary)]">:</span>
-            <input
-              ref={minuteRef}
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="MM"
-              maxLength={2}
-              className={timeCellClass}
-              value={minute}
-              onChange={(e) => updateMinute(e.target.value)}
-              onFocus={() => {
-                setDateOpen(false);
-                setTimeOpen(true);
-                beginFieldFocus("minute", minuteRef.current);
+              onMouseUp={(e) => {
+                if (timeFocusedRef.current && timeRef.current === e.currentTarget) {
+                  e.preventDefault();
+                }
               }}
-              onBlur={(e) => endFieldFocus("minute", e.relatedTarget)}
-              aria-label={`${label} Minute`}
+              onBlur={blurTime}
+              aria-label={`${label} Uhrzeit`}
             />
             <button
               type="button"
@@ -565,7 +451,7 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
           </div>
           <div className="flex items-center justify-between border-t border-[var(--tf-line)] bg-[#f8fafc] px-2.5 py-1.5">
             <span className="text-[11px] text-[var(--tf-text-secondary)]">
-              Uhrzeit: {hour}:{minute}
+              Uhrzeit: {hourForList}:{minuteForList}
               {!timeChosen && !hasValue ? " (bitte wählen)" : ""}
             </span>
             <button
@@ -589,7 +475,7 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
           <div className="border-b border-[var(--tf-line)] px-3 py-2">
             <p className="text-sm font-semibold text-[var(--tf-navy)]">Uhrzeit wählen</p>
             <p className="text-[11px] text-[var(--tf-text-secondary)]">
-              Tippen oder aus der Liste wählen — aktuell {hour}:{minute}
+              Tippen oder aus der Liste wählen — aktuell {hourForList}:{minuteForList}
             </p>
           </div>
           <div className="grid grid-cols-2 gap-0">
@@ -600,14 +486,14 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               {HOURS.map((h) => (
                 <button
                   key={h}
-                  ref={h === hour ? hourBtnRef : undefined}
+                  ref={h === hourForList ? hourBtnRef : undefined}
                   type="button"
                   className={`flex w-full px-3 py-1.5 text-left text-sm tabular-nums transition ${
-                    h === hour
+                    h === hourForList
                       ? "bg-[var(--tf-navy)] font-semibold text-white"
                       : "text-[var(--tf-navy)] hover:bg-[rgba(20,184,166,0.1)]"
                   }`}
-                  onClick={() => pickTime(h, minute.length === 2 ? minute : DEFAULT_MINUTE)}
+                  onClick={() => pickTime(h, minuteForList)}
                 >
                   {h}
                 </button>
@@ -620,14 +506,14 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               {MINUTES.map((m) => (
                 <button
                   key={m}
-                  ref={m === minute ? minuteBtnRef : undefined}
+                  ref={m === minuteForList ? minuteBtnRef : undefined}
                   type="button"
                   className={`flex w-full px-3 py-1.5 text-left text-sm tabular-nums transition ${
-                    m === minute
+                    m === minuteForList
                       ? "bg-[var(--tf-navy)] font-semibold text-white"
                       : "text-[var(--tf-navy)] hover:bg-[rgba(20,184,166,0.1)]"
                   }`}
-                  onClick={() => pickTime(hour.length === 2 ? hour : DEFAULT_HOUR, m)}
+                  onClick={() => pickTime(hourForList, m)}
                 >
                   {m}
                 </button>
@@ -640,7 +526,7 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
               className="tf-btn tf-btn-primary !min-h-8 !px-3 text-xs"
               onClick={() => {
                 setTimeChosen(true);
-                commitCurrent(true);
+                blurTime();
                 setTimeOpen(false);
               }}
             >

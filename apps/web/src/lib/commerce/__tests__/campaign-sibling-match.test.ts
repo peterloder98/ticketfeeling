@@ -45,12 +45,12 @@ describe("campaignsMatch", () => {
     ).toBe(false);
   });
 
-  it("does not content-match when validFrom differs", () => {
+  it("still content-matches when only validFrom differs (legacy siblings)", () => {
     expect(
       campaignsMatch(
         { ...base, campaignGroupId: null },
         { ...base, campaignGroupId: null, validFrom: new Date("2026-09-02T10:00:00.000Z") },
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

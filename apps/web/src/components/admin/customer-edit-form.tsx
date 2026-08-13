@@ -148,7 +148,6 @@ export function CustomerEditForm({ customer, canEdit }: CustomerEditFormProps) {
         <input
           name="postalCode"
           inputMode="numeric"
-          pattern="[0-9]*"
           maxLength={5}
           value={postalCode}
           onChange={(e) => {

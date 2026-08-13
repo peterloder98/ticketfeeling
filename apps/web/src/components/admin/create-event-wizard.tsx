@@ -1432,7 +1432,6 @@ export function CreateEventWizard({
                   name="newLocationPostalCode"
                   className="tf-input"
                   inputMode="numeric"
-                  pattern="[0-9]*"
                   maxLength={5}
                   value={newLocZip}
                   onChange={(e) => {

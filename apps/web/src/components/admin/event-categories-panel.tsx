@@ -109,6 +109,7 @@ function CategoryColorField({
           inputMode="text"
           autoComplete="off"
           spellCheck={false}
+          // Never use HTML pattern — browsers show „The string did not match the expected pattern.“
         />
         <div className="flex flex-wrap gap-1.5">
           {COLOR_PRESETS.slice(0, 6).map((preset) => (

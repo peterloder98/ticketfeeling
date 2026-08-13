@@ -336,13 +336,24 @@ export function EventDiscountsPanel({
 
   function resolveAlsoEventIds(): string[] | null {
     if (tourSiblings.length < 1) return [];
-    if (tourScopeMode === "this") return [];
     const also = selectedSiblingIds.filter((id) => id !== eventId);
-    if (also.length < 1) {
-      setError("Bitte mindestens einen weiteren Termin wählen — oder nur dieses Event.");
-      return null;
-    }
+    if (tourScopeMode === "this" || also.length < 1) return [];
     return also;
+  }
+
+  const allSiblingIds = tourSiblings.map((s) => s.id);
+  const allTourSelected =
+    allSiblingIds.length > 0 && allSiblingIds.every((id) => selectedSiblingIds.includes(id));
+
+  function setAllTourDates(checked: boolean) {
+    if (checked) {
+      setTourScopeMode("multi");
+      setSelectedSiblingIds(allSiblingIds);
+    } else {
+      setTourScopeMode("this");
+      setSelectedSiblingIds([]);
+    }
+    setError(null);
   }
 
   function requestSaveCampaign() {
@@ -643,7 +654,6 @@ export function EventDiscountsPanel({
                   className="tf-input mt-1 w-full"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  required
                 />
               </label>
               <div className="sm:col-span-1">
@@ -819,96 +829,64 @@ export function EventDiscountsPanel({
                     <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
                       {draft.campaignId
                         ? "Die Auswahl ist der vollständige Geltungsbereich dieser Aktion. Abgewählte Termine verlieren die passende Preisaktion."
-                        : "Diese Aktion gilt für dieses Event. Optional kannst du weitere Termine der Tour mit denselben Einstellungen übernehmen."}
+                        : "Gilt immer für dieses Event. Weitere Termine optional mit denselben Einstellungen übernehmen."}
                     </p>
                   </div>
-                  <div className="space-y-2">
-                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] bg-white p-3">
-                      <input
-                        type="radio"
-                        className="mt-1"
-                        name="tourScopeInline"
-                        checked={tourScopeMode === "this"}
-                        onChange={() => {
-                          setTourScopeMode("this");
-                          setSelectedSiblingIds([]);
-                          setError(null);
-                        }}
-                      />
-                      <span>
-                        <span className="block text-sm font-medium text-[var(--tf-navy)]">
-                          Nur dieses Event
-                        </span>
-                        <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                          {draft.campaignId
-                            ? "Entfernt die Aktion von anderen Tour-Terminen, falls sie dort dieselbe Aktion hatten"
-                            : "Andere Termine bleiben unverändert"}
-                        </span>
+                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-teal)]/40 bg-white p-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={allTourSelected}
+                      onChange={(e) => setAllTourDates(e.target.checked)}
+                    />
+                    <span>
+                      <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                        Alle Termine der Tour
                       </span>
-                    </label>
-                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-line)] bg-white p-3">
-                      <input
-                        type="radio"
-                        className="mt-1"
-                        name="tourScopeInline"
-                        checked={tourScopeMode === "multi"}
-                        onChange={() => {
-                          setTourScopeMode("multi");
-                          setError(null);
-                        }}
-                      />
-                      <span>
-                        <span className="block text-sm font-medium text-[var(--tf-navy)]">
-                          Weitere Termine der Tour
-                        </span>
-                        <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                          Preis, Badge, Zeitraum und Kategorien auf gewählte Termine übernehmen
-                        </span>
+                      <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                        Dieses Event plus alle {tourSiblings.length} weiteren Termine
                       </span>
-                    </label>
+                    </span>
+                  </label>
+                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-white p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
+                      Weitere Termine
+                    </p>
+                    {tourSiblings.map((s) => {
+                      const checked = selectedSiblingIds.includes(s.id);
+                      return (
+                        <label
+                          key={s.id}
+                          className="flex cursor-pointer items-start gap-2 text-sm text-[var(--tf-navy)]"
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={checked}
+                            onChange={() => {
+                              setSelectedSiblingIds((prev) => {
+                                const next = checked
+                                  ? prev.filter((id) => id !== s.id)
+                                  : [...prev, s.id];
+                                setTourScopeMode(next.length > 0 ? "multi" : "this");
+                                return next;
+                              });
+                              setError(null);
+                            }}
+                          />
+                          <span>{siblingLabel(s)}</span>
+                        </label>
+                      );
+                    })}
+                    {selectedSiblingIds.length === 0 ? (
+                      <p className="text-xs text-[var(--tf-text-secondary)]">
+                        Keine weiteren Termine gewählt — Aktion nur für dieses Event
+                        {draft.campaignId
+                          ? " (beim Speichern von anderen Tour-Terminen entfernt, falls verknüpft)."
+                          : "."}
+                      </p>
+                    ) : null}
                   </div>
-                  {tourScopeMode === "multi" ? (
-                    <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-white p-3">
-                      <div className="mb-1 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-[var(--tf-teal)] hover:underline"
-                          onClick={() => setSelectedSiblingIds(tourSiblings.map((s) => s.id))}
-                        >
-                          Alle wählen
-                        </button>
-                        <button
-                          type="button"
-                          className="text-xs font-medium text-[var(--tf-text-secondary)] hover:underline"
-                          onClick={() => setSelectedSiblingIds([])}
-                        >
-                          Auswahl leeren
-                        </button>
-                      </div>
-                      {tourSiblings.map((s) => {
-                        const checked = selectedSiblingIds.includes(s.id);
-                        return (
-                          <label
-                            key={s.id}
-                            className="flex cursor-pointer items-start gap-2 text-sm text-[var(--tf-navy)]"
-                          >
-                            <input
-                              type="checkbox"
-                              className="mt-0.5"
-                              checked={checked}
-                              onChange={() => {
-                                setSelectedSiblingIds((prev) =>
-                                  checked ? prev.filter((id) => id !== s.id) : [...prev, s.id],
-                                );
-                                setError(null);
-                              }}
-                            />
-                            <span>{siblingLabel(s)}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -917,6 +895,7 @@ export function EventDiscountsPanel({
                 type="submit"
                 className="tf-btn tf-btn-primary !min-h-10 text-sm"
                 disabled={saving}
+                formNoValidate
               >
                 Aktion speichern
               </button>
