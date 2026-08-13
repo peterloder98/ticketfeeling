@@ -348,7 +348,7 @@ export function SeatMap({
                         return (
                           <span
                             key={j}
-                            className="text-xs font-bold tabular-nums text-[var(--tf-sale)]"
+                            className="text-xs font-bold tabular-nums text-[var(--tf-action-accent)]"
                           >
                             {r.text}
                           </span>

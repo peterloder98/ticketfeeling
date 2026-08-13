@@ -16,7 +16,8 @@ describe("resolveEventCardBadge", () => {
   it("shows Neu for announcements", () => {
     expect(resolveEventCardBadge({ status: "announcement" })).toEqual({
       label: "Neu",
-      className: "bg-white text-[var(--tf-navy)]",
+      kind: "status",
+      statusTone: "teal",
     });
   });
 
@@ -25,7 +26,8 @@ describe("resolveEventCardBadge", () => {
       resolveEventCardBadge({ status: "presale_active", dateCount: 3 }),
     ).toEqual({
       label: "Mehrere Termine",
-      className: "bg-white text-[var(--tf-navy)]",
+      kind: "status",
+      statusTone: "teal",
     });
   });
 
@@ -39,7 +41,7 @@ describe("resolveEventCardBadge", () => {
       }),
     ).toEqual({
       label: "Sommer-Rabatt",
-      className: "bg-[var(--tf-sale)] text-white",
+      kind: "promotion",
     });
   });
 
@@ -69,11 +71,14 @@ describe("resolveEventCardBadge", () => {
         remainingTickets: 10,
         capacity: 200,
         showRemainingAvailability: true,
-      })?.label,
-    ).toBe("Fast ausverkauft");
+      }),
+    ).toEqual({
+      label: "Fast ausverkauft",
+      kind: "availability",
+    });
   });
 
-  it("shows VIP scarcity with gold styling", () => {
+  it("shows VIP scarcity as availability (not VIP gold promo)", () => {
     expect(
       resolveEventCardBadge({
         status: "presale_active",
@@ -82,7 +87,7 @@ describe("resolveEventCardBadge", () => {
       }),
     ).toEqual({
       label: "VIP fast ausverkauft",
-      className: "bg-[var(--tf-gold)] text-[var(--tf-navy)]",
+      kind: "availability",
     });
   });
 });

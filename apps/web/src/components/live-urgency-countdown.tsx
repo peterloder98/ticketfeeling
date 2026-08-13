@@ -114,7 +114,7 @@ function CountdownFace({
   className: string;
 }) {
   const titleColor =
-    kind === "campaign" ? "text-[var(--tf-sale)]" : "text-[var(--tf-teal)]";
+    kind === "campaign" ? "text-[var(--tf-action-accent)]" : "text-[var(--tf-teal)]";
   const aria = `${title} ${parts.days} Tage ${parts.hours} Stunden ${parts.minutes} Minuten ${parts.seconds} Sekunden`;
 
   if (variant === "compact") {

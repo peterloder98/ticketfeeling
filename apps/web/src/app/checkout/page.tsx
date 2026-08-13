@@ -22,6 +22,7 @@ import { CartItemEventMeta } from "@/components/cart-item-event-meta";
 import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
 import { feePercentNumberLabel } from "@/lib/commerce/platform-fee";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
+import { PromotionBadge } from "@/components/promotion-badge";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Zur Kasse" };
@@ -236,12 +237,12 @@ export default async function CheckoutPage() {
               </p>
               {summary.discountCents > 0 ? (
                 <div className="space-y-0.5">
-                  <p className="flex justify-between gap-4 font-medium text-[var(--tf-teal-hover)]">
-                    <span>{summary.discountLabel?.trim() || "Rabatt"}</span>
-                    <span className="tabular-nums">
-                      −{formatEuroFromCents(summary.discountCents)}
-                    </span>
-                  </p>
+                  <PromotionBadge
+                    type="promotion"
+                    variant="checkout"
+                    campaignName={summary.discountLabel?.trim() || "Rabatt"}
+                    amountLabel={`−${formatEuroFromCents(summary.discountCents)}`}
+                  />
                   {summary.orderCampaignDisclaimer ? (
                     <p className="text-[11px] font-normal text-[var(--tf-text-secondary)]">
                       {summary.orderCampaignDisclaimer}

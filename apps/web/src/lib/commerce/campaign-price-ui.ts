@@ -8,10 +8,16 @@ export function discountBadgeLabel(listCents: number, unitCents: number): string
 }
 
 export type CampaignPromoCalloutParts = {
-  /** Campaign name or primary benefit line */
+  /** Campaign name or primary benefit line (legacy / fallback) */
   title: string;
   /** Benefit / condition — omit when redundant with title */
   detail?: string;
+  /** Distinct campaign name when savings are shown separately */
+  name?: string;
+  /** Most prominent savings fragment, e.g. „10 € Rabatt“ / „−20%“ */
+  savings?: string;
+  /** Soft condition after savings, e.g. „ab 2 Tickets“ */
+  condition?: string;
 };
 
 function normalizePromoText(s: string): string {
@@ -20,6 +26,63 @@ function normalizePromoText(s: string): string {
     .replace(/[*\u00a0]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+/**
+ * Split a benefit line so savings stay scannable:
+ * „10 € Rabatt ab 2 Tickets“ → savings + condition
+ * „−20%“ → savings only
+ */
+export function parsePromoBenefitLine(line: string): {
+  savings?: string;
+  condition?: string;
+  fallback?: string;
+} {
+  const text = line.replace(/\s+/g, " ").trim();
+  if (!text) return {};
+
+  const euroRabatt = text.match(
+    /^((?:−|-)?\d+(?:[.,]\d+)?\s*(?:€|EUR|Euro)\s*Rabatt)\s+(.+)$/i,
+  );
+  if (euroRabatt) {
+    return {
+      savings: euroRabatt[1]
+        .replace(/\s*EUR\s*/i, " € ")
+        .replace(/\s+/g, " ")
+        .trim(),
+      condition: euroRabatt[2].trim(),
+    };
+  }
+
+  const pctRabatt = text.match(/^((?:−|-)?\d+(?:[.,]\d+)?\s*%\s*Rabatt)\s+(.+)$/i);
+  if (pctRabatt) {
+    return { savings: pctRabatt[1].trim(), condition: pctRabatt[2].trim() };
+  }
+
+  if (/^(?:−|-)?\d+(?:[.,]\d+)?\s*(?:€|EUR|Euro)\s*Rabatt$/i.test(text)) {
+    return {
+      savings: text
+        .replace(/\s*EUR\s*/i, " € ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    };
+  }
+  if (/^(?:−|-)?\d+(?:[.,]\d+)?\s*%\s*Rabatt$/i.test(text)) {
+    return { savings: text };
+  }
+  if (/^(?:−|-)\d+(?:[.,]\d+)?\s*%$/.test(text)) {
+    return { savings: text };
+  }
+  if (/^\d+(?:[.,]\d+)?\s*(?:€|EUR|Euro)\s*sparen$/i.test(text)) {
+    return {
+      savings: text
+        .replace(/\s*EUR\s*/i, " € ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    };
+  }
+
+  return { fallback: text };
 }
 
 /**
@@ -44,39 +107,85 @@ export function formatCampaignPromoCallout(input: {
   const nBadge = badge ? normalizePromoText(badge) : "";
   const nDisc = disclaimer ? normalizePromoText(disclaimer) : "";
 
+  let title = "";
+  let detail: string | undefined;
+
   if (name && badge) {
     if (nName === nBadge || nBadge.includes(nName)) {
-      return { title: badge };
+      title = badge;
+    } else if (nName.includes(nBadge)) {
+      title = name;
+    } else {
+      title = name;
+      detail = badge;
     }
-    if (nName.includes(nBadge)) {
-      return { title: name };
-    }
-    return { title: name, detail: badge };
-  }
-
-  if (name && disclaimer) {
-    // Badge already carries the threshold — skip “beim Kauf von N Tickets”.
-    if (nDisc.includes("beim kauf") || nDisc.includes("ab ") || /\d+\s*tickets?/.test(nDisc)) {
-      // Keep as soft detail only when there is no stronger badge line.
-      return { title: name, detail: disclaimer };
-    }
-    return { title: name, detail: disclaimer };
-  }
-
-  if (badge && disclaimer) {
-    // Disclaimer repeats the ticket threshold already in the badge.
+  } else if (name && disclaimer) {
+    title = name;
+    detail = disclaimer;
+  } else if (badge && disclaimer) {
     if (
       /\d+\s*tickets?/i.test(badge) &&
       (nDisc.includes("beim kauf") || /\d+\s*tickets?/.test(nDisc))
     ) {
-      return { title: badge };
+      title = badge;
+    } else {
+      title = badge;
+      detail = disclaimer;
     }
-    return { title: badge, detail: disclaimer };
+  } else if (badge) {
+    title = badge;
+  } else if (name) {
+    title = name;
+  } else {
+    title = disclaimer;
   }
 
-  if (badge) return { title: badge };
-  if (name) return { title: name };
-  return { title: disclaimer };
+  const benefitSource =
+    detail && /(?:€|EUR|%|Rabatt|sparen)/i.test(detail)
+      ? detail
+      : /(?:€|EUR|%|Rabatt|sparen)/i.test(title) && (!name || title !== name)
+        ? title
+        : detail || "";
+
+  const parsed = benefitSource ? parsePromoBenefitLine(benefitSource) : {};
+
+  if (parsed.savings) {
+    const resolvedName =
+      name && normalizePromoText(name) !== normalizePromoText(parsed.savings)
+        ? name
+        : undefined;
+
+    let condition = parsed.condition;
+    if (
+      !condition &&
+      disclaimer &&
+      !/\d+\s*tickets?/i.test(benefitSource) &&
+      (nDisc.includes("beim kauf") || /\d+\s*tickets?/.test(nDisc))
+    ) {
+      condition = disclaimer;
+    }
+
+    return {
+      title: resolvedName || parsed.savings,
+      detail: [parsed.savings, condition].filter(Boolean).join(" "),
+      name: resolvedName,
+      savings: parsed.savings,
+      condition,
+    };
+  }
+
+  if (name && (detail || (badge && title === name))) {
+    if (!detail && badge && title === name) {
+      return { title: name };
+    }
+    return {
+      title: name,
+      detail,
+      name,
+    };
+  }
+
+  return { title, detail };
 }
 
 export const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;

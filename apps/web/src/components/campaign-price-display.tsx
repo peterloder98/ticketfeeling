@@ -6,7 +6,7 @@ import {
   formatCampaignCountdown,
   formatCampaignPromoCallout,
 } from "@/lib/commerce/campaign-price-ui";
-import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
+import { PromotionBadge } from "@/components/promotion-badge";
 import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 export { discountBadgeLabel, formatCampaignCountdown };
@@ -33,8 +33,8 @@ type Props = {
 /**
  * Campaign / accessibility discounted price.
  *
- * Unit Aktionspreis: strike + coral sale price.
- * Order/unit promo messaging: one teal callout (name + benefit), not three weak lines.
+ * Unit Aktionspreis: strike + action-accent sale price.
+ * Order/unit promo messaging: one PromotionBadge (name + savings hierarchy).
  * Live Aktion/Event countdown is rendered once via EventPageUrgencyCountdown.
  */
 export function CampaignPriceDisplay({
@@ -64,7 +64,7 @@ export function CampaignPriceDisplay({
     size === "lg" ? "text-xl" : size === "sm" ? "text-sm" : "text-lg";
   const strikeSize = size === "sm" ? "text-xs" : "text-sm";
   const feeBesidePrice = Boolean(feeNote) && !inline && size !== "sm";
-  const calloutSize = size === "sm" ? "sm" : "md";
+  const badgeVariant = size === "sm" ? "compact" : "standard";
 
   return (
     <div className={className}>
@@ -78,7 +78,7 @@ export function CampaignPriceDisplay({
         ) : null}
         <span
           className={`font-bold tabular-nums ${
-            showStrike ? "text-[var(--tf-sale)]" : "text-[var(--tf-navy)]"
+            showStrike ? "text-[var(--tf-action-accent)]" : "text-[var(--tf-navy)]"
           }`}
         >
           {formatEuroFromCents(unitCents)}
@@ -92,9 +92,10 @@ export function CampaignPriceDisplay({
         ) : null}
       </div>
       {callout ? (
-        <CampaignPromoCallout
+        <PromotionBadge
+          type="promotion"
+          variant={badgeVariant}
           parts={callout}
-          size={calloutSize}
           className="mt-1.5"
         />
       ) : null}

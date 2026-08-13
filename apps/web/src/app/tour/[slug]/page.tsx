@@ -4,7 +4,7 @@ import { Calendar, MapPin } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { ExpandableText } from "@/components/expandable-text";
 import { ResponsiveImage } from "@/components/responsive-image";
-import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
+import { PromotionBadge } from "@/components/promotion-badge";
 import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -111,7 +111,7 @@ export default async function PublicTourPage({ params }: Props) {
                 ) : null}
                 <p
                   className={`text-lg font-semibold ${
-                    tourFrom.listPriceLabel ? "text-[var(--tf-sale)]" : "text-[var(--tf-navy)]"
+                    tourFrom.listPriceLabel ? "text-[var(--tf-action-accent)]" : "text-[var(--tf-navy)]"
                   }`}
                 >
                   {tourFrom.priceLabel}
@@ -123,7 +123,9 @@ export default async function PublicTourPage({ params }: Props) {
                 </p>
               </div>
               {tourFrom.saleBadge || tourFrom.campaignName || tourFrom.saleDisclaimer ? (
-                <CampaignPromoCallout
+                <PromotionBadge
+                  type="promotion"
+                  variant="standard"
                   campaignName={tourFrom.campaignName}
                   saleBadge={tourFrom.saleBadge}
                   saleDisclaimer={tourFrom.saleDisclaimer}
@@ -193,11 +195,12 @@ export default async function PublicTourPage({ params }: Props) {
                       eventFrom?.campaignName ||
                       eventFrom?.saleDisclaimer ? (
                         <div className="pl-6">
-                          <CampaignPromoCallout
+                          <PromotionBadge
+                            type="promotion"
+                            variant="compact"
                             campaignName={eventFrom.campaignName}
                             saleBadge={eventFrom.saleBadge}
                             saleDisclaimer={eventFrom.saleDisclaimer}
-                            size="sm"
                           />
                         </div>
                       ) : null}
@@ -207,7 +210,7 @@ export default async function PublicTourPage({ params }: Props) {
                         <span
                           className={`text-sm font-semibold tabular-nums ${
                             eventFrom.listPriceLabel
-                              ? "text-[var(--tf-sale)]"
+                              ? "text-[var(--tf-action-accent)]"
                               : "text-[var(--tf-navy)]"
                           }`}
                         >

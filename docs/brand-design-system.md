@@ -11,7 +11,12 @@ Definiert in `apps/web/src/app/globals.css`:
 | `--tf-navy` | `#0F2747` | Primär, Typo, Vertrauen |
 | `--tf-teal` | `#14B8A6` | Buttons, Links, aktiv |
 | `--tf-gold` / `--vip` | `#D6A642` | Nur VIP/Premium |
-| `--tf-sale` | `#E45A4A` | Nur Aktions-/Rabatt-Badges (nicht CTA, nicht VIP) |
+| `--tf-action-bg` | `#FFF4D6` | Aktions-Badge Fläche |
+| `--tf-action-border` | `#F2C96D` | Aktions-Badge Rahmen |
+| `--tf-action-accent` | `#B87500` | Ersparnis / Sale-Preis |
+| `--tf-action-text` | `#0F2747` | Aktions-Badge Text |
+| `--tf-sale` | → `--tf-action-accent` | Legacy-Alias |
+| `--tf-availability-*` | cool navy tint | Echte Knappheit (kein Fehler-Rot) |
 | `--tf-bg` | `#F8FAFC` | Seite |
 | `--tf-card` | `#FFFFFF` | Cards |
 | `--tf-text` | `#0B1421` | Fließtext |
@@ -33,6 +38,7 @@ Nur **Inter** (`next/font`). Weights: 400 / 500 / 600 / 700.
 | `.tf-input` | Radius 14, großer Touch |
 | `BrandLogo` | Full: Mark-Raster `/brand/icon-tf.png` + Inter-Wortmarke (`tone="dark"` für Navy); Mark/App: `/brand/icon-tf.png` |
 | `EventCard` | Event-Kachel mit Bild, Datum, Ort, CTA |
+| `PromotionBadge` | Aktion (warm amber) / Status (teal|neutral|VIP) / Availability — Varianten `compact` \| `standard` \| `checkout` |
 
 ## Logo-Regeln
 

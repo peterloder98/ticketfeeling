@@ -104,7 +104,7 @@ export function ForgottenTicketForm() {
         </p>
       </div>
       {formError ? (
-        <p className="text-sm text-[var(--tf-sale)]" role="alert">
+        <p className="text-sm text-[var(--tf-danger)]" role="alert">
           {formError}
         </p>
       ) : null}

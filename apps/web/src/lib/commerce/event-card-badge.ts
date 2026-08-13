@@ -1,6 +1,10 @@
+export type EventCardBadgeKind = "promotion" | "status" | "availability";
+
 export type EventCardBadge = {
   label: string;
-  className: string;
+  kind: EventCardBadgeKind;
+  /** Status tone hint for PromotionBadge */
+  statusTone?: "teal" | "neutral" | "vip";
 };
 
 /**
@@ -35,14 +39,11 @@ export function resolveEventCardBadge(input: {
     status === "sold_out" ||
     (remainingTickets != null && remainingTickets <= 0 && (capacity ?? 0) > 0)
   ) {
-    return { label: "Ausverkauft", className: "bg-white text-[var(--tf-navy)]" };
+    return { label: "Ausverkauft", kind: "status", statusTone: "neutral" };
   }
 
   if (showRemainingAvailability && vipNearlySoldOut) {
-    return {
-      label: "VIP fast ausverkauft",
-      className: "bg-[var(--tf-gold)] text-[var(--tf-navy)]",
-    };
+    return { label: "VIP fast ausverkauft", kind: "availability" };
   }
 
   if (
@@ -53,13 +54,10 @@ export function resolveEventCardBadge(input: {
   ) {
     const ratio = remainingTickets / capacity;
     if (remainingTickets <= 25 || ratio <= 0.12) {
-      return { label: "Fast ausverkauft", className: "bg-[#fff4e8] text-[#9a4d0a]" };
+      return { label: "Fast ausverkauft", kind: "availability" };
     }
     if (remainingTickets <= 80 || ratio <= 0.35) {
-      return {
-        label: "Nur noch wenige Tickets",
-        className: "bg-[rgba(20,184,166,0.95)] text-white",
-      };
+      return { label: "Nur noch wenige Tickets", kind: "availability" };
     }
   }
 
@@ -73,18 +71,15 @@ export function resolveEventCardBadge(input: {
       !/€/.test(short)
         ? short
         : "Aktion";
-    return { label, className: "bg-[var(--tf-sale)] text-white" };
+    return { label, kind: "promotion" };
   }
 
   if ((dateCount ?? 1) > 1) {
-    return {
-      label: "Mehrere Termine",
-      className: "bg-white text-[var(--tf-navy)]",
-    };
+    return { label: "Mehrere Termine", kind: "status", statusTone: "teal" };
   }
 
   if (status === "announcement") {
-    return { label: "Neu", className: "bg-white text-[var(--tf-navy)]" };
+    return { label: "Neu", kind: "status", statusTone: "teal" };
   }
 
   return null;

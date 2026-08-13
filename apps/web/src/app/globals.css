@@ -9,9 +9,23 @@
   --tf-navy: #0f2747;
   --tf-teal: #14b8a6;
   --tf-teal-hover: #0d9488;
+  /* VIP / premium only — never on primary CTAs */
   --tf-gold: #d6a642;
-  /* Sale / campaign badge only — not VIP gold, not CTA teal, not purple */
-  --tf-sale: #e45a4a;
+  /*
+   * Action / promotion (warm amber–champagne) — semantic: Navy=trust, Teal=CTA, Warm-gold=savings.
+   * Not VIP gold, not CTA teal, not SALE-orange / neon / aggressive red.
+   */
+  --tf-action-bg: #fff4d6;
+  --tf-action-border: #f2c96d;
+  --tf-action-accent: #b87500;
+  --tf-action-text: #0f2747;
+  /* Sale price / legacy alias → action accent */
+  --tf-sale: var(--tf-action-accent);
+  /* Real scarcity only — cool navy urgency, not error red, not action gold */
+  --tf-availability-bg: #eef4fb;
+  --tf-availability-border: #b8c9de;
+  --tf-availability-text: #0f2747;
+  --tf-availability-accent: #1e3a5f;
 
   /* Semantic */
   --tf-success: #22c55e;
@@ -75,6 +89,14 @@ html.dark {
   --tf-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
   --tf-shadow-hover: 0 16px 40px rgba(0, 0, 0, 0.45);
   --tf-navy: #e8eef7;
+  --tf-action-bg: rgba(184, 117, 0, 0.22);
+  --tf-action-border: rgba(242, 201, 109, 0.45);
+  --tf-action-accent: #f0c96a;
+  --tf-action-text: #fff8e8;
+  --tf-availability-bg: rgba(184, 201, 222, 0.16);
+  --tf-availability-border: rgba(184, 201, 222, 0.35);
+  --tf-availability-text: #e8eef7;
+  --tf-availability-accent: #c5d4e8;
   --gold-soft: #ffffff;
   --ink: var(--tf-text);
   --muted: var(--tf-text-secondary);
@@ -289,31 +311,89 @@ html.dark .tf-badge-vip {
   color: var(--tf-teal-hover);
 }
 
-/* Campaign / Rabatt — coral for attention; navy text on soft tint. Not VIP gold. */
+/* Campaign / Rabatt — warm action amber (not VIP gold, not CTA teal) */
 .tf-badge-sale {
-  background: rgba(228, 90, 74, 0.16);
-  color: #b33a2e;
+  background: var(--tf-action-bg);
+  color: var(--tf-action-accent);
+  border: 1px solid var(--tf-action-border);
   font-weight: 600;
 }
 
-html.dark .tf-badge-sale {
-  background: rgba(228, 90, 74, 0.22);
-  color: #ff8f82;
-}
-
-/* Consolidated Aktion callout — teal tint, one block instead of stacked micro-lines */
+/* @deprecated Prefer <PromotionBadge /> — kept for seat-map / legacy chips */
 .tf-promo-callout {
   display: block;
   width: fit-content;
   max-width: 100%;
   border-radius: 10px;
-  background: rgba(20, 184, 166, 0.14);
-  border: 1px solid rgba(20, 184, 166, 0.28);
+  background: var(--tf-action-bg);
+  border: 1px solid var(--tf-action-border);
+  color: var(--tf-action-text);
 }
 
-html.dark .tf-promo-callout {
-  background: rgba(20, 184, 166, 0.18);
-  border-color: rgba(20, 184, 166, 0.35);
+/* Central PromotionBadge surfaces */
+.tf-promotion-badge {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.tf-promotion-badge--promotion {
+  background: var(--tf-action-bg);
+  border: 1px solid var(--tf-action-border);
+  color: var(--tf-action-text);
+}
+
+.tf-promotion-badge--status {
+  background: rgba(20, 184, 166, 0.12);
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  color: var(--tf-navy);
+}
+
+.tf-promotion-badge--status-vip {
+  background: rgba(214, 166, 66, 0.15);
+  border: 1px solid rgba(214, 166, 66, 0.35);
+  color: #a87b1a;
+}
+
+html.dark .tf-promotion-badge--status-vip {
+  color: var(--tf-gold);
+}
+
+.tf-promotion-badge--status-neutral {
+  background: var(--tf-bg-elevated);
+  border: 1px solid var(--tf-line);
+  color: var(--tf-navy);
+}
+
+.tf-promotion-badge--availability {
+  background: var(--tf-availability-bg);
+  border: 1px solid var(--tf-availability-border);
+  color: var(--tf-availability-text);
+}
+
+.tf-promotion-badge--checkout {
+  background: transparent;
+  border: none;
+  color: var(--tf-action-accent);
+  border-radius: 0;
+  padding: 0;
+}
+
+.tf-promotion-badge__savings {
+  color: var(--tf-action-accent);
+  font-weight: 700;
+}
+
+.tf-promotion-badge__name {
+  font-weight: 600;
+  color: var(--tf-action-text);
+}
+
+.tf-promotion-badge__condition {
+  font-weight: 500;
+  color: var(--tf-action-text);
 }
 
 /* Typography helpers */

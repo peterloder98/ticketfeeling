@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { formatEuroFromCents } from "@/lib/money";
 import { FeeInfoDialog, FeeInfoIconButton } from "@/components/fee-info-dialog";
+import { PromotionBadge } from "@/components/promotion-badge";
 
 type Props = {
   ticketsGrossCents: number;
@@ -50,10 +51,12 @@ export function CartOrderSummary({
       </p>
       {discountCents > 0 ? (
         <div className="space-y-0.5">
-          <p className="flex justify-between gap-3 font-medium text-[var(--tf-teal-hover)]">
-            <span>{discountLabel?.trim() || "Rabatt"}</span>
-            <span className="tabular-nums">−{formatEuroFromCents(discountCents)}</span>
-          </p>
+          <PromotionBadge
+            type="promotion"
+            variant="checkout"
+            campaignName={discountLabel?.trim() || "Rabatt"}
+            amountLabel={`−${formatEuroFromCents(discountCents)}`}
+          />
           {orderCampaignDisclaimer ? (
             <p className="text-[11px] font-normal text-[var(--tf-text-secondary)]">
               {orderCampaignDisclaimer}

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
-import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
+import { PromotionBadge } from "@/components/promotion-badge";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 import { resolveEventCardBadge } from "@/lib/commerce/event-card-badge";
@@ -116,11 +116,13 @@ export function EventCard({
           fallback="event"
         />
         {badge ? (
-          <span
-            className={`absolute left-2.5 top-2.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${badge.className}`}
-          >
-            {badge.label}
-          </span>
+          <PromotionBadge
+            type={badge.kind}
+            variant="compact"
+            label={badge.label}
+            statusTone={badge.statusTone}
+            className="absolute left-2.5 top-2.5"
+          />
         ) : null}
       </div>
 
@@ -178,7 +180,7 @@ export function EventCard({
                 <span className="text-xs font-normal tabular-nums text-[var(--tf-text-secondary)] line-through">
                   {event.listPriceLabel}
                 </span>
-                <span className="text-sm font-bold tabular-nums text-[var(--tf-sale)]">
+                <span className="text-sm font-bold tabular-nums text-[var(--tf-action-accent)]">
                   {event.priceLabel}
                 </span>
               </div>
@@ -188,11 +190,12 @@ export function EventCard({
               </span>
             )}
             {hasPromo ? (
-              <CampaignPromoCallout
+              <PromotionBadge
+                type="promotion"
+                variant="compact"
                 campaignName={event.campaignName}
                 saleBadge={event.saleBadge}
                 saleDisclaimer={event.saleDisclaimer}
-                size="sm"
                 className="mt-1.5"
               />
             ) : null}
