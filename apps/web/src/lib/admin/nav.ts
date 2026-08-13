@@ -64,7 +64,7 @@ export const ADMIN_SUBNAV = {
       description: "Einladen · Rolle Vorverkaufsstelle · nur Tageskasse",
     },
     { href: "/scanner", label: "Einlass-Scanner", description: "Check-in vor Ort" },
-    { href: "/admin/discounts", label: "Rabatte", description: "Codes & Aktionen" },
+    { href: "/admin/discounts", label: "Codes & Gutscheine", description: "Rabattcodes & Geschenkkarten" },
   ] satisfies AdminSubNavItem[],
   katalog: [
     { href: "/admin/katalog", label: "Übersicht", description: "Katalog & Stammdaten" },

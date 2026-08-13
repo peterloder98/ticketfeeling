@@ -175,6 +175,21 @@ export default async function AdminDiscountsPage() {
       </div>
       <AdminSubnav items={ADMIN_SUBNAV.verkauf} />
 
+      <div className="rounded-xl border border-[rgba(20,184,166,0.35)] bg-[rgba(20,184,166,0.08)] px-4 py-3 text-sm text-[var(--tf-navy)]">
+        <p className="font-semibold">Preisaktion / Rabattaktion (ohne Code)?</p>
+        <p className="mt-1 text-[var(--tf-text-secondary)]">
+          Frühbucher, Black Week usw. legst du am{" "}
+          <a href="/admin/events" className="font-medium text-[var(--tf-teal)] hover:underline">
+            Event
+          </a>{" "}
+          oder an der{" "}
+          <a href="/admin/tours" className="font-medium text-[var(--tf-teal)] hover:underline">
+            Tour
+          </a>{" "}
+          an — Abschnitt „Rabatte &amp; Aktionen“ / „Preisaktionen“. Dort wählst du Preiskategorien
+          und Tour-Termine.
+        </p>
+      </div>
       {canWrite ? (
         <div className="grid gap-6 lg:grid-cols-2">
           <form action={createDiscount} className="tf-card grid gap-3 text-sm">

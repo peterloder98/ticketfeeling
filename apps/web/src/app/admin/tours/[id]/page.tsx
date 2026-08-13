@@ -10,6 +10,7 @@ import { updateTourAction } from "@/app/admin/tours/actions";
 import { CoverImageField } from "@/components/admin/cover-image-field";
 import { SmartDateInput } from "@/components/admin/smart-date-input";
 import { TourLineupForm } from "@/components/admin/tour-lineup-form";
+import { EventDiscountsPanel } from "@/components/admin/event-discounts-panel";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
 import { eventInheritsTourArtists } from "@/lib/commerce/effective-event-artists";
 
@@ -66,7 +67,13 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
       },
       events: {
         orderBy: { eventStartsAt: "asc" },
-        include: { location: { select: { name: true, city: true } } },
+        include: {
+          location: { select: { name: true, city: true } },
+          ticketCategories: {
+            orderBy: { sortOrder: "asc" },
+            select: { id: true, name: true, priceGrossCents: true },
+          },
+        },
       },
     },
   });
@@ -99,6 +106,26 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
     headerImageUrl: link.artist.headerImageUrl ?? "",
     detailsOpen: false,
   }));
+
+  const primaryTourEvent =
+    tour.events.find((e) => e.ticketCategories.length > 0) ?? tour.events[0] ?? null;
+  const tourDiscountSiblings = primaryTourEvent
+    ? tour.events
+        .filter((e) => e.id !== primaryTourEvent.id)
+        .map((s) => ({
+          id: s.id,
+          name: s.name,
+          eventStartsAt: s.eventStartsAt?.toISOString() ?? null,
+          locationName: s.location?.name ?? null,
+          city: s.location?.city ?? null,
+        }))
+    : [];
+  const tourDiscountCategories =
+    primaryTourEvent?.ticketCategories.map((c) => ({
+      id: c.id,
+      name: c.name,
+      priceGrossCents: c.priceGrossCents,
+    })) ?? [];
 
   return (
     <div className="space-y-6">
@@ -329,6 +356,23 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
           </p>
         ) : null}
       </section>
+
+      {primaryTourEvent ? (
+        <EventDiscountsPanel
+          eventId={primaryTourEvent.id}
+          canWrite={canWrite}
+          eventEndsAt={
+            primaryTourEvent.eventEndsAt?.toISOString() ??
+            primaryTourEvent.eventStartsAt?.toISOString() ??
+            null
+          }
+          tourId={tour.id}
+          initialCategories={tourDiscountCategories}
+          initialTourSiblings={tourDiscountSiblings}
+          defaultSelectAllTour
+          heading="Preisaktionen für die Tour"
+        />
+      ) : null}
     </div>
   );
 }

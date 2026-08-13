@@ -96,20 +96,33 @@ export function EventDiscountsPanel({
   eventId,
   canWrite,
   eventEndsAt: eventEndsAtProp,
+  tourId: tourIdProp = null,
+  initialCategories,
+  initialTourSiblings,
+  /** When true (e.g. Tour admin), new Aktionen default to all tour dates. */
+  defaultSelectAllTour = false,
+  heading = "Rabatte & Aktionen",
 }: {
   eventId: string;
   canWrite: boolean;
   /** ISO or null — preferred from server; API also returns it on load. */
   eventEndsAt?: string | null;
+  /** When set, Tour-Termine scope UI is always shown (even before API returns). */
+  tourId?: string | null;
+  initialCategories?: CategoryOpt[];
+  initialTourSiblings?: TourSibling[];
+  defaultSelectAllTour?: boolean;
+  heading?: string;
 }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [okMsg, setOkMsg] = useState<string | null>(null);
   const [warnMsg, setWarnMsg] = useState<string | null>(null);
-  const [categories, setCategories] = useState<CategoryOpt[]>([]);
+  const [categories, setCategories] = useState<CategoryOpt[]>(initialCategories ?? []);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
-  const [tourSiblings, setTourSiblings] = useState<TourSibling[]>([]);
+  const [tourSiblings, setTourSiblings] = useState<TourSibling[]>(initialTourSiblings ?? []);
+  const [tourId, setTourId] = useState<string | null>(tourIdProp ?? null);
   const [eventEndsAt, setEventEndsAt] = useState<string | null>(eventEndsAtProp ?? null);
   const [access, setAccess] = useState<AccessibilityState>({
     enabled: false,
@@ -122,6 +135,7 @@ export function EventDiscountsPanel({
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
   const [tourScopeMode, setTourScopeMode] = useState<"this" | "multi">("this");
   const [selectedSiblingIds, setSelectedSiblingIds] = useState<string[]>([]);
+  const showTourScope = Boolean(tourId) || tourSiblings.length > 0;
 
   const eventBoundDate = (() => {
     if (!eventEndsAt) return null;
@@ -189,7 +203,11 @@ export function EventDiscountsPanel({
       const res = await fetch(`/api/v1/admin/events/campaigns?eventId=${eventId}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error?.code ?? "LOAD_FAILED");
-      setCategories(data.categories ?? []);
+      setCategories(
+        Array.isArray(data.categories) && data.categories.length > 0
+          ? data.categories
+          : (initialCategories ?? []),
+      );
       setCampaigns(
         (data.campaigns ?? []).map((c: CampaignRow) => ({
           ...c,
@@ -204,7 +222,13 @@ export function EventDiscountsPanel({
             : [],
         })),
       );
-      setTourSiblings(Array.isArray(data.tourSiblings) ? data.tourSiblings : []);
+      const siblings = Array.isArray(data.tourSiblings) ? data.tourSiblings : [];
+      setTourSiblings(siblings.length > 0 ? siblings : (initialTourSiblings ?? []));
+      setTourId(
+        typeof data.tourId === "string" && data.tourId
+          ? data.tourId
+          : (tourIdProp ?? null),
+      );
       if (data.eventEndsAt || data.eventStartsAt) {
         setEventEndsAt(data.eventEndsAt ?? data.eventStartsAt ?? null);
       } else if (eventEndsAtProp) {
@@ -222,7 +246,7 @@ export function EventDiscountsPanel({
     } finally {
       setLoading(false);
     }
-  }, [eventId, eventEndsAtProp]);
+  }, [eventId, eventEndsAtProp, initialCategories, initialTourSiblings, tourIdProp]);
 
   useEffect(() => {
     void load();
@@ -408,7 +432,12 @@ export function EventDiscountsPanel({
       warn = CAMPAIGN_END_CLAMP_MSG;
     }
     setWarnMsg(warn);
-    resetTourScope();
+    if (defaultSelectAllTour && tourSiblings.length > 0) {
+      setTourScopeMode("multi");
+      setSelectedSiblingIds(tourSiblings.map((s) => s.id));
+    } else {
+      resetTourScope();
+    }
     setDraft({
       name: "Frühbucher",
       active: true,
@@ -422,6 +451,18 @@ export function EventDiscountsPanel({
       badgeLabel: "",
       badgeDisclaimer: "",
       categoryIds: categories.map((c) => c.id),
+    });
+  }
+
+  const allCategoryIds = categories.map((c) => c.id);
+  const allCategoriesSelected =
+    allCategoryIds.length > 0 && allCategoryIds.every((id) => draft?.categoryIds.includes(id));
+
+  function setAllCategories(checked: boolean) {
+    if (!draft) return;
+    setDraft({
+      ...draft,
+      categoryIds: checked ? allCategoryIds : [],
     });
   }
 
@@ -455,21 +496,22 @@ export function EventDiscountsPanel({
 
   if (loading) {
     return (
-      <section className="tf-card space-y-3 !p-6">
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Rabatte & Aktionen</h2>
+      <section id="preisaktionen" className="tf-card space-y-3 !p-6 scroll-mt-24">
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">{heading}</h2>
         <p className="text-sm text-[var(--tf-text-secondary)]">Laden…</p>
       </section>
     );
   }
 
   return (
-    <section className="tf-card space-y-6 !p-6">
+    <section id="preisaktionen" className="tf-card space-y-6 !p-6 scroll-mt-24">
       <div>
-        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">Rabatte & Aktionen</h2>
+        <h2 className="text-lg font-semibold text-[var(--tf-navy)]">{heading}</h2>
         <p className="mt-1 text-sm text-[var(--tf-text-secondary)]">
-          Preisaktionen ohne Gutscheincode (Frühbucher, Black Week, …). Mehrere möglich — nicht
+          Preisaktionen ohne Gutscheincode (Frühbucher, Black Week, …). Beim Anlegen wählst du
+          Preiskategorien und — bei Touren — weitere Termine. Mehrere Aktionen möglich, nicht
           kombinierbar; bei Überlappung gilt der höhere Nachlass. Ermäßigung/Rollstuhl ist optional
-          und kommt danach zusätzlich. Das Aktionsende darf nicht nach dem Eventende liegen.
+          und kommt danach zusätzlich.
         </p>
       </div>
 
@@ -656,6 +698,169 @@ export function EventDiscountsPanel({
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
                 />
               </label>
+
+              <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-[var(--tf-teal)]/35 bg-[#f0fdfa] p-4">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--tf-navy)]">
+                    1. Preiskategorien
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                    Für welche Ticketkategorien gilt diese Preisaktion?
+                  </p>
+                </div>
+                {categories.length === 0 ? (
+                  <p className="text-sm text-[var(--danger)]">
+                    Keine Preiskategorien an diesem Termin — bitte zuerst unter Saalplan /
+                    Preiskategorien anlegen.
+                  </p>
+                ) : (
+                  <>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-teal)]/40 bg-white p-3">
+                      <input
+                        type="checkbox"
+                        className="mt-1 h-4 w-4 accent-[var(--tf-teal)]"
+                        checked={allCategoriesSelected}
+                        onChange={(e) => setAllCategories(e.target.checked)}
+                      />
+                      <span>
+                        <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                          Alle Kategorien
+                        </span>
+                        <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                          {categories.length} Preiskategorie
+                          {categories.length === 1 ? "" : "n"} an diesem Termin
+                        </span>
+                      </span>
+                    </label>
+                    <div className="space-y-2 rounded-xl border border-[var(--tf-line)] bg-white p-3">
+                      {categories.map((cat) => {
+                        const on = draft.categoryIds.includes(cat.id);
+                        return (
+                          <label
+                            key={cat.id}
+                            className="flex cursor-pointer items-start gap-3 text-sm text-[var(--tf-navy)]"
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-0.5 h-4 w-4 accent-[var(--tf-teal)]"
+                              checked={on}
+                              onChange={() => {
+                                setDraft({
+                                  ...draft,
+                                  categoryIds: on
+                                    ? draft.categoryIds.filter((id) => id !== cat.id)
+                                    : [...draft.categoryIds, cat.id],
+                                });
+                              }}
+                            />
+                            <span>
+                              <span className="font-medium">{cat.name}</span>
+                              <span className="text-[var(--tf-text-secondary)]">
+                                {" "}
+                                · {formatEuroFromCents(cat.priceGrossCents)}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {showTourScope ? (
+                <div className="sm:col-span-2 space-y-3 rounded-xl border-2 border-[var(--tf-navy)]/20 bg-[#f8fafc] p-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--tf-navy)]">
+                      2. Tour-Termine
+                    </p>
+                    <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
+                      {draft.campaignId
+                        ? "Geltungsbereich dieser Aktion. Abgewählte Termine verlieren die passende Preisaktion."
+                        : "Gilt immer für diesen Termin. Weitere Tour-Termine optional mit denselben Einstellungen übernehmen."}
+                    </p>
+                  </div>
+                  {tourSiblings.length < 1 ? (
+                    <p className="text-sm text-[var(--tf-text-secondary)]">
+                      Diese Tour hat noch keine weiteren Termine — Aktion gilt nur hier.
+                    </p>
+                  ) : (
+                    <>
+                      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-teal)]/40 bg-white p-3">
+                        <input
+                          type="checkbox"
+                          className="mt-1 h-4 w-4 accent-[var(--tf-teal)]"
+                          checked={allTourSelected}
+                          onChange={(e) => setAllTourDates(e.target.checked)}
+                        />
+                        <span>
+                          <span className="block text-sm font-medium text-[var(--tf-navy)]">
+                            Alle Termine der Tour
+                          </span>
+                          <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                            Dieser Termin plus alle {tourSiblings.length} weiteren
+                          </span>
+                        </span>
+                      </label>
+                      <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-white p-3">
+                        <label className="flex items-start gap-3 text-sm text-[var(--tf-navy)] opacity-80">
+                          <input
+                            type="checkbox"
+                            className="mt-0.5 h-4 w-4 accent-[var(--tf-teal)]"
+                            checked
+                            disabled
+                            readOnly
+                          />
+                          <span>
+                            <span className="font-medium">Dieser Termin</span>
+                            <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                              Immer enthalten
+                            </span>
+                          </span>
+                        </label>
+                        <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
+                          Weitere Termine
+                        </p>
+                        {tourSiblings.map((s) => {
+                          const checked = selectedSiblingIds.includes(s.id);
+                          return (
+                            <label
+                              key={s.id}
+                              className="flex cursor-pointer items-start gap-3 text-sm text-[var(--tf-navy)]"
+                            >
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 h-4 w-4 accent-[var(--tf-teal)]"
+                                checked={checked}
+                                onChange={() => {
+                                  setSelectedSiblingIds((prev) => {
+                                    const next = checked
+                                      ? prev.filter((id) => id !== s.id)
+                                      : [...prev, s.id];
+                                    setTourScopeMode(next.length > 0 ? "multi" : "this");
+                                    return next;
+                                  });
+                                  setError(null);
+                                }}
+                              />
+                              <span>{siblingLabel(s)}</span>
+                            </label>
+                          );
+                        })}
+                        {selectedSiblingIds.length === 0 ? (
+                          <p className="text-xs text-[var(--tf-text-secondary)]">
+                            Keine weiteren Termine gewählt — Aktion nur für diesen Termin
+                            {draft.campaignId
+                              ? " (beim Speichern von anderen Tour-Terminen entfernt, falls verknüpft)."
+                              : "."}
+                          </p>
+                        ) : null}
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : null}
+
               <div className="sm:col-span-1">
                 <SmartDateTimeInput
                   label="Aktionsbeginn"
@@ -784,111 +989,6 @@ export function EventDiscountsPanel({
                 />
                 Aktiv
               </label>
-              <fieldset className="sm:col-span-2">
-                <legend className="text-sm text-[var(--tf-text-secondary)]">
-                  Preiskategorien
-                </legend>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {categories.map((cat) => {
-                    const on = draft.categoryIds.includes(cat.id);
-                    return (
-                      <label
-                        key={cat.id}
-                        className={`inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-sm ${
-                          on
-                            ? "border-[var(--tf-teal)] bg-[var(--tf-teal)]/10 text-[var(--tf-navy)]"
-                            : "border-[var(--tf-border)] text-[var(--tf-text-secondary)]"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          checked={on}
-                          onChange={() => {
-                            setDraft({
-                              ...draft,
-                              categoryIds: on
-                                ? draft.categoryIds.filter((id) => id !== cat.id)
-                                : [...draft.categoryIds, cat.id],
-                            });
-                          }}
-                        />
-                        {cat.name} · {formatEuroFromCents(cat.priceGrossCents)}
-                      </label>
-                    );
-                  })}
-                </div>
-              </fieldset>
-
-              {tourSiblings.length > 0 ? (
-                <div className="sm:col-span-2 space-y-3 rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] p-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--tf-navy)]">
-                      Tour-Termine
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                      {draft.campaignId
-                        ? "Die Auswahl ist der vollständige Geltungsbereich dieser Aktion. Abgewählte Termine verlieren die passende Preisaktion."
-                        : "Gilt immer für dieses Event. Weitere Termine optional mit denselben Einstellungen übernehmen."}
-                    </p>
-                  </div>
-                  <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-[var(--tf-teal)]/40 bg-white p-3">
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={allTourSelected}
-                      onChange={(e) => setAllTourDates(e.target.checked)}
-                    />
-                    <span>
-                      <span className="block text-sm font-medium text-[var(--tf-navy)]">
-                        Alle Termine der Tour
-                      </span>
-                      <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                        Dieses Event plus alle {tourSiblings.length} weiteren Termine
-                      </span>
-                    </span>
-                  </label>
-                  <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-white p-3">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
-                      Weitere Termine
-                    </p>
-                    {tourSiblings.map((s) => {
-                      const checked = selectedSiblingIds.includes(s.id);
-                      return (
-                        <label
-                          key={s.id}
-                          className="flex cursor-pointer items-start gap-2 text-sm text-[var(--tf-navy)]"
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={checked}
-                            onChange={() => {
-                              setSelectedSiblingIds((prev) => {
-                                const next = checked
-                                  ? prev.filter((id) => id !== s.id)
-                                  : [...prev, s.id];
-                                setTourScopeMode(next.length > 0 ? "multi" : "this");
-                                return next;
-                              });
-                              setError(null);
-                            }}
-                          />
-                          <span>{siblingLabel(s)}</span>
-                        </label>
-                      );
-                    })}
-                    {selectedSiblingIds.length === 0 ? (
-                      <p className="text-xs text-[var(--tf-text-secondary)]">
-                        Keine weiteren Termine gewählt — Aktion nur für dieses Event
-                        {draft.campaignId
-                          ? " (beim Speichern von anderen Tour-Terminen entfernt, falls verknüpft)."
-                          : "."}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-              ) : null}
             </div>
             <div className="flex flex-wrap gap-2">
               <button

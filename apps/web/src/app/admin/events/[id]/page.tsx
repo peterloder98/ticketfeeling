@@ -220,6 +220,35 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
   }
   if (!event) notFound();
 
+  const tourSiblingRows = event.tourId
+    ? await prisma.event.findMany({
+        where: {
+          organizationId: orgId,
+          tourId: event.tourId,
+          id: { not: event.id },
+        },
+        orderBy: { eventStartsAt: "asc" },
+        select: {
+          id: true,
+          name: true,
+          eventStartsAt: true,
+          location: { select: { name: true, city: true } },
+        },
+      })
+    : [];
+  const discountTourSiblings = tourSiblingRows.map((s) => ({
+    id: s.id,
+    name: s.name,
+    eventStartsAt: s.eventStartsAt?.toISOString() ?? null,
+    locationName: s.location?.name ?? null,
+    city: s.location?.city ?? null,
+  }));
+  const discountCategories = event.ticketCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    priceGrossCents: c.priceGrossCents,
+  }));
+
   const inheritsTourLineup = Boolean(
     event.tourId && event.artistsUseTourDefaults !== false,
   );
@@ -943,6 +972,9 @@ export default async function AdminEventDetailPage({ params, searchParams }: Pro
         eventId={event.id}
         canWrite={canWrite}
         eventEndsAt={event.eventEndsAt?.toISOString() ?? event.eventStartsAt?.toISOString() ?? null}
+        tourId={event.tourId}
+        initialCategories={discountCategories}
+        initialTourSiblings={discountTourSiblings}
       />
 
       <section className="tf-card !p-5">
