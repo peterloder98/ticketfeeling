@@ -47,8 +47,8 @@ const DEFAULT_DATETIME: Intl.DateTimeFormatOptions = {
 export function withoutSeconds(
   options: Intl.DateTimeFormatOptions = {},
 ): Intl.DateTimeFormatOptions {
-  const { second: _drop, ...rest } = options;
-  const opts: Intl.DateTimeFormatOptions = { ...rest };
+  const opts: Intl.DateTimeFormatOptions = { ...options };
+  delete opts.second;
 
   if (
     opts.timeStyle === "medium" ||
