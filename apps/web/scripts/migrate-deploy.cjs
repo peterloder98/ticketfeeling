@@ -77,6 +77,11 @@ const CRITICAL_FALLBACK_STATEMENTS = [
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
   `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
+  // Campaign group linking across tour siblings (migration 20260812230000)
+  // Missing column → Prisma P2022 / SERVER_ERROR on Preisaktion save.
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "campaign_group_id" UUID`,
+  `CREATE INDEX IF NOT EXISTS "event_price_campaigns_campaign_group_id_idx"
+    ON "event_price_campaigns"("campaign_group_id")`,
   // Tour details inherit + VIP extras (migration 20260812210000)
   `ALTER TABLE "tours" ADD COLUMN IF NOT EXISTS "short_description" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "details_use_tour_defaults" BOOLEAN NOT NULL DEFAULT true`,

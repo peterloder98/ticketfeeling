@@ -2,6 +2,17 @@ import type { PrismaClient } from "@prisma/client";
 import { withTimeoutFallback } from "@/lib/async-timeout";
 import { shouldSkipRuntimeDdl } from "@/lib/db/runtime-ddl";
 
+/** Columns that break Preisaktion GET/PUT when missing (Prisma P2022). */
+const CRITICAL_CAMPAIGN_COLUMNS = [
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "apply_mode" TEXT NOT NULL DEFAULT 'unit'`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
+  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "campaign_group_id" UUID`,
+  `CREATE INDEX IF NOT EXISTS "event_price_campaigns_campaign_group_id_idx"
+    ON "event_price_campaigns"("campaign_group_id")`,
+];
+
 const STATEMENTS = [
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "accessibility_discount_enabled" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "accessibility_discount_label" TEXT NOT NULL DEFAULT 'Rollstuhl / Ermäßigt'`,
@@ -38,22 +49,19 @@ const STATEMENTS = [
   `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "accessibility_selected" BOOLEAN NOT NULL DEFAULT false`,
   `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "price_campaign_id" UUID`,
   `ALTER TABLE "cart_items" ADD COLUMN IF NOT EXISTS "price_campaign_name" TEXT`,
-  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "apply_mode" TEXT NOT NULL DEFAULT 'unit'`,
-  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "min_quantity" INTEGER NOT NULL DEFAULT 1`,
-  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_label" TEXT`,
-  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "badge_disclaimer" TEXT`,
-  `ALTER TABLE "event_price_campaigns" ADD COLUMN IF NOT EXISTS "campaign_group_id" UUID`,
-  `CREATE INDEX IF NOT EXISTS "event_price_campaigns_campaign_group_id_idx"
-    ON "event_price_campaigns"("campaign_group_id")`,
+  ...CRITICAL_CAMPAIGN_COLUMNS,
 ];
 
 const ENSURE_BUDGET_MS = 5_000;
+const CRITICAL_BUDGET_MS = 3_000;
 /** Avoid information_schema probes on every event/cart click after a miss/skip. */
 const PROBE_NEGATIVE_TTL_MS = 5 * 60 * 1000;
 
 let ensurePromise: Promise<void> | null = null;
 let schemaReady = false;
 let lastIncompleteProbeAt = 0;
+let criticalPromise: Promise<void> | null = null;
+let criticalApplied = false;
 
 async function probeReady(db: PrismaClient): Promise<boolean> {
   try {
@@ -69,14 +77,51 @@ async function probeReady(db: PrismaClient): Promise<boolean> {
   }
 }
 
-/** Best-effort DDL when migrate deploy has not run yet (local/dev). Skipped in production. */
+async function runSqlBestEffort(db: PrismaClient, statements: string[]) {
+  for (const sql of statements) {
+    try {
+      await db.$executeRawUnsafe(sql);
+    } catch (err) {
+      console.warn("[ensureEventPricingSchema]", err);
+    }
+  }
+}
+
+/**
+ * Always-safe patches for campaign columns. Runs even on Vercel/production when
+ * migrate-deploy lagged — IF NOT EXISTS keeps it idempotent and cheap.
+ */
+export async function ensureCriticalCampaignColumns(db: PrismaClient) {
+  if (criticalApplied) return;
+  if (!criticalPromise) {
+    criticalPromise = (async () => {
+      await runSqlBestEffort(db, CRITICAL_CAMPAIGN_COLUMNS);
+      criticalApplied = await probeReady(db);
+      if (!criticalApplied) {
+        console.warn(
+          "[ensureEventPricingSchema] campaign_group_id still missing after critical DDL",
+        );
+      }
+    })().finally(() => {
+      criticalPromise = null;
+    });
+  }
+  await withTimeoutFallback(criticalPromise, CRITICAL_BUDGET_MS, undefined);
+}
+
+/** Best-effort DDL when migrate deploy has not run yet. Critical columns also on prod. */
 export async function ensureEventPricingSchema(db: PrismaClient) {
-  if (schemaReady) return;
-  // Production/Vercel: migrate-deploy owns schema — zero information_schema RTTs on clicks.
+  // Production path: skip heavy probes/table creates, but still land campaign columns
+  // that otherwise cause SERVER_ERROR on Preisaktion save (P2022).
   if (shouldSkipRuntimeDdl()) {
-    schemaReady = true;
+    await ensureCriticalCampaignColumns(db);
+    // Do not mark schemaReady forever if critical columns failed — retry next request.
+    if (criticalApplied) schemaReady = true;
     return;
   }
+
+  if (schemaReady) return;
+
   // Negative cache: incomplete schema must not re-probe every request (non-prod).
   if (
     !ensurePromise &&
@@ -89,16 +134,11 @@ export async function ensureEventPricingSchema(db: PrismaClient) {
     ensurePromise = (async () => {
       if (await probeReady(db)) {
         schemaReady = true;
+        criticalApplied = true;
         lastIncompleteProbeAt = 0;
         return;
       }
-      for (const sql of STATEMENTS) {
-        try {
-          await db.$executeRawUnsafe(sql);
-        } catch (err) {
-          console.warn("[ensureEventPricingSchema]", err);
-        }
-      }
+      await runSqlBestEffort(db, STATEMENTS);
       // FKs best-effort (may already exist)
       for (const sql of [
         `ALTER TABLE "event_price_campaigns" ADD CONSTRAINT "event_price_campaigns_event_id_fkey" FOREIGN KEY ("event_id") REFERENCES "events"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
@@ -112,6 +152,7 @@ export async function ensureEventPricingSchema(db: PrismaClient) {
         }
       }
       schemaReady = await probeReady(db);
+      criticalApplied = schemaReady;
       if (!schemaReady) lastIncompleteProbeAt = Date.now();
       else lastIncompleteProbeAt = 0;
     })().finally(() => {

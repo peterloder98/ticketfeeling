@@ -567,6 +567,7 @@ export function EventCategoriesPanel({
                 <form
                   className="grid grid-cols-2 gap-x-2 gap-y-2 text-sm"
                   noValidate
+                  onInvalid={(e) => e.preventDefault()}
                   onSubmit={(e) => {
                     e.preventDefault();
                     void saveCategory(e.currentTarget, cat.id);
@@ -681,6 +682,7 @@ export function EventCategoriesPanel({
           key={newFormKey}
           className="tf-card grid max-w-xl gap-3 text-sm"
           noValidate
+          onInvalid={(e) => e.preventDefault()}
           onSubmit={(e) => {
             e.preventDefault();
             void saveCategory(e.currentTarget);

@@ -296,7 +296,15 @@ export function EventDiscountsPanel({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error?.code ?? "SAVE_FAILED");
+      if (!res.ok) {
+        throw new Error(
+          data?.error?.message ||
+            (data?.error?.code === "SERVER_ERROR"
+              ? "Ermäßigung konnte nicht gespeichert werden."
+              : data?.error?.code) ||
+            "Speichern fehlgeschlagen",
+        );
+      }
       setOkMsg("Ermäßigung gespeichert.");
       await load();
     } catch (e) {
@@ -350,9 +358,17 @@ export function EventDiscountsPanel({
       });
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(
-          data?.error?.message || data?.error?.code || data?.message || "SAVE_FAILED",
-        );
+        const code = String(data?.error?.code ?? "");
+        const friendly =
+          data?.error?.message ||
+          (code === "SCHEMA_OUTDATED"
+            ? "Datenbank-Schema für Preisaktionen ist noch nicht aktuell. Bitte erneut speichern."
+            : code === "SERVER_ERROR"
+              ? "Preisaktion konnte nicht gespeichert werden. Bitte erneut versuchen."
+              : code === "VALIDATION"
+                ? "Bitte Eingaben prüfen."
+                : code || "Speichern fehlgeschlagen");
+        throw new Error(friendly);
       }
       setDraft(null);
       setTourScopeMode("this");
@@ -632,15 +648,20 @@ export function EventDiscountsPanel({
                 {access.type === "percent" ? "Nachlass %" : "Nachlass €"}
               </span>
               <input
-                type="number"
-                min={0}
-                step={access.type === "percent" ? 1 : 0.01}
+                type="text"
+                inputMode="decimal"
+                autoComplete="off"
                 className="tf-input mt-1 w-full"
-                value={access.valueDisplay}
+                value={String(access.valueDisplay)}
                 disabled={!canWrite}
-                onChange={(e) =>
-                  setAccess((a) => ({ ...a, valueDisplay: Number(e.target.value) || 0 }))
-                }
+                onChange={(e) => {
+                  const raw = e.target.value.replace(",", ".").replace(/[^\d.]/g, "");
+                  const n = Number(raw);
+                  setAccess((a) => ({
+                    ...a,
+                    valueDisplay: Number.isFinite(n) ? n : 0,
+                  }));
+                }}
               />
             </label>
             <label className="block text-sm sm:col-span-2">
@@ -744,8 +765,13 @@ export function EventDiscountsPanel({
           <form
             className="space-y-3 rounded-xl border border-[var(--tf-teal)]/40 bg-[var(--tf-surface)] p-4"
             noValidate
+            onInvalid={(e) => {
+              // Never show native „The string did not match the expected pattern.“
+              e.preventDefault();
+            }}
             onSubmit={(e) => {
               e.preventDefault();
+              e.stopPropagation();
               requestSaveCampaign();
             }}
           >
@@ -978,14 +1004,19 @@ export function EventDiscountsPanel({
                   {draft.type === "percent" ? "Nachlass %" : "Nachlass €"}
                 </span>
                 <input
-                  type="number"
-                  min={0}
-                  step={draft.type === "percent" ? 1 : 0.01}
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
                   className="tf-input mt-1 w-full"
-                  value={draft.valueDisplay}
-                  onChange={(e) =>
-                    setDraft({ ...draft, valueDisplay: Number(e.target.value) || 0 })
-                  }
+                  value={String(draft.valueDisplay)}
+                  onChange={(e) => {
+                    const raw = e.target.value.replace(",", ".").replace(/[^\d.]/g, "");
+                    const n = Number(raw);
+                    setDraft({
+                      ...draft,
+                      valueDisplay: Number.isFinite(n) ? n : 0,
+                    });
+                  }}
                 />
               </label>
               <label className="block text-sm">
@@ -1011,17 +1042,18 @@ export function EventDiscountsPanel({
               <label className="block text-sm">
                 <span className="text-[var(--tf-text-secondary)]">Mindestmenge</span>
                 <input
-                  type="number"
-                  min={1}
-                  max={99}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="off"
                   className="tf-input mt-1 w-full"
-                  value={draft.minQuantity}
-                  onChange={(e) =>
+                  value={String(draft.minQuantity)}
+                  onChange={(e) => {
+                    const n = Math.round(Number(e.target.value.replace(/\D/g, "") || "1"));
                     setDraft({
                       ...draft,
-                      minQuantity: Math.max(1, Math.round(Number(e.target.value) || 1)),
-                    })
-                  }
+                      minQuantity: Math.min(99, Math.max(1, n || 1)),
+                    });
+                  }}
                 />
               </label>
               <label className="block text-sm">
@@ -1074,10 +1106,11 @@ export function EventDiscountsPanel({
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                type="submit"
+                type="button"
                 className="tf-btn tf-btn-primary !min-h-10 text-sm"
                 disabled={saving}
                 formNoValidate
+                onClick={() => requestSaveCampaign()}
               >
                 Aktion speichern
               </button>

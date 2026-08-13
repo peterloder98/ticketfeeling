@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -7,9 +8,75 @@ import { prisma } from "@/lib/db";
 import { writeAudit } from "@/lib/audit";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { campaignsMatch } from "@/lib/commerce/campaign-sibling-match";
-import { ensureEventPricingSchema } from "@/lib/commerce/ensure-event-pricing-schema";
+import {
+  ensureCriticalCampaignColumns,
+  ensureEventPricingSchema,
+} from "@/lib/commerce/ensure-event-pricing-schema";
 import { clampCampaignToEventEnd } from "@/lib/commerce/schedule-change";
 import { parseDatetimeLocalBerlin } from "@/lib/admin/event-form";
+
+function campaignApiError(err: unknown, logLabel: string) {
+  if (err instanceof z.ZodError) {
+    const first = err.issues[0]?.message;
+    const path = err.issues[0]?.path?.join(".");
+    let message = first || "Aktion konnte nicht gespeichert werden — bitte Eingaben prüfen.";
+    if (path === "categoryIds" || path?.startsWith("categoryIds")) {
+      message = "Bitte mindestens eine gültige Preiskategorie wählen.";
+    } else if (path === "targetEventIds" || path?.startsWith("targetEventIds")) {
+      message = "Bitte mindestens einen gültigen Termin wählen.";
+    } else if (path === "eventId") {
+      message = "Event nicht gefunden oder ungültig.";
+    } else if (path === "validFrom" || path === "validUntil") {
+      message = "Bitte gültige Daten für Von und Bis angeben.";
+    }
+    return NextResponse.json(
+      {
+        error: {
+          code: "VALIDATION",
+          message,
+          details: err.flatten(),
+        },
+      },
+      { status: 400 },
+    );
+  }
+
+  const prismaCode =
+    err instanceof Prisma.PrismaClientKnownRequestError ? err.code : null;
+  const msg = err instanceof Error ? err.message : String(err);
+  const missingColumn =
+    prismaCode === "P2022" ||
+    /column .* does not exist/i.test(msg) ||
+    /campaign_group_id/i.test(msg) ||
+    /apply_mode|min_quantity/i.test(msg);
+
+  console.error(`[${logLabel}]`, err);
+
+  if (missingColumn) {
+    // Best-effort self-heal for the next retry (Neon lag after deploy).
+    void ensureCriticalCampaignColumns(prisma).catch(() => undefined);
+    return NextResponse.json(
+      {
+        error: {
+          code: "SCHEMA_OUTDATED",
+          message:
+            "Datenbank-Schema für Preisaktionen ist noch nicht aktuell. Bitte in wenigen Sekunden erneut speichern.",
+        },
+      },
+      { status: 503 },
+    );
+  }
+
+  return NextResponse.json(
+    {
+      error: {
+        code: "SERVER_ERROR",
+        message: "Preisaktion konnte nicht gespeichert werden. Bitte erneut versuchen.",
+      },
+    },
+    { status: 500 },
+  );
+}
 
 async function requireWrite() {
   const session = await getServerSession(authOptions);
@@ -55,16 +122,18 @@ const campaignInstantSchema = z.string().min(1).transform((raw, ctx) => {
 });
 
 const campaignSchema = z.object({
-  eventId: z.string().uuid(),
+  eventId: z.string().uuid({ message: "Event nicht gefunden oder ungültig." }),
   campaignId: z.string().uuid().optional(),
-  name: z.string().min(1).max(120),
+  name: z.string().min(1, "Bitte einen Namen für die Aktion angeben.").max(120),
   active: z.boolean().default(true),
   validFrom: campaignInstantSchema,
   validUntil: campaignInstantSchema,
   type: z.enum(["percent", "fixed"]),
   valueDisplay: z.number().min(0),
   channels: z.enum(["online", "box_office", "both"]).default("both"),
-  categoryIds: z.array(z.string().uuid()).min(1),
+  categoryIds: z
+    .array(z.string().uuid({ message: "Ungültige Preiskategorie." }))
+    .min(1, "Bitte mindestens eine Preiskategorie wählen."),
   /** unit = per ticket; order = once when qty ≥ minQuantity */
   applyMode: z.enum(["unit", "order"]).default("unit"),
   minQuantity: z.number().int().min(1).max(99).default(1),
@@ -77,7 +146,11 @@ const campaignSchema = z.object({
    * implicit “always include source eventId” behavior — source is included only
    * if listed. `eventId` remains the category/campaign template source.
    */
-  targetEventIds: z.array(z.string().uuid()).min(1).max(40).optional(),
+  targetEventIds: z
+    .array(z.string().uuid({ message: "Ungültiger Termin." }))
+    .min(1, "Bitte mindestens einen Termin wählen.")
+    .max(40)
+    .optional(),
 });
 
 function toStoredValue(type: "percent" | "fixed", valueDisplay: number) {
@@ -132,6 +205,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: { code: "EVENT_ID_REQUIRED" } }, { status: 400 });
   }
 
+  try {
   await ensureEventPricingSchema(prisma);
   const event = await prisma.event.findFirst({
     where: { id: eventId, organizationId: membership.organizationId },
@@ -278,6 +352,9 @@ export async function GET(request: Request) {
       };
     }),
   });
+  } catch (err) {
+    return campaignApiError(err, "campaigns GET");
+  }
 }
 
 /** PATCH accessibility offer on the event */
@@ -326,11 +403,7 @@ export async function PATCH(request: Request) {
 
     return NextResponse.json({ ok: true });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return NextResponse.json({ error: { code: "VALIDATION", details: err.flatten() } }, { status: 400 });
-    }
-    console.error("[campaigns PATCH]", err);
-    return NextResponse.json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+    return campaignApiError(err, "campaigns PATCH");
   }
 }
 
@@ -366,7 +439,15 @@ export async function PUT(request: Request) {
       body.categoryIds.includes(c.id),
     );
     if (sourceSelected.length !== body.categoryIds.length) {
-      return NextResponse.json({ error: { code: "CATEGORY_MISMATCH" } }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: {
+            code: "CATEGORY_MISMATCH",
+            message: "Eine gewählte Preiskategorie gehört nicht zu diesem Termin.",
+          },
+        },
+        { status: 400 },
+      );
     }
 
     const validFrom = body.validFrom;
@@ -752,21 +833,7 @@ export async function PUT(request: Request) {
             : undefined,
     });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      const first = err.issues[0]?.message;
-      return NextResponse.json(
-        {
-          error: {
-            code: "VALIDATION",
-            message: first || "Aktion konnte nicht gespeichert werden — bitte Eingaben prüfen.",
-            details: err.flatten(),
-          },
-        },
-        { status: 400 },
-      );
-    }
-    console.error("[campaigns PUT]", err);
-    return NextResponse.json({ error: { code: "SERVER_ERROR" } }, { status: 500 });
+    return campaignApiError(err, "campaigns PUT");
   }
 }
 
