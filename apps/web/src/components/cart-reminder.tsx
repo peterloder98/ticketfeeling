@@ -155,17 +155,28 @@ export function CartReminder() {
 
   const title =
     activeMilestone === "two"
-      ? "Nur noch 2 Minuten!"
+      ? "Noch kurze Zeit"
       : activeMilestone === "five"
-        ? "Noch 5 Minuten Reservierung"
+        ? "Reservierung läuft"
         : `Noch ${itemCount} ${itemCount === 1 ? "Ticket" : "Tickets"} im Warenkorb`;
 
   const body =
     activeMilestone === "two"
-      ? "Deine Tickets laufen gleich ab. Schau unbedingt nochmal in den Warenkorb und schließe den Kauf ab."
+      ? "Am besten bald abschließen — im Warenkorb sind deine Tickets noch für dich gesichert."
       : activeMilestone === "five"
-        ? "Halbzeit — im Warenkorb wartet noch etwas auf dich. Zurückkehren und jetzt bestellen?"
+        ? "Im Warenkorb wartet noch etwas auf dich. Zurückkehren und bestellen?"
         : `${grossFormatted ? `${grossFormatted} · ` : ""}Weiter shoppen oder jetzt zur Kasse?`;
+
+  const milestoneTone =
+    activeMilestone === "two" || activeMilestone === "five"
+      ? {
+          shell: "border-[var(--tf-action-border)]",
+          icon: "bg-[var(--tf-action-bg)] text-[var(--tf-action-accent)]",
+        }
+      : {
+          shell: "border-[var(--tf-line)]",
+          icon: "bg-[rgba(20,184,166,0.12)] text-[var(--tf-teal)]",
+        };
 
   return (
     <>
@@ -198,22 +209,10 @@ export function CartReminder() {
           aria-modal="false"
         >
           <div
-            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border bg-white p-4 shadow-[0_12px_40px_rgba(15,39,71,0.18)] ${
-              activeMilestone === "two"
-                ? "border-[#fca5a5] ring-2 ring-[#fecaca]"
-                : activeMilestone === "five"
-                  ? "border-[#fdba74] ring-2 ring-[#fed7aa]"
-                  : "border-[var(--tf-line)]"
-            }`}
+            className={`pointer-events-auto flex items-start gap-3 rounded-2xl border bg-white p-4 shadow-[0_12px_40px_rgba(15,39,71,0.18)] ${milestoneTone.shell}`}
           >
             <div
-              className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                activeMilestone === "two"
-                  ? "bg-[#fef2f2] text-[#b91c1c]"
-                  : activeMilestone === "five"
-                    ? "bg-[#fff7ed] text-[#c2410c]"
-                    : "bg-[rgba(20,184,166,0.12)] text-[var(--tf-teal)]"
-              }`}
+              className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${milestoneTone.icon}`}
             >
               {activeMilestone === "soft" ? (
                 <ShoppingCart className="h-5 w-5" strokeWidth={2} />
@@ -225,15 +224,7 @@ export function CartReminder() {
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="text-sm font-semibold text-[var(--tf-navy)]">{title}</p>
                 {countdown && !countdown.expired ? (
-                  <p
-                    className={`text-lg font-bold tabular-nums ${
-                      countdown.critical
-                        ? "text-[#b91c1c]"
-                        : countdown.urgent
-                          ? "text-[#c2410c]"
-                          : "text-[var(--tf-navy)]"
-                    }`}
-                  >
+                  <p className="text-lg font-bold tabular-nums text-[var(--tf-navy)]">
                     {countdown.label}
                   </p>
                 ) : null}

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { ExpandableText } from "@/components/expandable-text";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { PromotionBadge } from "@/components/promotion-badge";
+import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 import { formatEuroFromCents } from "@/lib/money";
 import { resolveActivePlatformFeeConfig } from "@/lib/commerce/platform-fee";
 import { resolveEventCoverUrl } from "@/lib/commerce/event-cover";
@@ -115,13 +116,16 @@ export default async function PublicTourPage({ params }: Props) {
                   }`}
                 >
                   {tourFrom.priceLabel}
-                  {tourFrom.surchargeLabel ? (
-                    <span className="ml-2 text-sm font-normal text-[var(--tf-text-secondary)]">
-                      {tourFrom.surchargeLabel}
-                    </span>
-                  ) : null}
                 </p>
               </div>
+              {tourFrom.surchargeLabel ? (
+                <FeeSurchargeNote
+                  note={tourFrom.surchargeLabel}
+                  feePercentageBasisPoints={feeConfig.percentageBasisPoints}
+                  className="mt-1"
+                  textClassName="text-sm font-normal text-[var(--tf-text-secondary)]"
+                />
+              ) : null}
               {tourFrom.saleBadge || tourFrom.campaignName || tourFrom.saleDisclaimer ? (
                 <PromotionBadge
                   type="promotion"

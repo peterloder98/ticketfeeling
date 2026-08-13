@@ -171,7 +171,7 @@ function CountdownFace({
 
   const accent =
     kind === "campaign"
-      ? "border-[rgba(228,90,74,0.35)] bg-[rgba(228,90,74,0.08)]"
+      ? "border-[var(--tf-action-border)] bg-[var(--tf-action-bg)]"
       : "border-[rgba(20,184,166,0.4)] bg-white";
 
   return (
