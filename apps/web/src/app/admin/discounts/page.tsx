@@ -1,4 +1,5 @@
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -179,13 +180,13 @@ export default async function AdminDiscountsPage() {
         <p className="font-semibold">Preisaktion / Rabattaktion (ohne Code)?</p>
         <p className="mt-1 text-[var(--tf-text-secondary)]">
           Frühbucher, Black Week usw. legst du am{" "}
-          <a href="/admin/events" className="font-medium text-[var(--tf-teal)] hover:underline">
+          <Link href="/admin/events" className="font-medium text-[var(--tf-teal)] hover:underline">
             Event
-          </a>{" "}
+          </Link>{" "}
           oder an der{" "}
-          <a href="/admin/tours" className="font-medium text-[var(--tf-teal)] hover:underline">
+          <Link href="/admin/tours" className="font-medium text-[var(--tf-teal)] hover:underline">
             Tour
-          </a>{" "}
+          </Link>{" "}
           an — Abschnitt „Rabatte &amp; Aktionen“ / „Preisaktionen“. Dort wählst du Preiskategorien
           und Tour-Termine.
         </p>
