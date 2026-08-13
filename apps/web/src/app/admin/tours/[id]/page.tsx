@@ -109,17 +109,13 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
 
   const primaryTourEvent =
     tour.events.find((e) => e.ticketCategories.length > 0) ?? tour.events[0] ?? null;
-  const tourDiscountSiblings = primaryTourEvent
-    ? tour.events
-        .filter((e) => e.id !== primaryTourEvent.id)
-        .map((s) => ({
-          id: s.id,
-          name: s.name,
-          eventStartsAt: s.eventStartsAt?.toISOString() ?? null,
-          locationName: s.location?.name ?? null,
-          city: s.location?.city ?? null,
-        }))
-    : [];
+  const tourDiscountSiblings = tour.events.map((s) => ({
+    id: s.id,
+    name: s.name,
+    eventStartsAt: s.eventStartsAt?.toISOString() ?? null,
+    locationName: s.location?.name ?? null,
+    city: s.location?.city ?? null,
+  }));
   const tourDiscountCategories =
     primaryTourEvent?.ticketCategories.map((c) => ({
       id: c.id,
@@ -369,6 +365,7 @@ export default async function AdminTourDetailPage({ params, searchParams }: Prop
           tourId={tour.id}
           initialCategories={tourDiscountCategories}
           initialTourSiblings={tourDiscountSiblings}
+          context="tour"
           defaultSelectAllTour
           heading="Preisaktionen für die Tour"
         />

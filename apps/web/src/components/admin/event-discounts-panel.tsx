@@ -99,6 +99,11 @@ export function EventDiscountsPanel({
   tourId: tourIdProp = null,
   initialCategories,
   initialTourSiblings,
+  /**
+   * `tour` = Tour admin (no anchored “dieser Termin”).
+   * `event` = Event admin (current date always included + optional siblings).
+   */
+  context = "event",
   /** When true (e.g. Tour admin), new Aktionen default to all tour dates. */
   defaultSelectAllTour = false,
   heading = "Rabatte & Aktionen",
@@ -111,9 +116,11 @@ export function EventDiscountsPanel({
   tourId?: string | null;
   initialCategories?: CategoryOpt[];
   initialTourSiblings?: TourSibling[];
+  context?: "event" | "tour";
   defaultSelectAllTour?: boolean;
   heading?: string;
 }) {
+  const isTourContext = context === "tour";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +142,7 @@ export function EventDiscountsPanel({
   const [draft, setDraft] = useState<CampaignDraft | null>(null);
   const [tourScopeMode, setTourScopeMode] = useState<"this" | "multi">("this");
   const [selectedSiblingIds, setSelectedSiblingIds] = useState<string[]>([]);
-  const showTourScope = Boolean(tourId) || tourSiblings.length > 0;
+  const showTourScope = Boolean(tourId) || tourSiblings.length > 0 || isTourContext;
 
   const eventBoundDate = (() => {
     if (!eventEndsAt) return null;
@@ -222,8 +229,18 @@ export function EventDiscountsPanel({
             : [],
         })),
       );
-      const siblings = Array.isArray(data.tourSiblings) ? data.tourSiblings : [];
-      setTourSiblings(siblings.length > 0 ? siblings : (initialTourSiblings ?? []));
+      const siblings: TourSibling[] = Array.isArray(data.tourSiblings)
+        ? (data.tourSiblings as TourSibling[])
+        : [];
+      if (isTourContext && (initialTourSiblings?.length ?? 0) > 0) {
+        // Tour admin passes the full date list (incl. category template event).
+        const byId = new Map(siblings.map((s) => [s.id, s] as const));
+        setTourSiblings(
+          (initialTourSiblings ?? []).map((s) => byId.get(s.id) ?? s),
+        );
+      } else {
+        setTourSiblings(siblings.length > 0 ? siblings : (initialTourSiblings ?? []));
+      }
       setTourId(
         typeof data.tourId === "string" && data.tourId
           ? data.tourId
@@ -246,7 +263,14 @@ export function EventDiscountsPanel({
     } finally {
       setLoading(false);
     }
-  }, [eventId, eventEndsAtProp, initialCategories, initialTourSiblings, tourIdProp]);
+  }, [
+    eventId,
+    eventEndsAtProp,
+    initialCategories,
+    initialTourSiblings,
+    isTourContext,
+    tourIdProp,
+  ]);
 
   useEffect(() => {
     void load();
@@ -282,7 +306,10 @@ export function EventDiscountsPanel({
     }
   }
 
-  async function persistCampaign(nextDraft: CampaignDraft, alsoEventIds: string[]) {
+  async function persistCampaign(
+    nextDraft: CampaignDraft,
+    opts: { alsoEventIds?: string[]; targetEventIds?: string[] },
+  ) {
     setSaving(true);
     setError(null);
     setOkMsg(null);
@@ -317,7 +344,8 @@ export function EventDiscountsPanel({
           badgeLabel: clampedDraft.badgeLabel.trim() || null,
           badgeDisclaimer: clampedDraft.badgeDisclaimer.trim() || null,
           categoryIds: clampedDraft.categoryIds,
-          alsoEventIds,
+          alsoEventIds: opts.alsoEventIds ?? [],
+          ...(opts.targetEventIds ? { targetEventIds: opts.targetEventIds } : {}),
         }),
       });
       const data = await res.json();
@@ -337,18 +365,23 @@ export function EventDiscountsPanel({
         warnParts.push(...data.warnings);
       }
       setWarnMsg(warnParts.length > 0 ? warnParts.join(" ") : null);
-      const extra = Math.max(0, Number(data.appliedCount ?? 1) - 1);
+      const applied = Math.max(0, Number(data.appliedCount ?? 1));
+      const extra = Math.max(0, applied - 1);
       const removed = Math.max(0, Number(data.removedCount ?? 0));
       setOkMsg(
-        extra > 0
-          ? extra === 1
-            ? "Preisaktion gespeichert und auf einen weiteren Termin übernommen."
-            : `Preisaktion gespeichert und auf ${extra} weitere Termine übernommen.`
-          : removed > 0
-            ? removed === 1
-              ? "Preisaktion gespeichert und von einem weiteren Termin entfernt."
-              : `Preisaktion gespeichert und von ${removed} weiteren Terminen entfernt.`
-            : "Preisaktion gespeichert.",
+        isTourContext
+          ? applied === 1
+            ? "Preisaktion für einen Termin gespeichert."
+            : `Preisaktion für ${applied} Termine gespeichert.`
+          : extra > 0
+            ? extra === 1
+              ? "Preisaktion gespeichert und auf einen weiteren Termin übernommen."
+              : `Preisaktion gespeichert und auf ${extra} weitere Termine übernommen.`
+            : removed > 0
+              ? removed === 1
+                ? "Preisaktion gespeichert und von einem weiteren Termin entfernt."
+                : `Preisaktion gespeichert und von ${removed} weiteren Terminen entfernt.`
+              : "Preisaktion gespeichert.",
       );
       await load();
     } catch (e) {
@@ -358,11 +391,24 @@ export function EventDiscountsPanel({
     }
   }
 
+  /** Event context: sibling IDs only (current event is always applied). */
   function resolveAlsoEventIds(): string[] | null {
     if (tourSiblings.length < 1) return [];
     const also = selectedSiblingIds.filter((id) => id !== eventId);
     if (tourScopeMode === "this" || also.length < 1) return [];
     return also;
+  }
+
+  /** Tour context: full explicit target set (no phantom current event). */
+  function resolveTourTargetEventIds(): string[] | null {
+    const selected = selectedSiblingIds.filter((id) =>
+      tourSiblings.some((s) => s.id === id),
+    );
+    if (selected.length < 1) {
+      setError("Bitte mindestens einen Termin wählen.");
+      return null;
+    }
+    return selected;
   }
 
   const allSiblingIds = tourSiblings.map((s) => s.id);
@@ -373,6 +419,9 @@ export function EventDiscountsPanel({
     if (checked) {
       setTourScopeMode("multi");
       setSelectedSiblingIds(allSiblingIds);
+    } else if (isTourContext) {
+      setTourScopeMode("multi");
+      setSelectedSiblingIds([]);
     } else {
       setTourScopeMode("this");
       setSelectedSiblingIds([]);
@@ -391,9 +440,15 @@ export function EventDiscountsPanel({
       return;
     }
     setError(null);
+    if (isTourContext && showTourScope) {
+      const targets = resolveTourTargetEventIds();
+      if (targets === null) return;
+      void persistCampaign(draft, { targetEventIds: targets });
+      return;
+    }
     const also = resolveAlsoEventIds();
     if (also === null) return;
-    void persistCampaign(draft, also);
+    void persistCampaign(draft, { alsoEventIds: also });
   }
 
   async function removeCampaign(campaignId: string) {
@@ -432,7 +487,7 @@ export function EventDiscountsPanel({
       warn = CAMPAIGN_END_CLAMP_MSG;
     }
     setWarnMsg(warn);
-    if (defaultSelectAllTour && tourSiblings.length > 0) {
+    if ((defaultSelectAllTour || isTourContext) && tourSiblings.length > 0) {
       setTourScopeMode("multi");
       setSelectedSiblingIds(tourSiblings.map((s) => s.id));
     } else {
@@ -471,7 +526,15 @@ export function EventDiscountsPanel({
     const linked = (c.matchedSiblingEventIds ?? []).filter((id) =>
       tourSiblings.some((s) => s.id === id),
     );
-    if (linked.length > 0) {
+    if (isTourContext) {
+      // Include the template event plus linked siblings — all equal checkboxes.
+      const onTour = tourSiblings.some((s) => s.id === eventId);
+      const selected = [
+        ...new Set([...(onTour ? [eventId] : []), ...linked]),
+      ].filter((id) => tourSiblings.some((s) => s.id === id));
+      setTourScopeMode("multi");
+      setSelectedSiblingIds(selected.length > 0 ? selected : linked);
+    } else if (linked.length > 0) {
       setTourScopeMode("multi");
       setSelectedSiblingIds(linked);
     } else {
@@ -775,14 +838,18 @@ export function EventDiscountsPanel({
                       2. Tour-Termine
                     </p>
                     <p className="mt-1 text-xs text-[var(--tf-text-secondary)]">
-                      {draft.campaignId
-                        ? "Geltungsbereich dieser Aktion. Abgewählte Termine verlieren die passende Preisaktion."
-                        : "Gilt immer für diesen Termin. Weitere Tour-Termine optional mit denselben Einstellungen übernehmen."}
+                      {isTourContext
+                        ? "Für welche Termine gilt die Aktion?"
+                        : draft.campaignId
+                          ? "Geltungsbereich dieser Aktion. Abgewählte Termine verlieren die passende Preisaktion."
+                          : "Gilt immer für diesen Termin. Weitere Tour-Termine optional mit denselben Einstellungen übernehmen."}
                     </p>
                   </div>
                   {tourSiblings.length < 1 ? (
                     <p className="text-sm text-[var(--tf-text-secondary)]">
-                      Diese Tour hat noch keine weiteren Termine — Aktion gilt nur hier.
+                      {isTourContext
+                        ? "Noch keine Termine in dieser Tour."
+                        : "Diese Tour hat noch keine weiteren Termine — Aktion gilt nur hier."}
                     </p>
                   ) : (
                     <>
@@ -798,29 +865,35 @@ export function EventDiscountsPanel({
                             Alle Termine der Tour
                           </span>
                           <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                            Dieser Termin plus alle {tourSiblings.length} weiteren
+                            {isTourContext
+                              ? `${tourSiblings.length} Termine auswählen oder abwählen`
+                              : `Dieser Termin plus alle ${tourSiblings.length} weiteren`}
                           </span>
                         </span>
                       </label>
                       <div className="max-h-64 space-y-2 overflow-y-auto rounded-xl border border-[var(--tf-line)] bg-white p-3">
-                        <label className="flex items-start gap-3 text-sm text-[var(--tf-navy)] opacity-80">
-                          <input
-                            type="checkbox"
-                            className="mt-0.5 h-4 w-4 accent-[var(--tf-teal)]"
-                            checked
-                            disabled
-                            readOnly
-                          />
-                          <span>
-                            <span className="font-medium">Dieser Termin</span>
-                            <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
-                              Immer enthalten
-                            </span>
-                          </span>
-                        </label>
-                        <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
-                          Weitere Termine
-                        </p>
+                        {isTourContext ? null : (
+                          <>
+                            <label className="flex items-start gap-3 text-sm text-[var(--tf-navy)] opacity-80">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 h-4 w-4 accent-[var(--tf-teal)]"
+                                checked
+                                disabled
+                                readOnly
+                              />
+                              <span>
+                                <span className="font-medium">Dieser Termin</span>
+                                <span className="mt-0.5 block text-xs text-[var(--tf-text-secondary)]">
+                                  Immer enthalten
+                                </span>
+                              </span>
+                            </label>
+                            <p className="pt-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)]">
+                              Weitere Termine
+                            </p>
+                          </>
+                        )}
                         {tourSiblings.map((s) => {
                           const checked = selectedSiblingIds.includes(s.id);
                           return (
@@ -837,7 +910,11 @@ export function EventDiscountsPanel({
                                     const next = checked
                                       ? prev.filter((id) => id !== s.id)
                                       : [...prev, s.id];
-                                    setTourScopeMode(next.length > 0 ? "multi" : "this");
+                                    if (isTourContext) {
+                                      setTourScopeMode("multi");
+                                    } else {
+                                      setTourScopeMode(next.length > 0 ? "multi" : "this");
+                                    }
                                     return next;
                                   });
                                   setError(null);
@@ -847,7 +924,12 @@ export function EventDiscountsPanel({
                             </label>
                           );
                         })}
-                        {selectedSiblingIds.length === 0 ? (
+                        {isTourContext && selectedSiblingIds.length === 0 ? (
+                          <p className="text-xs text-[var(--tf-text-secondary)]">
+                            Mindestens einen Termin wählen.
+                          </p>
+                        ) : null}
+                        {!isTourContext && selectedSiblingIds.length === 0 ? (
                           <p className="text-xs text-[var(--tf-text-secondary)]">
                             Keine weiteren Termine gewählt — Aktion nur für diesen Termin
                             {draft.campaignId

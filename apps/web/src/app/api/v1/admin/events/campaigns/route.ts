@@ -72,6 +72,12 @@ const campaignSchema = z.object({
   badgeDisclaimer: z.string().max(160).optional().nullable(),
   /** Extra tour-sibling event IDs to receive the same campaign settings */
   alsoEventIds: z.array(z.string().uuid()).max(40).optional().default([]),
+  /**
+   * Full set of tour dates to apply to (tour admin). When set, replaces the
+   * implicit “always include source eventId” behavior — source is included only
+   * if listed. `eventId` remains the category/campaign template source.
+   */
+  targetEventIds: z.array(z.string().uuid()).min(1).max(40).optional(),
 });
 
 function toStoredValue(type: "percent" | "fixed", valueDisplay: number) {
@@ -377,7 +383,13 @@ export async function PUT(request: Request) {
       );
     }
 
-    const alsoEventIds = [...new Set((body.alsoEventIds ?? []).filter((id) => id !== event.id))];
+    const targetEventIds = body.targetEventIds
+      ? [...new Set(body.targetEventIds)]
+      : null;
+    const alsoEventIds = targetEventIds
+      ? targetEventIds.filter((id) => id !== event.id)
+      : [...new Set((body.alsoEventIds ?? []).filter((id) => id !== event.id))];
+    const includeSourceEvent = targetEventIds ? targetEventIds.includes(event.id) : true;
     const isEdit = Boolean(body.campaignId);
 
     let originalCampaign: {
@@ -416,7 +428,9 @@ export async function PUT(request: Request) {
 
     /** When editing, alsoEventIds is the full desired sibling set — remove matches from unchecked. */
     const needsTourSiblingLookup =
-      alsoEventIds.length > 0 || (isEdit && Boolean(event.tourId));
+      alsoEventIds.length > 0 ||
+      (isEdit && Boolean(event.tourId)) ||
+      (targetEventIds !== null && Boolean(event.tourId));
 
     type SiblingRow = {
       id: string;
@@ -482,6 +496,17 @@ export async function PUT(request: Request) {
     }
 
     if (alsoEventIds.length > 0) {
+      if (!event.tourId) {
+        return NextResponse.json(
+          {
+            error: {
+              code: "NOT_ON_TOUR",
+              message: "Weitere Termine nur bei Events einer Tour möglich.",
+            },
+          },
+          { status: 400 },
+        );
+      }
       const allowed = new Set(tourSiblingRows.map((s) => s.id));
       if (alsoEventIds.some((id) => !allowed.has(id))) {
         return NextResponse.json(
@@ -533,18 +558,21 @@ export async function PUT(request: Request) {
       campaignId?: string;
     };
 
-    const targets: TargetApply[] = [
-      {
+    const targets: TargetApply[] = [];
+    const siblingWarnings: string[] = [];
+    const selectedSiblingSet = new Set(alsoEventIds);
+    const removeCampaignIds: string[] = [];
+
+    if (includeSourceEvent) {
+      targets.push({
         eventId: event.id,
         categoryIds: body.categoryIds,
         eventBound: event.eventEndsAt ?? event.eventStartsAt,
         campaignId: body.campaignId,
-      },
-    ];
-
-    const siblingWarnings: string[] = [];
-    const selectedSiblingSet = new Set(alsoEventIds);
-    const removeCampaignIds: string[] = [];
+      });
+    } else if (isEdit && body.campaignId) {
+      removeCampaignIds.push(body.campaignId);
+    }
 
     for (const sib of tourSiblingRows) {
       const matched = findMatchingCampaign(sib);
@@ -571,6 +599,18 @@ export async function PUT(request: Request) {
       } else if (isEdit && matched) {
         removeCampaignIds.push(matched.id);
       }
+    }
+
+    if (targets.length < 1) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "NO_TARGETS",
+            message: "Bitte mindestens einen Termin wählen.",
+          },
+        },
+        { status: 400 },
+      );
     }
 
     const campaignGroupId =
