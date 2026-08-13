@@ -175,6 +175,8 @@ export default async function EmbedEventShopPage({ params }: Props) {
     pickActiveOrderCampaignBadge,
     formatOrderCampaignBadge,
     formatOrderCampaignDisclaimer,
+    formatCampaignCategoryScopeHint,
+    mergeCampaignDisclaimerParts,
   } = await import("@/lib/commerce/event-pricing");
   const [seatCounts, campaigns] = await Promise.all([
     hasReservedSeating
@@ -193,7 +195,13 @@ export default async function EmbedEventShopPage({ params }: Props) {
   const orderPromo = orderCampaignBadge
     ? {
         badgeLabel: formatOrderCampaignBadge(orderCampaignBadge),
-        disclaimer: formatOrderCampaignDisclaimer(orderCampaignBadge),
+        disclaimer: mergeCampaignDisclaimerParts(
+          formatOrderCampaignDisclaimer(orderCampaignBadge),
+          formatCampaignCategoryScopeHint(
+            orderCampaignBadge.categoryIds,
+            event.ticketCategories.map((c) => ({ id: c.id, name: c.name })),
+          ),
+        ),
         campaignName: orderCampaignBadge.name,
         categoryIds: orderCampaignBadge.categoryIds,
       }

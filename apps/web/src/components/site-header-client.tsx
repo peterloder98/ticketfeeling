@@ -114,7 +114,7 @@ export function SiteHeaderClient({ signedIn }: { signedIn: boolean }) {
     <header className="sticky top-0 z-40 border-b border-[var(--tf-line)] bg-[rgba(248,250,252,0.96)] backdrop-blur-xl">
       <div className="tf-container flex min-h-[76px] items-center justify-between gap-3 py-2 md:gap-4">
         <div className="shrink-0">
-          <BrandLogo variant="app" href={homeHref} priority />
+          <BrandLogo variant="nav" href={homeHref} priority />
         </div>
 
         {!isAdminChrome ? (

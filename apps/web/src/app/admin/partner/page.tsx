@@ -120,7 +120,7 @@ export default async function AdminPartnersPage() {
         <p className="mt-2 max-w-2xl text-sm text-[var(--tf-text-secondary)]">
           Vorverkaufsstellen per E-Mail einladen, Events freigeben und Kontingente vorabbuchen.
           Nach Annahme landen Partner in der Tageskasse — ohne Admin. Freigaben und Kontingente
-          kannst du jederzeit nachlegen. Admins und Scanner verwalten Sie unter{" "}
+          kannst du jederzeit nachlegen. Admins und Scanner verwaltest du unter{" "}
           <a href="/admin/benutzer" className="text-[var(--tf-teal)] underline">
             Benutzerverwaltung
           </a>

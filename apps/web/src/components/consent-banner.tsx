@@ -51,14 +51,14 @@ export function ConsentBanner() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-[var(--tf-line)] bg-white p-4 shadow-[0_-8px_30px_rgba(15,39,71,0.08)]">
-      <div className="tf-container space-y-4">
-        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-          <div className="max-w-2xl text-sm text-[var(--tf-text-secondary)]">
+    <div className="fixed inset-x-0 bottom-0 z-[60] border-t border-[var(--tf-line)] bg-white p-4 shadow-[0_-8px_30px_rgba(15,39,71,0.08)] md:inset-x-auto md:bottom-4 md:left-4 md:max-w-md md:rounded-2xl md:border md:border-[var(--tf-line)]">
+      <div className="mx-auto max-w-3xl space-y-4 md:mx-0">
+        <div className="flex flex-col gap-4">
+          <div className="text-sm text-[var(--tf-text-secondary)]">
             <p className="font-semibold text-[var(--tf-text)]">Datenschutz & Cookies</p>
             <p className="mt-1 leading-relaxed">
               Technisch notwendige Cookies sind immer aktiv. Statistik, Marketing und externe Medien
-              nur nach Ihrer Einwilligung. Details in der{" "}
+              nur nach deiner Einwilligung. Details in der{" "}
               <Link href="/recht/datenschutz" className="font-medium text-[var(--tf-teal)] underline">
                 Datenschutzerklärung
               </Link>{" "}

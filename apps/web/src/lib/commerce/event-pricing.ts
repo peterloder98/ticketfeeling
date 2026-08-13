@@ -155,6 +155,38 @@ export function formatOrderCampaignDisclaimer(
   return null;
 }
 
+/**
+ * When an Aktion only covers some categories (e.g. Normal, not VIP),
+ * return a calm scope hint — null if all / unknown.
+ */
+export function formatCampaignCategoryScopeHint(
+  campaignCategoryIds: string[] | null | undefined,
+  allCategories: Array<{ id: string; name: string }>,
+): string | null {
+  if (!campaignCategoryIds || campaignCategoryIds.length === 0) return null;
+  if (allCategories.length === 0) return null;
+  if (campaignCategoryIds.length >= allCategories.length) return null;
+  const names = allCategories
+    .filter((c) => campaignCategoryIds.includes(c.id))
+    .map((c) => c.name.trim())
+    .filter(Boolean);
+  if (names.length === 0) return null;
+  if (names.length === 1) return `gilt für ${names[0]}`;
+  if (names.length <= 3) return `gilt für ${names.join(", ")}`;
+  return "gilt für ausgewählte Kategorien";
+}
+
+/** Merge qty disclaimer + optional category scope into one soft line. */
+export function mergeCampaignDisclaimerParts(
+  ...parts: Array<string | null | undefined>
+): string | null {
+  const cleaned = parts
+    .map((p) => (p ?? "").replace(/^\*\s*/, "").trim())
+    .filter(Boolean);
+  if (cleaned.length === 0) return null;
+  return `* ${cleaned.join(" · ")}`;
+}
+
 /** Apply percent (bps) or fixed cents off a gross price. */
 export function applyDiscountOff(listCents: number, type: string, value: number): number {
   const list = clampNonNeg(listCents);

@@ -82,7 +82,7 @@ function buyerLines(buyer: Record<string, unknown>): string[] {
   const vatId = str(buyer.vatId);
   if (vatId) lines.push(`USt-IdNr.: ${vatId}`);
   const orderRef = str(buyer.orderReference);
-  if (orderRef) lines.push(`Ihre Referenz: ${orderRef}`);
+  if (orderRef) lines.push(`Deine Referenz: ${orderRef}`);
   return lines.length ? lines : ["—"];
 }
 

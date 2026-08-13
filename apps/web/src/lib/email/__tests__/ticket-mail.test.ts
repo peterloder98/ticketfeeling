@@ -57,7 +57,7 @@ describe("ticket-mail", () => {
     expect(mail.html).toContain("Neu");
     expect(mail.html).toContain("Sa., 12. Dez. 2026, 19:00");
     expect(mail.html).toContain("So., 13. Dez. 2026, 19:00");
-    expect(mail.html).toContain("Ihre Tickets bleiben für den neuen Termin gültig");
+    expect(mail.html).toContain("Deine Tickets bleiben für den neuen Termin gültig");
     expect(mail.html).toContain("Bestellung TF-O-1 öffnen");
     expect(mail.html).toContain("Stadthalle Landshut");
     expect(mail.html).not.toMatch(/Peter Loder/);

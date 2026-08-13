@@ -1,4 +1,4 @@
-/** Formal German customer address (Sie), from gender + name. */
+/** Friendly German customer address (Du), from gender + name. */
 
 export type CustomerGender = "female" | "male" | "diverse";
 
@@ -12,7 +12,10 @@ export function salutationFromGender(gender: CustomerGender): "frau" | "herr" | 
   return "divers";
 }
 
-/** e.g. "Sehr geehrter Herr Müller" / "Sehr geehrte Frau Müller" / "Guten Tag Anna Müller" */
+/**
+ * Personal Ticketfeeling greeting (Du).
+ * Prefers first name; falls back to Herr/Frau + Nachname when only last name is known.
+ */
 export function formalGermanGreeting(customer: {
   gender?: string | null;
   /** @deprecated Prefer gender; kept as soft fallback for legacy rows. */
@@ -22,25 +25,17 @@ export function formalGermanGreeting(customer: {
 }): string {
   const last = customer.lastName?.trim() || "";
   const first = customer.firstName?.trim() || "";
+  if (first) return `Hallo ${first}`;
+
   const gender = customer.gender;
   const sal = (customer.salutation ?? "").toLowerCase();
 
-  // Gender is the source of truth for Anrede in emails.
-  if (gender === "male") {
-    return last ? `Sehr geehrter Herr ${last}` : "Sehr geehrter Herr";
+  if (gender === "male" || (!gender && sal === "herr")) {
+    return last ? `Hallo Herr ${last}` : "Hallo";
   }
-  if (gender === "female") {
-    return last ? `Sehr geehrte Frau ${last}` : "Sehr geehrte Frau";
+  if (gender === "female" || (!gender && sal === "frau")) {
+    return last ? `Hallo Frau ${last}` : "Hallo";
   }
-  // Legacy fallback only when gender is missing.
-  if (!gender && sal === "herr") {
-    return last ? `Sehr geehrter Herr ${last}` : "Sehr geehrter Herr";
-  }
-  if (!gender && sal === "frau") {
-    return last ? `Sehr geehrte Frau ${last}` : "Sehr geehrte Frau";
-  }
-  if (first && last) return `Guten Tag ${first} ${last}`;
-  if (last) return `Guten Tag ${last}`;
-  if (first) return `Guten Tag ${first}`;
-  return "Guten Tag";
+  if (last) return `Hallo ${last}`;
+  return "Hallo";
 }

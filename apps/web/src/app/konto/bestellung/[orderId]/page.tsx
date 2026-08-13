@@ -208,16 +208,16 @@ export default async function OrderDetailPage({ params, searchParams }: Props) {
               </h1>
               <p className="mt-3 text-base text-[var(--tf-text-secondary)] md:text-lg">
                 {paid
-                  ? `vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei ${eventName} dabei sind. Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass${
+                  ? `vielen Dank für deine Bestellung. Wir freuen uns, dass du bei ${eventName} dabei bist. Nachfolgend findest du deine Tickets samt QR-Codes zum Einlass${
                       emailSent
                         ? " — die Bestätigungs-E-Mail mit Links zu PDF, Wallet und Kalender ist unterwegs."
                         : hasRealEmail
-                          ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (bitte SMTP unter Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
+                          ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (bitte SMTP unter Einstellungen prüfen). Deine Tickets sind hier trotzdem verfügbar."
                           : "."
                     }`
                   : processing
-                    ? "Vielen Dank für Ihre Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald die Zahlung bestätigt wurde, erhalten Sie Ihre Tickets per E-Mail."
-                    : "Sobald die Zahlung durch ist, erscheinen hier Ihre Tickets."}
+                    ? "Vielen Dank für deine Bestellung. Der Betrag wird per Lastschrift eingezogen. Sobald die Zahlung bestätigt wurde, erhältst du deine Tickets per E-Mail."
+                    : "Sobald die Zahlung durch ist, erscheinen hier deine Tickets."}
               </p>
               {paid ? (
                 <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">

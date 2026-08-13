@@ -188,15 +188,15 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
         {paid ? (
           <div className="mt-2 space-y-2 text-xs leading-relaxed text-[var(--tf-text-secondary)]">
             <p>
-              vielen Dank für Ihre Bestellung. Wir freuen uns, dass Sie bei{" "}
-              <strong className="text-[var(--tf-navy)]">{eventName}</strong> dabei sind.
+              vielen Dank für deine Bestellung. Wir freuen uns, dass du bei{" "}
+              <strong className="text-[var(--tf-navy)]">{eventName}</strong> dabei bist.
             </p>
             <p>
-              Nachfolgend finden Sie Ihre Tickets samt QR-Codes zum Einlass
+              Nachfolgend findest du deine Tickets samt QR-Codes zum Einlass
               {emailSent
                 ? " — die Bestätigungs-E-Mail mit Links zu PDF, Wallet und Kalender ist unterwegs."
                 : hasRealEmail
-                  ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (SMTP in den Einstellungen prüfen). Ihre Tickets sind hier trotzdem verfügbar."
+                  ? " — die Bestätigungs-E-Mail konnte noch nicht zugestellt werden (SMTP in den Einstellungen prüfen). Deine Tickets sind hier trotzdem verfügbar."
                   : "."}
             </p>
             <p className="text-[11px] text-[var(--tf-text-secondary)]">

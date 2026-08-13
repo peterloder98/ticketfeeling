@@ -131,7 +131,7 @@ function FeeInfoModal({
           Was beinhaltet die Verwaltungsgebühr?
         </h3>
         <p className="mt-1.5 text-sm leading-snug text-[var(--tf-text-secondary)]">
-          Sie deckt den sicheren Betrieb Ihres Ticketkaufs ab:
+          Sie deckt den sicheren Betrieb deines Ticketkaufs ab:
         </p>
         <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm leading-snug text-[var(--tf-navy)]">
           {PLATFORM_FEE_INFO_BULLETS.map((item) => (

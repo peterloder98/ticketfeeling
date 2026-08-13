@@ -5,7 +5,8 @@ import { BRAND_GOLD, BRAND_NAVY, BRAND_TEAL } from "@/components/brand-logo-mark
 
 type BrandLogoProps = {
   href?: string | null;
-  variant?: "full" | "mark" | "app";
+  /** `nav` = compact mark + wordmark for site header (matches footer branding, calmer than full lockup). */
+  variant?: "full" | "mark" | "app" | "nav";
   /** `dark` = light wordmark for navy/dark backgrounds (mark raster unchanged). */
   tone?: "light" | "dark";
   className?: string;
@@ -111,9 +112,53 @@ function FullLockup({
   );
 }
 
+/** Compact header lockup: mark + Inter wordmark (no tagline). */
+function NavLockup({
+  className = "",
+  style,
+  tone = "light",
+  priority = false,
+}: {
+  className?: string;
+  style?: CSSProperties;
+  tone?: "light" | "dark";
+  priority?: boolean;
+}) {
+  const ticketFill = tone === "dark" ? "#FFFFFF" : BRAND_NAVY;
+  const feelingFill = BRAND_TEAL;
+
+  return (
+    <span
+      className={`inline-flex items-center gap-2 ${className}`}
+      style={style}
+      role="img"
+      aria-label="Ticketfeeling"
+    >
+      <Image
+        src={MARK.src}
+        alt=""
+        width={MARK.width}
+        height={MARK.height}
+        priority={priority}
+        quality={100}
+        unoptimized
+        className="aspect-[535/329] h-8 w-auto object-contain md:h-9"
+        aria-hidden
+      />
+      <span
+        className="hidden text-[1.05rem] font-bold tracking-[-0.02em] sm:inline md:text-[1.15rem]"
+        style={{ fontFamily: "var(--font-body), Inter, system-ui, sans-serif" }}
+      >
+        <span style={{ color: ticketFill }}>ticket</span>
+        <span style={{ color: feelingFill }}>feeling</span>
+      </span>
+    </span>
+  );
+}
+
 /**
  * Official Ticketfeeling artwork — never distort / recolor / outline / shadow / 3D.
- * Full = sharp mark raster + Inter type; mark/app = icon-tf.png only.
+ * Full = sharp mark raster + Inter type; nav = mark + wordmark; mark/app = icon-tf.png only.
  */
 export function BrandLogo({
   href = "/",
@@ -125,6 +170,18 @@ export function BrandLogo({
 }: BrandLogoProps) {
   if (variant === "full") {
     const graphic = <FullLockup className={className} style={style} tone={tone} />;
+    if (!href) return graphic;
+    return (
+      <Link href={href} className="inline-flex items-center" aria-label="Ticketfeeling Startseite">
+        {graphic}
+      </Link>
+    );
+  }
+
+  if (variant === "nav") {
+    const graphic = (
+      <NavLockup className={className} style={style} tone={tone} priority={priority} />
+    );
     if (!href) return graphic;
     return (
       <Link href={href} className="inline-flex items-center" aria-label="Ticketfeeling Startseite">

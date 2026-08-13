@@ -231,6 +231,8 @@ export default async function EventPage({ params }: Props) {
     pickActiveOrderCampaignBadge,
     formatOrderCampaignBadge,
     formatOrderCampaignDisclaimer,
+    formatCampaignCategoryScopeHint,
+    mergeCampaignDisclaimerParts,
   } = await import("@/lib/commerce/event-pricing");
 
   // Seat counts + campaigns are independent — never serialize Neon RTTs.
@@ -251,7 +253,13 @@ export default async function EventPage({ params }: Props) {
   const orderPromo = orderCampaignBadge
     ? {
         badgeLabel: formatOrderCampaignBadge(orderCampaignBadge),
-        disclaimer: formatOrderCampaignDisclaimer(orderCampaignBadge),
+        disclaimer: mergeCampaignDisclaimerParts(
+          formatOrderCampaignDisclaimer(orderCampaignBadge),
+          formatCampaignCategoryScopeHint(
+            orderCampaignBadge.categoryIds,
+            event.ticketCategories.map((c) => ({ id: c.id, name: c.name })),
+          ),
+        ),
         campaignName: orderCampaignBadge.name,
         categoryIds: orderCampaignBadge.categoryIds,
       }
@@ -441,7 +449,7 @@ export default async function EventPage({ params }: Props) {
                 <ScheduleChangedBanner />
               </div>
             ) : null}
-            <div className="mt-6">
+            <div className="mt-6 hidden md:block">
               {saleOpen ? (
                 <a href="#tickets" className="tf-btn tf-btn-primary !min-h-12 !px-6 text-base">
                   Tickets sichern

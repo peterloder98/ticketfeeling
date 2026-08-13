@@ -6,6 +6,8 @@ import {
   resolveTicketUnitPrice,
   mapCampaignRow,
   formatOrderCampaignBadge,
+  formatCampaignCategoryScopeHint,
+  mergeCampaignDisclaimerParts,
   type PriceCampaignInput,
 } from "@/lib/commerce/event-pricing";
 
@@ -356,5 +358,18 @@ describe("resolveOrderCampaignDiscount", () => {
         now,
       })?.discountCents,
     ).toBe(1000);
+  });
+
+  it("formats category scope hint when Aktion is not for all categories", () => {
+    const cats = [
+      { id: "cat-normal", name: "Normal" },
+      { id: "cat-vip", name: "VIP" },
+    ];
+    expect(formatCampaignCategoryScopeHint(["cat-normal"], cats)).toBe("gilt für Normal");
+    expect(formatCampaignCategoryScopeHint(["cat-normal", "cat-vip"], cats)).toBeNull();
+    expect(formatCampaignCategoryScopeHint([], cats)).toBeNull();
+    expect(
+      mergeCampaignDisclaimerParts("* beim Kauf von 2 Tickets", "gilt für Normal"),
+    ).toBe("* beim Kauf von 2 Tickets · gilt für Normal");
   });
 });

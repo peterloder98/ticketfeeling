@@ -17,7 +17,7 @@ export default async function InviteAcceptPage({ params }: Props) {
       return (
         <div className="tf-container py-16">
           <p className="text-center text-[var(--danger)]">
-            Diese Einladung ist abgelaufen. Bitte fordern Sie eine neue Einladung an.
+            Diese Einladung ist abgelaufen. Bitte fordere eine neue Einladung an.
           </p>
         </div>
       );
@@ -44,7 +44,7 @@ export default async function InviteAcceptPage({ params }: Props) {
     return (
       <div className="tf-container py-16">
         <p className="text-center text-[var(--danger)]">
-          Diese Einladung ist abgelaufen. Bitte fordern Sie eine neue Einladung an.
+          Diese Einladung ist abgelaufen. Bitte fordere eine neue Einladung an.
         </p>
       </div>
     );

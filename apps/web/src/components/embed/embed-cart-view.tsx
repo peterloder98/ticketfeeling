@@ -209,7 +209,7 @@ export function EmbedCartView() {
         })}
         {items.length === 0 ? (
           <p className="rounded-xl border border-[var(--tf-line)] bg-[#f8fafc] px-3 py-6 text-center text-[var(--tf-text-secondary)]">
-            Warenkorb ist leer.
+            Dein Warenkorb ist noch leer.
             <span className="mt-2 flex justify-center">
               <EmbedBackLink fallbackHref="/embed/shop" label="Zurück zum Shop" />
             </span>

@@ -29,9 +29,11 @@ export default async function CartPage() {
   return (
     <div className="tf-container py-12">
       <h1 className="tf-display text-3xl text-[var(--tf-navy)] md:text-4xl">Warenkorb</h1>
-      <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
-        Tickets sind 10 Minuten für dich reserviert.
-      </p>
+      {items.length > 0 ? (
+        <p className="mt-2 text-sm text-[var(--tf-text-secondary)]">
+          Tickets sind 10 Minuten für dich reserviert.
+        </p>
+      ) : null}
       {scrubHint ? (
         <p
           className="mt-4 rounded-xl border border-[var(--tf-border)] bg-[var(--tf-surface)] px-4 py-3 text-sm text-[var(--tf-navy)]"
@@ -117,7 +119,7 @@ export default async function CartPage() {
         {items.length === 0 ? (
           <div className="tf-card mt-2 space-y-4 p-6 text-center sm:text-left">
             <p className="text-base text-[var(--tf-text-secondary)]">
-              Ihr Warenkorb ist noch leer.
+              Dein Warenkorb ist noch leer.
             </p>
             <Link href="/events" className="tf-btn tf-btn-primary inline-flex">
               Events entdecken

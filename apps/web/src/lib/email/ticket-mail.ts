@@ -200,25 +200,25 @@ export function buildOrderPaidTicketsMail(input: {
       ? `${base}${withAccessToken(`/api/v1/tickets/${ticketId}/google-wallet`, token)}`
       : null;
   const ticketCountLabel =
-    input.ticketCount === 1 ? "Ihr Ticket" : `Ihre ${input.ticketCount} Tickets`;
+    input.ticketCount === 1 ? "Dein Ticket" : `Deine ${input.ticketCount} Tickets`;
   const invoiceLine =
     invoiceNumber && invoiceUrl
-      ? `Rechnung ${invoiceNumber} können Sie jederzeit als PDF herunterladen: ${invoiceUrl}`
+      ? `Rechnung ${invoiceNumber} kannst du jederzeit als PDF herunterladen: ${invoiceUrl}`
       : invoiceNumber
         ? `Rechnung: ${invoiceNumber}`
         : null;
   const datePart = input.eventDateLabel?.trim();
   const subject = datePart
-    ? `Ihre Ticket-Bestellung – ${input.eventName} – ${datePart}`
-    : `Ihre Ticket-Bestellung – ${input.eventName}`;
+    ? `Deine Ticket-Bestellung – ${input.eventName} – ${datePart}`
+    : `Deine Ticket-Bestellung – ${input.eventName}`;
 
   const lines = [
     `${greeting},`,
     "",
-    "vielen Dank für Ihre Bestellung.",
-    "Wir freuen uns, dass Sie bei diesem Event dabei sind und sich Ihre Tickets gesichert haben.",
+    "vielen Dank für deine Bestellung.",
+    "Wir freuen uns, dass du bei diesem Event dabei bist und dir deine Tickets gesichert hast.",
     "",
-    `${ticketCountLabel} samt den QR-Codes für den Einlass können Sie auf folgendem Link einsehen, speichern oder drucken:`,
+    `${ticketCountLabel} samt den QR-Codes für den Einlass kannst du auf folgendem Link einsehen, speichern oder drucken:`,
     orderUrl,
     "",
     `Event: ${input.eventName}`,
@@ -232,7 +232,7 @@ export function buildOrderPaidTicketsMail(input: {
     ...(appleUrl ? [`Apple Wallet: ${appleUrl}`] : []),
     ...(googleUrl ? [`Google Wallet: ${googleUrl}`] : []),
     "",
-    "Ihr Ticketfeeling-Team",
+    "Dein Ticketfeeling-Team",
   ];
 
   const walletHtmlButtons: string[] = [];
@@ -252,8 +252,8 @@ export function buildOrderPaidTicketsMail(input: {
 
   const htmlParas = [
     escapeHtml(`${greeting},`),
-    "vielen Dank für Ihre Bestellung.<br/>Wir freuen uns, dass Sie bei diesem Event dabei sind und sich Ihre Tickets gesichert haben.",
-    `${escapeHtml(ticketCountLabel)} samt den QR-Codes für den Einlass können Sie auf folgendem Link einsehen, speichern oder drucken:`,
+    "vielen Dank für deine Bestellung.<br/>Wir freuen uns, dass du bei diesem Event dabei bist und dir deine Tickets gesichert hast.",
+    `${escapeHtml(ticketCountLabel)} samt den QR-Codes für den Einlass kannst du auf folgendem Link einsehen, speichern oder drucken:`,
     `<a href="${escapeHtml(orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:system-ui,sans-serif;font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px">Bestellung &amp; Tickets öffnen</a>`,
     `<strong style="font-size:18px">${escapeHtml(input.eventName)}</strong><br/>
      <span style="color:#334155">${escapeHtml(input.whenLabel)}</span>${
@@ -275,7 +275,7 @@ export function buildOrderPaidTicketsMail(input: {
     ...(walletHtmlButtons.length
       ? ["Tickets zum Wallet hinzufügen:", walletHtmlButtons.join("")]
       : []),
-    "Ihr Ticketfeeling-Team",
+    "Dein Ticketfeeling-Team",
   ];
 
   return {
@@ -583,37 +583,37 @@ export function buildBoxOfficeTicketsMail(input: {
 }): TicketMailContent {
   const full = `${input.firstName ?? ""} ${input.lastName ?? ""}`.trim();
   const greeting =
-    !full || full === "Tageskasse Gast" ? "Guten Tag," : `Guten Tag ${full},`;
+    !full || full === "Tageskasse Gast" ? "Hallo," : `Hallo ${full},`;
   const hasAttachment = input.hasAttachment !== false;
 
   const lines = [
     greeting,
     "",
-    `vielen Dank für Ihren Kauf von ${input.ticketCount} Ticket${
+    `vielen Dank für deinen Kauf von ${input.ticketCount} Ticket${
       input.ticketCount === 1 ? "" : "s"
     } für „${input.eventName}“ (${input.whenLabel}).`,
     "",
     hasAttachment
-      ? "Im Anhang finden Sie Ihre Tickets als PDF. Bitte bringen Sie den QR-Code zum Einlass mit (digital oder ausgedruckt)."
-      : "Bitte öffnen Sie Ihre Tickets über Ihr Konto oder die Tageskasse.",
+      ? "Im Anhang findest du deine Tickets als PDF. Bitte bring den QR-Code zum Einlass mit (digital oder ausgedruckt)."
+      : "Bitte öffne deine Tickets über dein Konto oder die Tageskasse.",
     "",
-    "Wir freuen uns auf Sie!",
-    "Ihr Ticketfeeling-Team",
+    "Wir freuen uns auf dich!",
+    "Dein Ticketfeeling-Team",
   ];
 
   return {
-    subject: `Ihre Tickets – ${input.eventName}`,
+    subject: `Deine Tickets – ${input.eventName}`,
     text: lines.join("\n"),
     html: wrapHtml(
       [
         escapeHtml(greeting),
-        `vielen Dank für Ihren Kauf von ${input.ticketCount} Ticket${
+        `vielen Dank für deinen Kauf von ${input.ticketCount} Ticket${
           input.ticketCount === 1 ? "" : "s"
         } für <strong>${escapeHtml(input.eventName)}</strong> (${escapeHtml(input.whenLabel)}).`,
         hasAttachment
-          ? "Im Anhang finden Sie Ihre Tickets als PDF. Bitte bringen Sie den QR-Code zum Einlass mit (digital oder ausgedruckt)."
-          : "Bitte öffnen Sie Ihre Tickets über Ihr Konto.",
-        "Wir freuen uns auf Sie!<br/>Ihr Ticketfeeling-Team",
+          ? "Im Anhang findest du deine Tickets als PDF. Bitte bring den QR-Code zum Einlass mit (digital oder ausgedruckt)."
+          : "Bitte öffne deine Tickets über dein Konto.",
+        "Wir freuen uns auf dich!<br/>Dein Ticketfeeling-Team",
       ],
       { hasAttachment },
     ),
@@ -750,17 +750,17 @@ export function buildScheduleChangedMail(input: {
     ...scheduleText,
     ...(place ? [`Ort: ${place}`] : []),
     "",
-    "Ihre Tickets bleiben für den neuen Termin gültig. Sie müssen nichts weiter tun.",
+    "Deine Tickets bleiben für den neuen Termin gültig. Du musst nichts weiter tun.",
     "",
     `Bestellung ${input.orderNumber}: ${input.orderUrl}`,
     `Event-Seite: ${input.eventUrl}`,
     "",
-    "Passt der neue Termin nicht? Schreiben Sie uns gern — Storno und Erstattung richten sich nach den AGB.",
+    "Passt der neue Termin nicht? Schreib uns gern — Storno und Erstattung richten sich nach den AGB.",
     `Hilfe: ${hilfeUrl}`,
     `AGB: ${agbUrl}`,
     "",
     "Herzliche Grüße",
-    "Ihr Ticketfeeling-Team",
+    "Dein Ticketfeeling-Team",
   ];
 
   const placeHtml = place
@@ -774,10 +774,10 @@ export function buildScheduleChangedMail(input: {
       escapeHtml(`${greeting},`),
       `der Termin für <strong>${escapeHtml(input.eventName)}</strong> wurde angepasst.`,
       `<span style="display:block;margin:0 0 10px;font-size:13px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#0D9488;font-family:${EMAIL_FONT}">Was sich ändert</span>${scheduleChangeTableHtml(rows)}${placeHtml}`,
-      "Ihre Tickets bleiben für den neuen Termin gültig. Sie müssen nichts weiter tun.",
+      "Deine Tickets bleiben für den neuen Termin gültig. Du musst nichts weiter tun.",
       `<a href="${escapeHtml(input.orderUrl)}" style="display:inline-block;background:#14B8A6;color:#ffffff;text-decoration:none;font-family:${EMAIL_FONT};font-weight:600;font-size:15px;padding:12px 20px;border-radius:12px;margin:0 10px 10px 0">Bestellung ${escapeHtml(input.orderNumber)} öffnen</a><a href="${escapeHtml(input.eventUrl)}" style="display:inline-block;background:#ffffff;color:#0F2747;text-decoration:none;font-family:${EMAIL_FONT};font-weight:600;font-size:14px;padding:11px 18px;border-radius:12px;border:1px solid #CBD5E1;margin:0 0 10px 0">Event-Seite öffnen</a>`,
-      `Passt der neue Termin nicht? Schreiben Sie uns gern über <a href="${escapeHtml(hilfeUrl)}" style="color:#0D9488">Hilfe / Kontakt</a> — Storno und Erstattung richten sich nach den <a href="${escapeHtml(agbUrl)}" style="color:#0D9488">AGB</a>.`,
-      "Herzliche Grüße<br/>Ihr Ticketfeeling-Team",
+      `Passt der neue Termin nicht? Schreib uns gern über <a href="${escapeHtml(hilfeUrl)}" style="color:#0D9488">Hilfe / Kontakt</a> — Storno und Erstattung richten sich nach den <a href="${escapeHtml(agbUrl)}" style="color:#0D9488">AGB</a>.`,
+      "Herzliche Grüße<br/>Dein Ticketfeeling-Team",
     ]),
   };
 }

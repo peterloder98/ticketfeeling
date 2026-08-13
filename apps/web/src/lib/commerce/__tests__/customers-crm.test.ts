@@ -52,13 +52,19 @@ describe("formalGermanGreeting", () => {
         firstName: "Ferdinand",
         lastName: "Stier",
       }),
-    ).toBe("Sehr geehrter Herr Stier");
+    ).toBe("Hallo Ferdinand");
     expect(
       formalGermanGreeting({
         gender: "female",
         firstName: "Anna",
         lastName: "Müller",
       }),
-    ).toBe("Sehr geehrte Frau Müller");
+    ).toBe("Hallo Anna");
+    expect(
+      formalGermanGreeting({
+        gender: "male",
+        lastName: "Stier",
+      }),
+    ).toBe("Hallo Herr Stier");
   });
 });
