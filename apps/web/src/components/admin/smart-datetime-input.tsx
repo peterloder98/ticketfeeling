@@ -326,16 +326,23 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
           </div>
         </div>
 
-        <div className="shrink-0 basis-[9.5rem]">
+        <div className="shrink-0 basis-[7.5rem]">
           <span className="mb-0.5 block text-[10px] font-semibold uppercase tracking-[0.1em] text-[var(--tf-text-secondary)]">
             Uhrzeit
           </span>
           <div
-            className={`flex items-center gap-1 rounded-lg border bg-white px-1.5 py-1 transition ${
+            className={`flex cursor-text items-center gap-1 rounded-lg border bg-white px-1.5 py-1 transition ${
               timeOpen
                 ? "border-[var(--tf-teal)] shadow-[0_0_0_2px_rgba(20,184,166,0.18)]"
                 : "border-[var(--tf-line)] hover:border-[var(--tf-teal)]/50"
             }`}
+            onMouseDown={(e) => {
+              const target = e.target as HTMLElement;
+              if (target.tagName === "INPUT") return;
+              e.preventDefault();
+              timeRef.current?.focus();
+              selectAllSoon(timeRef.current);
+            }}
           >
             <Clock className="h-3.5 w-3.5 shrink-0 text-[var(--tf-teal)]" aria-hidden />
             <input
@@ -368,20 +375,10 @@ export function SmartDateTimeInput({ name, label, hint, value, onChange }: Props
                 }
               }}
               onBlur={blurTime}
-              aria-label={`${label} Uhrzeit`}
-            />
-            <button
-              type="button"
-              className="rounded-md px-1.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--tf-text-secondary)] hover:bg-[rgba(15,39,71,0.06)] hover:text-[var(--tf-navy)]"
               aria-expanded={timeOpen}
               aria-controls={timePanelId}
-              onClick={() => {
-                setDateOpen(false);
-                setTimeOpen((v) => !v);
-              }}
-            >
-              Liste
-            </button>
+              aria-label={`${label} Uhrzeit`}
+            />
           </div>
         </div>
       </div>
