@@ -537,6 +537,7 @@ export async function PUT(request: Request) {
 
     type SiblingRow = {
       id: string;
+      name: string;
       eventEndsAt: Date | null;
       eventStartsAt: Date | null;
       ticketCategories: { id: string; name: string; categoryKind: string }[];
@@ -575,6 +576,7 @@ export async function PUT(request: Request) {
         },
         select: {
           id: true,
+          name: true,
           eventEndsAt: true,
           eventStartsAt: true,
           ticketCategories: {
