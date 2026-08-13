@@ -7,6 +7,78 @@ export function discountBadgeLabel(listCents: number, unitCents: number): string
   return "Aktion";
 }
 
+export type CampaignPromoCalloutParts = {
+  /** Campaign name or primary benefit line */
+  title: string;
+  /** Benefit / condition — omit when redundant with title */
+  detail?: string;
+};
+
+function normalizePromoText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[*\u00a0]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Consolidate campaign name + badge + disclaimer into one callout
+ * (avoids three weak stacked lines on cards).
+ */
+export function formatCampaignPromoCallout(input: {
+  campaignName?: string | null;
+  saleBadge?: string | null;
+  saleDisclaimer?: string | null;
+}): CampaignPromoCalloutParts | null {
+  const name = input.campaignName?.trim() || "";
+  const badge = input.saleBadge?.trim() || "";
+  let disclaimer = input.saleDisclaimer?.trim() || "";
+  if (disclaimer.startsWith("*")) {
+    disclaimer = disclaimer.replace(/^\*\s*/, "").trim();
+  }
+
+  if (!name && !badge && !disclaimer) return null;
+
+  const nName = name ? normalizePromoText(name) : "";
+  const nBadge = badge ? normalizePromoText(badge) : "";
+  const nDisc = disclaimer ? normalizePromoText(disclaimer) : "";
+
+  if (name && badge) {
+    if (nName === nBadge || nBadge.includes(nName)) {
+      return { title: badge };
+    }
+    if (nName.includes(nBadge)) {
+      return { title: name };
+    }
+    return { title: name, detail: badge };
+  }
+
+  if (name && disclaimer) {
+    // Badge already carries the threshold — skip “beim Kauf von N Tickets”.
+    if (nDisc.includes("beim kauf") || nDisc.includes("ab ") || /\d+\s*tickets?/.test(nDisc)) {
+      // Keep as soft detail only when there is no stronger badge line.
+      return { title: name, detail: disclaimer };
+    }
+    return { title: name, detail: disclaimer };
+  }
+
+  if (badge && disclaimer) {
+    // Disclaimer repeats the ticket threshold already in the badge.
+    if (
+      /\d+\s*tickets?/i.test(badge) &&
+      (nDisc.includes("beim kauf") || /\d+\s*tickets?/.test(nDisc))
+    ) {
+      return { title: badge };
+    }
+    return { title: badge, detail: disclaimer };
+  }
+
+  if (badge) return { title: badge };
+  if (name) return { title: name };
+  return { title: disclaimer };
+}
+
 export const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export type CountdownParts = {

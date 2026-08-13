@@ -4,6 +4,7 @@ import { getDefaultOrganization } from "@/lib/commerce/org";
 import { OrgTracking } from "@/components/org-tracking";
 import { PaymentBrandRow } from "@/components/payment-brand-marks";
 import { ResponsiveImage } from "@/components/responsive-image";
+import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
 import { Calendar, MapPin } from "lucide-react";
 import { buildPublicListingCards } from "@/lib/commerce/public-listings";
 import { listingCardsToEventCardData } from "@/lib/commerce/listing-card-data";
@@ -83,9 +84,6 @@ export default async function EmbedShopPage() {
                           <span className="text-xs tabular-nums text-[var(--tf-text-secondary)] line-through">
                             {card.listPriceLabel}
                           </span>
-                          <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
-                            {card.saleBadge}
-                          </span>
                           <span className="text-sm font-bold tabular-nums text-[var(--tf-sale)]">
                             {card.priceLabel}
                           </span>
@@ -95,10 +93,14 @@ export default async function EmbedShopPage() {
                           {card.priceLabel ?? "Tickets"}
                         </p>
                       )}
-                      {onSale && card.campaignName ? (
-                        <p className="text-[11px] font-medium text-[var(--tf-navy)]">
-                          {card.campaignName}
-                        </p>
+                      {card.saleBadge || card.campaignName || card.saleDisclaimer ? (
+                        <CampaignPromoCallout
+                          campaignName={card.campaignName}
+                          saleBadge={card.saleBadge}
+                          saleDisclaimer={card.saleDisclaimer}
+                          size="sm"
+                          className="mt-1.5"
+                        />
                       ) : null}
                       {card.priceNote ? (
                         <FeeSurchargeNote

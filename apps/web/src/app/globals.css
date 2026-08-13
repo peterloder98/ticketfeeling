@@ -301,6 +301,21 @@ html.dark .tf-badge-sale {
   color: #ff8f82;
 }
 
+/* Consolidated Aktion callout — teal tint, one block instead of stacked micro-lines */
+.tf-promo-callout {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  border-radius: 10px;
+  background: rgba(20, 184, 166, 0.14);
+  border: 1px solid rgba(20, 184, 166, 0.28);
+}
+
+html.dark .tf-promo-callout {
+  background: rgba(20, 184, 166, 0.18);
+  border-color: rgba(20, 184, 166, 0.35);
+}
+
 /* Typography helpers */
 .tf-display {
   font-weight: 700;

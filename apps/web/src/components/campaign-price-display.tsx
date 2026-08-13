@@ -4,7 +4,9 @@ import { formatEuroFromCents } from "@/lib/money";
 import {
   discountBadgeLabel,
   formatCampaignCountdown,
+  formatCampaignPromoCallout,
 } from "@/lib/commerce/campaign-price-ui";
+import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
 import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
 export { discountBadgeLabel, formatCampaignCountdown };
@@ -31,8 +33,8 @@ type Props = {
 /**
  * Campaign / accessibility discounted price.
  *
- * Sale attention: badge + sale price use `--tf-sale` (warm coral) — punchier than teal
- * for „Achtung Rabatt“, but not VIP gold (`--tf-gold`) and not purple. Primary CTAs stay teal.
+ * Unit Aktionspreis: strike + coral sale price.
+ * Order/unit promo messaging: one teal callout (name + benefit), not three weak lines.
  * Live Aktion/Event countdown is rendered once via EventPageUrgencyCountdown.
  */
 export function CampaignPriceDisplay({
@@ -48,13 +50,21 @@ export function CampaignPriceDisplay({
   inline = false,
 }: Props) {
   const showStrike = listCents > unitCents;
-  const badge =
+  const derivedBadge =
     saleBadge?.trim() || (showStrike ? discountBadgeLabel(listCents, unitCents) : null);
+  const callout = inline
+    ? null
+    : formatCampaignPromoCallout({
+        campaignName: promoLabel,
+        saleBadge: derivedBadge,
+        saleDisclaimer,
+      });
 
   const priceSize =
     size === "lg" ? "text-xl" : size === "sm" ? "text-sm" : "text-lg";
   const strikeSize = size === "sm" ? "text-xs" : "text-sm";
   const feeBesidePrice = Boolean(feeNote) && !inline && size !== "sm";
+  const calloutSize = size === "sm" ? "sm" : "md";
 
   return (
     <div className={className}>
@@ -64,11 +74,6 @@ export function CampaignPriceDisplay({
             className={`${strikeSize} font-normal tabular-nums text-[var(--tf-text-secondary)] line-through`}
           >
             {formatEuroFromCents(listCents)}
-          </span>
-        ) : null}
-        {badge ? (
-          <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
-            {badge}
           </span>
         ) : null}
         <span
@@ -86,11 +91,12 @@ export function CampaignPriceDisplay({
           />
         ) : null}
       </div>
-      {!inline && promoLabel ? (
-        <p className="mt-0.5 text-[11px] font-medium text-[var(--tf-navy)]">{promoLabel}</p>
-      ) : null}
-      {!inline && saleDisclaimer ? (
-        <p className="mt-0.5 text-[10px] text-[var(--tf-text-secondary)]">{saleDisclaimer}</p>
+      {callout ? (
+        <CampaignPromoCallout
+          parts={callout}
+          size={calloutSize}
+          className="mt-1.5"
+        />
       ) : null}
       {!inline && feeNote && size === "sm" ? (
         <FeeSurchargeNote

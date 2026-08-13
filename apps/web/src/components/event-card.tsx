@@ -2,6 +2,7 @@ import Link from "next/link";
 import { MapPin, Calendar } from "lucide-react";
 import { ResponsiveImage } from "@/components/responsive-image";
 import { EventPageUrgencyCountdown } from "@/components/live-urgency-countdown";
+import { CampaignPromoCallout } from "@/components/campaign-promo-callout";
 import { formatDeDateTime } from "@/lib/datetime-de";
 import { FeeSurchargeNote } from "@/components/fee-info-dialog";
 
@@ -113,7 +114,8 @@ export function EventCard({
   const href = event.href ?? `/event/${event.slug}`;
   const cta = event.ctaLabel ?? "Event ansehen";
   const onSale = Boolean(event.listPriceLabel && event.saleBadge);
-  const hasPromoBadge = Boolean(event.saleBadge);
+  const hasPromo =
+    Boolean(event.saleBadge) || Boolean(event.campaignName) || Boolean(event.saleDisclaimer);
   const showFeeNote = Boolean(event.priceNote);
 
   return (
@@ -189,42 +191,29 @@ export function EventCard({
                 <span className="text-xs font-normal tabular-nums text-[var(--tf-text-secondary)] line-through">
                   {event.listPriceLabel}
                 </span>
-                {event.saleBadge ? (
-                  <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
-                    {event.saleBadge}
-                  </span>
-                ) : null}
                 <span className="text-sm font-bold tabular-nums text-[var(--tf-sale)]">
                   {event.priceLabel}
                 </span>
               </div>
             ) : (
-              <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                {hasPromoBadge ? (
-                  <span className="tf-badge tf-badge-sale !px-1.5 !py-0.5 text-[10px] font-semibold leading-none">
-                    {event.saleBadge}
-                  </span>
-                ) : null}
-                <span className="block text-sm font-semibold text-[var(--tf-navy)]">
-                  {event.priceLabel ?? "Tickets"}
-                </span>
-              </div>
+              <span className="block text-sm font-semibold text-[var(--tf-navy)]">
+                {event.priceLabel ?? "Tickets"}
+              </span>
             )}
-            {hasPromoBadge && event.campaignName ? (
-              <span className="mt-0.5 block text-[11px] font-medium text-[var(--tf-navy)]">
-                {event.campaignName}
-              </span>
-            ) : null}
-            {event.saleDisclaimer ? (
-              <span className="mt-0.5 block text-[10px] text-[var(--tf-text-secondary)]">
-                {event.saleDisclaimer}
-              </span>
+            {hasPromo ? (
+              <CampaignPromoCallout
+                campaignName={event.campaignName}
+                saleBadge={event.saleBadge}
+                saleDisclaimer={event.saleDisclaimer}
+                size="sm"
+                className="mt-1.5"
+              />
             ) : null}
             {showFeeNote ? (
               <FeeSurchargeNote
                 as="p"
                 note={event.priceNote!}
-                className="mt-0.5"
+                className="mt-1"
                 textClassName="text-[11px] text-[var(--tf-text-secondary)]"
               />
             ) : null}
