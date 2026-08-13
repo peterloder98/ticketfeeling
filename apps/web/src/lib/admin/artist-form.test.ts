@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  ARTIST_BIOGRAPHY_MAX,
+  ARTIST_SHORT_BIO_MAX,
+  clampArtistText,
   normalizeHomepageUrl,
   normalizeOptionalHttpUrl,
   normalizeOptionalImageUrl,
@@ -75,5 +78,32 @@ describe("artist-form helpers", () => {
 
   it("requires a name on profile forms", () => {
     expect(() => parseArtistProfileForm(new FormData())).toThrow("NAME_REQUIRED");
+  });
+
+  it("clamps intro and biography to published limits", () => {
+    expect(clampArtistText("  hi  ", 10)).toBe("hi");
+    expect(clampArtistText("x".repeat(300), ARTIST_SHORT_BIO_MAX)?.length).toBe(
+      ARTIST_SHORT_BIO_MAX,
+    );
+    expect(clampArtistText("y".repeat(5000), ARTIST_BIOGRAPHY_MAX)?.length).toBe(
+      ARTIST_BIOGRAPHY_MAX,
+    );
+
+    const fd = new FormData();
+    fd.set("name", "Test");
+    fd.set("shortBio", "a".repeat(400));
+    fd.set("biography", "b".repeat(3000));
+    const parsed = parseArtistProfileForm(fd);
+    expect(parsed.shortBio?.length).toBe(ARTIST_SHORT_BIO_MAX);
+    expect(parsed.biography?.length).toBe(ARTIST_BIOGRAPHY_MAX);
+  });
+
+  it("derives intro from biography when shortBio is empty", () => {
+    const fd = new FormData();
+    fd.set("name", "Test");
+    fd.set("biography", "c".repeat(400));
+    const parsed = parseArtistProfileForm(fd);
+    expect(parsed.shortBio?.length).toBe(ARTIST_SHORT_BIO_MAX);
+    expect(parsed.biography?.length).toBe(400);
   });
 });

@@ -6,8 +6,9 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
-import { ARTIST_TYPES } from "@/lib/admin/artist-form";
+import { ARTIST_BIOGRAPHY_MAX, ARTIST_TYPES } from "@/lib/admin/artist-form";
 import { createArtistAction } from "@/app/admin/artists/actions";
+import { CharacterCountedField } from "@/components/admin/character-counted-field";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Künstler" };
@@ -135,15 +136,15 @@ export default async function AdminArtistsPage({ searchParams }: Props) {
                     inputMode="url"
                   />
                 </label>
-                <label className="grid gap-1 text-sm sm:col-span-2">
-                  <span className="text-[var(--tf-text-secondary)]">Bio</span>
-                  <textarea
-                    name="biography"
-                    rows={3}
-                    className="tf-input"
-                    placeholder="Kurz vorstellen — darf auch später kommen."
-                  />
-                </label>
+                <CharacterCountedField
+                  className="sm:col-span-2"
+                  name="biography"
+                  label="Biografie"
+                  maxLength={ARTIST_BIOGRAPHY_MAX}
+                  rows={3}
+                  placeholder="Kurz vorstellen — darf auch später kommen."
+                  hint="Wenn du kein Intro setzt, werden die ersten 280 Zeichen als Hero-Intro genutzt."
+                />
               </div>
             </details>
           </div>

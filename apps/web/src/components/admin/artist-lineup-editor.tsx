@@ -7,6 +7,7 @@ import {
   type LibraryArtist,
   type LineupArtistRow,
 } from "@/lib/admin/lineup-artist";
+import { ARTIST_BIOGRAPHY_MAX } from "@/lib/admin/artist-form";
 import { ArtistImageField } from "@/components/admin/artist-image-field";
 import { ResponsiveImage } from "@/components/responsive-image";
 
@@ -206,14 +207,24 @@ export function ArtistLineupEditor({
                     />
                   </label>
                   <label className="grid gap-1 text-sm sm:col-span-2">
-                    <span className="text-[var(--tf-text-secondary)]">Bio (optional)</span>
+                    <span className="flex items-baseline justify-between gap-3">
+                      <span className="text-[var(--tf-text-secondary)]">Biografie (optional)</span>
+                      <span className="tabular-nums text-[var(--tf-text-secondary)]">
+                        {row.bio.length} / {ARTIST_BIOGRAPHY_MAX}
+                      </span>
+                    </span>
                     <textarea
                       className="tf-input"
                       rows={3}
+                      maxLength={ARTIST_BIOGRAPHY_MAX}
                       value={row.bio}
                       onChange={(e) => updateRow(row.key, { bio: e.target.value })}
                       placeholder="Kurz was über den Künstler — darf später kommen."
                     />
+                    <span className="text-xs text-[var(--tf-text-secondary)]">
+                      Die ersten 280 Zeichen werden als Intro im Hero genutzt, falls kein separates
+                      Intro gesetzt ist.
+                    </span>
                   </label>
                   <div className="sm:col-span-1">
                     <ArtistImageField

@@ -6,9 +6,14 @@ import { prisma } from "@/lib/db";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { ADMIN_SUBNAV } from "@/lib/admin/nav";
 import { AdminSubnav } from "@/components/admin/admin-subnav";
-import { ARTIST_TYPES } from "@/lib/admin/artist-form";
+import {
+  ARTIST_BIOGRAPHY_MAX,
+  ARTIST_SHORT_BIO_MAX,
+  ARTIST_TYPES,
+} from "@/lib/admin/artist-form";
 import { deleteArtistAction, updateArtistAction } from "@/app/admin/artists/actions";
 import { ArtistImageField } from "@/components/admin/artist-image-field";
+import { CharacterCountedField } from "@/components/admin/character-counted-field";
 
 export const dynamic = "force-dynamic";
 
@@ -183,24 +188,26 @@ export default async function AdminArtistDetailPage({ params, searchParams }: Pr
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
-            <label className="grid gap-1 text-sm sm:col-span-2">
-              <span className="text-[var(--tf-text-secondary)]">Kurzbio</span>
-              <input
-                name="shortBio"
-                className="tf-input"
-                defaultValue={artist.shortBio ?? ""}
-                placeholder="Eine Zeile für Karten & Listen"
-              />
-            </label>
-            <label className="grid gap-1 text-sm sm:col-span-2">
-              <span className="text-[var(--tf-text-secondary)]">Bio</span>
-              <textarea
-                name="biography"
-                rows={5}
-                className="tf-input"
-                defaultValue={artist.biography ?? ""}
-              />
-            </label>
+            <CharacterCountedField
+              className="sm:col-span-2"
+              name="shortBio"
+              label="Intro"
+              maxLength={ARTIST_SHORT_BIO_MAX}
+              rows={3}
+              defaultValue={artist.shortBio ?? ""}
+              placeholder="Kurzer Text für den Hero auf der Künstlerseite"
+              hint="Erscheint vollständig im Hero — nicht länger als das Limit."
+            />
+            <CharacterCountedField
+              className="sm:col-span-2"
+              name="biography"
+              label="Biografie"
+              maxLength={ARTIST_BIOGRAPHY_MAX}
+              rows={6}
+              defaultValue={artist.biography ?? ""}
+              placeholder="Ausführlicher Text unter dem Hero"
+              hint="Erscheint im Biografie-Block der öffentlichen Seite."
+            />
           </div>
 
           <div>

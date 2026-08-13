@@ -19,6 +19,18 @@ export type ArtistType = (typeof ARTIST_TYPES)[number];
 export const ARTIST_VISIBILITIES = ["draft", "published"] as const;
 export type ArtistVisibility = (typeof ARTIST_VISIBILITIES)[number];
 
+/** Hero intro / Kurzbio — shown in full on the public artist page. */
+export const ARTIST_SHORT_BIO_MAX = 280;
+/** Full biography block on the public artist page. */
+export const ARTIST_BIOGRAPHY_MAX = 2000;
+
+/** Clamp text to max length (server-side safety net matching admin counters). */
+export function clampArtistText(raw: string | null | undefined, max: number): string | null {
+  const value = String(raw ?? "").trim();
+  if (!value) return null;
+  return value.length <= max ? value : value.slice(0, max);
+}
+
 /** Parsed artist profile fields from admin create/edit forms. */
 export type ArtistProfileFields = {
   name: string;
@@ -108,9 +120,11 @@ export function parseArtistProfileForm(
   const slugRaw = String(formData.get("slug") ?? "").trim() || defaults?.slug?.trim() || "";
   const slug = slugRaw || slugify(name);
 
-  const biography = optionalText(formData, "biography");
+  const biography = clampArtistText(optionalText(formData, "biography"), ARTIST_BIOGRAPHY_MAX);
+  const shortBioExplicit = clampArtistText(optionalText(formData, "shortBio"), ARTIST_SHORT_BIO_MAX);
   const shortBio =
-    optionalText(formData, "shortBio") || (biography ? biography.slice(0, 280) : null);
+    shortBioExplicit ||
+    (biography ? clampArtistText(biography, ARTIST_SHORT_BIO_MAX) : null);
 
   const homepageRaw = String(formData.get("homepage") ?? "").trim();
   const homepage = homepageRaw

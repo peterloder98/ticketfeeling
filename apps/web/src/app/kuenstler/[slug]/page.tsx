@@ -153,17 +153,6 @@ export default async function ArtistPage({ params, searchParams }: Props) {
       </section>
 
       <div className="tf-container py-12">
-        {backEvent ? (
-          <div className="mb-8">
-            <Link
-              href={`/event/${backEvent.slug}`}
-              className="tf-btn tf-btn-secondary !min-h-11 inline-flex text-sm"
-            >
-              ← Zurück zum Event
-            </Link>
-          </div>
-        ) : null}
-
         <div className="grid gap-8 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)] lg:items-start">
           <div className="tf-card">
             <h2 className="tf-display text-2xl">Biografie</h2>

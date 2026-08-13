@@ -1,6 +1,9 @@
 import type { Prisma } from "@prisma/client";
 import {
   allocateUniqueArtistSlug,
+  ARTIST_BIOGRAPHY_MAX,
+  ARTIST_SHORT_BIO_MAX,
+  clampArtistText,
   normalizeHomepageUrl,
   normalizeOptionalImageUrl,
   normalizeYoutubeInput,
@@ -33,8 +36,8 @@ async function resolveArtistId(
   const youtube = normalizeYoutubeInput(draft.youtube);
   const { profileImageUrl, headerImageUrl } = draftImageUrls(draft);
 
-  const bio = String(draft.bio ?? "").trim() || null;
-  const shortBio = bio ? bio.slice(0, 280) : null;
+  const bio = clampArtistText(draft.bio, ARTIST_BIOGRAPHY_MAX);
+  const shortBio = clampArtistText(bio, ARTIST_SHORT_BIO_MAX);
 
   if (draft.id) {
     const existing = await tx.artist.findFirst({
