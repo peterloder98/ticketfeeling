@@ -1,5 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "crypto";
 
+export function isFieldEncryptionConfigured(): boolean {
+  const raw = process.env.FIELD_ENCRYPTION_KEY;
+  return Boolean(raw && raw.length >= 32);
+}
+
 function getKey() {
   const raw = process.env.FIELD_ENCRYPTION_KEY;
   if (!raw || raw.length < 32) {
@@ -19,6 +24,26 @@ export function encryptSecret(plain: string): string {
   const enc = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
   return `v1:${iv.toString("base64")}:${tag.toString("base64")}:${enc.toString("base64")}`;
+}
+
+/**
+ * Encrypt a bearer token (QR) when FIELD_ENCRYPTION_KEY is set.
+ * Without a key (local/dev) the plaintext is stored unchanged so scans still work.
+ */
+export function sealSensitiveToken(plain: string): string {
+  if (!isFieldEncryptionConfigured()) return plain;
+  return encryptSecret(plain);
+}
+
+/** Decrypt v1: payloads; pass through legacy plaintext QR tokens. */
+export function openSensitiveToken(stored: string | null | undefined): string | null {
+  if (!stored) return null;
+  if (!stored.startsWith("v1:")) return stored;
+  try {
+    return decryptSecret(stored);
+  } catch {
+    return null;
+  }
 }
 
 export function decryptSecret(payload: string): string {

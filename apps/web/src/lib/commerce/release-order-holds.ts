@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { readBoxOfficeSeatAssignments } from "@/lib/commerce/box-office-seating";
 import { releaseHeldQuantity } from "@/lib/commerce/hold-quantity";
+import { releaseOrderPromotions } from "@/lib/commerce/discounts";
 
 /** Release inventory holds for a failed/canceled unpaid order. */
 export async function releaseOrderHolds(orderId: string) {
@@ -8,10 +9,15 @@ export async function releaseOrderHolds(orderId: string) {
     where: { id: orderId },
     select: {
       id: true,
+      organizationId: true,
       cartId: true,
       reservationStatus: true,
       channel: true,
       contractSnapshot: true,
+      discountCode: true,
+      giftCardCode: true,
+      giftCardAppliedCents: true,
+      promotionsReservedAt: true,
     },
   });
   if (!order) return { released: 0 };
@@ -34,9 +40,19 @@ export async function releaseOrderHolds(orderId: string) {
       : [];
 
   if (holds.length === 0 && boxOfficeSeatIds.length === 0) {
-    await prisma.order.update({
-      where: { id: orderId },
-      data: { reservationStatus: "released" },
+    await prisma.$transaction(async (tx) => {
+      await tx.order.update({
+        where: { id: orderId },
+        data: { reservationStatus: "released" },
+      });
+      await releaseOrderPromotions(tx, {
+        id: order.id,
+        organizationId: order.organizationId,
+        discountCode: order.discountCode,
+        giftCardCode: order.giftCardCode,
+        giftCardAppliedCents: order.giftCardAppliedCents,
+        promotionsReservedAt: order.promotionsReservedAt,
+      });
     });
     return { released: 0 };
   }
@@ -64,6 +80,14 @@ export async function releaseOrderHolds(orderId: string) {
     await tx.order.update({
       where: { id: orderId },
       data: { reservationStatus: "released" },
+    });
+    await releaseOrderPromotions(tx, {
+      id: order.id,
+      organizationId: order.organizationId,
+      discountCode: order.discountCode,
+      giftCardCode: order.giftCardCode,
+      giftCardAppliedCents: order.giftCardAppliedCents,
+      promotionsReservedAt: order.promotionsReservedAt,
     });
   });
 

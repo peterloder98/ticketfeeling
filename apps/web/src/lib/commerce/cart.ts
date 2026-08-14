@@ -582,6 +582,7 @@ export async function addToCart(input: {
       const {
         isSeatBookable,
         sellableSeatPrismaWhere,
+        normalizeExpiredHoldAsAvailable,
       } = await import("@/lib/seating/is-seat-bookable");
       const { CartSeatError } = await import("@/lib/commerce/cart-seat-error");
 
@@ -695,7 +696,7 @@ export async function addToCart(input: {
             select: seatSelect,
           });
           const poolNorm = poolSeats.map((s) =>
-            s.status === "held" ? { ...s, status: "available" as const } : s,
+            normalizeExpiredHoldAsAvailable(s, claimNow),
           );
           const withCompanions = assignCompanionSeats(requested, poolNorm);
           if (!withCompanions || withCompanions.length !== seatSlots) {
@@ -711,9 +712,7 @@ export async function addToCart(input: {
           select: seatSelect,
         });
         // Soft-expired held rows look available to Bestplatz pickers.
-        const allNorm = all.map((s) =>
-          s.status === "held" ? { ...s, status: "available" as const } : s,
-        );
+        const allNorm = all.map((s) => normalizeExpiredHoldAsAvailable(s, claimNow));
         if (companionFree) {
           const picked = pickBestAvailablePairs(allNorm, input.quantity);
           if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");

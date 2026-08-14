@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { resolveRecoveryToken } from "@/lib/support/forgotten-ticket";
 import { formatEuroFromCents } from "@/lib/money";
+import { readQrToken } from "@/lib/crypto-token";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Ticket-Zugang" };
@@ -69,7 +70,9 @@ export default async function RecoveryAccessPage({ searchParams }: Props) {
               {ticket.qrTokens[0] ? (
                 <div className="mt-3 rounded-xl bg-white p-3 text-black">
                   <p className="text-xs uppercase tracking-wider text-black/60">Scan-Token</p>
-                  <p className="mt-1 break-all font-mono text-[11px]">{ticket.qrTokens[0].token}</p>
+                  <p className="mt-1 break-all font-mono text-[11px]">
+                    {readQrToken(ticket.qrTokens[0].token) ?? "—"}
+                  </p>
                 </div>
               ) : null}
             </div>

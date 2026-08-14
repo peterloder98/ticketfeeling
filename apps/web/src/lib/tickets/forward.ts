@@ -9,6 +9,7 @@ import {
 } from "@/lib/tickets/access";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { rotateTicketQrToken } from "@/lib/tickets/rotate-qr";
 
 function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
@@ -137,6 +138,8 @@ export async function forwardTicket(input: {
     data: { holderCustomerId: recipient.id },
   });
 
+  await rotateTicketQrToken(ticket.id);
+
   await prisma.ticketResendEvent.create({
     data: {
       organizationId: ticket.organizationId,
@@ -204,6 +207,7 @@ export async function forwardTicket(input: {
       email,
       firstName,
       lastName,
+      qrRotated: true,
     },
   });
 

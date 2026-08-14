@@ -18,6 +18,7 @@ import { canSellAllBoxOfficeEvents } from "@/lib/commerce/box-office-access";
 import { formatBoxOfficeTicketLines } from "@/lib/commerce/box-office-ticket-label";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
 import { formatDeDateTime } from "@/lib/datetime-de";
+import { readQrToken } from "@/lib/crypto-token";
 
 export const dynamic = "force-dynamic";
 
@@ -287,8 +288,8 @@ export default async function BoxOfficeReceiptPage({ params }: Props) {
                         </p>
                       </div>
                       <TicketQrImage
-                        key={ticket.qrTokens[0]?.token ?? ticket.id}
-                        token={ticket.qrTokens[0]?.token ?? ""}
+                        key={readQrToken(ticket.qrTokens[0]?.token) ?? ticket.id}
+                        token={readQrToken(ticket.qrTokens[0]?.token) ?? ""}
                         size={200}
                       />
                       <Link

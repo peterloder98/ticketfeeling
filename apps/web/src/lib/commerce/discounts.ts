@@ -106,20 +106,18 @@ export async function resolveGiftCard(input: {
   };
 }
 
-/**
- * Atomically redeem discount + debit gift card for a paid order.
- * Must run inside the same DB transaction as ticket minting so a failed
- * fulfill rolls back redemption (no double-debit on retry / duplicate webhook).
- */
-export async function redeemOrderPromotions(
+type PromoOrder = {
+  id: string;
+  organizationId: string;
+  discountCode: string | null;
+  giftCardCode: string | null;
+  giftCardAppliedCents: number;
+  promotionsReservedAt?: Date | null;
+};
+
+async function applyOrderPromotions(
   tx: Prisma.TransactionClient,
-  order: {
-    id: string;
-    organizationId: string;
-    discountCode: string | null;
-    giftCardCode: string | null;
-    giftCardAppliedCents: number;
-  },
+  order: PromoOrder,
 ): Promise<{ discountRedeemed: boolean; giftCardDebitedCents: number }> {
   let discountRedeemed = false;
   let giftCardDebitedCents = 0;
@@ -193,4 +191,101 @@ export async function redeemOrderPromotions(
   }
 
   return { discountRedeemed, giftCardDebitedCents };
+}
+
+/**
+ * Hard-lock limited codes / gift-card balance at checkout (before Stripe).
+ * Idempotent via `promotionsReservedAt`.
+ */
+export async function reserveOrderPromotions(
+  tx: Prisma.TransactionClient,
+  order: PromoOrder,
+): Promise<{ discountRedeemed: boolean; giftCardDebitedCents: number }> {
+  if (order.promotionsReservedAt) {
+    return { discountRedeemed: Boolean(order.discountCode), giftCardDebitedCents: 0 };
+  }
+  const result = await applyOrderPromotions(tx, order);
+  await tx.order.update({
+    where: { id: order.id },
+    data: { promotionsReservedAt: new Date() },
+  });
+  return result;
+}
+
+/**
+ * Undo a checkout reservation when payment fails / order is cancelled unpaid.
+ */
+export async function releaseOrderPromotions(
+  tx: Prisma.TransactionClient,
+  order: PromoOrder,
+): Promise<void> {
+  if (!order.promotionsReservedAt) return;
+
+  const discountCode = order.discountCode?.trim().toUpperCase() || null;
+  if (discountCode) {
+    const rows = await tx.$queryRaw<Array<{ id: string; redemption_count: number }>>`
+      SELECT id, redemption_count
+      FROM discount_codes
+      WHERE organization_id = ${order.organizationId}::uuid
+        AND code = ${discountCode}
+      FOR UPDATE
+    `;
+    const row = rows[0];
+    if (row && row.redemption_count > 0) {
+      await tx.discountCode.update({
+        where: { id: row.id },
+        data: { redemptionCount: { decrement: 1 } },
+      });
+    }
+  }
+
+  const giftCode = order.giftCardCode?.trim().toUpperCase() || null;
+  const applied = Math.max(0, Math.floor(order.giftCardAppliedCents || 0));
+  if (giftCode && applied > 0) {
+    const rows = await tx.$queryRaw<
+      Array<{ id: string; balance_cents: number; status: string }>
+    >`
+      SELECT id, balance_cents, status
+      FROM gift_cards
+      WHERE organization_id = ${order.organizationId}::uuid
+        AND code = ${giftCode}
+      FOR UPDATE
+    `;
+    const card = rows[0];
+    if (card) {
+      const restored = card.balance_cents + applied;
+      await tx.giftCard.update({
+        where: { id: card.id },
+        data: {
+          balanceCents: restored,
+          status: restored > 0 ? "active" : card.status,
+        },
+      });
+    }
+  }
+
+  await tx.order.update({
+    where: { id: order.id },
+    data: { promotionsReservedAt: null },
+  });
+}
+
+/**
+ * Atomically redeem discount + debit gift card for a paid order.
+ * If checkout already reserved, this is a no-op (no double-debit).
+ * Legacy in-flight orders without reservation still redeem here.
+ */
+export async function redeemOrderPromotions(
+  tx: Prisma.TransactionClient,
+  order: PromoOrder,
+): Promise<{ discountRedeemed: boolean; giftCardDebitedCents: number }> {
+  if (order.promotionsReservedAt) {
+    return { discountRedeemed: Boolean(order.discountCode), giftCardDebitedCents: 0 };
+  }
+  const result = await applyOrderPromotions(tx, order);
+  await tx.order.update({
+    where: { id: order.id },
+    data: { promotionsReservedAt: new Date() },
+  });
+  return result;
 }

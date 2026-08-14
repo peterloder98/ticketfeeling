@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
-import { createSecureToken, hashToken } from "@/lib/crypto-token";
+import { createSecureToken, persistQrToken } from "@/lib/crypto-token";
+import { allocateTicketNumbers } from "@/lib/commerce/order-number";
 import { writeAudit } from "@/lib/audit";
 import { buildInvoiceTicketDescription } from "@/lib/commerce/invoice-description";
 import { mergeSameCategoryLines } from "@/lib/commerce/merge-category-lines";
@@ -347,21 +348,6 @@ export async function fulfillPaidOrder(orderId: string) {
 
     // Tickets (once per order item quantity) — batch inserts to stay under DB RTT limits
     if (order.tickets.length === 0) {
-      const year = new Date().getFullYear();
-      const prefix = `TF-T-${year}-`;
-      const lastTicket = await tx.ticket.findFirst({
-        where: {
-          organizationId: order.organizationId,
-          ticketNumber: { startsWith: prefix },
-        },
-        orderBy: { ticketNumber: "desc" },
-        select: { ticketNumber: true },
-      });
-      const lastSeq = lastTicket
-        ? Number.parseInt(lastTicket.ticketNumber.slice(prefix.length), 10)
-        : 0;
-      let seq = Number.isFinite(lastSeq) ? lastSeq : 0;
-
       const cartItemsWithSeats = cartItems;
       const usedCartItemIds = new Set<string>();
 
@@ -418,21 +404,19 @@ export async function fulfillPaidOrder(orderId: string) {
         seatLabel: string | null;
       };
 
-      const planned: PlannedTicket[] = [];
+      const drafts: Array<Omit<PlannedTicket, "ticketNumber">> = [];
 
       function planTicket(opts: {
         item: OrderItemRow;
         seat: SeatRef;
         categorySnapshot: string;
       }) {
-        seq += 1;
         const token = createSecureToken(32);
-        planned.push({
+        drafts.push({
           item: opts.item,
           seat: opts.seat,
           categorySnapshot: opts.categorySnapshot,
           token,
-          ticketNumber: `${prefix}${String(seq).padStart(8, "0")}`,
           seatLabel: opts.seat
             ? `${opts.seat.blockLabel} · Reihe ${opts.seat.rowLabel} · Platz ${opts.seat.seatNumber}`
             : null,
@@ -488,6 +472,15 @@ export async function fulfillPaidOrder(orderId: string) {
         }
       }
 
+      const numbers = await allocateTicketNumbers(tx, organizationId, drafts.length);
+      const planned: PlannedTicket[] = drafts.map((d, i) => ({
+        ...d,
+        ticketNumber: numbers[i] ?? "",
+      }));
+      if (planned.some((p) => !p.ticketNumber)) {
+        throw new Error("TICKET_NUMBER_ALLOC_FAILED");
+      }
+
       const createdTickets = await tx.ticket.createManyAndReturn({
         data: planned.map((p) => ({
           organizationId,
@@ -518,10 +511,11 @@ export async function fulfillPaidOrder(orderId: string) {
           data: planned.map((p) => {
             const ticket = ticketByNumber.get(p.ticketNumber);
             if (!ticket) throw new Error("TICKET_CREATE_MISMATCH");
+            const stored = persistQrToken(p.token);
             return {
               ticketId: ticket.id,
-              tokenHash: hashToken(p.token),
-              token: p.token,
+              tokenHash: stored.tokenHash,
+              token: stored.token,
               status: "active",
             };
           }),
@@ -553,6 +547,7 @@ export async function fulfillPaidOrder(orderId: string) {
           discountCode: order.discountCode,
           giftCardCode: order.giftCardCode,
           giftCardAppliedCents: order.giftCardAppliedCents,
+          promotionsReservedAt: order.promotionsReservedAt,
         });
       } catch (promoError) {
         const code =

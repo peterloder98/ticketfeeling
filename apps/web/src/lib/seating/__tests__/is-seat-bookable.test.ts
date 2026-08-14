@@ -4,6 +4,7 @@ import {
   isSeatHeldByOwner,
   isHoldExpired,
   isActiveHold,
+  normalizeExpiredHoldAsAvailable,
   seatUnbookableToErrorCode,
   sellableSeatPrismaWhere,
 } from "@/lib/seating/is-seat-bookable";
@@ -167,6 +168,28 @@ describe("isSeatHeldByOwner / expire vs sold", () => {
     expect(isHoldExpired(seat)).toBe(true);
     expect(isActiveHold(seat)).toBe(false);
     expect(isSeatHeldByOwner(seat, "item-1")).toBe(false);
+  });
+
+  it("does not treat active holds as available for Bestplatz", () => {
+    const now = new Date("2026-08-08T10:00:00Z");
+    const active = normalizeExpiredHoldAsAvailable(
+      {
+        ...base,
+        status: "held",
+        holdExpiresAt: new Date("2026-08-08T11:00:00Z"),
+      },
+      now,
+    );
+    expect(active.status).toBe("held");
+    const expired = normalizeExpiredHoldAsAvailable(
+      {
+        ...base,
+        status: "held",
+        holdExpiresAt: new Date("2026-08-08T09:00:00Z"),
+      },
+      now,
+    );
+    expect(expired.status).toBe("available");
   });
 });
 

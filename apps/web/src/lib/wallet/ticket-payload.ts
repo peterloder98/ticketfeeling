@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "crypto";
 import { prisma } from "@/lib/db";
+import { readQrToken } from "@/lib/crypto-token";
 import { formatDeDateTime } from "@/lib/datetime-de";
 
 export type WalletTicketPayload = {
@@ -61,7 +62,7 @@ export async function loadWalletTicketPayload(
     seatRow: ticket.seatRow,
     seatNumber: ticket.seatNumber,
     blockLabel: ticket.blockLabel,
-    qrToken: ticket.qrTokens[0]?.token ?? null,
+    qrToken: readQrToken(ticket.qrTokens[0]?.token),
     holderName,
     organizationId: ticket.organizationId,
     orderId: ticket.orderId,

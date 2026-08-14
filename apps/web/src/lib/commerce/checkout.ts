@@ -24,6 +24,7 @@ import { ensureSeatingAssignmentSchema } from "@/lib/seating/ensure-schema";
 import { categoryNeedsSeats, seatsPerTicket } from "@/lib/seating/types";
 import { withTimeout } from "@/lib/async-timeout";
 import { allocateOrderNumber } from "@/lib/commerce/order-number";
+import { reserveOrderPromotions } from "@/lib/commerce/discounts";
 import { releaseOrderHolds } from "@/lib/commerce/release-order-holds";
 
 const STRIPE_CREATE_TIMEOUT_MS = 20_000;
@@ -535,6 +536,17 @@ export async function createOrderFromCart(input: {
         reservedUntil,
       },
     });
+
+    if (priced.discountCode || priced.giftCardAppliedCents > 0) {
+      await reserveOrderPromotions(tx, {
+        id: createdOrder.id,
+        organizationId: createdOrder.organizationId,
+        discountCode: createdOrder.discountCode,
+        giftCardCode: createdOrder.giftCardCode,
+        giftCardAppliedCents: createdOrder.giftCardAppliedCents,
+        promotionsReservedAt: null,
+      });
+    }
 
     return createdOrder;
   });

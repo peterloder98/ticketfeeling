@@ -86,6 +86,8 @@ const CRITICAL_FALLBACK_STATEMENTS = [
   `ALTER TABLE "tours" ADD COLUMN IF NOT EXISTS "short_description" TEXT`,
   `ALTER TABLE "events" ADD COLUMN IF NOT EXISTS "details_use_tour_defaults" BOOLEAN NOT NULL DEFAULT true`,
   `ALTER TABLE "event_ticket_categories" ADD COLUMN IF NOT EXISTS "extras_short_text" TEXT`,
+  // Promo hard-lock at checkout (prevents double-redeem of limited codes)
+  `ALTER TABLE "orders" ADD COLUMN IF NOT EXISTS "promotions_reserved_at" TIMESTAMP(3)`,
 ];
 
 const FALLBACK_STATEMENTS = [

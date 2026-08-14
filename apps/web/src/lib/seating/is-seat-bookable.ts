@@ -67,6 +67,17 @@ export function isActiveHold(
   return expires >= now;
 }
 
+/** Treat only timed-out holds as free for Bestplatz / gap math — never active holds. */
+export function normalizeExpiredHoldAsAvailable<T extends SeatBookableSeat>(
+  seat: T,
+  now: Date = new Date(),
+): T {
+  if (isHoldExpired(seat, now)) {
+    return { ...seat, status: "available" };
+  }
+  return seat;
+}
+
 export function isHoldExpired(
   seat: Pick<SeatBookableSeat, "status" | "holdExpiresAt">,
   now: Date = new Date(),

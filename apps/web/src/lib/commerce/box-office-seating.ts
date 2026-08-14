@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { categoryNeedsSeats, seatsPerTicket } from "@/lib/seating/types";
 import {
   isSeatBookable,
+  normalizeExpiredHoldAsAvailable,
   sellableSeatPrismaWhere,
 } from "@/lib/seating/is-seat-bookable";
 import {
@@ -190,7 +191,7 @@ export async function claimBoxOfficeSeats(
           select: seatSelect,
         });
         const poolNorm = poolSeats.map((s) =>
-          s.status === "held" ? { ...s, status: "available" as const } : s,
+          normalizeExpiredHoldAsAvailable(s, claimNow),
         );
         const withCompanions = assignCompanionSeats(requested, poolNorm);
         if (!withCompanions || withCompanions.length !== seatSlots) {
@@ -205,9 +206,7 @@ export async function claimBoxOfficeSeats(
         where: sellableWhere,
         select: seatSelect,
       });
-      const allNorm = all.map((s) =>
-        s.status === "held" ? { ...s, status: "available" as const } : s,
-      );
+      const allNorm = all.map((s) => normalizeExpiredHoldAsAvailable(s, claimNow));
       if (companionFree) {
         const picked = pickBestAvailablePairs(allNorm, item.quantity);
         if (picked.length !== seatSlots) throw new Error("SEATS_UNAVAILABLE");

@@ -7,6 +7,7 @@ import { formatEuroFromCents } from "@/lib/money";
 import { OrderTicketsPanel, type OrderPositionView } from "@/components/order-tickets-panel";
 import { getDefaultOrganizationForUser, userHasPermission } from "@/lib/rbac";
 import { canUseTicketEntryWithGuestToken, isTicketTransferred } from "@/lib/tickets/access";
+import { readQrToken } from "@/lib/crypto-token";
 import { verifyOrderAccessToken } from "@/lib/commerce/order-access";
 import { formalGermanGreeting } from "@/lib/commerce/formal-address";
 import { getWalletUiFlags } from "@/lib/wallet/config";
@@ -150,7 +151,7 @@ export default async function EmbedOrderTicketsPage({ params, searchParams }: Pr
             categorySnapshot: ticket.categorySnapshot,
             seatLabel: ticket.seatLabel,
             presence: ticket.presence,
-            qrToken: canEntry ? (ticket.qrTokens[0]?.token ?? null) : null,
+            qrToken: canEntry ? readQrToken(ticket.qrTokens[0]?.token) : null,
             holderLabel: ticket.holder
               ? `${ticket.holder.firstName} ${ticket.holder.lastName}`.trim()
               : null,

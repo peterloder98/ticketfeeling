@@ -74,6 +74,20 @@ function checkoutErrorMessage(code: string) {
       return "Bitte den Firmennamen für die Rechnung angeben.";
     case "INVOICE_FIELDS_REQUIRED":
       return "Für die Rechnung bitte Adresse und alle Pflichtfelder ausfüllen.";
+    case "DISCOUNT_EXHAUSTED":
+      return "Dieser Rabattcode ist leider schon aufgebraucht.";
+    case "DISCOUNT_NOT_FOUND":
+    case "DISCOUNT_EXPIRED":
+    case "DISCOUNT_NOT_YET_VALID":
+    case "DISCOUNT_MIN_ORDER":
+    case "DISCOUNT_WRONG_EVENT":
+      return "Der Rabattcode gilt für diese Bestellung nicht mehr.";
+    case "GIFT_CARD_INSUFFICIENT":
+    case "GIFT_CARD_EMPTY":
+    case "GIFT_CARD_EXPIRED":
+    case "GIFT_CARD_INACTIVE":
+    case "GIFT_CARD_NOT_FOUND":
+      return "Die Gutscheinkarte konnte nicht eingelöst werden. Bitte den Code prüfen.";
     default:
       return code || "Checkout fehlgeschlagen";
   }

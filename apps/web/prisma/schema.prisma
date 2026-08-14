@@ -1265,6 +1265,8 @@ model Order {
   discountCents      Int       @default(0) @map("discount_cents")
   giftCardCode       String?   @map("gift_card_code")
   giftCardAppliedCents Int     @default(0) @map("gift_card_applied_cents")
+  /// Set when limited discount / gift card was hard-locked at checkout
+  promotionsReservedAt DateTime? @map("promotions_reserved_at")
   /// Customer-facing payable total (includes Verwaltungsgebühr; no payment-method surcharge)
   customerTotalCents Int       @default(0) @map("customer_total_cents")
   /// Selected online method: card | sepa_debit | apple_pay | google_pay | stripe_card | stripe_sepa
@@ -1594,7 +1596,7 @@ model TicketQrToken {
   id         String    @id @default(uuid()) @db.Uuid
   ticketId   String    @map("ticket_id") @db.Uuid
   tokenHash  String    @unique @map("token_hash")
-  /// Plain token for authenticated ticket rendering. Encrypt at rest before production.
+  /// Bearer token for rendering. Encrypted at rest when FIELD_ENCRYPTION_KEY is set (v1:…).
   token      String
   status     String    @default("active") // active|revoked
   createdAt  DateTime  @default(now()) @map("created_at")

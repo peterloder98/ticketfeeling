@@ -48,7 +48,7 @@ describe("atomic check-in race", () => {
   });
 });
 
-describe("promo soft-fail codes", () => {
+describe("promo reservation vs fulfill fallback", () => {
   function isPromoSoftFail(code: string): boolean {
     return (
       code === "DISCOUNT_EXHAUSTED" ||
@@ -57,7 +57,7 @@ describe("promo soft-fail codes", () => {
     );
   }
 
-  it("treats discount/gift failures as soft-fail", () => {
+  it("treats discount/gift failures as checkout-blocking (hard lock)", () => {
     expect(isPromoSoftFail("DISCOUNT_EXHAUSTED")).toBe(true);
     expect(isPromoSoftFail("GIFT_CARD_INSUFFICIENT")).toBe(true);
     expect(isPromoSoftFail("PAYMENT_NOT_PAID")).toBe(false);

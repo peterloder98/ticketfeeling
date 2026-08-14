@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { readQrToken } from "@/lib/crypto-token";
 import { formatDeDateTime, formatDeTime } from "@/lib/datetime-de";
 import { formatSellerAddress } from "@/lib/legal/seller";
 import { buildEventOrganizerIdentity } from "@/lib/legal/event-organizer";
@@ -253,6 +254,6 @@ export async function loadTicketPresentation(
       `${ticket.holder?.firstName ?? ""} ${ticket.holder?.lastName ?? ""}`.trim() ||
       null,
     orderNumber: ticket.order.orderNumber,
-    qrToken: ticket.qrTokens[0]?.token ?? null,
+    qrToken: readQrToken(ticket.qrTokens[0]?.token),
   };
 }
