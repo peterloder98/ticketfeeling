@@ -65,7 +65,7 @@ Widget → POST /api/v1/support/chat
 3. Captcha verify
 4. Lookup paid orders for org (timing-safe path)
 5. Always return generic success to client
-6. On match: create one-time token, enqueue mail with magic link
+6. On match: create reusable token (valid until expiry, not consumed on first GET), enqueue mail with magic link
 7. Log `forgotten_ticket_requests`
 8. Landing: verify token → show tickets/invoices → allow resend
 

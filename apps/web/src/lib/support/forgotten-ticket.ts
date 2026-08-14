@@ -10,6 +10,9 @@ import { signOrderAccessToken } from "@/lib/commerce/order-access";
 export const FORGOTTEN_TICKET_GENERIC_MESSAGE =
   "Falls deine Angaben zu einer bezahlten Bestellung passen, senden wir dir in Kürze einen sicheren Link. Bitte prüfe auch deinen Spam-Ordner.";
 
+/** Gültigkeit des Ticket-Zugangslinks. Nicht one-shot — Mail-Scanner dürfen ihn nicht verbrennen. */
+export const FORGOTTEN_TICKET_TOKEN_TTL_MS = 48 * 60 * 60 * 1000;
+
 function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
 }
@@ -160,7 +163,15 @@ export async function requestForgottenTicket(input: {
 
   if (matched && customer) {
     const token = createSecureToken(32);
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + FORGOTTEN_TICKET_TOKEN_TTL_MS);
+    await prisma.accessRecoveryToken.updateMany({
+      where: {
+        organizationId,
+        emailNormalized,
+        expiresAt: { gt: new Date() },
+      },
+      data: { expiresAt: new Date() },
+    });
     await prisma.accessRecoveryToken.create({
       data: {
         organizationId,
@@ -212,10 +223,11 @@ export async function requestForgottenTicket(input: {
 export async function resolveRecoveryToken(token: string) {
   const tokenHash = hashToken(token);
   const row = await prisma.accessRecoveryToken.findUnique({ where: { tokenHash } });
-  if (!row || row.usedAt || row.expiresAt < new Date()) {
+  if (!row || row.expiresAt < new Date()) {
     return null;
   }
 
+  // usedAt = zuletzt geöffnet, Token bleibt bis expiresAt gültig (Prefetch / zweiter Klick / anderes Gerät).
   await prisma.accessRecoveryToken.update({
     where: { id: row.id },
     data: { usedAt: new Date() },
@@ -223,7 +235,7 @@ export async function resolveRecoveryToken(token: string) {
 
   await writeAudit({
     organizationId: row.organizationId,
-    action: "support.forgotten_ticket.token_consumed",
+    action: "support.forgotten_ticket.token_opened",
     entityType: "access_recovery_token",
     entityId: row.id,
     after: { emailHash: hashValue(row.emailNormalized) },

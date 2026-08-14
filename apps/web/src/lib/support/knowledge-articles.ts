@@ -180,7 +180,7 @@ Geschafft — sobald die Zahlung durch ist, sind deine Tickets digital da.`,
 
 1. Öffne „Ticket vergessen“.
 2. Gib die E-Mail deiner Bestellung ein — plus Bestellnummer oder Nachname.
-3. Wir senden einen sicheren Link (gültig für kurze Zeit, einmal nutzbar).
+3. Wir senden einen sicheren Link (48 Stunden gültig, mehrfach und auf anderen Geräten nutzbar).
 
 Aus Sicherheitsgründen reicht die E-Mail allein nicht. Ob eine Bestellung existiert, sagen wir nicht preis — bei Treffer kommt die Mail. Spam-Ordner nicht vergessen. Mit Kundenkonto liegen Tickets dauerhaft unter „Konto“.`,
     tags: ["ticket vergessen", "verloren", "erneut", "email", "hilfe", "zugang", "link"],

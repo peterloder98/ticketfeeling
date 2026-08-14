@@ -1,0 +1,23 @@
+---
+description: Ticket-/Magic-Links in Mails nicht als Einmal-Token verbrennen (wie Fanclub-Go-Live)
+alwaysApply: true
+---
+
+# E-Mail-Zugangslinks (Ticketfeeling)
+
+Gelernt im Fanclub-Portal: One-Shot-Links (erstes GET verbraucht Token) scheitern massenhaft — Outlook Safe Links, Hotmail, Antivirus, Reload, anderes Gerät.
+
+## Betrifft hier
+
+- „Ticket vergessen“ / `access_recovery_tokens`
+- Magic-Login, Passwort-Reset, Bestell-Zugang in Mails
+- Nicht: QR-Codes am Einlass (einmalige Entwertung bleibt Absicht)
+
+## Pflicht
+
+- Token erst ungültig bei **Ablauf** oder wenn die Aktion wirklich fertig ist — nicht beim ersten Seitenaufruf.
+- Derselbe Link: mehrfach, Reload, Handy und PC, bis `expires_at`.
+- Neuer Versand macht alte Tokens derselben Adresse ungültig (Rotation).
+- Prefetch darf den Zugang nicht verbrennen.
+- Fehlerseite: klar „Ticket vergessen erneut anfordern“, ohne Vorstand.
+- TTL menschlich (Stunden/Tage, nicht 30 Minuten One-Shot).

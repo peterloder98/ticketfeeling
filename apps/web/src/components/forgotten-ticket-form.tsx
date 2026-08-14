@@ -114,8 +114,8 @@ export function ForgottenTicketForm() {
       {message ? <p className="text-sm text-[var(--tf-text-secondary)]">{message}</p> : null}
       <p className="text-xs text-[var(--tf-text-secondary)]">
         Mindestens Bestellnummer oder Nachname ist nötig. Aus Sicherheitsgründen teilen wir
-        nicht mit, ob eine Bestellung bekannt ist. Der Link ist nur kurz gültig und einmalig
-        nutzbar.
+        nicht mit, ob eine Bestellung bekannt ist. Der Link gilt 48 Stunden und darf mehrfach
+        geöffnet werden, bis er abläuft.
       </p>
     </form>
   );

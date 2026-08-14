@@ -25,8 +25,7 @@ export default async function RecoveryAccessPage({ searchParams }: Props) {
           Link ungültig
         </h1>
         <p className="mt-3 text-[var(--muted)]">
-          Der Zugangslink ist abgelaufen oder wurde bereits verwendet. Bitte erneut über „Ticket
-          vergessen“ anfordern.
+          Der Zugangslink ist abgelaufen. Bitte erneut über „Ticket vergessen“ anfordern.
         </p>
         <Link href="/hilfe/ticket-vergessen" className="tf-btn tf-btn-primary mt-6 inline-flex">
           Erneut anfordern
@@ -42,8 +41,8 @@ export default async function RecoveryAccessPage({ searchParams }: Props) {
           Deine Tickets
         </h1>
         <p className="mt-2 text-[var(--muted)]">
-          Einmalzugang für {customer.email}. Dieser Link ist jetzt verbraucht. Für dauerhaften Zugriff
-          bitte Konto anlegen/anmelden.
+          Zugang für {customer.email}. Der Link bleibt bis zum Ablauf erneut nutzbar (auch auf einem
+          anderen Gerät). Für dauerhaften Zugriff bitte Konto anlegen/anmelden.
         </p>
         <Link href="/login" className="tf-btn tf-btn-secondary mt-4 inline-flex !py-2 text-sm">
           Zum Login

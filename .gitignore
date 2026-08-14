@@ -20,7 +20,9 @@ build
 *.log
 .idea
 .vscode
-.cursor
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 
 # prisma
 apps/web/prisma/*.db
